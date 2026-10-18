@@ -532,10 +532,10 @@ contextTab` (or the multi-selection), and the new window adopts its first tab
 - Keep materialization retries. Session restore can briefly expose pending tabs
   with no `linkedPanel` or no loaded browser.
 - Keep the `reload()` in `materializePanelTab` for a tab it had to materialize. A
-  pinned panel tab is unloaded with the other pending pinned tabs when its window
-  is restored (`attachRestoredPinnedTabUnload`; the window has no panels yet, so it
-  cannot skip them), so the reconciler finds it with no `linkedPanel`,
-  `insertBrowser` creates its browser, and the reload loads it. A pending tab that
+  pinned panel tab is unloaded with the other pending pinned tabs once its
+  history restore is done (`attachRestoredPinnedTabUnload`), unless the window
+  already renders it as a panel, so the reconciler can find it with no
+  `linkedPanel`, `insertBrowser` creates its browser, and the reload loads it. A pending tab that
   still has its real browser already reports its saved address, so the
   `about:blank` test beside that reload does not fire for it and nothing would load
   it (derived from the source, not run). See "Pinned tabs restore on demand after a

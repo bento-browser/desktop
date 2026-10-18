@@ -17257,15 +17257,14 @@
   // 'pending' is a chrome attribute that no extension API reports (SessionStore sets the saved
   // address before any load, so Tab.url is no sign). Pending pinned tabs go back to lazy ones
   // here. Panel tabs are skipped when this window already renders them.
-  function pinnedTabsToUnload(tabs, isRenderedPanel) {
-    return tabs.filter(
-      (tab) =>
-        tab.pinned &&
-        tab.hasAttribute('pending') &&
-        !tab.selected &&
-        !tab.hasAttribute('soundplaying') &&
-        !tab.hasAttribute('sharing') &&
-        !isRenderedPanel(tab),
+  function shouldUnloadRestoredPinnedTab(tab, isRenderedPanel) {
+    return (
+      tab.pinned &&
+      tab.hasAttribute('pending') &&
+      !tab.selected &&
+      !tab.hasAttribute('soundplaying') &&
+      !tab.hasAttribute('sharing') &&
+      !isRenderedPanel(tab)
     );
   }
 
@@ -17279,23 +17278,28 @@
     );
   }
 
-  // SSWindowRestored fires once for every window SessionStore restores (startup, reopened
-  // closed window, restored session), after its tabs exist and are marked pending, and the
-  // discard runs inside the dispatch. At startup that is before sessionstore-windows-restored,
-  // which is what starts the bento-tools background page, so its first tab query already sees
-  // these tabs as discarded and the sidebar's first rows are dimmed. discardBrowser without
-  // force refuses a selected, closing or dialog tab itself.
+  // SessionStore dispatches SSTabRestoring on a tab as the last step of its history restore,
+  // which resolves after SSWindowRestored. A browser discarded before that is re-inserted when
+  // the restore resolves (#listenForNavigations touches the now lazy browser), so each pinned
+  // tab is unloaded after its own event plus one task. The task lets loads that start inside
+  // the dispatch (a lazy browser's reload waits for this same event) clear 'pending' first. The
+  // event also fires in a window restored without SSWindowRestored (the macOS last-window
+  // reopen). discardBrowser without force refuses a selected, closing or dialog tab itself.
   function attachRestoredPinnedTabUnload() {
-    window.addEventListener('SSWindowRestored', () => {
-      try {
-        if (!pinnedRestoreOnDemand()) return;
-        const isRenderedPanel = (tab) => currentPanelTabIds.has(getBentoTabId(tab));
-        for (const tab of pinnedTabsToUnload(window.gBrowser.tabs, isRenderedPanel)) {
-          window.gBrowser.discardBrowser(tab);
+    window.addEventListener('SSTabRestoring', (event) => {
+      const tab = event.target;
+      if (!tab.pinned) return;
+      window.setTimeout(() => {
+        try {
+          if (!pinnedRestoreOnDemand()) return;
+          const isRenderedPanel = (t) => currentPanelTabIds.has(getBentoTabId(t));
+          if (shouldUnloadRestoredPinnedTab(tab, isRenderedPanel)) {
+            window.gBrowser.discardBrowser(tab);
+          }
+        } catch (err) {
+          console.warn('[bento-shell-mount] restored pinned tab unload failed:', err);
         }
-      } catch (err) {
-        console.warn('[bento-shell-mount] restored pinned tab unload failed:', err);
-      }
+      }, 0);
     });
   }
 

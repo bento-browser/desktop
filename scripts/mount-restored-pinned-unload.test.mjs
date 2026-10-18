@@ -1,7 +1,8 @@
 // Firefox restores pinned tabs without loading them (restore_pinned_tabs_on_demand) but as
 // pending tabs with a real browser, which the WebExtension API reports as loaded. The mount
-// script unloads them when a window finishes its session restore. These tests run the real
-// selection rule and the real SSWindowRestored handler from bento-shell-mount.js against stubs.
+// script unloads each one once its own history restore is done (SSTabRestoring plus one task):
+// a browser discarded earlier is re-inserted by SessionStore. These tests run the real selection
+// rule and the real SSTabRestoring handler from bento-shell-mount.js against stubs.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -22,17 +23,22 @@ function mountFunction(name) {
   return source.slice(start, source.indexOf('\n  }\n', start) + 5);
 }
 
-const FUNCTIONS = ['pinnedTabsToUnload', 'pinnedRestoreOnDemand', 'attachRestoredPinnedTabUnload']
+const FUNCTIONS = [
+  'shouldUnloadRestoredPinnedTab',
+  'pinnedRestoreOnDemand',
+  'attachRestoredPinnedTabUnload',
+]
   .map(mountFunction)
   .join('\n');
 
-/** A tab stub: attributes are the names Firefox puts on the tab element. */
+/** A tab stub: attrs are the attribute names Firefox puts on the tab element. */
 function tab(name, { pinned = true, selected = false, attrs = ['pending'], webExtId } = {}) {
-  return { name, pinned, selected, webExtId, hasAttribute: (attr) => attrs.includes(attr) };
+  const stub = { name, pinned, selected, webExtId, attrs };
+  stub.hasAttribute = (attr) => stub.attrs.includes(attr);
+  return stub;
 }
 
 function setup({
-  tabs,
   prefs = { 'browser.sessionstore.restore_pinned_tabs_on_demand': true },
   panelTabIds = [],
   discardBrowser,
@@ -41,6 +47,7 @@ function setup({
   const discardArgCounts = [];
   const warnings = [];
   const listeners = new Map();
+  const tasks = [];
   const sandbox = {
     console: { warn: (...args) => warnings.push(args) },
     Services: {
@@ -50,7 +57,6 @@ function setup({
     getBentoTabId: (t) => t.webExtId ?? null,
     window: {
       gBrowser: {
-        tabs,
         discardBrowser:
           discardBrowser ??
           ((...args) => {
@@ -59,16 +65,26 @@ function setup({
           }),
       },
       addEventListener: (type, fn) => listeners.set(type, fn),
+      setTimeout: (fn, delay) => tasks.push({ fn, delay }),
     },
   };
   vm.createContext(sandbox);
   vm.runInContext(FUNCTIONS, sandbox);
-  return { sandbox, discarded, discardArgCounts, warnings, listeners };
+  sandbox.attachRestoredPinnedTabUnload();
+  const flush = () => {
+    while (tasks.length) tasks.shift().fn();
+  };
+  /** Dispatches SSTabRestoring on the tab and, unless told not to, runs the deferred task. */
+  const restoring = (t, { run = true } = {}) => {
+    listeners.get('SSTabRestoring')({ target: t });
+    if (run) flush();
+  };
+  return { sandbox, discarded, discardArgCounts, warnings, listeners, tasks, flush, restoring };
 }
 
-test('only pinned, pending, unselected tabs that are quiet and not rendered panels are picked', () => {
-  const { sandbox } = setup({ tabs: [] });
-  const tabs = [
+test('only pinned, pending, unselected tabs that are quiet and not rendered panels qualify', () => {
+  const { sandbox } = setup();
+  const picked = [
     tab('pending-pinned'),
     tab('unpinned', { pinned: false }),
     tab('loaded', { attrs: [] }),
@@ -76,32 +92,48 @@ test('only pinned, pending, unselected tabs that are quiet and not rendered pane
     tab('audible', { attrs: ['pending', 'soundplaying'] }),
     tab('sharing', { attrs: ['pending', 'sharing'] }),
     tab('panel'),
-  ];
-  const picked = sandbox.pinnedTabsToUnload(tabs, (t) => t.name === 'panel');
+  ].filter((t) => sandbox.shouldUnloadRestoredPinnedTab(t, (p) => p.name === 'panel'));
   assert.deepEqual(
     picked.map((t) => t.name),
     ['pending-pinned'],
   );
 });
 
-test('the handler listens for SSWindowRestored and discards the picked tabs without force', () => {
-  const { sandbox, discarded, discardArgCounts, listeners } = setup({
-    tabs: [tab('a'), tab('b', { attrs: [] }), tab('c')],
-  });
-  sandbox.attachRestoredPinnedTabUnload();
-  assert.deepEqual([...listeners.keys()], ['SSWindowRestored']);
-  listeners.get('SSWindowRestored')();
-  assert.deepEqual(discarded, ['a', 'c']);
-  assert.deepEqual(discardArgCounts, [1, 1]);
+test('a pinned tab is discarded without force one task after its SSTabRestoring', () => {
+  const { discarded, discardArgCounts, listeners, tasks, restoring } = setup();
+  assert.deepEqual([...listeners.keys()], ['SSTabRestoring']);
+  restoring(tab('a'), { run: false });
+  assert.deepEqual(discarded, [], 'nothing is discarded inside the dispatch');
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].delay, 0);
+  tasks.shift().fn();
+  assert.deepEqual(discarded, ['a']);
+  assert.deepEqual(discardArgCounts, [1]);
+});
+
+test('an unpinned tab schedules nothing', () => {
+  const { discarded, tasks, restoring } = setup();
+  restoring(tab('a', { pinned: false }), { run: false });
+  assert.equal(tasks.length, 0);
+  assert.deepEqual(discarded, []);
+});
+
+test('the conditions are checked again when the task runs', () => {
+  const { discarded, flush, restoring } = setup();
+  const loading = tab('loading');
+  const selecting = tab('selecting');
+  restoring(loading, { run: false });
+  restoring(selecting, { run: false });
+  loading.attrs = []; // its content restore started, so the pending attribute is gone
+  selecting.selected = true;
+  flush();
+  assert.deepEqual(discarded, []);
 });
 
 test('a pinned panel tab the window renders stays loaded', () => {
-  const { sandbox, discarded, listeners } = setup({
-    tabs: [tab('panel', { webExtId: 7 }), tab('other', { webExtId: 8 })],
-    panelTabIds: [7],
-  });
-  sandbox.attachRestoredPinnedTabUnload();
-  listeners.get('SSWindowRestored')();
+  const { discarded, restoring } = setup({ panelTabIds: [7] });
+  restoring(tab('panel', { webExtId: 7 }));
+  restoring(tab('other', { webExtId: 8 }));
   assert.deepEqual(discarded, ['other']);
 });
 
@@ -117,22 +149,19 @@ test('tabs are unloaded only while both restore-on-demand prefs are true', () =>
     [{ [PINNED]: true, [ALL]: true }, ['a']],
   ];
   for (const [prefs, expected] of cases) {
-    const { sandbox, discarded, listeners } = setup({ tabs: [tab('a')], prefs });
-    sandbox.attachRestoredPinnedTabUnload();
-    listeners.get('SSWindowRestored')();
+    const { discarded, restoring } = setup({ prefs });
+    restoring(tab('a'));
     assert.deepEqual(discarded, expected, JSON.stringify(prefs));
   }
 });
 
 test('a failing discard is logged and never thrown', () => {
-  const { sandbox, warnings, listeners } = setup({
-    tabs: [tab('a')],
+  const { warnings, restoring } = setup({
     discardBrowser: () => {
       throw new Error('gone');
     },
   });
-  sandbox.attachRestoredPinnedTabUnload();
-  assert.doesNotThrow(() => listeners.get('SSWindowRestored')());
+  assert.doesNotThrow(() => restoring(tab('a')));
   assert.equal(warnings.length, 1);
   assert.match(String(warnings[0][0]), /^\[bento-shell-mount\]/);
 });
