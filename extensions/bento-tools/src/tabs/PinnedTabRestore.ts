@@ -7,6 +7,17 @@
 // startup swaps the pending browser for a lazy one; selecting one restores it
 // from the session as before.
 //
+// Only tabs that are still pending are discarded. The WebExtension API has no
+// pending flag, but a pending real browser never navigated: Tab.url is
+// `browser.currentURI.spec` (ext-tabs-base.js), and the remote browser's
+// currentURI stays `about:blank` until a location change arrives
+// (RemoteWebNavigation.sys.mjs, browser-custom-element.mjs updateForLocationChange),
+// which SessionStore's restoreHistory step does not cause. A tab that has loaded,
+// or started to (status "loading": the `busy` attribute), reports its real address.
+// A tab that is loaded and genuinely blank also matches, and discarding it loses
+// nothing. See "Pinned tabs restore on demand after a restart" in
+// docs/technical/workspaces.md for the source lines.
+//
 // Boot runs this pass before it sends the shell its first tab snapshot (the
 // message that opens the sidebar's readiness gate), and records each discard in
 // the registry itself, so the first rows the shell draws are already dimmed.
@@ -28,21 +39,63 @@ export const PINNED_DISCARD_WAIT_MS = 1000;
 type RestoredTabs = Pick<TabRegistry, 'snapshot' | 'isClosing' | 'isPrivate' | 'markDiscarded'>;
 
 /**
- * Ids of pinned tabs to discard: not the selected tab of their window, not
- * already discarded, and not a panel shown in an active workspace layout (the
- * mount script renders those straight away, so a discard would only reload them).
+ * Whether a live tab is a pinned tab Firefox restored without loading it: pinned, not the
+ * selected tab of its window, not already discarded, still at `about:blank` and not loading
+ * (so it never navigated), and neither playing audio nor sharing the camera, microphone or
+ * screen. The last two cannot hold for a pending tab; they keep a tab that is in use from
+ * being unloaded if the address check ever lets one through. `url` is read with the `tabs`
+ * permission; a tab whose address is hidden is not judged pending.
+ */
+export function isPendingPinnedTab(
+  tab: Pick<
+    browser.tabs.Tab,
+    'pinned' | 'active' | 'discarded' | 'url' | 'status' | 'audible' | 'sharingState'
+  >,
+): boolean {
+  const sharing = tab.sharingState;
+  return (
+    tab.pinned &&
+    !tab.active &&
+    !tab.discarded &&
+    tab.url === 'about:blank' &&
+    tab.status !== 'loading' &&
+    !tab.audible &&
+    !sharing?.camera &&
+    !sharing?.microphone &&
+    !sharing?.screen
+  );
+}
+
+/**
+ * Ids of pinned tabs to discard, from the registry: pending ones (see
+ * `isPendingPinnedTab`; the registry leaves `url` unset for `about:blank`), and not a
+ * panel shown in an active workspace layout (the mount script renders those straight
+ * away, so a discard would only reload them). The registry can be a few updates
+ * behind, so `discardPinnedTab` judges the live tab again before acting.
  */
 export function pinnedTabsToDiscard(
   tabs: readonly TabSnapshot[],
   shownPanelTabIds: ReadonlySet<number>,
 ): number[] {
   return tabs
-    .filter((t) => t.pinned && !t.active && !t.discarded && !shownPanelTabIds.has(t.id))
+    .filter(
+      (t) =>
+        t.pinned &&
+        !t.active &&
+        !t.discarded &&
+        !t.url &&
+        !t.loading &&
+        !t.audible &&
+        !shownPanelTabIds.has(t.id),
+    )
     .map((t) => t.id);
 }
 
 async function discardPinnedTab(id: number, tabs: RestoredTabs): Promise<void> {
   try {
+    // The registry may lag: a tab can have loaded, started playing audio or been selected
+    // since its snapshot. Judge it as it is now, right before acting.
+    if (!isPendingPinnedTab(await browser.tabs.get(id))) return;
     await browser.tabs.discard(id);
     // tabs.discard resolves even when Firefox declines (it never unloads a
     // selected tab), so the registry only records what a live read confirms.

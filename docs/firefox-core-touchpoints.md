@@ -1480,8 +1480,16 @@ rel="stylesheet">` load and error events on chrome documents, and the
   without discarding it and bento-tools reads each tab back before recording the
   discard. If Firefox starts creating pinned tabs lazily,
   they report `discarded: true` on their own and the discard selects nothing; the
-  pref must still exist. The code reads these by effect through the public
-  WebExtension API, so there is no firefox-compat registry entry.
+  pref must still exist. The pass discards only tabs that are still pending, and
+  reads "pending" from the public WebExtension API: a pending real browser never
+  navigated, so `tabs.Tab.url` (`browser.currentURI.spec`, `ext-tabs-base.js`) is
+  `about:blank` (the remote browser's `RemoteWebNavigation.currentURI` default,
+  replaced only by `updateForLocationChange` in `browser-custom-element.mjs`)
+  while a loaded or loading tab reports its address or `status: "loading"` (the
+  `busy` attribute, `ext-browser.js`); an audible or sharing tab
+  (`Tab.audible`, `Tab.sharingState`) is never discarded, because
+  `#mayDiscardBrowser` does not refuse one. The code reads these by effect through
+  the public WebExtension API, so there is no firefox-compat registry entry.
 - Firefox 158.0 review (2026-10-14): Firefox 158.0 was released on 2026-10-13
   (security advisory MFSA 2026-106); its source digest is the row for
   `source/firefox-158.0.source.tar.xz` in `releases/158.0/SHA256SUMS`.
@@ -1589,7 +1597,8 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `discardBrowser` without force (after the same relaunch the pending pinned tabs
   are dimmed in the sidebar's first paint of the tab list and
   `tabs.query({ pinned: true })` reports `discarded: true` for them, and an
-  Alt+Shift+R reload unloads none),
+  Alt+Shift+R reload unloads none; a pending pinned tab still reports
+  `url: "about:blank"` from `tabs.get` while a loaded one reports its address),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and

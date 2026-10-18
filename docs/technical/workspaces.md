@@ -457,14 +457,51 @@ milliseconds after the first script run (the settle wait alone is at least 300 m
 so on a real startup the event has long arrived; if it has not, the pass does
 nothing and the tabs stay as Firefox restored them. `pinnedTabsToDiscard` selects
 tabs from the registry (minus closing and private tabs) that are pinned, not the
-selected tab of their window, not already discarded, and not a panel in the layout
-of an active workspace (`getActiveWorkspacePanelTabIds()`, the same shown-panel
-set `SleepPolicy` protects): the mount script renders those panels straight away
-(`materializePanelTab`), so a discard would only reload them. All picks are
-discarded at once with `browser.tabs.discard`. That call resolves even when
-Firefox declines, and Firefox never unloads a selected tab, so each tab is read
-back and `TabRegistry.markDiscarded` records it only when it reports
-`discarded: true`. A failure logs `[bento-tools] pinned tab discard failed` and
+selected tab of their window, not already discarded, still pending (below), not
+audible, and not a panel in the layout of an active workspace
+(`getActiveWorkspacePanelTabIds()`, the same shown-panel set `SleepPolicy`
+protects): the mount script renders those panels straight away
+(`materializePanelTab`), so a discard would only reload them. Each pick is read
+live again right before it is discarded (`isPendingPinnedTab`), because the
+registry can be a few updates behind: a tab that loaded, began loading, was
+selected, started playing audio or started sharing the camera, microphone or
+screen since the snapshot is left alone. All picks are discarded at once with
+`browser.tabs.discard`. That call resolves even when Firefox declines, and Firefox
+never unloads a selected tab, so each tab is read back and
+`TabRegistry.markDiscarded` records it only when it reports `discarded: true`.
+`Tabbrowser.#mayDiscardBrowser` (without force, as `tabs.discard` calls it) refuses
+a selected or closing tab, one with an open dialog or a `beforeunload` handler
+that vetoes, but not an audible or sharing one, so the audio and sharing checks are
+Bento's.
+
+What "pending" means through the WebExtension API. There is no pending flag on
+`tabs.Tab`. A pinned tab restored on demand has a real browser that was created
+at `about:blank` with `skipLoad` (`Tabbrowser.sys.mjs:5016`, `:5039`), got the
+`pending` attribute and `TAB_STATE_NEEDS_RESTORE` from
+`SessionStore.#restoreTab` (`SessionStore.sys.mjs:6527`, `:6578`), and had only its
+session history restored (`#sendRestoreHistory`, `:6580`, `:8690`); the content
+load happens in `#restoreTabContent`, which `#markTabAsRestoring` precedes by
+clearing `pending` (`:6713-6729`). `Tab.url` is `browser.currentURI.spec`
+(`ext-tabs-base.js:245-247`, `:255`), `currentURI` is
+`webNavigation.currentURI` (`browser-custom-element.mjs:465-473`), and for a
+remote browser that is `RemoteWebNavigation.currentURI`, which stays
+`about:blank` until `updateForLocationChange` stores a location
+(`RemoteWebNavigation.sys.mjs:191-196`, `browser-custom-element.mjs:1230`). So a
+pending tab reports `url: 'about:blank'`; `status` is `complete` because it is
+`loading` only while the `busy` attribute is set (`ext-browser.js:883-888`);
+`discarded` is `!linkedPanel`, false (`ext-browser.js:810`); `title` is the
+session title (`contentTitle || label`, `ext-tabs-base.js:277`), which cannot
+tell it from a blank tab. A tab that has loaded, or has begun to (`busy`), reports
+its address or `loading`. The test is therefore: pinned, not selected, not
+discarded, `url === 'about:blank'`, not `loading`, not audible, not sharing. It
+can match a loaded pinned tab that is genuinely blank (nothing to lose by
+unloading it) and, for a few milliseconds, a tab Firefox has just started to
+restore (after `pending` is cleared, before `busy`). It was derived from the
+source and has not been run; the pinned-tab restart check in
+[manual-regression-areas.md](manual-regression-areas.md) confirms it. It cannot see
+Firefox's restore queue: with `browser.sessionstore.restore_on_demand` off,
+tabs still waiting their turn are pending too, so they are discarded and load on
+first selection (the tabs that already loaded are left alone). A failure logs `[bento-tools] pinned tab discard failed` and
 the others carry on. The discard keeps the tab's session state, so selecting it
 loads its page and history as before. A discarded tab reports `discarded: true`
 (`TabSnapshot.discarded`), the row shows in the sleeping style, and `SleepPolicy`
@@ -977,6 +1014,13 @@ opening an unwanted blank tab before the moved tabs arrive.
   on a dev reload, install or update the pinned tabs may be loaded and in use. It
   must skip a window's selected tab and the panels of active workspaces, which
   would otherwise be unloaded and immediately re-materialized.
+- Do not discard a pinned tab on the strength of `pinned && !active && !discarded`
+  alone. That also unloaded tabs that had loaded (restore on demand off, a slow boot
+  that loaded a tab before the pass ran, an audible tab) and ignored the
+  registry being a few updates behind. Discard only a tab that reports
+  `url === 'about:blank'`, is not `loading`, is not audible and not sharing, judged
+  again from `tabs.get` right before `tabs.discard`. Do not wake a tab to find out:
+  `tabs.get` and `tabs.query` leave it pending.
 - Do not move the startup discard after `bootReady` or make it wait for
   `tabs.onUpdated`. Run from a `runtime.onStartup` listener that waited for
   `bootReady`, and discarding tabs one at a time, it ran after the shell had
