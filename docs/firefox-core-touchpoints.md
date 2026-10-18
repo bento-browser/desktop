@@ -1442,7 +1442,24 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-18
+- Pinned tabs on demand (2026-10-18): `prefs/bento.js` sets
+  `browser.sessionstore.restore_pinned_tabs_on_demand` to true. Firefox defaults
+  it to false (`browser/app/profile/firefox.js`), and with it false `TabRestoreQueue`
+  in `SessionStore.sys.mjs` restores every pinned tab at startup even though
+  `browser.sessionstore.restore_on_demand` (default true) leaves other tabs
+  pending: `TabRestoreQueue.add` buckets by `tab.pinned` before `tab.hidden`, and
+  `shift()` and `willRestoreSoon()` drain that priority bucket unless both prefs
+  are true. Bento's pinned sidebar tabs are native pinned tabs, so each launch
+  loaded all of them, in every workspace. With the pref true they stay pending
+  (shown as sleeping) until first selected; the tab selected at shutdown still
+  loads because Firefox always restores it. The pref only takes effect while
+  `restore_on_demand` stays true, which Bento does not pin. The backing tabs of
+  pinned panels are native pinned tabs too: those in a workspace the window is not
+  showing now stay pending, while panels of the shown workspace still load at
+  startup because `materializePanelTab` in the mount script inserts their browsers
+  to render the strip. Both prefs are read by name, so there is no
+  firefox-compat registry entry.
 - Firefox 158.0 review (2026-10-14): Firefox 158.0 was released on 2026-10-13
   (security advisory MFSA 2026-106); its source digest is the row for
   `source/firefox-158.0.source.tar.xz` in `releases/158.0/SHA256SUMS`.
@@ -1539,7 +1556,11 @@ rel="stylesheet">` load and error events on chrome documents, and the
   search engines can be selected as default search in onboarding and Settings,
   confirm an HTTP-only destination still offers Firefox's exception UI, confirm
   remote download reputation can be toggled without changing the detected
-  privacy preset,
+  privacy preset, confirm `browser.sessionstore.restore_pinned_tabs_on_demand`
+  still exists in `browser/app/profile/firefox.js` and `TabRestoreQueue` still
+  skips the priority bucket when it and `restore_on_demand` are true (pin two
+  tabs in different workspaces, quit, relaunch: only the selected tab loads and
+  each pinned tab loads when first selected),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and

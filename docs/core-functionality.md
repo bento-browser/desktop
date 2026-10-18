@@ -227,6 +227,9 @@ quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
+After a restart, pinned tabs load when first opened, like other restored tabs; a
+pinned tab loads at startup only if it was the selected tab. Until then it shows
+as sleeping in the sidebar.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar

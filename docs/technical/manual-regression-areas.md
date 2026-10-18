@@ -92,6 +92,14 @@ When changing core functionality, manually verify at least the affected subset:
   the first window of a launch waits for `bento-tools` and is slower);
 - profile restart with panels, pinned panels, saved panels, widths, and scroll
   positions restored;
+- profile restart with pinned tabs: pin one tab in each of two workspaces and
+  leave a regular tab selected, quit, relaunch. Only the selected tab loads (and
+  the shown workspace's panels); both pinned tabs stay pending (sleeping rows in
+  the sidebar, `tab.hasAttribute('pending')` in the Browser Toolbox Console), and
+  each loads when clicked, the second after switching to its workspace. Repeat
+  with a pinned tab selected at quit: it loads at launch. If a pinned tab that was
+  not selected loads at launch, see the startup pitfall in
+  [workspaces.md](workspaces.md);
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.

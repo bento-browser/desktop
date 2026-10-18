@@ -330,6 +330,24 @@ actual mutation in `extensions/bento-tools/src/messaging/protocol-handler.ts`,
 where `tab/setPinned` calls `browser.tabs.update({ pinned })` and clears any
 stale `bento.folderId` membership through `TabRegistry.setFolder`.
 
+Pinned tabs restore on demand after a restart. Firefox restores every pinned tab
+at startup even with `browser.sessionstore.restore_on_demand` on, because
+`TabRestoreQueue` (`SessionStore.sys.mjs`) puts pinned tabs, hidden or not, in a
+priority bucket that it drains unless `browser.sessionstore.restore_pinned_tabs_on_demand`
+is also true. `prefs/bento.js` sets that pref true (logged in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md)), so a pinned sidebar
+tab stays pending until first selected. A pending tab has no `linkedPanel`, so
+`TabSnapshot.discarded` is true and the row shows in the sleeping style;
+`SleepPolicy` skips pinned and discarded tabs, so the idle sweep never puts a
+woken pinned tab back to sleep. The tab selected at shutdown still loads, because Firefox always
+restores it. Source of truth: SessionStore in the parent process; persistence
+path: `sessionstore-backups/recovery.jsonlz4`; no Bento store reads or writes the
+pref. Pinned-panel backing tabs are native pinned tabs too: those of a workspace
+the window is not showing stay pending, while the shown workspace's panels still
+load at startup because `materializePanelTab` (mount script) inserts their
+browsers to render the strip. Manual check: see
+[manual-regression-areas.md](manual-regression-areas.md).
+
 The sidebar context menu is still rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
 `src/browser/base/content/bento-shell-mount.js`. When a selected row is
@@ -798,6 +816,18 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not implement sidebar pin/folder drag by mutating shell stores directly.
   Drops must dispatch `tab/setPinned` or `tabs/setFolder` so Firefox pinned state
   and `bento.folderId` session persistence remain authoritative.
+- Do not wake a pending pinned tab to read its metadata. `tabs.get`, `tabs.query`
+  and `sessions.getTabValue` leave it pending; `tabs.reload`, `tabs.update` with
+  `active: true` or `url`, `tabs.create` with its address, and
+  `gBrowser.insertBrowser` load it and undo
+  `browser.sessionstore.restore_pinned_tabs_on_demand`. Startup paths that
+  select a tab load it, pinned or not, and static reading finds three that can
+  select a pinned tab (not run in Bento): `restoreParkedTabsForWorkspace` selects
+  the first parked entry when a live tab already shows its address (parked tabs
+  are sorted by index, so a pinned tab comes first), and the boot fallback in
+  `background.ts` plus `handleWorkspaceActivation` select `wsTabs[0]` (the
+  registry sorts by index) when no tab of the workspace is active. If a pinned
+  tab loads at launch without having been the selected tab, check those first.
 - Do not treat a stale `bento.folderId` as authoritative in the renderer. If
   the folder metadata is absent from the current workspace, render the tab as a
   regular tab.
