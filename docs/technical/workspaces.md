@@ -330,6 +330,59 @@ actual mutation in `extensions/bento-tools/src/messaging/protocol-handler.ts`,
 where `tab/setPinned` calls `browser.tabs.update({ pinned })` and clears any
 stale `bento.folderId` membership through `TabRegistry.setFolder`.
 
+Restart keeps what Firefox restored. Firefox restores the windows, the tabs, their
+order and each window's selected tab itself, and the session values Bento writes
+bring back every tab's workspace, folder and custom title. Bento recreates,
+moves and selects none of it. The one thing that used to undo this is the parked
+tab lists: `parkTabsForClosingWindow` runs for every window a Cmd+Q closes and
+parks the tabs of every workspace in it (`bento.parkedWorkspaceTabs`), so after a
+restart the lists describe tabs Firefox has just restored. Replaying them opened
+a second copy of every tab whose address Bento could not read yet, and selected
+a restored tab. The rule: `bootReady` notes which windows came back from the
+session with their workspace (`WorkspaceStore.restoreFromSession` returned an
+id), and as soon as the restored tabs are hydrated (`hydrateWorkspaceIds`, then
+`adoptionGate.settle()`) it drops the parked list of every workspace that has a
+tab in one of those windows (`discardParkedTabsOfRestoredWorkspaces`, which asks
+the pure `parkedWorkspacesToDiscard` in `panels/ParkedWorkspace.ts`), before the
+boot backfill gives unassigned tabs a workspace. A workspace with no restored tab
+(its window was closed and not restored) keeps its list, and the next activation
+of it restores the tabs as before, at startup or later. A tab in a window that did
+not come back from the session (the window a fresh start opens) does not count,
+even when it already has a workspace. The decision uses workspace membership and
+never `Tab.url`. The WebExtension `Tab.url` is `browser.currentURI.spec`
+(`ext-tabs-base.js`) and Firefox has no `pendingUrl`, so a restored tab that has a
+real browser but is still restoring reports `about:blank`. That is the selected
+tab and every pinned tab (`Tabbrowser` skips `createLazyBrowser` for them), the
+tabs a user notices first, while lazily restored tabs report their session
+address. Matching parked entries by address therefore misses exactly those tabs.
+
+Ordering matters as much as the rule. `restoreFromSession` activates each
+restored window's workspace before the settle wait and `hydrateWorkspaceIds`, and
+the activation handler (`handleWorkspaceActivation`) ran one frame later. It saw
+only the restored tabs whose workspace was already known, so it could not tell a
+workspace with restored tabs from an empty one, and it could find no selected tab
+among the workspace's tabs and select the first. The handler now waits on
+`startupRestored`, which `bootReady` releases (`releaseStartupActivations`) after
+it has hydrated the tabs, dropped the parked lists, restored panels from their
+session markers and restored the global workspace's panels, right before the
+pinned-tab pass (which picks its tabs before the held activations resume, and
+runs unchanged after the panel restore). An activation that arrives during boot,
+including a fresh window's `assignAvailable`, waits at most the boot time; one
+that arrives after the release is a later activation and behaves as before
+(parked list replay, selection, empty-workspace tab). A failed boot releases the
+wait too.
+
+Selection at startup. With the parked replay gone for restored workspaces,
+nothing selects a tab unless Firefox's selected tab is outside the workspace.
+`handleWorkspaceActivation` chooses a tab only when no sidebar tab of the
+workspace in that window is `active` in the registry, and the boot check in
+`bootReady` (before the panel restore) only when no sidebar tab of the global
+fallback workspace is active in any window. Both read hydrated state now. They can
+still fire when the window's selected tab belongs to another workspace or is a
+panel, or when the global fallback workspace is shown in no window; they then
+select the remembered tab or the first sidebar tab (`wsTabs[0]`, lowest index,
+which can be a pinned tab).
+
 Pinned tabs restore on demand after a restart. Firefox restores every pinned tab
 at startup even with `browser.sessionstore.restore_on_demand` on, because
 `TabRestoreQueue` (`SessionStore.sys.mjs`) puts pinned tabs, hidden or not, in a
@@ -892,15 +945,41 @@ opening an unwanted blank tab before the moved tabs arrive.
   `active: true` or `url`, `tabs.create` with its address, and
   `gBrowser.insertBrowser` load it and undo
   `browser.sessionstore.restore_pinned_tabs_on_demand`. Startup paths that
-  select a tab load it, pinned or not, and static reading finds three that can
-  select a pinned tab (not run in Bento): `restoreParkedTabsForWorkspace` selects
-  the first parked entry when a live tab already shows its address (parked tabs
-  are sorted by index, so a pinned tab comes first), and the boot fallback in
-  `background.ts` plus `handleWorkspaceActivation` select `wsTabs[0]` (the
-  registry sorts by index) when no tab of the workspace is active. If a pinned
+  select a tab load it, pinned or not, and static reading finds two that can
+  select a pinned tab (not run in Bento): the boot fallback in `background.ts` and
+  `handleWorkspaceActivation` select `wsTabs[0]` (the registry sorts by index, so
+  a pinned tab comes first) when no sidebar tab of the workspace is active, which
+  at startup means Firefox's selected tab is outside the workspace. The third path,
+  `restoreParkedTabsForWorkspace` selecting the first parked entry that a live tab
+  already showed, no longer runs for a workspace Firefox restored tabs for (see
+  "Restart keeps what Firefox restored"); it still runs for a workspace shown
+  later, whose tabs are loaded or discarded and report their address. If a pinned
   tab loads at launch without having been the selected tab, check those first;
   the startup discard skips the active tab, so it cannot unload a tab those paths
   selected.
+- Do not replay parked tabs, or create, move or select any tab, at startup for a
+  workspace Firefox restored tabs for, and do not decide it from `Tab.url`.
+  `Tab.url` is `about:blank` for a restored tab that is still restoring (the
+  selected tab, every pinned tab; no `pendingUrl` exists), so an address match
+  misses it and `tabs.create` opens a second copy: the symptom was a duplicate
+  tab where a moved tab used to be, a restored order that looked reverted, and the
+  workspace's first tab selected instead of the one selected at quit. Every Cmd+Q
+  parks every workspace of every closing window, so the lists always exist after a
+  restart and must be dropped (`discardParkedTabsOfRestoredWorkspaces`), keyed by
+  windows that came back from the session, before the boot backfill gives unassigned
+  tabs a workspace. Do not count a tab of a window that did not come back from the
+  session: a fresh start's window already holds a blank tab that can carry the
+  active workspace, and counting it would drop the list of a workspace whose
+  window was closed and not restored.
+- Do not run the workspace activation handler during boot before the restore has
+  finished. `restoreFromSession` activates a restored window's workspace before
+  `hydrateWorkspaceIds`, so an activation that runs at once sees restored tabs
+  without a workspace: it reads the workspace as empty or finds no selected tab in
+  it, and its panel restore runs before the session markers are read. Activations
+  wait on `startupRestored` until `bootReady` has hydrated the tabs, dropped the
+  parked lists and restored the panels; keep the release after the global
+  workspace's panel restore and before the pinned-tab pass, which picks its tabs
+  before the held activations resume.
 - Do not treat a stale `bento.folderId` as authoritative in the renderer. If
   the folder metadata is absent from the current workspace, render the tab as a
   regular tab.

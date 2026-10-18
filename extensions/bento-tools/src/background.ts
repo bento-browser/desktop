@@ -28,6 +28,7 @@ import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
 import {
+  parkedWorkspacesToDiscard,
   planParkedRestore,
   planWorkspaceParking,
   type ParkedWorkspaceTab,
@@ -315,6 +316,18 @@ function takeParkedWorkspaceTabs(workspaceId: string): ParkedWorkspaceTab[] {
     persistParkedWorkspaceTabs();
   }
   return entries;
+}
+
+// At a browser start Firefox has already restored the tabs of every window that came back, so
+// the lists parked for their workspaces at quit would only open each tab a second time.
+function discardParkedTabsOfRestoredWorkspaces(restoredWindowIds: ReadonlySet<number>): void {
+  const discard = parkedWorkspacesToDiscard(
+    parkedWorkspaceTabs.keys(),
+    tabs.snapshot().filter((tab) => !tabs.isClosing(tab.id) && !tabs.isPrivate(tab.id)),
+    restoredWindowIds,
+  );
+  for (const workspaceId of discard) parkedWorkspaceTabs.delete(workspaceId);
+  if (discard.length > 0) persistParkedWorkspaceTabs();
 }
 
 function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTabSnapshot[]): void {
@@ -866,6 +879,15 @@ const storesReady = Promise.all([
   loadParkedWorkspaceTabs(),
 ]);
 
+// Workspace activations that arrive while boot is still restoring wait here, released once the
+// restored tabs are hydrated and the panels are rebuilt (see the end of the restore in `bootReady`).
+// Acting earlier meant deciding with half the restored tabs unassigned: a parked tab was opened
+// again beside its restored twin, and the window's selected tab was replaced by the first one.
+let releaseStartupActivations = () => {};
+const startupRestored = new Promise<void>((resolve) => {
+  releaseStartupActivations = resolve;
+});
+
 const bootReady = storesReady.then(async () => {
   await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
   sleep.init();
@@ -981,12 +1003,15 @@ const bootReady = storesReady.then(async () => {
   // workspace rather than the global fallback. Windows with no saved
   // value (first launch, brand-new windows mid-session) fall through
   // unchanged and pick up assignAvailable when their shell connects.
+  //
+  // Windows that came back from the session with their workspace, so with their tabs.
+  const restoredWindowIds = new Set<number>();
   try {
     const allWindows = await browser.windows.getAll();
     for (const win of allWindows) {
       if (typeof win.id !== 'number') continue;
       adoptionGate.noteWindow(win.id);
-      await workspaces.restoreFromSession(win.id);
+      if (await workspaces.restoreFromSession(win.id)) restoredWindowIds.add(win.id);
     }
   } catch (err) {
     console.warn('[bento-tools] per-window workspace restore failed:', err);
@@ -1043,6 +1068,9 @@ const bootReady = storesReady.then(async () => {
   await tabs.hydrateWorkspaceIds();
   await tabs.closeMarkedTabs();
   adoptionGate.settle();
+  // Before the backfill below gives unassigned tabs a workspace, so only tabs Firefox restored
+  // with theirs count.
+  discardParkedTabsOfRestoredWorkspaces(restoredWindowIds);
 
   // Pre-assign workspaceIds for sessionstore-restored tabs whose URL
   // matches a panel in bento.panels storage. The panel storage is a
@@ -1148,6 +1176,10 @@ const bootReady = storesReady.then(async () => {
   // workspaces doesn't pay the URL→tab matching cost up front.
   if (wsId) await restorePanelsForWorkspace(wsId);
 
+  // The restored tabs are known now. bootReady does not wait for what the held activations do
+  // (they may open tabs); the pinned-tab pass below picks its tabs before they resume.
+  releaseStartupActivations();
+
   // Unload the pinned tabs Firefox restored pending, now that the restored tabs
   // have settled and the shown panels are known (those stay loaded). Awaited at
   // the end of boot, not here: the sweep below does not depend on it. Nothing
@@ -1187,6 +1219,8 @@ const bootReady = storesReady.then(async () => {
   }
   await pinnedTabsDiscarded;
 });
+// A boot that fails must not leave activations waiting for good.
+void bootReady.then(releaseStartupActivations, releaseStartupActivations);
 
 const nativePreferences = new NativePreferencesService({
   ready: bootReady,
@@ -2020,6 +2054,9 @@ async function handleWorkspaceActivation(
   wsId: string,
   targetWindowId: number | null,
 ): Promise<void> {
+  // At startup this waits for the restore to finish; afterwards it resolves at once.
+  await startupRestored;
+
   // (0) Cross-window tab move: with the "one workspace per window"
   // invariant, a workspace's tabs (sidebar tabs AND panel tabs) follow
   // workspace ownership. When window B claims a workspace whose tabs

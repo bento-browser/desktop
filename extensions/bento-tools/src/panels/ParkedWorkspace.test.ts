@@ -5,6 +5,7 @@ import type { TabSnapshot } from '@shared/protocol';
 import {
   hasPanelsInOtherWindow,
   parkableWorkspaceTabs,
+  parkedWorkspacesToDiscard,
   planParkedRestore,
   planWorkspaceParking,
   type ParkedWorkspaceTab,
@@ -242,5 +243,74 @@ describe('planParkedRestore', () => {
     );
 
     expect(steps.map((step) => step.existingTabId)).toEqual([7, 8, null]);
+  });
+});
+
+describe('parkedWorkspacesToDiscard', () => {
+  const parkedList = (url: string): ParkedWorkspaceTab[] => [
+    { url, title: '', pinned: false, index: 0 },
+  ];
+  const parked = new Map([
+    ['shown', parkedList('https://shown/')],
+    ['hidden', parkedList('https://hidden/')],
+    ['closed', parkedList('https://closed/')],
+  ]);
+  /** A tab in a workspace; like a restored one that is still loading, it has no address. */
+  const tabOf = (id: number, windowId: number, workspaceId: string): TabSnapshot => ({
+    ...liveTab(id, windowId),
+    workspaceId,
+  });
+
+  /** What startup replays: the lists left after the discard, planned against the live tabs. */
+  function replayedAtStartup(liveTabs: TabSnapshot[], restoredWindowIds: Set<number>) {
+    const discarded = new Set(
+      parkedWorkspacesToDiscard(parked.keys(), liveTabs, restoredWindowIds),
+    );
+    return [...parked]
+      .filter(([workspaceId]) => !discarded.has(workspaceId))
+      .map(([workspaceId, entries]) => ({
+        workspaceId,
+        steps: planParkedRestore(
+          entries,
+          new Map(),
+          liveTabs.filter((tab) => tab.workspaceId === workspaceId).length,
+        ),
+      }));
+  }
+
+  it('drops the list of every workspace that has tabs in a restored window, shown or not', () => {
+    const liveTabs = [tabOf(1, 1, 'shown'), tabOf(2, 1, 'hidden')];
+
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]))).toEqual([
+      'shown',
+      'hidden',
+    ]);
+  });
+
+  it('replays nothing for a restored workspace, even when its tab reports no address', () => {
+    // Matching by address misses a restored tab that is still loading, so the old replay opened
+    // its entry again beside it.
+    const [step] = planParkedRestore(parkedList('https://shown/'), new Map(), 1);
+    expect(step?.existingTabId).toBeNull();
+
+    const replayed = replayedAtStartup([tabOf(1, 1, 'shown')], new Set([1]));
+
+    expect(replayed.map((plan) => plan.workspaceId)).not.toContain('shown');
+  });
+
+  it('keeps the list of a workspace without restored tabs, and replays it as before', () => {
+    const [plan] = replayedAtStartup([tabOf(1, 1, 'shown'), tabOf(2, 1, 'hidden')], new Set([1]));
+
+    expect(plan?.workspaceId).toBe('closed');
+    expect(plan?.steps.map((step) => [step.entry.url, step.existingTabId, step.active])).toEqual([
+      ['https://closed/', null, true],
+    ]);
+  });
+
+  it('ignores a tab in a window that did not come back from the session', () => {
+    // A fresh start opens its own window; its blank tab may already belong to a workspace.
+    const liveTabs = [tabOf(1, 1, 'shown'), tabOf(2, 2, 'closed')];
+
+    expect(parkedWorkspacesToDiscard(parked.keys(), liveTabs, new Set([1]))).toEqual(['shown']);
   });
 });
