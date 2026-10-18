@@ -320,9 +320,20 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   sizes shell-laid-out geometry from (`SHELL_SIZED_TOKENS`: the collapsed rail width
   and the add-panel trailer's button, gap, padding and select widths) in px in the
   chrome sheet, except in the monolithic rollback sheet; see
-  [Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry), the rail
+  [Shell-sized lengths](../chrome-tokens.md#shell-sized-lengths), the rail
   pitfall in [workspaces.md](workspaces.md#workspace-pitfalls), and the trailer
   pitfall in [panel-widgets.md](panel-widgets.md#widget-pitfalls).
+- Mux's rem typography tokens render at 11/16 of their shell size when a chrome
+  rule uses them directly: `--muxui-semantic-typography-text-m-font-size` is `1rem`,
+  11 px in chrome and 16 px in the shell, and `text-s` is 9.1 px. The panel header
+  URL field (`.bento-panel-header-url`) first used `text-s` (commit eb27adcf) and
+  read as 9.1 px text. It now reads `--bento-panel-url-font-size`, an alias of
+  `text-m` that `SHELL_SIZED_TOKENS` pins at 16 px, which fits the 24 px field
+  (`--bento-control-size-sm`). Do the same for any chrome text that should show a
+  Mux type size at the shell's scale; check the pinned value in
+  `bento-chrome-tokens.css` after a change. Chrome rules that use rem font tokens
+  directly still render at chrome's rem (for example the panel navigator menu
+  items); that is the existing look until a rule is moved to a pinned token.
 - Firefox notification bars (`notification-message`, including the popup-blocked
   banner) are `moz-message-bar`/infobar custom elements with shadow-root CSS.
   `bento-chrome-theme.css` can theme their host and inherited custom properties,

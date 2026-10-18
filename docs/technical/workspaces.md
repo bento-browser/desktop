@@ -160,7 +160,7 @@ Keep the chrome host pinned directly to this token rather than layering on a
 second chrome-local `calc()`/`max()` fallback; live sidebar/window resize relies
 on a single collapsed-width path. The token is rem-based and chrome's root font
 size is not the shell's, so the chrome token sheet pins it in px (see
-[Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry)): the host is the
+[Shell-sized lengths](../chrome-tokens.md#shell-sized-lengths)): the host is the
 same 51.8 px the shell's rail layout assumes. The host's width never transitions;
 collapse and expand are the transform slide in
 [Sidebar collapse and expand](#sidebar-collapse-and-expand).

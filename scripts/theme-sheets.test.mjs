@@ -107,8 +107,9 @@ test('chrome base sheet carries the shared tokens and the Default theme only', (
 
 // Chrome's rem is the system UI font (11px on macOS) but the shell's is --font-size-root.
 // Chrome sizes #bento-shell-host (collapsed rail) and #bento-add-panel-trailer from these
-// tokens while the shell lays itself out inside them, so each must be the same length in
-// both documents: the shell reads the rem form at its root size, chrome reads the pinned px.
+// tokens while the shell lays itself out inside them, and sets the panel header URL text at
+// Mux's text-m, so each must be the same length in both documents: the shell reads the rem
+// form at its root size, chrome reads the pinned px.
 const CHROME_ROOT_PX = 11;
 const SHELL_LAID_OUT_TOKENS = [
   '--bento-tab-strip-width-collapsed',
@@ -118,6 +119,7 @@ const SHELL_LAID_OUT_TOKENS = [
   '--bento-panel-trailer-grid-width',
   '--bento-panel-trailer-wide-width',
   '--bento-panel-trailer-base-width',
+  '--bento-panel-url-font-size',
 ];
 
 // Evaluates a token the way a document with this root font size would: var() followed,
@@ -144,10 +146,10 @@ function createLengthEvaluator(css, rootPx, pinned = new Map()) {
   return evaluate;
 }
 
-test('chrome reads shell-laid-out geometry at the shell root font size', () => {
+test('chrome reads shell-sized lengths at the shell root font size', () => {
   const { directory, base } = generate();
   try {
-    const marker = base.indexOf('Shell-sized geometry');
+    const marker = base.indexOf('Shell-sized lengths');
     assert.ok(marker > 0, 'the base sheet carries the pinned block');
     const pinned = new Map(
       Array.from(base.slice(marker).matchAll(/^\s+(--[\w-]+): ([^;]+);/gm), (m) => [m[1], m[2]]),
@@ -168,6 +170,9 @@ test('chrome reads shell-laid-out geometry at the shell root font size', () => {
     assert.ok(
       unpinned('--bento-panel-trailer-wide-width') < shell('--bento-panel-trailer-wide-width'),
     );
+    // Mux's text-m is 1rem: 16px in the shell, so the URL text is 16px in chrome too.
+    assert.equal(chrome('--bento-panel-url-font-size'), 16);
+    assert.ok(unpinned('--bento-panel-url-font-size') < 16);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -176,7 +181,7 @@ test('chrome reads shell-laid-out geometry at the shell root font size', () => {
 test('the archived rollback sheet keeps the rem form of the rail width', () => {
   const { directory, base } = generate(['--monolithic']);
   try {
-    assert.doesNotMatch(base, /Shell-sized geometry/);
+    assert.doesNotMatch(base, /Shell-sized lengths/);
     assert.match(
       base,
       /--bento-tab-strip-width-collapsed: calc\(\s*var\(--bento-sidebar-collapsed-control-size\)/,

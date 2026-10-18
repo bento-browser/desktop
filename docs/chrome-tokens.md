@@ -90,7 +90,7 @@ stylesheet import.
 Document and component styles are not copied into the native sheet. Chrome
 continues to provide its own widget styling while sharing the token values.
 
-## Shell-sized geometry
+## Shell-sized lengths
 
 A rem token is a different length in the two documents: the shell's root font size
 is `--font-size-root` (16px) and chrome's is the system UI font (11px on macOS).
@@ -104,6 +104,14 @@ itself out inside is the exception. Two chrome hosts hold a shell document:
   shell's trailer assumes a 256px select and 39.6px buttons, while chrome computed
   176px and 31.15px, so the select was clipped in the host.
 
+Type is the same problem. Mux's typography tokens are rem tokens too
+(`--muxui-semantic-typography-text-m-font-size` resolves to `1rem`), so used
+directly in chrome `text-m` renders at 11px, 11/16 of its shell size, and `text-s`
+at 9.1px. The panel header URL field (`.bento-panel-header-url`) wants Mux's real
+`text-m`, 16px, so it reads `--bento-panel-url-font-size` (an alias of the `text-m`
+token) and the generator pins that in px. The same treatment applies to any chrome
+rule that should show a Mux type size at the shell's scale.
+
 The generator therefore appends an unlayered `:root` block after the token sheets
 that pins each token in `SHELL_SIZED_TOKENS` in px: it follows the token's `var()`
 references through the generated sheet, converts every rem to px at the sheet's
@@ -115,11 +123,11 @@ omits it because its archived mount script ships as it was. Pin the leaves a chr
 formula is built from, not every derived token: the trailer's grid and base widths
 are px sums of the pinned button, gap, padding and select tokens, so chrome computes
 them at the shell's size without being listed. Add a token to the list when chrome
-sizes shell-laid-out geometry from a rem token, and leave the mount stylesheet
-reading the token instead of restating the rem; px tokens (the sidebar min and max)
-need nothing. `scripts/theme-sheets.test.mjs` evaluates each shell-laid-out token at
-the shell's root font size from its rem form and in chrome (11px root) from the
-pinned block, and requires the two lengths to match.
+sizes shell-laid-out geometry, or sets text at a Mux size, from a rem token, and
+leave the mount stylesheet reading the token instead of restating the rem; px
+tokens (the sidebar min and max) need nothing. `scripts/theme-sheets.test.mjs`
+evaluates each pinned token at the shell's root font size from its rem form and in
+chrome (11px root) from the pinned block, and requires the two lengths to match.
 
 ## Theme behavior
 
