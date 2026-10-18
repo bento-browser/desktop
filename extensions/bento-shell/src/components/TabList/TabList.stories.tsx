@@ -335,6 +335,7 @@ export const CrossWorkspaceSearch = () => {
       ],
       'w-personal',
     );
+    seedTabFolders([]);
     seedPanelsByWorkspace({
       'w-personal': [tabs[2]?.id].filter((id): id is number => typeof id === 'number'),
       'w-work': [tabs[6]?.id].filter((id): id is number => typeof id === 'number'),
