@@ -60,7 +60,12 @@
     padding-inline: var(--space-3xs);
   }
 
+  /* Centred, not left-aligned: the rail's content box is narrower than the 32px
+     New square (the sidebar's 1px border is not in the rail width), so the
+     square overflows both sides evenly like the tab rows. */
   html[data-bento-collapsed='true'] .bento-tab-list-pane__sticky-actions {
+    display: flex;
+    justify-content: center;
     height: var(--bento-tab-row-height);
     padding-block-start: 0;
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
@@ -143,6 +148,14 @@
     background-color: var(--neutral-12);
     pointer-events: none;
     transition: height var(--muxui-semantic-motion-reveal-transition);
+  }
+
+  /* Rail: the band is the 32px row square, centred like the rows, so it stays
+     flush with the folder squares when the content box is narrower than 32px. */
+  html[data-bento-collapsed='true'] .bento-tab-list__viewport--top-surface::before {
+    inset-inline-end: auto;
+    width: var(--bento-tab-row-height);
+    margin-inline-start: calc((100% - var(--bento-tab-row-height)) / 2);
   }
 
   .bento-tab-list__row {
