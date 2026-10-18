@@ -308,11 +308,27 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
   persisted URL/layout entries. Workspace activation restores parked sidebar tabs
   before the empty-workspace newtab fallback and restores parked panels through
-  the normal `restorePanelsForWorkspace` path. Parked sidebar-tab restore must
-  first consume matching session-restored workspace tabs by URL before creating
-  tabs, otherwise every dev/browser relaunch can duplicate the parked tabs. Do
-  not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
-  before this parking step runs.
+  the normal `restorePanelsForWorkspace` path. At a browser start the parked
+  sidebar-tab lists of workspaces Firefox restored tabs for are dropped, not
+  replayed (see "Restart keeps what Firefox restored" in
+  [workspaces.md](workspaces.md)), so only a workspace with no restored tab
+  restores its list, and the later-activation replay still consumes matching live
+  tabs by URL before creating any. Matching by URL is not what makes startup safe:
+  a restored tab that is still restoring reports `about:blank`. Do not let
+  removed-tab deltas or `emitPanelsSync` prune closing-window panel ids before
+  this parking step runs.
   Deleting a workspace removes its parked sidebar tabs, panel entries, strip
   scroll, and queued activation preferences; closing a window drops that window's
   queued activation preferences.
+- Do not replay a parked sidebar-tab list at startup for a workspace whose tabs
+  Firefox restored. Cmd+Q parks every workspace of every closing window, so the
+  lists exist after every restart, and a restored tab that is still restoring (the
+  selected tab, every pinned tab) reports `about:blank`, which no parked address
+  matches. Replaying created a second copy of the tab (re-pinned when the parked
+  entry was pinned), the order Firefox restored looked reverted around it, and the
+  replay or the activation fallback selected the workspace's first tab instead of
+  the one selected at quit. The decision is membership in a window that came back
+  from the session (`parkedWorkspacesToDiscard`), made after
+  `hydrateWorkspaceIds` and before the boot backfill, and activations during boot
+  wait for it (`startupRestored`). The same wait keeps the activation's panel
+  restore behind the session-marker restore.

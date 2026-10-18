@@ -108,6 +108,23 @@ When changing core functionality, manually verify at least the affected subset:
   loaded, because the discard runs only at browser startup. If a pinned tab that
   was not selected loads at launch, or the rows dim after they first appear, see
   the startup pitfalls in [workspaces.md](workspaces.md);
+- restart keeps what Firefox restored. In a workspace with many tabs, drag one tab
+  to the end of the list and select it, then quit with Cmd+Q and relaunch. Before
+  quitting, note the window's tab count (Browser Toolbox Console:
+  `gBrowser.tabs.length`). After the relaunch the count is the same (no duplicate
+  of the moved tab or of any pinned tab), the moved tab is still last, and it is
+  the selected tab, not the workspace's first tab. Repeat with a pinned tab
+  selected at quit, with the selection in a second workspace of the window (switch
+  to it before quitting), and with two windows on different workspaces: each
+  window keeps its tabs, order and selection. A dev relaunch on the same
+  profile behaves the same. The Browser Console has no
+  `parked tab restore failed` lines;
+- a workspace whose window closed comes back: with two windows on different
+  workspaces, close one with Cmd+Shift+W, then open its workspace in a new window
+  (or the workspace switcher of the other window): its tabs are restored once, in
+  order. Also close the only window with Cmd+Shift+W, quit, relaunch: the new
+  window shows the workspace's tabs from the parked list, once each, and a window
+  Firefox did restore does not get its tabs a second time;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.
