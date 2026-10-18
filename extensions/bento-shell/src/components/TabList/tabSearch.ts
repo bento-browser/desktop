@@ -4,6 +4,8 @@ const URL_SCHEME = /^[a-z][a-z0-9+.-]*:(?:\/\/)?/i;
 // The query form strips only `scheme://` or `about:`, so `localhost:3000` keeps its host.
 const QUERY_SCHEME = /^(?:[a-z][a-z0-9+.-]*:\/\/|about:)/i;
 const DATA_URL = /^data:/i;
+// The only schemes searchResultDomain turns into a domain.
+const DOMAIN_SCHEME = /^(?:https?|about):/i;
 
 /**
  * Sidebar search predicate. `query` must already be trimmed and lowercased.
@@ -29,7 +31,8 @@ export function matchesTabSearch(query: string, title: string, url?: string): bo
  * unparsable URL), so those rows stay single-line.
  */
 export function searchResultDomain(url?: string): string | undefined {
-  if (!url) return undefined;
+  // A data: URL can be megabytes; reject other schemes before parsing.
+  if (!url || !DOMAIN_SCHEME.test(url)) return undefined;
   try {
     const { protocol, hostname } = new URL(url);
     if (protocol === 'about:') return url;
