@@ -58,6 +58,75 @@ navigator (both settle on Mux motion roles; see the Motion section of
 `docs/mux-ui-component-customisations.md`). A completed drag suppresses the button's
 normal open press.
 
+Pinned-panel persistence ordering: every `PinnedPanelsStore` mutation (add,
+remove, reorder, rebind, metadata, width, workspace or tab removal, boot
+recovery) snapshots `#byKey` synchronously and calls `#resolveAndPersist`. The
+call takes the next `#persistGeneration` number, then reads each pin's tab with
+`browser.tabs.get` right away (at change time; only the storage write is
+debounced) and records the URL, title, and favicon it saw in `#observed`. A pin
+found in a private tab is added to `#privateTabIds` instead. The call writes
+only if it still holds the highest generation once every lookup started so far
+has finished, so a stale pin list or a pin removed in the meantime cannot reach
+storage. Membership and order come only from the newest snapshot; URL, title,
+and favicon come from `#observed`, with the snapshot entry as the fallback.
+
+`#observed` holds the freshest value of each field per pin, stamped with the
+persist generation that saw it. Per field, the higher generation wins, whichever
+lookup or write finishes last; the merge reads `observed.field` when the field was
+observed and the snapshot entry only when it never was. A superseded call's lookup
+that resolves late therefore replaces nothing newer, and a tab that closed keeps
+what was read from it. Entries of pins that left the membership are dropped when
+the newest call merges. Who stamps what:
+
+- Tab reads (`browser.tabs.get`) stamp at their own call's generation, through
+  `readTab`. Firefox's `TabBase.convert()` (`ext-tabs-base.js`) copies `url`,
+  `title` and `favIconUrl` only when truthy, so a page with no icon (or an empty
+  title) yields an object without the key, not an empty string; `status` is
+  always present, `loading` while the tab is `busy` and `complete` otherwise. On a
+  `complete` tab a missing title or favicon therefore means the page has none: it
+  is stored as an empty observation that clears the value and wins by generation,
+  and the stored entry then omits the field. While `status` is `loading` (or
+  missing) a missing field says nothing and keeps the older value, so a tab in
+  the middle of navigation does not blank a good title or icon. An explicit empty
+  string is a clear whatever the status. A read whose URL
+  `isPersistablePinnedPanelUrl` rejects (empty, `about:blank` before SessionStore
+  has set the address, `about:devtools-toolbox`) is not the pinned page, so
+  `readTab` discards it whole: it replaces no URL and neither clears nor sets the
+  title or favicon, whatever its status and whether it omits them or carries its
+  own.
+- `add`, `rebindTabId` and `updateMetadataForTab` pass the metadata they wrote to
+  the entry as `edits` to `#schedulePersist`; the edits are recorded at the
+  generation of the persist call they start, before that call's own lookups, so
+  the lookup of the same call wins a tie. `add` and `rebindTabId` stamp the fields
+  they carry. `updateMetadataForTab` stamps every non-empty field it supplies,
+  whether or not it differs from the entry, because the value that would be stored
+  can be an older tab read the entry never held (a title captured before the tab
+  closed). Fields the update does not supply keep their older stamp. Tab events
+  report empty titles and favicons while a page loads, so an empty event value is
+  not supplied; only a tab read clears a field.
+- Boot recovery passes no edits: persisted values are older than any live read.
+
+`persistCurrentState` is a durability barrier (`ImportExecutor` awaits it before
+old-workspace cleanup). It registers its generation in `#awaiting` and settles
+only after a write of its state or a newer one has finished, however many later
+calls supersede it. While any awaited persist is outstanding, every write is
+flushed instead of debounced, so a newer state is never left on the 500 ms timer
+behind an awaiting caller. A storage failure does not hold it up: `Persistence`
+logs a failed backup or primary write and still releases its waiters, and an
+error in the lookup or write chain is logged and releases the awaiting callers
+up to that generation. The promise therefore never rejects and never hangs on
+storage, and means the write was attempted to completion, not that storage
+accepted it. Do not add a mutation that skips `#schedulePersist`; it would not
+bump the generation and an in-flight older lookup could resurrect its state.
+
+`pinnedPanels/Persistence` is single-flight like `panels/Persistence`: one write
+(backup copy plus primary set) in flight, one queued state, a newer queued state
+replaces an older one, and the backup and primary writes of one state never
+interleave with another state's. `schedule` is the 500 ms debounce path;
+`flushNow` resolves once a write at least as new as its state has landed.
+Verify with `PinnedPanelsStore.test.ts` ("persist ordering", "superseded
+lookups", "metadata freshness", "metadata clears") and `Persistence.test.ts`.
+
 Saved panels are bookmarks in a managed "Saved panels" folder under Firefox's
 "Other Bookmarks" root. The store is
 `extensions/bento-tools/src/saved-panels/SavedPanelsStore.ts`. It creates or
@@ -138,6 +207,75 @@ side panels are open.
   `getTrailerLayoutWidth` has no px fallback to keep in step. When the trailer's
   geometry changes, change the token and read the host's computed `width` in the
   Browser Toolbox against the iframe's `.bento-panel-trailer__more` width.
+- Keep pinned-panel metadata and privacy capture inside the persist call each
+  mutation starts. `PinnedPanelsStore` reads URL, title, favicon, and
+  `tab.incognito` from `browser.tabs.get` in `#resolveAndPersist`, right when the
+  mutation runs; the ordering fix only serializes those persists (generation
+  guard, `#observed`, single-flight `Persistence`). Do not hand privacy or tab
+  metadata to the mutation methods as sticky provenance (new `incognito`
+  parameters), and do not defer the reads behind the 500 ms timer. Two attempts
+  that did one of these leaked or lost data: a pin restored into a private
+  window (via `recoverTabIdsAfterPanelRestore`) was inserted without privacy and
+  leaked after it navigated; rebinding a private pin dropped its pending
+  provenance and made inherited private metadata persistable; a URL change
+  followed by a tab close before the registry delta flush lost the new URL;
+  recovery by panel key kept stale persisted metadata instead of writing the
+  current URL; and a regular pin reopened privately and then regularly lost
+  persistence permanently. The `capture semantics` tests in
+  `PinnedPanelsStore.test.ts` pin this behavior.
+- Do not discard a superseded persist's lookups, and do not let the newest call
+  write before earlier lookups finish. Dropping an older call whole loses what it
+  read: if its tab closes before the newest lookup, the newest call has no URL
+  (the pin vanishes from storage when it had none) or only an outdated one, and a
+  pin the older lookup found private is written from the fallback entry. Writing
+  the newest snapshot with `#observed` merged in fixes this. The cost is that a
+  write waits for the slowest earlier `tabs.get`; a lookup that never settled
+  would block every later write.
+- Do not let one metadata source win unconditionally. A merge that always
+  preferred the last tab read discarded a newer title or favicon from
+  `updateMetadataForTab` when that call's own lookup failed because the tab was
+  closing; one that preferred the entry lost the URL of a closed tab. Both go
+  through `#observe` with the persist generation, per field, higher wins. A new
+  mutation that writes entry metadata must pass it as `edits` to
+  `#schedulePersist`, or an older read will override it. Boot recovery
+  deliberately passes none: persisted values are older than any live read.
+- Stamp what an update supplies, not what changed against the entry. Comparing
+  only with the entry left a newer update losing to a cached read: the entry had
+  title `Original`, a lookup captured `Transient` and the tab closed, then an
+  update supplied `Original` plus a new favicon. Only the favicon got a fresh
+  stamp, so storage kept `Transient`.
+- Keep "observed" and "not observed" distinct in the merge. Treating a successful
+  read's empty title or favicon as missing (a truthiness test on the observed
+  value) kept the old value, and an import creates pins without metadata, so a
+  title captured once could never be cleared. Only an undefined field is "no
+  information". The cost: a tab that still reports an empty title or favicon
+  while it loads clears the stored value until a later read supplies it again.
+  The `metadata freshness` and `metadata clears` tests pin both cases.
+- Firefox does not send empty strings: `TabBase.convert()` omits a falsy title or
+  favicon, so waiting for an explicit `''` never clears anything in the real
+  browser. A pin imported without metadata kept the first favicon it saw after
+  the page moved to one without an icon, because the read looked like "no
+  information". `readTab` maps a missing title or favicon on a `complete` tab to
+  `''`; a `loading` or status-less read stays undefined. Build tab fixtures with
+  `firefoxTab` (omits falsy fields), not with empty strings, or a test passes
+  where the browser would not. A `complete` tab with a non-persistable URL
+  (`about:blank` before SessionStore sets the address) has no title or icon yet
+  and would have blanked the stored ones, so `readTab` ignores the whole read
+  unless its URL passes `isPersistablePinnedPanelUrl`; the "completed tab at
+  about:blank" test pins it. The cost: a `complete` tab at a real URL that has not
+  loaded its icon yet clears the stored icon until a later read supplies it.
+- `#lookupsSettled` must settle to `undefined`. `Promise.all([previous, lookups])`
+  resolves to an array holding the previous barrier's value, and each persist
+  chains onto the last barrier, so a value kept every earlier result alive (1,000
+  persists retained 1,000 nested arrays). The "settles the lookup barrier" test
+  in `PinnedPanelsStore.test.ts` reads the settled values off the `Promise.all`
+  inputs, so it assumes the barrier is built with `Promise.all`.
+- An awaited `persistCurrentState` must not adopt another call's promise. A
+  superseded awaited call that returned the newest call's promise resolved while
+  an intermediate write was still in flight and the newest state sat on the
+  debounce timer, so `ImportExecutor` proceeded with nothing durable. The
+  barrier is the `#awaiting` registry, settled by landed writes. The
+  `persist ordering` tests cover several supersessions behind a blocked write.
 - The saved-panel favicon row cannot rely on `page-icon:` URLs from the
   trailer iframe. `SavedPanelsStore` filters privileged favicon URLs and uses
   placeholders when needed.
