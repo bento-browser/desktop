@@ -39,6 +39,7 @@ const CONSTANTS = [
   'SIDEBAR_PUSH_ATTR',
   'SIDEBAR_PUSH_DELTA_PROP',
   'SIDEBAR_PUSH_PROPS',
+  'SIDEBAR_PUSH_DIVIDER_EDGE',
   'SIDEBAR_PUSH_PAGE_CLASS',
   'SIDEBAR_PUSH_FADE_CLASS',
   'SIDEBAR_PUSH_FADE_ANIMATION',
@@ -481,6 +482,8 @@ test('an expand out of the hidden state prepares the toolbar from the host layou
   const expandedWorld = makeWorld({ expandedWidth: 300, railWidth: 64 });
   assert.equal(state.nav, expandedWorld.toolbarState().nav);
   assert.equal(state.minWidth, expandedWorld.toolbarState().minWidth);
+  // The divider was absent, so it comes in with the strip's left edge: the whole delta.
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '-300px');
   assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '300px');
   world.applyHidden(false);
   assert.equal(world.host.classes.has('bento-sidebar-hidden'), false);
@@ -506,7 +509,11 @@ test('a hide commits the hidden toolbar at the start and the updaters keep it af
   assert.equal(started.nav, '0px');
   assert.equal(started.bookmarks, '0px');
   assert.equal(started.rootSplit, '299px');
+  // The divider line is laid out at the strip's final edge and slides from the sidebar's.
   const divider = world.byId.get('bento-sidebar-chrome-divider');
+  assert.equal(divider.hidden, false);
+  assert.equal(divider.style.left, '-1px');
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '300px');
   // Nothing the hooks queued reads the translated geometry while the slide runs, and a
   // mutation of the bookmarks toolbar does not read the strip's translation into its offset.
   world.runFrames();
@@ -537,6 +544,7 @@ test('a hide from the rail slides the rail footprint out and ends hidden', () =>
   world.payload(true, true);
   assert.equal(world.root.getAttribute('bento-sidebar-push'), 'hide');
   assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '64px');
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '64px');
   assert.equal(world.toolbarState().bookmarks, '0px');
   world.endMotion();
   world.runFrames();
@@ -552,6 +560,7 @@ test('showing right after a hide starts the divider and the toolbar from the hid
   // Interrupted before the hide ended: it settles first, then the show begins.
   world.payload(false, false);
   assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '-300px');
   assert.equal(world.root.props.get('--bento-sidebar-push-nav-from'), '0px');
   assert.equal(world.host.classes.has('bento-sidebar-hidden'), false);
   const divider = world.byId.get('bento-sidebar-chrome-divider');

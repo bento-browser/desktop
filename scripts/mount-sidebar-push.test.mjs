@@ -39,6 +39,7 @@ const CONSTANTS = [
   'SIDEBAR_PUSH_ATTR',
   'SIDEBAR_PUSH_DELTA_PROP',
   'SIDEBAR_PUSH_PROPS',
+  'SIDEBAR_PUSH_DIVIDER_EDGE',
   'SIDEBAR_PUSH_PAGE_CLASS',
   'SIDEBAR_PUSH_FADE_CLASS',
   'SIDEBAR_PUSH_FADE_ANIMATION',
@@ -826,9 +827,13 @@ test('an expand out of the hidden state commits the toolbar of a shown sidebar',
     true,
   );
   assert.equal(world.isHidden(), true, 'the hidden flag is restored for the caller');
-  // The divider was not shown, so it has nowhere to slide from; the split and the
-  // navigation controls start from their hidden values.
-  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '0px');
+  // The divider was not shown: it comes in with the strip's left edge, from the edge of
+  // a strip at 0, so it travels the whole delta. The split and the navigation controls
+  // start from their hidden values.
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '-300px');
+  assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '300px');
+  assert.equal(world.divider.style.left, '299px');
+  assert.equal(world.divider.hidden, false);
   assert.equal(world.root.props.get('--bento-sidebar-push-split-from'), '0px');
   assert.equal(world.root.props.get('--bento-sidebar-push-split-shift'), '-299px');
   assert.equal(world.root.props.get('--bento-sidebar-push-nav-from'), '0px');
@@ -860,17 +865,34 @@ test('a hide commits the hidden toolbar at the start and sends the divider out w
   assert.equal(world.navTarget.props.get('--bento-toolbar-nav-offset'), '0px');
   assert.equal(world.root.props.get('--bento-sidebar-push-split-from'), '299px');
   assert.equal(world.root.props.get('--bento-sidebar-push-split-shift'), '299px');
+  // The divider is not hidden for the slide: it stays at the strip's edge, just left of
+  // it, and starts the whole delta to the right, where the sidebar's edge was.
+  assert.equal(world.divider.hidden, false);
+  assert.equal(world.divider.style.left, '-1px');
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '300px');
   assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '300px');
   // The backgrounds behind the host keep the wider split, then take the hidden one.
   assert.equal(world.root.props.get('--bento-toolbar-divider-x'), '299px');
   calls.length = 0;
   world.endMotion();
+  assert.equal(world.divider.hidden, true);
   assert.equal(world.root.props.get('--bento-toolbar-divider-x'), '0px');
   assert.deepEqual(
     calls.map((call) => call.name),
     ['finish divider', 'finish nav', 'finish bookmarks'],
   );
   world.assertNoResidue();
+});
+
+test('a hide whose divider is not shown leaves it hidden and shifts it by nothing', () => {
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64 });
+  world.boot(false);
+  world.setToolbarFor(300);
+  world.divider.hidden = true;
+  world.installToolbarHooks();
+  world.payload(true, true);
+  assert.equal(world.divider.hidden, true);
+  assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '0px');
 });
 
 test('a window without the toolbar hooks still slides the host and the page', () => {

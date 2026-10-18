@@ -790,8 +790,9 @@ sidebar was hidden or is being hidden).
   fade, in or out: the end can switch to the rail layout unseen. `settleSidebarPush`
   puts `.bento-sidebar-hidden` and `.bento-sidebar-collapsed` on in the one style
   change that drops the transforms, with the hidden rule's transform transition held
-  off for that change (an inline `transition: none`, restored after a layout flush).
-  The end state is the one a boot into the hidden state has. The hover reveal and its own transform transition are unchanged, except that
+  off for that change (an inline `transition: none`, restored after a layout flush),
+  and hides the divider line. The end state is the one a boot into the hidden state
+  has. The hover reveal and its own transform transition are unchanged, except that
   `reveal` ignores the pointer while a push runs, so a pointer at the left edge cannot
   leave the revealed class waiting for the class that lands at the end. Expanding out
   of the hidden state is a push with `delta` equal to the whole expanded width.
@@ -816,7 +817,10 @@ sidebar was hidden or is being hidden).
   (host parked at `translateX(-100%)`, margin-right `-rail`) prepares from the
   layout origin. A hide commits the hidden toolbar (hooks run with the hidden flag
   set: no navigation offset, bookmarks offset 0, split 0) and a push out of the hidden
-  state a shown one.
+  state a shown one. The divider line is 1 px just left of the strip's edge; where it
+  is absent at one end it counts as at the edge of a strip at 0 (`-1`), so its shift
+  is the whole delta in or out. A hide lays it out at `-1px`, shown, and
+  `settleSidebarPush` hides it.
 - While `bento-sidebar-push` is on the root, `isBentoChromeLiveResizing()` is true,
   so the divider, toolbar navigation, bookmarks alignment, affordance and strip
   scrollbar observers hold off. Their pending animation frames are cancelled when a
@@ -959,6 +963,11 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
 - Do not let the hidden class's transform transition run when it lands at the end of a
   hide: the before-change transform is the finished animation's `-delta`, so the host
   would transition from there. The settle holds the transition off for that change.
+- Do not default the divider's shift to 0 when it has no previous position. A show
+  from the hidden state read the hidden divider as absent, and the 1 px line sat static
+  at its final left for the whole slide, cutting through the sliding panels. An absent
+  line is at the edge of a strip at 0, which makes its shift the whole delta, in on a
+  show and out on a hide.
 - Do not write a raw duration or easing for the fade. It is `calc()` over the Mux
   `reveal` duration with the `constant` easing, which keeps `pnpm run lint:motion`
   satisfied and the fade in step with the slide when a theme changes the role.
