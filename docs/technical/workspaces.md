@@ -336,16 +336,45 @@ at startup even with `browser.sessionstore.restore_on_demand` on, because
 priority bucket that it drains unless `browser.sessionstore.restore_pinned_tabs_on_demand`
 is also true. `prefs/bento.js` sets that pref true (logged in
 [firefox-core-touchpoints.md](../firefox-core-touchpoints.md)), so a pinned sidebar
-tab stays pending until first selected. A pending tab has no `linkedPanel`, so
-`TabSnapshot.discarded` is true and the row shows in the sleeping style;
-`SleepPolicy` skips pinned and discarded tabs, so the idle sweep never puts a
-woken pinned tab back to sleep. The tab selected at shutdown still loads, because Firefox always
-restores it. Source of truth: SessionStore in the parent process; persistence
+tab stays pending until first selected. The tab selected at shutdown still loads,
+because Firefox always restores it.
+
+The pref alone leaves the sidebar showing pending pinned tabs as loaded.
+`Tabbrowser.createTabsForSessionRestore` builds a restored tab lazily (no
+browser, no `linkedPanel`) only when
+`restoreTabsLazily && !select && !tabData.pinned`, so a pending pinned tab gets a
+real browser, and the WebExtension `tabs.Tab.discarded` getter
+(`!nativeTab.linkedPanel`) reports it as `discarded: false`. bento-tools
+therefore discards those tabs once per browser launch. `background.ts` registers
+`browser.runtime.onStartup` during its first script run; Firefox registers that
+event only for the `APP_STARTUP` startup reason (`ext-runtime.js`), so it does not
+fire on a dev reload (Alt+Shift+R), an install or an update, when pinned tabs may
+be loaded and in use. The listener waits for `bootReady` (restored tabs settled,
+workspace ids hydrated, the active workspace's panels restored) and passes
+`discardRestoredPinnedTabs` (`tabs/PinnedTabRestore.ts`) the registry snapshot and
+`getActiveWorkspacePanelTabIds()`, the same shown-panel set `SleepPolicy`
+protects. `pinnedTabsToDiscard` selects tabs that are pinned, not the selected tab
+of their window, not already discarded, and not a panel in the layout of an
+active workspace: the mount script renders those panels straight away
+(`materializePanelTab`), so a discard would only reload them. Each pick is read
+live right before `browser.tabs.discard`, so a tab the user selected meanwhile
+stays loaded, and a failure logs `[bento-tools] pinned tab discard failed` and
+moves on. The discard keeps the tab's session state, so selecting it loads its
+page and history as before. A pending tab then reports `discarded: true`
+(`TabSnapshot.discarded`), the row shows in the sleeping style, and `SleepPolicy`
+skips pinned and discarded tabs, so the idle sweep never puts a woken pinned tab
+back to sleep.
+
+The pass runs once, after boot settles. A tab restored later than the settle wait
+(three seconds at most) stays loaded until selected, as before the pass existed,
+and so does a pinned-panel tab of another window's workspace whose lazy panel
+restore is still running when the pass starts (it is discarded, then loaded by the
+panel strip). Source of truth: SessionStore in the parent process; persistence
 path: `sessionstore-backups/recovery.jsonlz4`; no Bento store reads or writes the
 pref. Pinned-panel backing tabs are native pinned tabs too: those of a workspace
-the window is not showing stay pending, while the shown workspace's panels still
-load at startup because `materializePanelTab` (mount script) inserts their
-browsers to render the strip. Manual check: see
+the window is not showing stay pending and are discarded, while the shown
+workspace's panels still load at startup because `materializePanelTab` (mount
+script) inserts their browsers to render the strip. Manual check: see
 [manual-regression-areas.md](manual-regression-areas.md).
 
 The sidebar context menu is still rendered by chrome through
@@ -816,6 +845,15 @@ opening an unwanted blank tab before the moved tabs arrive.
 - Do not implement sidebar pin/folder drag by mutating shell stores directly.
   Drops must dispatch `tab/setPinned` or `tabs/setFolder` so Firefox pinned state
   and `bento.folderId` session persistence remain authoritative.
+- Do not rely on Firefox to report a pending pinned tab as discarded, and do not
+  drop the startup discard in `background.ts`. Firefox restores a pinned tab with
+  a real browser (`createLazyBrowser` excludes `tabData.pinned`), so with
+  `browser.sessionstore.restore_pinned_tabs_on_demand` on it is pending but
+  `tabs.Tab.discarded` (`!linkedPanel`) is false, and the sidebar draws it as
+  loaded until clicked. The discard must stay startup-only (`runtime.onStartup`):
+  on a dev reload, install or update the pinned tabs may be loaded and in use. It
+  must skip a window's selected tab and the panels of active workspaces, which
+  would otherwise be unloaded and immediately re-materialized.
 - Do not wake a pending pinned tab to read its metadata. `tabs.get`, `tabs.query`
   and `sessions.getTabValue` leave it pending; `tabs.reload`, `tabs.update` with
   `active: true` or `url`, `tabs.create` with its address, and
@@ -827,7 +865,9 @@ opening an unwanted blank tab before the moved tabs arrive.
   are sorted by index, so a pinned tab comes first), and the boot fallback in
   `background.ts` plus `handleWorkspaceActivation` select `wsTabs[0]` (the
   registry sorts by index) when no tab of the workspace is active. If a pinned
-  tab loads at launch without having been the selected tab, check those first.
+  tab loads at launch without having been the selected tab, check those first;
+  the startup discard skips the active tab, so it cannot unload a tab those paths
+  selected.
 - Do not treat a stale `bento.folderId` as authoritative in the renderer. If
   the folder metadata is absent from the current workspace, render the tab as a
   regular tab.

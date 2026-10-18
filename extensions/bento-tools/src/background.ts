@@ -20,6 +20,7 @@ import { wasHandedOver } from './tabs/Handover';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
+import { discardRestoredPinnedTabs } from './tabs/PinnedTabRestore';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
@@ -1166,6 +1167,25 @@ const bootReady = storesReady.then(async () => {
   } catch (err) {
     console.warn('[bento-tools] stale-marker sweep failed:', err);
   }
+});
+
+// Pinned tabs Firefox restored without loading (prefs/bento.js sets
+// restore_pinned_tabs_on_demand) are pending real browsers, so they report
+// discarded: false and the sidebar draws them as loaded. Discard them once the
+// boot above has restored the active workspaces' panels. runtime.onStartup fires
+// only when the browser itself starts (not on a dev reload, install or update,
+// when pinned tabs may be loaded and in use) and must be registered during this
+// first script run. A tab restored after boot settled stays loaded until it is
+// selected, which is the pre-existing behavior.
+browser.runtime.onStartup.addListener(() => {
+  void bootReady
+    .then(() =>
+      discardRestoredPinnedTabs(
+        tabs.snapshot().filter((tab) => !tabs.isClosing(tab.id) && !tabs.isPrivate(tab.id)),
+        new Set(getActiveWorkspacePanelTabIds()),
+      ),
+    )
+    .catch((err) => console.warn('[bento-tools] startup pinned tab discard failed:', err));
 });
 
 const nativePreferences = new NativePreferencesService({
