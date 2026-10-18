@@ -18,6 +18,7 @@ import { seedTabFolders } from './state/__fixtures__/tabFolders';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
 import { markToolsBootedForStory } from './state/__fixtures__/bus';
 import { useSettingsStore } from './state/settings';
+import { useSidebarAddressStore } from './state/sidebarAddress';
 import type { Action } from '@shared/protocol';
 
 const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
@@ -56,7 +57,9 @@ function ShellFrame({
 // panels marked hydrated for every workspace. TabList shows its skeleton
 // until tabs, folders and the active workspace's panels have all hydrated,
 // so every one of those is seeded. Settings carry the requested
-// sidebarCollapsed value.
+// sidebarCollapsed value. The sidebar address store is reset: a fresh shell
+// has no snapshot until the chrome bridge sends one, and the store outlives a
+// story switch, so another story's snapshot would otherwise stay.
 function seedShell(sidebarCollapsed: boolean) {
   const workspaces = seedManyWorkspaces();
   seedTabsAcrossWorkspaces(
@@ -70,6 +73,7 @@ function seedShell(sidebarCollapsed: boolean) {
   seedTabFolders([]);
   seedPanelsHydrated(workspaces.map((w) => w.id));
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
+  useSidebarAddressStore.getState().reset();
   // Fake a tools/booted event AFTER seeding so the App's "connecting…"
   // indicator clears. Order matters: useToolsPort responds to booted by
   // re-requesting snapshots; nothing answers those in Ladle, but if we
