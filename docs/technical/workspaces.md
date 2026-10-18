@@ -383,6 +383,11 @@ panel, or when the global fallback workspace is shown in no window; they then
 select the remembered tab or the first sidebar tab (`wsTabs[0]`, lowest index,
 which can be a pinned tab).
 
+Panels follow the same rule at startup: a panel tab Firefox restored with its
+session marker keeps its slot and is never opened a second time by the persisted
+URL fallback, whether or not its address is readable yet (see "Panel session
+markers" in [panel-state.md](panel-state.md)).
+
 Pinned tabs restore on demand after a restart. Firefox restores every pinned tab
 at startup even with `browser.sessionstore.restore_on_demand` on, because
 `TabRestoreQueue` (`SessionStore.sys.mjs`) puts pinned tabs, hidden or not, in a

@@ -27,6 +27,7 @@ import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
+import { planPanelRestore } from './panels/PanelRestore';
 import {
   parkedWorkspacesToDiscard,
   planParkedRestore,
@@ -448,12 +449,14 @@ async function restoreParkedTabsForWorkspace(
 // shutdown. Idempotent: takePersistedUrls clears the entry on first call,
 // so subsequent activations of the same workspace are no-ops.
 //
-// URL → tabId matching: walk the workspace's existing tabs and consume
-// the first unmatched tab whose URL matches each persisted URL. For URLs
-// without a matching tab (Firefox sessionstore lost it, or the URL was
-// pinned only as a panel and the tab was closed at shutdown), open a new
-// tab with the URL and assign it to the workspace. Either way, each URL
-// becomes a tabId in the panels list.
+// Entry → tabId matching (`planPanelRestore`): a tab that shows the
+// persisted URL is consumed first. A panel Firefox already restored
+// through its session marker keeps its slot even when its URL cannot be
+// read yet (a pinned panel reports about:blank while it restores), so
+// the slot is never opened a second time. Only an entry with no tab at
+// all (Firefox sessionstore lost it, or the panel was closed at
+// shutdown) opens a new tab with the URL, assigned to the workspace.
+// Either way, each entry becomes a tabId in the panels list.
 //
 // Multi-workspace restore is lazy: only the active workspace restores at
 // boot. Inactive workspaces restore on first activation (see
@@ -495,19 +498,10 @@ async function restorePanelsForWorkspace(
   // tabs.create branch) also rebinds correctly.
   const urlToTabId = new Map<string, number>();
   const panelKeyToTabId = new Map<string, number>();
-  const consumed = new Set<number>();
 
-  const restoreTabForUrl = async (url: string): Promise<number | null> => {
-    for (const t of wsTabs) {
-      if (consumed.has(t.id)) continue;
-      if (tabUrls.get(t.id) === url) {
-        consumed.add(t.id);
-        return t.id;
-      }
-    }
-
-    // No existing tab — open one. active:false so panel restoration
-    // doesn't yank focus from the user's current tab.
+  // No existing tab — open one. active:false so panel restoration
+  // doesn't yank focus from the user's current tab.
+  const openTabForUrl = async (url: string): Promise<number | null> => {
     try {
       const created = await browser.tabs.create({
         url,
@@ -524,9 +518,14 @@ async function restorePanelsForWorkspace(
     return null;
   };
 
-  for (const entry of entries) {
+  const plan = planPanelRestore(
+    entries,
+    wsTabs.map((t) => ({ id: t.id, url: tabUrls.get(t.id) })),
+    panels.getPanels(workspaceId),
+  );
+  for (const { entry, tabId } of plan) {
     const url = entry.url;
-    const matchedId = await restoreTabForUrl(url);
+    const matchedId = tabId ?? (await openTabForUrl(url));
     if (matchedId !== null) {
       panelKeyToTabId.set(entry.panelKey, matchedId);
       urlToTabId.set(url, matchedId);

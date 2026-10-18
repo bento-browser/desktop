@@ -75,6 +75,29 @@ They use `browser.sessions.setTabValue` with workspace id and restore location
 so a closed panel can be restored by Firefox's closed-tab flow and then
 reinserted into Bento's layout.
 
+At a browser start the markers are the first restore of panels. Firefox restores
+each panel tab with its markers, `restorePanelsFromSessionMarkersAtBoot` and the
+`tabs.onCreated` handler put those tabs back into their slots, and only then does
+`restorePanelsForWorkspace` apply the persisted entries from `bento.panels` (URL,
+width, header state, and the layout tree with its group ratios).
+`planPanelRestore` (`panels/PanelRestore.ts`) binds each entry to a tab of the
+workspace. A tab that shows the entry's URL is bound first, preferring panels
+already in the layout over sidebar tabs. The entries left over take the panels
+still in the layout, in layout order: those tabs came back through their marker,
+so they fill the slot even when their URL cannot be read. Only an entry with no
+tab at all opens a new tab, which is the path for a window that closed and was not
+restored (it has no marker tabs). The URL is unreliable because `Tab.url` is
+`browser.currentURI.spec` and Firefox has no `pendingUrl`: a restored tab that has
+a real browser and is still restoring reports `about:blank`. Pinned-panel backing
+tabs are native pinned tabs, which Firefox never restores lazily, so they hit this
+on every restart. The restore that a workspace activation starts for a window's
+workspace runs after the boot restore, because activations during boot wait on
+`startupRestored` (see "Restart keeps what Firefox restored" in
+[workspaces.md](workspaces.md)). Pinned panels re-attach through the same
+`panelKeyToTabId` and `urlToTabId` maps that `planPanelRestore`'s result fills,
+in `pinnedPanels.recoverTabIdsAfterPanelRestore`, so a pin binds to the restored
+tab and not to a copy.
+
 ## Panel actions
 
 Core panel actions are handled in
@@ -308,7 +331,8 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
   persisted URL/layout entries. Workspace activation restores parked sidebar tabs
   before the empty-workspace newtab fallback and restores parked panels through
-  the normal `restorePanelsForWorkspace` path. At a browser start the parked
+  the normal `restorePanelsForWorkspace` path (`planPanelRestore` keeps it from
+  opening a tab for a slot a marker-restored panel already fills). At a browser start the parked
   sidebar-tab lists of workspaces Firefox restored tabs for are dropped, not
   replayed (see "Restart keeps what Firefox restored" in
   [workspaces.md](workspaces.md)), so only a workspace with no restored tab
@@ -332,3 +356,14 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `hydrateWorkspaceIds` and before the boot backfill, and activations during boot
   wait for it (`startupRestored`). The same wait keeps the activation's panel
   restore behind the session-marker restore.
+- Do not open a tab for a persisted panel entry only because no tab shows its URL.
+  A panel Firefox restored through its marker whose page is still restoring
+  (every pinned panel; `Tab.url` is `about:blank`, and no `pendingUrl` exists)
+  never matches by address, so the old URL fallback opened a second copy that
+  took the slot, left the original out of the layout, and gave the pinned panel
+  the copy to re-attach to. `planPanelRestore` pairs the entries left
+  after the address match with the panels still in the layout before any tab is
+  opened. Keep the marker restore ahead of `restorePanelsForWorkspace` at startup
+  (activations wait on `startupRestored`); run it first and the layout is empty,
+  so every unreadable panel is opened again. A panel with no restored tab at all
+  still opens from its URL.
