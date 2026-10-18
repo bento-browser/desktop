@@ -173,9 +173,11 @@ slide described below; the hidden state itself is `.bento-sidebar-hidden` on
 `#bento-shell-host`, `#bento-shell-splitter`, and
 `#bento-shell-splitter-affordance`: it pins the host to the collapsed rail width,
 cancels its hbox footprint with an equal negative right margin, translates the
-rail off the left edge, and hides the splitter. A chrome-side
-`#bento-sidebar-hidden-hover-zone` at the left edge, plus a window pointer-move
-fallback, toggles `.bento-sidebar-hidden-revealed` while hovered so the
+rail off the left edge, and hides the splitter. A window capture
+`pointermove`/`mousemove` handler (`attachHiddenSidebarHoverReveal`) toggles
+`.bento-sidebar-hidden-revealed` while the pointer is within 12 px of the left edge or
+over the host (host `pointerenter`/`pointerleave`, a short grace timer and window blur
+hide it again), so the
 collapsed rail slides over the content without changing the content layout.
 While `sidebarHidden` is true, the divider, toolbar-navigation, and
 bookmarks-toolbar alignment paths must treat the sidebar width as zero even
@@ -972,6 +974,14 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   at its final left for the whole slide, cutting through the sliding panels. An absent
   line is at the edge of a strip at 0, which makes its shift the whole delta, in on a
   show and out on a hide.
+- Do not select on `:root[bento-sidebar-hidden='true']`. `applyChromeSidebarHidden`
+  sets the attribute with `toggleAttribute`, which writes an empty value, so
+  `='true'` never matches (use `:root[bento-sidebar-hidden]`). A
+  `#bento-sidebar-hidden-hover-zone` strip at the left edge was gated on that selector
+  and stayed `display: none` for its whole life; it was removed, not fixed, because
+  showing it would put a 12 px pointer-capturing strip over the left edge of web
+  content whenever the sidebar is hidden and block clicks there. The window pointer
+  handler reveals the sidebar without catching pointer events.
 - Do not leave the hidden rule's transform transition live under reduced motion. The
   no-slide hide (`prefers-reduced-motion: reduce`) moves the page at once and then
   toggles `.bento-sidebar-hidden`, so the transition would play the rail sliding
