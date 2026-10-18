@@ -91,8 +91,7 @@ export async function load(): Promise<PersistedPanels | null> {
     const storedRaw = raw[STORAGE_KEY];
     const storedMainWidth = raw[MAIN_WIDTH_STORAGE_KEY];
     const legacyMainWidths = raw[LEGACY_MAIN_WIDTHS_STORAGE_KEY] as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     const stripScrollByWorkspace = parseStripScroll(raw[STRIP_SCROLL_STORAGE_KEY]);
     const byWorkspace = new Map<string, PersistedWorkspacePanels>();
     const mainWidthByWorkspace = new Map<string, number>();
@@ -290,6 +289,10 @@ export class Persistence {
       };
     }
     for (const [workspaceId, layout] of layouts) {
+      // A workspace with persisted entries not applied yet (`restorePanelsForWorkspace`) has only
+      // the panels that came back with their session markers, in marker order, numbered from the
+      // start. Written out, that would replace the entries, their keys and their layout.
+      if (persistedWorkspaces.has(workspaceId)) continue;
       const panelKeys = panelKeysForLayout(layout);
       const entries: StoredEntryV5[] = [];
       const keptKeysByTabId = new Map<number, string>();

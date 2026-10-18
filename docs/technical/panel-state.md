@@ -131,11 +131,18 @@ each restored marker's key in memory for workspaces that still have persisted
 entries, the first time the tab's marker is read and never replaced by a later
 read, and `restorePanelsForWorkspace` reads them from there and drops them once
 bound. And `sync` writes nothing for such a workspace, so an inactive workspace
-that is never activated in a session keeps the markers it came back with: the
-persisted entries are stored unchanged (their panels cannot be read to rebuild
-them), and rewritten markers would carry the temporary numbering, so two restarts
-later the entries would bind to the wrong tabs, a top and a bottom panel
-swapped. The first sync after the layout is applied writes the final keys.
+that is never activated in a session keeps the markers it came back with, and its
+persisted entries stay in storage as they are: a persistence flush
+(`Persistence.#flush`) and a window-close parking
+(`PanelStore.parkWorkspaceWithResolvedUrls`) both skip a workspace that still has
+unapplied entries, even when its panels report readable addresses, because the layout
+they would write is the temporary one. Rewritten markers or entries would carry the
+temporary numbering, so two restarts later the entries would bind to the wrong tabs, a
+top and a bottom panel swapped, with the subdivision and widths lost. The first sync
+after the layout is applied writes the final keys, and the first flush after that
+writes the applied layout. A panel of such a workspace that closes before the apply
+keeps its entry, so the apply opens a tab for it again (the stored state from the last
+quit wins over a change made to a layout nobody could see).
 
 `PanelStore.restorePersistedLayout` replaces the workspace layout with the
 persisted one. A panel already in the layout that no entry binds to (its entry was
@@ -388,7 +395,8 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `onWindowClosing` snapshot before it drops the closing window's tab ids.
   `background.ts` parks sidebar tabs in `bento.parkedWorkspaceTabs` and asks
   `PanelStore.parkWorkspaceWithResolvedUrls` to convert live panel tab ids into
-  persisted URL/layout entries. Workspace activation restores parked sidebar tabs
+  persisted URL/layout entries (a workspace whose persisted entries are still unapplied
+  keeps them and drops only its live layout). Workspace activation restores parked sidebar tabs
   before the empty-workspace newtab fallback and restores parked panels through
   the normal `restorePanelsForWorkspace` path (`planPanelRestore` keeps it from
   opening a tab for a slot a marker-restored panel already fills). At a browser start (not
@@ -441,3 +449,15 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   after two restarts a subdivision's top and bottom panels were swapped. `sync`
   therefore skips a workspace with unapplied persisted entries; do not write
   markers for it before `restorePanelsForWorkspace` has bound them.
+- Do not write a workspace's entries from its live layout while its persisted entries
+  are unapplied. The marker sync alone was not enough: once the panels' addresses were
+  readable, a persistence flush rebuilt the entries from the temporary layout (the
+  panels that came back, numbered from the first one in marker order), so a restored
+  top and bottom subdivision that was never opened saved `panel-0` as the bottom
+  panel while the top tab's marker still said `panel-0`. The next restart bound the
+  bottom entry to the top tab, and the saved subdivision and widths were gone.
+  `Persistence.#flush` skips a layout whose workspace still has an entry in the
+  persisted map, and `parkWorkspaceWithResolvedUrls` keeps that entry and drops only
+  the live layout. A regression test must give the panels readable addresses
+  (`PanelMarkerSync.test.ts`): a permanent `about:blank` stub hides this because the
+  flush writes nothing for a blank panel.
