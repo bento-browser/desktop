@@ -778,7 +778,10 @@ sidebar was hidden or is being hidden).
   settles it at its final state first (margin, transforms, opacity, classes, root
   attribute and custom properties all gone), then starts the new slide from there.
   The first apply at boot, `prefers-reduced-motion: reduce`, an unmeasurable rail
-  and any toggle that stays hidden switch instantly, as before.
+  and any toggle that stays hidden switch instantly, as before. Under reduced motion
+  the hidden rule's own transform transition is off too
+  (`@media (prefers-reduced-motion: reduce)` after the hidden rules), so hide, show
+  and the hover reveal are all instant.
 - Hide is a collapse to a narrow end of 0 (`:root[bento-sidebar-push='hide']`, the
   same keyframes). Hide mode keeps `sidebarCollapsed` true, so a sidebar that is a
   rail already hides with no collapsed change: `applyChromeSidebarCollapsed` starts the
@@ -863,7 +866,8 @@ mode, hide from the expanded sidebar and from the rail (the page, toolbar contro
 divider slide with the sidebar, the sidebar does not fade, the final frame has no jump),
 hover-reveal, and show (the divider enters with the strip's edge, not static at its final
 position), Cmd+S again mid-slide in both directions, and ten quick presses; with the OS
-reduced-motion setting on (no slide);
+reduced-motion setting on (no slide; in hide mode the hide, the show and the hover
+reveal are instant, with no rail slide over the page after the page has moved);
 cold start collapsed and expanded (no animation); a long tab list scrolled
 partway, collapsed and expanded (the custom scrollbar matches the rail).
 
@@ -968,6 +972,11 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   at its final left for the whole slide, cutting through the sliding panels. An absent
   line is at the edge of a strip at 0, which makes its shift the whole delta, in on a
   show and out on a hide.
+- Do not leave the hidden rule's transform transition live under reduced motion. The
+  no-slide hide (`prefers-reduced-motion: reduce`) moves the page at once and then
+  toggles `.bento-sidebar-hidden`, so the transition would play the rail sliding
+  out over the finished layout. A `prefers-reduced-motion: reduce` block after the
+  hidden rules turns it off, which also makes the hover reveal instant.
 - Do not write a raw duration or easing for the fade. It is `calc()` over the Mux
   `reveal` duration with the `constant` easing, which keeps `pnpm run lint:motion`
   satisfied and the fade in step with the slide when a theme changes the role.

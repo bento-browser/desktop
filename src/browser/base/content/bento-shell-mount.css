@@ -530,6 +530,13 @@
   pointer-events: auto;
   transform: translateX(0);
 }
+/* Reduced motion: the class lands with the page already moved (no push runs), so
+   the transform transition would play a rail slide over the finished layout. */
+@media (prefers-reduced-motion: reduce) {
+  #bento-shell-host.bento-sidebar-hidden {
+    transition: none;
+  }
+}
 /* Sidebar push (Cmd+S collapse, expand and hide).
    applyChromeSidebarCollapsed in bento-shell-mount.js runs the slide:
    - :root[bento-sidebar-push='collapse'|'hide'|'expand'] for the length of the slide;
