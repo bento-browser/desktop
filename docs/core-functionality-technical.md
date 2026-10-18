@@ -22,7 +22,7 @@ renamed, or removed.
 - [DevTools In Panel Implementation](technical/devtools-in-panel.md): Opening DevTools toolboxes in Bento panels and their pairing with the inspected page.
 - [Address Entry Implementation](technical/address-entry.md): Address entry, navigation, search-engine resolution, and autocomplete.
 - [Privacy And Search Implementation](technical/privacy-search.md): Privacy defaults, the privacy experiment, and search engine management.
-- [Workspace implementation](technical/workspaces.md): Workspace state, activation, tabs, folders, pinned tabs, and the workspace UI.
+- [Workspace implementation](technical/workspaces.md): Workspace state, activation, tabs, folders, pinned tabs, the workspace UI, and the sidebar collapse and expand slide.
 - [Panel state and layout model](technical/panel-state.md): The tools-side panel store, layout tree, persistence, panel actions, session markers, and panel state pitfalls.
 - [First-run import and onboarding](technical/first-run-import.md): The welcome flow, first-run browser-data import and startup migration, the dev-profile marker, and the toolbar scrim.
 - [Sidebar Native Firefox Surfaces](technical/sidebar-native-surfaces.md): The sidebar footer buttons that open native Firefox menus and panels.

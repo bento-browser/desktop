@@ -90,7 +90,6 @@
     --bento-pinned-panels-button-size: var(--space-l);
     --bento-pinned-panels-favicon-size: var(--bento-control-size-sm);
     --bento-pinned-panels-rail-width: var(--bento-pinned-panels-button-size);
-    --bento-pinned-panels-state-transition-duration: 300ms;
     --bento-tab-strip-width-min: 200px;
     --bento-tab-strip-width-max: 600px;
     --bento-tab-strip-width-collapsed: calc(
@@ -211,53 +210,9 @@
     --bento-border-color-subtle: color-mix(in srgb, currentColor 10%, transparent);
     --bento-sidebar-divider-color: var(--neutral-16);
 
-    /* Motion. Four named curves cover every Bento-authored transition;
-       new motion should pick from these rather than introduce new ones.
-       Mux components ship their own hardcoded curves internally —
-       we don't override those.
-         standard: general-purpose hover/idle/fade. Symmetric, gentle.
-         snappy:   discrete state changes (workspace switch, slide,
-                   menu-driven resize). Fast start, soft settle so the
-                   user sees motion react immediately then come to rest.
-         spring:   geometry that should feel physical (the sidebar search
-                   trigger, field and the highlight that follows them). A
-                   Motion spring (perceptual duration 0.3s, bounce 0.15)
-                   sampled as linear(); it reads as settled near 300ms and
-                   the 550ms duration is the whole sampled curve, including
-                   its small overshoot tail. Pair it only with
-                   --bento-duration-spring, and time any opacity fade that
-                   accompanies it from the 0.3s perceptual duration (a
-                   --bento-duration-fast delay plus --bento-duration-base),
-                   not from 550ms.
-         in-out:   indefinite / looping animations (shimmer, pulse).
-                   Symmetric so the loop has no obvious seam. */
-    --bento-duration-fast: 100ms;
-    --bento-duration-base: 200ms;
-    --bento-duration-slow: 350ms;
-    --bento-duration-spring: 550ms;
-    --bento-easing-standard: ease;
-    --bento-easing-snappy: cubic-bezier(0.32, 0.72, 0, 1);
-    --bento-easing-spring: linear(
-      0,
-      0.1157,
-      0.3366,
-      0.5536,
-      0.7259,
-      0.8465,
-      0.9234,
-      0.9681,
-      0.9916,
-      1.0023,
-      1.0059,
-      1.0061,
-      1.005,
-      1.0035,
-      1.0023,
-      1.0014,
-      1.0007,
-      1
-    );
-    --bento-easing-in-out: ease-in-out;
+    /* Motion: Bento defines no motion tokens. Transitions and animations read
+       the Mux --muxui-semantic-motion-* tokens (role guide in
+       docs/mux-ui-component-customisations.md). */
 
     /* Chrome panel components (header, navigator, scrollbar, etc.).
        Defined here so future themes can re-skin the entire panel
@@ -278,11 +233,44 @@
        button + vertical padding fits cleanly. */
     --bento-panel-header-height: 32px;
 
+    /* Panel header URL field, a chrome-only input in .bento-panel-header-url. Mux's
+       text-s is a rem token, and chrome's rem is not the shell's, so the chrome sheet
+       pins it in px (SHELL_SIZED_TOKENS in scripts/generate-chrome-tokens.mjs). */
+    --bento-panel-url-font-size: var(--muxui-semantic-typography-text-s-font-size);
+
+    /* Panel navigator context menu items, chrome-only buttons in
+       .bento-panel-nav-menu__item. Mux's text-s is a rem token and chrome's rem is not
+       the shell's, so the chrome sheet pins it in px like the URL size above. */
+    --bento-panel-nav-menu-font-size: var(--muxui-semantic-typography-text-s-font-size);
+
     /* Custom always-on horizontal scrollbar between the strip and the
        navigator. */
     --bento-scrollbar-thickness: 8px;
     --bento-scrollbar-radius: 4px;
     --bento-scrollbar-thumb-min-width: 30px;
+
+    /* Add-panel trailer. The shell's PanelTrailer lays out inside the chrome host
+       #bento-add-panel-trailer, which is sized from the same tokens, so both read them
+       from here. Chrome's rem is not the shell's, so the chrome sheet pins the host's
+       inputs in px (SHELL_SIZED_TOKENS in scripts/generate-chrome-tokens.mjs).
+       Button: the larger of the space-l step and an IconButton size="sm" plus its
+       inset. Grid: three buttons and two gaps. Wide: the saved-panels select. Base:
+       the host's least width, the larger of the wide width and the grid with its
+       padding. With the select the host grows to the wide width plus the padding. */
+    --bento-panel-trailer-button-size: max(
+      var(--muxui-reference-dimension-space-l),
+      calc(var(--bento-control-size-sm) + (var(--muxui-semantic-layout-inset-tight) * 2))
+    );
+    --bento-panel-trailer-grid-gap: var(--muxui-semantic-layout-inset-tiny);
+    --bento-panel-trailer-inline-padding: var(--muxui-semantic-layout-inset-medium);
+    --bento-panel-trailer-grid-width: calc(
+      (var(--bento-panel-trailer-button-size) * 3) + (var(--bento-panel-trailer-grid-gap) * 2)
+    );
+    --bento-panel-trailer-wide-width: 16rem;
+    --bento-panel-trailer-base-width: max(
+      var(--bento-panel-trailer-wide-width),
+      calc(var(--bento-panel-trailer-grid-width) + (var(--bento-panel-trailer-inline-padding) * 2))
+    );
 
     /* Focus / cycle indicator ring width (inset box-shadow on the
        active panel). */

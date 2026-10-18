@@ -90,6 +90,47 @@ stylesheet import.
 Document and component styles are not copied into the native sheet. Chrome
 continues to provide its own widget styling while sharing the token values.
 
+## Shell-sized lengths
+
+A rem token is a different length in the two documents: the shell's root font size
+is `--font-size-root` (16px) and chrome's is the system UI font (11px on macOS).
+Most chrome layout is its own, tuned at chrome's rem. Geometry the shell lays
+itself out inside is the exception. Two chrome hosts hold a shell document:
+
+- `#bento-shell-host`, sized from `--bento-tab-strip-width-collapsed`
+  (`calc(2rem + 2 * 0.61875rem)`). The shell's rail layout assumes the 16px
+  reading, 51.8px, while chrome computed 35.6px.
+- `#bento-add-panel-trailer`, sized from the `--bento-panel-trailer-*` tokens. The
+  shell's trailer assumes a 256px select and 39.6px buttons, while chrome computed
+  176px and 31.15px, so the select was clipped in the host.
+
+Type is the same problem. Mux's typography tokens are rem tokens too
+(`--muxui-semantic-typography-text-m-font-size` resolves to `1rem`), so used
+directly in chrome `text-m` renders at 11px, 11/16 of its shell size, and `text-s`
+at 9.1px. Two chrome rules want Mux's real size at the shell's scale, so each reads
+an alias token that the generator pins in px: the panel header URL field
+(`.bento-panel-header-url`) reads `--bento-panel-url-font-size` (`text-s`, 13.3px), and
+the panel navigator menu items (`.bento-panel-nav-menu__item`) read
+`--bento-panel-nav-menu-font-size` (`text-s`, 13.3px). The same treatment applies to
+any chrome rule that should show a Mux type size at the shell's scale.
+
+The generator therefore appends an unlayered `:root` block after the token sheets
+that pins each token in `SHELL_SIZED_TOKENS` in px: it follows the token's `var()`
+references through the generated sheet, converts every rem to px at the sheet's
+`--font-size-root`, and writes `calc(32px + 9.9px + 9.9px)`. The source stays the one
+in `bento-tokens.css`, and a token that is missing, declared with different values, or
+given a `var()` fallback stops the generator. The block sits after the layered
+declaration, and unlayered rules win over layers. The monolithic (rollback) sheet
+omits it because its archived mount script ships as it was. Pin the leaves a chrome
+formula is built from, not every derived token: the trailer's grid and base widths
+are px sums of the pinned button, gap, padding and select tokens, so chrome computes
+them at the shell's size without being listed. Add a token to the list when chrome
+sizes shell-laid-out geometry, or sets text at a Mux size, from a rem token, and
+leave the mount stylesheet reading the token instead of restating the rem; px
+tokens (the sidebar min and max) need nothing. `scripts/theme-sheets.test.mjs`
+evaluates each pinned token at the shell's root font size from its rem form and in
+chrome (11px root) from the pinned block, and requires the two lengths to match.
+
 ## Theme behavior
 
 The chrome mount script writes the resolved light or dark mode to

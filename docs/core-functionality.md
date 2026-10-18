@@ -369,7 +369,11 @@ than the point where those native controls stop moving left, so the divider
 never slides underneath them. In collapsed sidebar
 mode, those same actions open the existing floating address/search fallback.
 `Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
-collapses the sidebar to the narrow rail or hides it from layout. In hidden
+collapses the sidebar to the narrow rail or hides it from layout. Collapsing,
+expanding, hiding and showing slide the sidebar and the page together as one strip,
+with the toolbar controls and the divider moving with them, and a collapsing sidebar
+fades through its switch between the full and narrow layouts; with reduced motion on,
+the change is instant. In hidden
 mode, hovering the left edge of the browser window slides the collapsed rail
 over the page without pushing content; pressing the shortcut again restores the
 expanded sidebar.

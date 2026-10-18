@@ -147,11 +147,13 @@ same pointer-capture, rAF-batched width writer pattern, persists `#sidebar-box`
 width through XUL store, and gives the native splitter a Bento-sized hover
 target; leaving Firefox's narrow transparent XUL splitter alone makes the
 Bookmarks panel feel fixed next to Bento's larger sidebar handle.
-`#bento-shell-host` keeps a width transition for sidebar
-collapse/expand, but `attachSidebarSplitterFeedback()` must add
-`bento-shell-sidebar-resizing` during manual splitter drag so that transition is
-disabled while drag writes live `width` values; otherwise the handle feels
-smoothed or laggy instead of tracking the pointer. The same splitter setup must
+`#bento-shell-host` has no width transition (sidebar collapse/expand is a
+transform slide, see
+[Sidebar collapse and expand](workspaces.md#sidebar-collapse-and-expand)), so the
+manual splitter drag writes live `width` values straight to the pointer.
+`attachSidebarSplitterFeedback()` still adds `bento-shell-sidebar-resizing` during
+the drag: it also turns off the hidden host's transform transition and the
+frame's pointer events. The same splitter setup must
 set the native `#bento-shell-splitter` to `resizebefore="none"` and
 `resizeafter="none"` so Firefox's XUL splitter does not compete with Bento's
 manual width writer. During drag, compute the affordance position from the
@@ -181,14 +183,16 @@ plus live width delta; its `ResizeObserver` callbacks must ignore
 `bento-sidebar-resizing`.
 Manual verification for this path should compare sidebar-handle drag against
 panel-splitter drag: both should track the pointer without visible stutter, while
-sidebar collapse/expand still uses the normal width transition. Also drag the
+sidebar collapse/expand is the push slide (see
+[Sidebar collapse and expand](workspaces.md#sidebar-collapse-and-expand)). Also drag the
 expanded sidebar to its minimum width and verify the divider stops at the same
-point as Back/Forward/Reload instead of sliding underneath them. Keep
-`#bento-shell-host` width/min-width/max-width transitions disabled under both
-`:root[bento-sidebar-resizing='true']` and
-`:root[bento-window-resizing='true']`; otherwise a collapsed-width change can
-make live sidebar or window resize inherit the collapse animation path and become
-choppy. Panel-view and no-side-panels main-frame shadows stay at the normal
+point as Back/Forward/Reload instead of sliding underneath them. The host has no
+width transition, so a collapsed-width change cannot make live sidebar or window
+resize inherit a collapse animation; its hidden-mode transform transition is still
+switched off under both `:root[bento-sidebar-resizing='true']` and
+`:root[bento-window-resizing='true']`. The sidebar drag hooks
+(`prepare*`/`sync*ForSidebarWidth`) are also how the push commits the toolbar
+band's final geometry. Panel-view and no-side-panels main-frame shadows stay at the normal
 outline plus drop-shadow during live sidebar, window, and panel resize; do not
 use a live-resize selector to replace `--bento-panel-frame-shadow` or the native
 `.browserSidebarContainer` shadow with the outline-only value. `about:preferences` and
@@ -436,6 +440,12 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the address `CommandPalette` animation opacity-only. Mux UI's default
   command-palette transform transition causes visible movement when switching
   between anchored sidebar opens and centered shortcut/new-tab opens.
+- The address bar host fades on the Mux `modal` role
+  (`ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)'`).
+  `hideAddrbar` sets opacity 0 and `hideOverlayHostAfterFade` commits `display: none`
+  from the host's computed transition; do not put a duration back in script, and a
+  reopen during the fade must keep the host (`prepareAddrbarHostForOpen` cancels the
+  pending hide).
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.

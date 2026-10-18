@@ -77,6 +77,17 @@ page with no handshake (`embedded-import`).
   and `showAddrbar` close (or cancel a pending open of) the other palette-class
   overlays at that moment, so the order in which cold documents finish loading
   cannot let an older request cancel a newer one.
+- **A hide waits for the fade the stylesheet configures.** The palette, workspace
+  palette, merge palette, address bar, confirm, edit-workspace, welcome and embedded
+  import hosts fade on the Mux `modal` role (inline for hosts `ensureOverlayHost`
+  creates, `bento-shell-mount.css` for the three the patch declares). Each `hide*`
+  sets opacity 0 and calls `hideOverlayHostAfterFade(host)`, which reads the host's
+  computed opacity transition (`measureMotion`) and commits `display: none` and
+  `hidden` on the `transitionend` or the measured time plus slack, only if the host
+  is still hidden. A transition of 0 (reduced motion) hides at once; a host with no
+  computed style waits for a fallback ceiling. Every reveal calls
+  `cancelMotion(host, 'hide')`, so a reopen during the fade never meets a stale
+  cleanup. The toolbar scrim and its stacked layers use the same helpers.
 - **The address bar reveal timer starts at delivery.** `showAddrbar` prepares the
   host at once (laid out, invisible, not interactive) and queues `sendOpen` with
   `overlays.open`. `sendOpen` posts the open message and only then starts the 1.4 s
@@ -241,6 +252,10 @@ Overlay document pitfalls:
 - Do not reveal an overlay, or release its queued open, on a timer. A readiness
   fallback that revealed after 5 s showed an empty overlay and left a queued
   message with nowhere to go. Report the stall and keep the open pending.
+- Do not repeat a fade duration in script for a hide timer (the old `*_TRANSITION_MS`
+  constants). The overlay fades follow the Mux tokens, so a Mux theme or a role
+  change would leave the constant clipping or lagging the fade; use
+  `hideOverlayHostAfterFade` or `afterMotion`.
 - Do not start a timer that can discard a pending open (the address bar's reveal
   fallback) before the message that open depends on has been sent. Start it at
   delivery.
@@ -274,6 +289,8 @@ Overlay document pitfalls:
   timestamp suffix.
 
 Tests: `scripts/overlay-manager.test.mjs` runs the real manager under fake timers.
+`scripts/mount-motion.test.mjs` runs `measureMotion`, `afterMotion` and
+`cancelMotion` against fake computed styles.
 `scripts/overlay-surfaces.test.mjs` extracts the real `show*`, `hide*`, toggle,
 Esc, outside-click, and `dispatch*` functions and the real overlay table from the
 mount and drives them with a fake DOM and recording message managers (cold open

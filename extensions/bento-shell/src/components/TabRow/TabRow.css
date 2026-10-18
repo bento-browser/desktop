@@ -36,52 +36,24 @@
     user-select: none;
     overflow: hidden;
     transition:
-      background-color var(--bento-duration-fast) var(--bento-easing-standard),
-      width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      min-width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      max-width
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      height
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      min-height
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      opacity var(--bento-duration-base) var(--bento-easing-standard),
-      transform var(--bento-duration-base) var(--bento-easing-standard),
-      margin-inline-start
-        var(
-          --bento-sidebar-collapse-transition,
-          var(--bento-duration-base) var(--bento-easing-standard)
-        ),
-      padding var(--bento-duration-base) var(--bento-easing-standard);
+      background-color var(--muxui-semantic-motion-state-transition),
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      transform var(--muxui-semantic-motion-reveal-transition);
   }
 
-  /* Removal animation. TabList keeps the row mounted for ~220ms after the
-     tab is dropped from the store; during that window the row fades to 0
-     opacity and slides slightly to the right. The virtualizer doesn't
-     shrink the row's slot in this window — siblings only shift up after
-     the timer fires and the row truly unmounts. pointer-events:none stops
+  /* Removal animation. TabList keeps the row mounted after the tab is
+     dropped from the store, until this dismiss transition has finished;
+     meanwhile the row fades to 0 opacity and slides slightly to the right.
+     The virtualizer doesn't shrink the row's slot in this window — siblings
+     only shift up after the row truly unmounts. pointer-events:none stops
      stray clicks during the fade. */
   .bento-tab-row--removing {
     opacity: 0;
     transform: translateX(8px);
     pointer-events: none;
+    transition:
+      opacity var(--muxui-semantic-motion-dismiss-transition),
+      transform var(--muxui-semantic-motion-dismiss-transition);
   }
 
   /* Drag source: the in-list slot the user grabbed. Firefox renders a
@@ -210,13 +182,15 @@
     margin: 0;
     align-self: center;
     /* mask-image is discrete: the mask applies at once on hover and, through
-       the delay below, outlasts the actions' fade-out so the title does not
-       reappear under the fading buttons. Hover and active set the delay to 0. */
-    --bento-tab-row-mask-linger: var(--bento-duration-fast);
+       the delay below (the state duration, matching the actions' fade-out),
+       outlasts that fade so the title does not reappear under the fading
+       buttons. A zero duration is calc() over the token, since the motion check
+       takes no raw times. Hover and active (rule below) set the delay to 0. */
     transition:
-      color var(--bento-duration-fast) var(--bento-easing-standard),
-      opacity var(--bento-duration-base) var(--bento-easing-standard),
-      mask-image 0s linear var(--bento-tab-row-mask-linger) allow-discrete;
+      color var(--muxui-semantic-motion-state-transition),
+      mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0)
+        var(--muxui-semantic-motion-state-transition-easing)
+        var(--muxui-semantic-motion-state-transition-duration) allow-discrete;
   }
 
   .bento-tab-row__rename-input {
@@ -254,7 +228,7 @@
     align-items: center;
     gap: 0;
     opacity: 0;
-    transition: opacity var(--bento-duration-fast) var(--bento-easing-standard);
+    transition: opacity var(--muxui-semantic-motion-state-transition);
     /* No background. A painted (opaque) backstop would show as a solid block
        around the buttons that arrives and leaves on its own timing, apart from
        the gliding hover highlight; the title is masked out instead (rule below
@@ -325,8 +299,11 @@
      matters; 'canvas' is just an opaque system color keyword. */
   .bento-tab-row:hover > .muxui-text,
   .bento-tab-row--active > .muxui-text {
-    --bento-tab-row-mask-linger: 0s;
-
+    transition:
+      color var(--muxui-semantic-motion-state-transition),
+      mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0)
+        var(--muxui-semantic-motion-state-transition-easing)
+        calc(var(--muxui-semantic-motion-state-transition-duration) * 0) allow-discrete;
     mask-image: linear-gradient(
       to left,
       transparent calc(var(--bento-tab-row-actions-width) - var(--bento-tab-row-actions-fade)),

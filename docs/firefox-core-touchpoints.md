@@ -289,8 +289,8 @@ Use this shape for new or changed touchpoints:
   below the centered overlay size,
   keeps the collapsed sidebar host width at one collapsed control plus
   symmetric collapsed-sidebar inline padding through the generated chrome token
-  and suppresses host width transitions during live
-  sidebar/window resize,
+  and has no host width transition (collapse and expand slide the host and the
+  page as one strip, see Chrome Layout Stylesheet),
   leaves the collapsed workspace-switcher section unpadded so its centered
   avatar trigger remains the same square size as the other collapsed rail
   controls,
@@ -681,7 +681,20 @@ document`), then in a built app open the command palette, address bar, a sidebar
 ### Lazy Overlay Documents
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-17
+- Motion tokens change (2026-10-17): the palette, merge palette and confirm hosts
+  declared in `browser-box.inc.xhtml` no longer carry the inline
+  `transition: opacity 0.18s ease` (patch `chrome-layout/01-bento-shell-mount.patch`;
+  the `index` blob ids of that patch and of `chrome-layout/02-bento-side-panel.patch`
+  were recomputed, and both apply to the pristine 158.0 files). Their fade now comes
+  from `bento-shell-mount.css` (`#bento-palette-host`, `#bento-merge-palette-host`,
+  `#bento-confirm-host`: `opacity var(--muxui-semantic-motion-modal-transition)`);
+  the hosts the mount script creates carry the same value inline. The `hide*`
+  functions no longer wait a fixed 180 ms: `hideOverlayHostAfterFade` reads the host's
+  computed opacity transition (`measureMotion`) and commits `display: none` on the
+  `transitionend` or after the measured time, and every reveal calls
+  `cancelMotion(host, 'hide')`. With no transition (reduced motion) the host hides at
+  once. Needs `pnpm run build` (the patch changed).
 - Firefox 158.0 review (2026-10-14): no private Firefox member in this entry
   moved. Runtime on 158.0 (first window, fresh profile): `BentoOverlayStats` lists
   `confirm`, `edit-workspace`, `workspace-switcher` (eager) and `addrbar`,
@@ -710,10 +723,10 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - `src/browser/base/content/bento-shell-mount.js` (`createOverlayManager`, the
     `overlays` table, `createOverlayFrame`, `openOverlay`, `isOverlayOpen`, the
     `BentoAddrbarOpen` and `BentoMergePaletteLifecycle` frame scripts)
-  - `patches/chrome-layout/01-bento-shell-mount.patch` (unchanged: the palette,
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (the palette,
     merge-palette, confirm, and menu `<browser>` elements it declares stay
     in the window; palette, merge palette, and menu are navigated on first use or at
-    idle)
+    idle; the three fading hosts lost their inline `transition`, see above)
   - `extensions/bento-shell/src/bridge/overlayReady.ts` (shell side of the
     handshake) and `windowId.ts` (the window id every overlay bus is scoped by)
   - No new Firefox patch.
@@ -771,7 +784,14 @@ document`), then in a built app open the command palette, address bar, a sidebar
   and a delete confirmation in two windows at the same time (each window keeps its
   own, and confirming deletes only that window's workspace); and open a menu in
   the first second of a new window (it appears once its document is up, with the
-  items of the last request).
+  items of the last request). After the motion tokens change: in the Browser
+  Toolbox Console `getComputedStyle(document.getElementById('bento-palette-host'))`
+  reports `transitionProperty: 'opacity'` and the modal duration (`0.18s` with the
+  default Mux tokens) for the palette, merge palette and confirm hosts before
+  their first show; open and close each overlay, the address bar and the welcome
+  screen (the fade must not clip, and no host may stay at opacity 0 over the page
+  and block input), reopen one during its fade-out (it stays open), and repeat
+  with macOS Reduce motion on (nothing may hang at opacity 0).
 - Rollback or migration notes: restoring the previous behavior is calling every
   `setBento*Src()` at startup again, as the end of `bento-shell-mount.js` did
   before this change.
@@ -952,7 +972,40 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Chrome Layout Stylesheet
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-17
+- Motion tokens (2026-10-17): the transitions and animations in
+  `bento-shell-mount.css` and `bento-chrome-theme.css` read the Mux
+  `--muxui-semantic-motion-*` tokens that `bento-chrome-tokens.css` carries, instead
+  of the removed `--bento-duration-*` and `--bento-easing-*` tokens and literal
+  times; `--drag-drop-transition-duration` (Firefox's customize-mode property, set
+  in `bento-chrome-theme.css`) is the Mux reveal duration. `pnpm run lint:motion`
+  checks both sheets for raw times and easings. After a build, in the Browser
+  Toolbox Console
+  `getComputedStyle(document.documentElement).getPropertyValue('--muxui-semantic-motion-reveal-transition-duration')`
+  is `200ms` with the default tokens.
+- Sidebar push (2026-10-17, hide added 2026-10-19): Cmd+S collapse and expand no
+  longer transition the host width, and hide mode's hide slides the same way
+  (`:root[bento-sidebar-push='hide']`, `.bento-sidebar-hidden` lands when the slide
+  ends; no new Firefox surface). `applyChromeSidebarCollapsed` in the mount script
+  slides the host and the in-flow children of `#browser` right of it as one strip
+  with `transform` and `opacity` (`:root[bento-sidebar-push]`,
+  `.bento-sidebar-push-page`, the `bento-sidebar-push-*` keyframes in this sheet),
+  on the Mux reveal role, and `#nav-bar::before` is used while it runs. Firefox surface depended on: the
+  children of `#browser` are laid out as flex items in document order with
+  `#bento-shell-host` first (`browser-box.inc.xhtml`), the page group is found by
+  computed style (`display`, `position`), not by id, and `#nav-bar`,
+  `#nav-bar-customization-target`, `#PersonalToolbar` and the native
+  Back/Forward/Reload ids keep their roles (all already used by the toolbar
+  alignment code). No private Firefox member is added, so the firefox-compat
+  registry has no new entry. Regression checks for future updates: in a build,
+  collapse and expand with Cmd+S and check that the sidebar, page, toolbar
+  controls and the toolbar's sidebar-coloured segment move together with no jump at
+  either end, that the panels are aligned after each toggle, and that
+  `document.documentElement.hasAttribute('bento-sidebar-push')` is false afterwards;
+  in hide mode, check the same for hide and show (no jump of the page at the start of
+  a hide, the divider entering with the strip on a show); after a Firefox bump,
+  re-read `browser-box.inc.xhtml` for added in-flow children of `#browser` and for
+  any `::before` or `::after` rule on `#nav-bar`.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
   `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` still exist;
   `Loader.cpp` changed only the stylesheet MIME-type diagnostic (`MimeNotCss`,
@@ -2166,7 +2219,7 @@ below is generated; edit the registry, then run
 | `bookmarks-view` | source (engine only) | Tree of the native bookmarks sidebar document that Bento re-queries. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:69` |
 | `sidebar-search-container` | source (engine only) | Container in the bookmarks sidebar document that receives Bento’s search box. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:62` |
 | `search-box` | source (engine only) | Native bookmarks sidebar search input that Bento replaces. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:63` |
-| `browser` | element (runtime) | Root hbox that holds the Bento host elements added by patch chrome-layout/01. | `attachSidebarChromeDivider`, `attachHiddenSidebarHoverZone` | `browser/base/content/browser-box.inc.xhtml:5` |
+| `browser` | element (runtime) | Root hbox that holds the Bento host elements added by patch chrome-layout/01. | `attachSidebarChromeDivider` | `browser/base/content/browser-box.inc.xhtml:5` |
 | `tabbrowser-tabbox` | element (runtime) | Tabbox that holds tabpanels; Bento tags it as the main panel when no side panels exist. | `unifyMainWithStrip`, `configureSidePanelOnce` | `browser/base/content/browser-box.inc.xhtml:28` |
 | `sidebar` | element (runtime) | Native sidebar <browser>; Bento themes the documents loaded in it. | `syncNativeSidebarChromeTheme`, `attachNativeSidebarChromeThemeSync` | `browser/base/content/browser-box.inc.xhtml:24` |
 | `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |

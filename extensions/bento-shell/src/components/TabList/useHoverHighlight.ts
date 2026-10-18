@@ -35,10 +35,10 @@ const placeRow: Place = (highlight, row) => {
 };
 
 // The action highlight does not track the button's rect. The Search trigger widens
-// on hover (and the New button shrinks with it) over a spring, so a rect read now
+// on hover (and the New button shrinks with it) over a transition, so a rect read now
 // would be a mid-transition box. `data-target` names the button instead and
 // TabList.css gives each target its final geometry from the same width variable,
-// curve and duration the buttons use, so a highlight that is already visible
+// motion role the buttons use, so a highlight that is already visible
 // lands with them. A fresh show starts on the button's current box (the trigger
 // may only just have begun to widen) and `settleAction` hands it to CSS, which
 // carries it to the final box in step with the button. A button that is not

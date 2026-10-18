@@ -47,6 +47,7 @@ import { dispatch, initToolsPort } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../../components/primitives/BentoIcon';
 import { Column } from '../../components/primitives/BentoColumn';
 import { Row } from '../../components/primitives/BentoRow';
+import { afterTransition } from '../../rollbackMotion';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { BackupSection } from './BackupSection';
 import './Settings.css';
@@ -236,15 +237,11 @@ export function Settings() {
     void list.offsetHeight;
     requestAnimationFrame(() => {
       for (const { row } of moved) {
-        row.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        row.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         row.style.transform = '';
-        const cleanup = (event?: TransitionEvent) => {
-          if (event && event.propertyName !== 'transform') return;
+        afterTransition(row, ['transform'], () => {
           row.style.transition = '';
-          row.removeEventListener('transitionend', cleanup);
-        };
-        row.addEventListener('transitionend', cleanup);
-        window.setTimeout(() => cleanup(), 400);
+        });
       }
     });
   }, [customPanelSizes]);

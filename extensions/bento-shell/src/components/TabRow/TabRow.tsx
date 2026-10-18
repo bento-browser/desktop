@@ -120,6 +120,7 @@ function TabRowImpl({
   return (
     <Row
       gap="xs"
+      data-bento-tab-id={id}
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +

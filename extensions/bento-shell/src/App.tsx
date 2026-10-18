@@ -31,6 +31,7 @@ import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
 import { sendChromeTitle } from './bridge/chromeTitle';
 import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
+import { observeRailViewport, setRailAttribute } from './sidebar/railViewport';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -473,80 +474,27 @@ export function App() {
     });
   };
 
-  // Mirror sidebarCollapsed onto the shell document's <html> via a data
-  // attribute so CSS rules (TabRow, WorkspaceSwitcher, footer layout)
-  // can react. The chrome side gets the same flag via title-IPC and
-  // applies it to #bento-shell-host to actually shrink the rail.
-  useEffect(() => {
-    const html = document.documentElement;
-    if (sidebarCollapsed) html.setAttribute('data-bento-collapsed', 'true');
-    else html.removeAttribute('data-bento-collapsed');
-  }, [sidebarCollapsed]);
-
-  // Footer cross-fade. The footer's flex-direction snaps from row to
-  // column-reverse when collapse toggles — discrete CSS property,
-  // can't transition. To hide the snap behind a fade, snap opacity to
-  // 0 SYNCHRONOUSLY before the browser paints (via useLayoutEffect),
-  // then transition back to 1 on the next frame. The new layout is
-  // never seen at full opacity — the first paint after the toggle is
-  // already at opacity 0, then fades in.
-  //
-  // Duration is intentionally LONGER than the host-width transition
-  // (200ms) so the buttons keep fading in after the rail has settled
-  // — gives the eye time to register the new layout instead of
-  // snapping into focus the instant the rail stops moving.
-  //
-  // Skip the very first run (when prevCollapsed.current is undefined)
-  // so the boot doesn't briefly fade — initial render shows the
-  // restored state without animation.
-  const footerRef = useRef<HTMLDivElement>(null);
-  const prevCollapsed = useRef<boolean | undefined>(undefined);
+  // The rail visuals (TabRow, WorkspaceSwitcher, footer layout, ...) key off
+  // data-bento-collapsed on <html>, and that follows the width the shell is
+  // rendered at, not the setting above. Chrome narrows #bento-shell-host to the
+  // rail at its own point in the sidebar slide (see "Sidebar collapse" in
+  // docs/technical/workspaces.md), and the shell switches layout in the same
+  // frame its viewport does. The setting only drives the semantic parts
+  // (labels, icon, tooltips).
+  const appRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    const isFirstRun = prevCollapsed.current === undefined;
-    const changed = prevCollapsed.current !== sidebarCollapsed;
-    prevCollapsed.current = sidebarCollapsed;
-    if (isFirstRun || !changed) return;
-    const footer = footerRef.current;
-    if (!footer) return;
-    // Fade-in duration; matches a hypothetical --bento-duration-xslow.
-    // If the design system grows that token later, swap this for a
-    // getComputedStyle read on documentElement.
-    const FADE_MS = 500;
-    // Phase 1 (sync, pre-paint): instant opacity 0 with no transition.
-    footer.style.transition = 'none';
-    footer.style.opacity = '0';
-    // Force style flush so the no-transition rule + opacity:0 land in
-    // the same paint as the layout snap that triggered this effect.
-    void footer.offsetWidth;
-    // Phase 2 (post-paint): restore the transition and animate back to
-    // 1. Two rAFs guarantee the previous frame committed before we
-    // change the target value; without them the browser can collapse
-    // both opacity assignments into a single paint and skip the fade.
-    let rafA = 0;
-    let rafB = 0;
-    let cleanupTimer = 0;
-    rafA = requestAnimationFrame(() => {
-      rafB = requestAnimationFrame(() => {
-        footer.style.transition = `opacity ${FADE_MS}ms ease`;
-        footer.style.opacity = '1';
-        cleanupTimer = window.setTimeout(() => {
-          // Strip inline styles after the transition completes so any
-          // future hover / class-based opacity rules can take over
-          // without competing with stale inline values.
-          footer.style.transition = '';
-          footer.style.opacity = '';
-        }, FADE_MS + 50);
-      });
-    });
+    const root = appRef.current;
+    if (!root) return;
+    const stop = observeRailViewport(root, setRailAttribute);
     return () => {
-      cancelAnimationFrame(rafA);
-      cancelAnimationFrame(rafB);
-      clearTimeout(cleanupTimer);
+      stop();
+      setRailAttribute(false);
     };
-  }, [sidebarCollapsed]);
+  }, []);
 
   return (
     <div
+      ref={appRef}
       className={
         hasNoSidePanels ? 'bento-shell-app bento-shell-app--no-side-panels' : 'bento-shell-app'
       }
@@ -575,7 +523,7 @@ export function App() {
           onFolderContextMenu={onFolderContextMenu}
           onReorder={onReorder}
         />
-        <Row ref={footerRef} gap="4xs" align="center" className="bento-shell-app__footer">
+        <Row gap="4xs" align="center" className="bento-shell-app__footer">
           {/* Collapse/expand toggle. DOM order matters: this is the FIRST
               child so flex-direction:column-reverse in collapsed mode pins
               it to the bottom of the vertical stack (= same on-screen

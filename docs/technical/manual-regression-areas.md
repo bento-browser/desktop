@@ -6,11 +6,21 @@ When changing core functionality, manually verify at least the affected subset:
 
 - shell menus and submenus (kebab, context, New menu with nested items) in a
   running browser after any Vite chunking or Mux/React Aria change;
+- sidebar collapse and expand with Cmd+S (the push slide; the checklist is under
+  "Sidebar collapse and expand" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)),
+  including repeated presses, reduced motion (hide, show and the hover reveal are
+  instant, no rail slide after the page has moved) and a cold start collapsed, and in
+  hide mode the hide (from the expanded sidebar and from the rail: the page, toolbar controls
+  and divider slide with the sidebar, no jump at the end), the left-edge hover reveal
+  and the show (the divider enters with the strip's edge, never static at its final
+  position), including Cmd+S again mid-slide;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;
 - panel add from main context menu and from panel context menu;
-- panel trailer blank add and saved-panel add;
+- panel trailer blank add and saved-panel add, and its width: the host's computed
+  `width` is 256 px, and 284 px with more than eight saved panels, where the
+  "More saved panels" select is not clipped;
 - panel resize, including `about:preferences` or `about:settings` in a panel,
   main resize, and workspace switch after resize;
 - panel reorder with grouped and ungrouped roots;
@@ -227,14 +237,17 @@ open New in the collapsed rail.
 The sidebar Search trigger peeks on hover and its field grows out of it (mechanism
 and pitfalls:
 [palettes-and-address-bar.md](palettes-and-address-bar.md#search-trigger-and-field-motion)).
-Gecko is unverified for this feature: the checks so far ran in Chromium through
-Ladle. In a running browser after a shell sync and Alt+Shift+R, with the sidebar
-expanded:
+The built app is unverified for this feature: the checks so far ran in Chromium
+and Playwright's Firefox build through Ladle. In a running browser after a shell
+sync and Alt+Shift+R, with the sidebar expanded:
 
-1. Hover the Search icon: it widens leftward to "Search" in about 0.3s, the New
-   button shrinks by the same amount, the bar keeps its width, and the hover
-   highlight is exactly the widened trigger at every frame, including when you
-   enter the bar directly over Search (it starts on the square).
+1. Hover the Search icon: it widens leftward on a spring (looks settled in about
+   0.2s, fully at rest by 0.4s, no bounce) and the label is uncovered by the
+   button's edge as it widens, never faded in. At rest no part of "Search" shows
+   beside the icon. The New button shrinks by the same amount, the bar keeps its
+   width, and the hover highlight is exactly the widened trigger at every frame,
+   including when you enter the bar directly over Search (it starts on the
+   square). The focus ring (Tab to it) is not cut off.
 2. Move the pointer between New and Search: the highlight glides and settles on
    each button's box; leaving the bar fades it and the trigger returns to the
    square.

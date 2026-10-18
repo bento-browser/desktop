@@ -129,6 +129,58 @@ function readOptional(path, label) {
   return readFileSync(path, 'utf-8');
 }
 
+// Chrome's root font size is Firefox's UI font (11px on macOS) while the shell's is
+// --font-size-root (16px), so a rem token is a different length in the two documents.
+// Chrome sizes #bento-shell-host from the collapsed rail width and #bento-add-panel-trailer
+// from the trailer's button, gap, padding and select widths, and the shell lays its rail and
+// its trailer out inside those hosts, so these tokens are resolved here at the shell's root
+// size and pinned in px. The trailer's grid and base widths are not listed: they are px sums
+// of the pinned tokens. The panel header URL and panel navigator menu font sizes are listed
+// because chrome sets that text itself and wants Mux's text-s at the shell's
+// scale, not 11/16 of it. Add a token when chrome sizes shell-laid-out geometry, or sets
+// text at a Mux size, from a rem token; px tokens (the sidebar min and max) need nothing.
+const SHELL_SIZED_TOKENS = [
+  '--bento-tab-strip-width-collapsed',
+  '--bento-panel-trailer-button-size',
+  '--bento-panel-trailer-grid-gap',
+  '--bento-panel-trailer-inline-padding',
+  '--bento-panel-trailer-wide-width',
+  '--bento-panel-url-font-size',
+  '--bento-panel-nav-menu-font-size',
+];
+
+// A resolver for the custom properties declared in `css`: each token's value with its
+// var() references followed and its rem lengths converted to px at --font-size-root.
+// Throws for a token that is missing, declared with different values, or not plain
+// (a var() fallback), because the pinned value must equal what the shell computes.
+function createShellPxResolver(css) {
+  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const declared = (name) => {
+    const values = new Set(
+      Array.from(bare.matchAll(new RegExp(`(?<![\\w-])${name}\\s*:\\s*([^;{}]+);`, 'g')), (match) =>
+        match[1].trim().replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')'),
+      ),
+    );
+    if (values.size !== 1) {
+      throw new Error(
+        `${name} is ${values.size ? 'declared with different values' : 'not declared'}`,
+      );
+    }
+    return [...values][0];
+  };
+  const rootPx = Number.parseFloat(declared('--font-size-root'));
+  if (!(rootPx > 0)) throw new Error('--font-size-root is not a px length');
+  const resolve = (name, trail = []) => {
+    if (trail.includes(name)) throw new Error(`${name} refers to itself`);
+    const value = declared(name)
+      .replace(/var\(\s*(--[\w-]+)\s*\)/g, (_match, ref) => resolve(ref, [...trail, name]))
+      .replace(/(\d*\.?\d+)rem\b/g, (_match, rem) => `${Number((rem * rootPx).toFixed(4))}px`);
+    if (value.includes('var(')) throw new Error(`${name} has a var() fallback`);
+    return value;
+  };
+  return { rootPx, resolve };
+}
+
 const { outputPath, themesDir, monolithic } = parseArgs(process.argv.slice(2));
 const {
   stylesDigest: muxStylesDigest,
@@ -214,7 +266,26 @@ ${normalizeNativeCss(presetsIndexCss)}
 `
   : '';
 
-const output = header + muxBaseSection + monolithicThemesSection + bentoSection + presetsSection;
+const tokenSheets =
+  header + muxBaseSection + monolithicThemesSection + bentoSection + presetsSection;
+
+// Unlayered, so it wins over the `bento.tokens` layer that declares the rem form. The
+// archived rollback mount script keeps the sheet it shipped with.
+function renderShellSizedSection(css) {
+  if (monolithic) return '';
+  const { rootPx, resolve } = createShellPxResolver(css);
+  const declarations = SHELL_SIZED_TOKENS.map((name) => `  ${name}: ${resolve(name)};`);
+  return `
+/* ─── Shell-sized lengths ─────────────────────────────────────────── */
+/* Chrome's rem is the system UI font, so these tokens are pinned in px at the
+   shell's root font size (${rootPx}px) to match what the shell computes. */
+:root {
+${declarations.join('\n')}
+}
+`;
+}
+
+const output = tokenSheets + renderShellSizedSection(tokenSheets);
 
 function writeIfChanged(path, content) {
   let previous;

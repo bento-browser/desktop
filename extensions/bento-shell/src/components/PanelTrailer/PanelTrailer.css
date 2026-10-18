@@ -2,8 +2,9 @@
  *
  * Lives inside a moz-extension iframe hosted by the chrome XUL trailer
  * (#bento-add-panel-trailer in bento-shell-mount.js). The chrome host
- * sizes itself via the savedPanelCount-derived flexBasis; this CSS only
- * lays out the buttons inside the iframe.
+ * sizes itself from the --bento-panel-trailer-* tokens in bento-tokens.css
+ * (the same ones this CSS reads) and the savedPanelCount-derived overflow
+ * flag; this CSS only lays out the buttons inside the iframe.
  */
 /* Mux UI component styles are unlayered, so these button overrides stay
  * unlayered too. They keep the actual IconButton boxes matched to the grid
@@ -12,9 +13,9 @@
   --muxui-component-button-padding-inline: var(--space-2xs);
   box-sizing: border-box;
   flex: 0 0 auto;
-  width: var(--bento-panel-trailer-button-size, var(--space-l));
-  height: var(--bento-panel-trailer-button-size, var(--space-l));
-  min-width: var(--bento-panel-trailer-button-size, var(--space-l));
+  width: var(--bento-panel-trailer-button-size);
+  height: var(--bento-panel-trailer-button-size);
+  min-width: var(--bento-panel-trailer-button-size);
   border-radius: var(--radius-s);
 }
 
@@ -26,11 +27,6 @@
 
 @layer bento.components {
   .bento-panel-trailer {
-    --bento-panel-trailer-button-size: max(
-      var(--space-l),
-      calc(var(--bento-control-size-sm) + (var(--space-4xs) * 2))
-    );
-    --bento-panel-trailer-wide-width: 16rem;
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -40,7 +36,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--space-2xs);
-    padding-inline: var(--space-xs);
+    padding-inline: var(--bento-panel-trailer-inline-padding);
     padding-block: var(--space-2xs);
     height: 100%;
     width: 100%;
@@ -52,7 +48,7 @@
     display: grid;
     grid-template-columns: repeat(3, var(--bento-panel-trailer-button-size));
     grid-template-rows: repeat(3, var(--bento-panel-trailer-button-size));
-    gap: var(--space-3xs);
+    gap: var(--bento-panel-trailer-grid-gap);
     flex: 0 0 auto;
   }
 

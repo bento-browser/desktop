@@ -189,10 +189,17 @@ keyboard focus to reveal its label (motion and field:
 [technical/palettes-and-address-bar.md](technical/palettes-and-address-bar.md#search-trigger-and-field-motion)).
 Its `.bento-tab-list__search-button` rule is unlayered, like New's, and sets
 `width: 100%` of its `span.bento-tab-list__search-trigger` (the span owns the
-animated width), `min-height: 0`, `overflow: hidden` (the label is clipped by the
-square at rest, and a focus ring is a `box-shadow`, so it is not clipped) and an
-inline padding of `--bento-tab-list-search-trigger-inset`, which keeps the icon
-where it was centered in the square. The published package lays the icon and
+animated width), `min-height: 0`, `padding-block: 0`, `overflow: clip` with
+`overflow-clip-margin: content-box` and an inline padding of
+`--bento-tab-list-search-trigger-inset`, which keeps the icon where it was
+centered in the square. The label is always opaque; the clip reveals it. The
+content-box clip edge sits at the inline padding, not the border, so the label
+(it starts 29.2px in, past the 24px content edge) shows nothing in the square's
+right padding at rest, and it is uncovered as the button widens. The button's own
+painting is not clipped by its own overflow (the focus ring is a `box-shadow`, the
+pressed fill is its background). `padding-block: 0` keeps the content box the full
+row height: Mux's block padding (about 9.35px) would shrink it below the 1rem icon
+and clip the icon top and bottom. The published package lays the icon and
 label out inline in `.muxui-button-content`, which is not a flex container, so
 the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
 main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
@@ -527,3 +534,98 @@ Firefox-owned chrome cannot import React components. Map native variables in
 The prior design-system customization notes were folded into this guide during
 the Mux migration. New code follows the public Mux API and the Bento-owned
 layers above.
+
+### Motion
+
+Bento defines no motion tokens. Every transition and animation Bento writes, in
+shell CSS, chrome CSS (`src/browser/base/content`), inline style strings in the
+mount script and React `style` objects, reads the Mux `--muxui-semantic-motion-*`
+tokens, so the durations and curves live in one place and a Mux theme can change
+them. `pnpm run lint:motion` (CI, extensions job) fails on a raw time, an easing
+keyword or function, or a retired `--bento-duration-*` / `--bento-easing-*` read in
+those files (scope and limits are in the header of `scripts/check-motion-values.mjs`).
+
+Rules:
+
+1. Reference only `--muxui-semantic-motion-*` tokens. No fallback inside the
+   `var()`: an unset token makes the declaration invalid, which means no motion
+   rather than a wrong one.
+2. Use a role as a pair: the composite `--muxui-semantic-motion-<role>-transition`
+   (a duration and its easing) as a `transition` or `animation` value, or the
+   matching `<role>-transition-duration` and `<role>-transition-easing` for
+   longhands. Never combine one role's duration with another role's easing.
+   A role that ships a spring (`reveal` does) also has
+   `<role>-transition-spring-duration` with `<role>-transition-spring-easing`, a
+   sampled `linear()` spring (reveal: 400 ms, bounce 0). That same-role pair is
+   allowed in place of the plain pair, for geometry that should settle like a
+   physical object. Time the `state` fades that accompany it from
+   `<role>-transition-spring-visual-duration` (reveal: 200 ms, when the spring has
+   covered about 97% of the move), not from the 400 ms tail. A hide or hand-off
+   that must wait for the geometry to finish (a `visibility` step) runs the spring
+   duration, tail included.
+3. Pick from the roles below. Delays and staggers are `calc()` fractions of the
+   token's duration (`calc(var(--muxui-semantic-motion-progress-sweep-duration) / 12)`).
+4. Script never copies a duration as a number. Code that has to act when motion ends
+   (hide a host after its fade, drop a row after its removal transition) calls
+   `afterMotion` (`extensions/bento-shell/src/motion/afterMotion.ts` in the shell,
+   `measureMotion`/`afterMotion` in `bento-shell-mount.js`, same contract), which reads
+   the time from the element's computed style after the styles that start the motion
+   are applied.
+
+Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
+
+| Role             | Use in Bento                                                                                                                                                                                                                                                 | Default                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade)                                                                                                                                                | 120 ms, `ease`                                                   |
+| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                              | 150 ms, `ease`                                                   |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide; its spring pair drives the sidebar Search peek and field | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil                                                                                                                                                                                           | 120 ms, `ease-in`                                                |
+| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                            | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
+| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                | 120 ms, modal easing                                             |
+| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                       | 600 ms, `ease`                                                   |
+| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                          | per token                                                        |
+
+Loops: the panel loading spinner (`spin` with `constant-easing`, dash arc with
+`sweep` and `progress-easing`), the startup veil pulse and the tab list shimmer
+(`sweep` and `progress-easing`, the second bar staggered by a `calc()` twelfth of
+the duration), the audio note particles (`travel` with `constant-easing`; the
+reduced-motion variant runs on `spin`).
+
+Pairs that must stay in lockstep use the same role: every part of the sidebar push
+(the host, the page group and the toolbar band in `bento-shell-mount.css`) is
+`reveal`; the workspace slide (`TabList.css`), the main panel width one-shot and the
+panel enter are `reveal` too. The shell has no collapse transitions of its own: it
+switches between the expanded and rail layouts in one frame, behind the host's fade.
+The sidebar Search peek group is one `reveal` spring pair: the trigger's width, the
+action highlight's `left` and `width`, the closed field row's `margin-inline-start`
+and `padding-inline-start` (which is also the field's open and close growth) and the
+clear button's open `scale`; the New button follows through flex, and the closed
+overlay's `visibility` hide runs the same spring duration. The closed field row's
+fade waits the spring's visual duration; the other fades stay on `state`.
+
+A fraction of a role is `calc()` over its duration token, as a delay or a shorter
+phase. The sidebar push uses it for the host fade, 0.4 of the `reveal` duration
+(80 ms at the default) on `--muxui-semantic-motion-constant-easing`. That is the one
+sanctioned mix of a role's duration with an easing from outside the role: the fade is
+a linear opacity ramp inside the role's slide, and `constant` is the Mux linear
+easing. There is no Bento token for it, and the motion check allows no `--bento-*`
+variable in a `transition` or `animation`.
+
+Timing consequences of the default values worth knowing when comparing with an
+older build: the workspace slide runs 200 ms (was 260 ms), the focus ring settles in
+120 ms (was 350 ms), the sidebar footer cross-fade is gone (the host fade replaces it), the pinned
+rail's `all` transition is 200 ms (was 300 ms), the hidden-sidebar slide-over is
+200 ms (was 160 ms) and the skeleton shimmer is 1200 ms (was 1400 ms).
+
+Chrome-only notes:
+
+- The chrome sheet gets the Mux tokens through `bento-chrome-tokens.css`, so chrome
+  CSS and the inline styles in the mount script use the same names. The three overlay
+  hosts declared in `browser-box.inc.xhtml` (palette, merge palette, confirm) have no
+  inline transition any more: `bento-shell-mount.css` gives them
+  `opacity var(--muxui-semantic-motion-modal-transition)`. Hosts the mount script
+  creates carry the same value inline.
+- `--drag-drop-transition-duration` (a Firefox custom property used by customize
+  mode) is set to `--muxui-semantic-motion-reveal-transition-duration`.
+- Keep property names literal in inline strings: the drag code checks
+  `style.transition.includes('transform')`.

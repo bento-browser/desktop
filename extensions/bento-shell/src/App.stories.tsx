@@ -3,7 +3,10 @@
 // behaviour without rebuilding the whole browser. CollapseToggle is the
 // interactive demo: clicking the collapse/expand IconButton in the footer
 // updates the settings store via the same BroadcastChannel the real shell
-// uses, so the layout transitions exactly as it does in chrome.
+// uses. The App switches to the rail layout from the width of its own frame,
+// the way the real shell does from the width chrome gives its host, so the
+// frame width is what these stories set (chrome's slide animation is not
+// reproduced here; the frame snaps).
 import { useEffect } from 'react';
 import { App } from './App';
 // The shell layout (sidebar column, footer stacking in the collapsed rail). Every
@@ -34,7 +37,7 @@ function ShellFrame({
 }) {
   // Match the real shell's host frame: fixed-width column on a brand-bg
   // canvas. Collapsed stories use the same token chrome applies to
-  // #bento-shell-host.
+  // #bento-shell-host, which is what turns the rail visuals on.
   return (
     <div
       style={{
@@ -43,9 +46,6 @@ function ShellFrame({
         backgroundColor: 'var(--bento-brand-bg)',
         display: 'flex',
         flexDirection: 'column',
-        // Smooth width changes in CollapseToggle so the demo mirrors the
-        // 200ms ease the chrome host uses when the rail expands/collapses.
-        transition: 'width var(--bento-duration-base) var(--bento-easing-standard)',
       }}
     >
       {children}
@@ -87,25 +87,10 @@ function seedShell(sidebarCollapsed: boolean) {
   markToolsBootedForStory();
 }
 
-// Apply data-bento-collapsed to <html> so component CSS (TabRow,
-// WorkspaceSwitcher, footer column-reverse) reacts. Cleanup on unmount so
-// switching between stories doesn't leak the attribute.
-function useCollapsedAttribute(collapsed: boolean) {
-  useEffect(() => {
-    const html = document.documentElement;
-    if (collapsed) html.setAttribute('data-bento-collapsed', 'true');
-    else html.removeAttribute('data-bento-collapsed');
-    return () => {
-      html.removeAttribute('data-bento-collapsed');
-    };
-  }, [collapsed]);
-}
-
 export const Default = () => {
   useEffect(() => {
     seedShell(false);
   }, []);
-  useCollapsedAttribute(false);
   return (
     <ShellFrame>
       <App />
@@ -117,7 +102,6 @@ export const Collapsed = () => {
   useEffect(() => {
     seedShell(true);
   }, []);
-  useCollapsedAttribute(true);
   return (
     <ShellFrame width={COLLAPSED_SIDEBAR_WIDTH}>
       <App />
@@ -134,7 +118,7 @@ export const CollapseToggle = () => {
   // forwards that to bento-tools which writes the setting and broadcasts
   // back. Here we short-circuit by listening on the same channel and
   // applying the change directly to useSettingsStore — the App re-reads
-  // sidebarCollapsed from the store and the layout transitions live.
+  // sidebarCollapsed from the store and the frame below resizes.
   useEffect(() => {
     seedShell(false);
     if (typeof BroadcastChannel === 'undefined') return;
@@ -152,13 +136,9 @@ export const CollapseToggle = () => {
       channel.close();
     };
   }, []);
-  // Mirror the App's own useEffect for data-bento-collapsed by reading
-  // the store directly here. Subscribing to the store keeps the attribute
-  // in sync even though the App is what actually toggles it (the App's
-  // effect fires too, but on a different render cycle — driving it from
-  // the story keeps the demo robust if the App's effect timing changes).
+  // The frame is the shell's viewport here: it takes the setting's width at
+  // once, and the App's own width observer flips the rail visuals with it.
   const collapsed = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
-  useCollapsedAttribute(collapsed);
   return (
     <ShellFrame width={collapsed ? COLLAPSED_SIDEBAR_WIDTH : 300}>
       <App />
