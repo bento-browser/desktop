@@ -191,6 +191,16 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   sidebar background, the tooltip font, and the root color. When moving or
   deleting CSS that reaches the shared sheet, diff `html` and `body` computed
   styles for every entry in light and dark before accepting the change.
+- `shell-document.css` holds the shell page's `html`/`body`/`#root` sizing
+  (full height and width, no margin or padding, in `@layer bento.app`). It was
+  part of `app.css`; `main.tsx` imports it right before `app.css`, and it still
+  reaches every entry's document through the shared `style.css`. `app.css` now
+  holds only selectors scoped to the shell's own classes, so Ladle loads it
+  from `App.stories.tsx` (after the `App` import, so `bento.app` follows
+  `bento.components` as in the built sheet; importing it earlier, for example
+  from the Ladle provider, flips the layer order and the footer's
+  `justify-content` override loses to the component layer) and never loads
+  `shell-document.css`.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
 

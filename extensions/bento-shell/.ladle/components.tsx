@@ -11,8 +11,11 @@ import '../src/theme/bento-tokens.css';
 import '../src/theme/presets/index.css';
 import '../src/theme/bento-fonts.css';
 import { ALL_THEME_IDS, useThemeSheets } from '../src/theme/themeSheets';
-// Intentionally not importing src/app.css — its html/body/#root rules
-// override Ladle's layout. Stories use their own frame to constrain.
+// src/app.css (the shell layout) is deliberately not imported here: App.stories.tsx
+// loads it after App so the bento.app layer follows bento.components, the order
+// the built shell has. Loading it from this provider would declare bento.app
+// first and flip that. The page's html/body/#root sizing is in
+// src/shell-document.css, which Ladle never loads. Stories use their own frame.
 
 function resolveMode(theme: ThemeState): 'light' | 'dark' {
   if (theme === ThemeState.Dark) return 'dark';
