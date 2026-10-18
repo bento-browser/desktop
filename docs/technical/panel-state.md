@@ -77,12 +77,15 @@ key its entry has in `bento.panels`: `panel-<n>`, its position in the layout's
 visible panel order, from `PanelStore.getPanelKey`) so a closed panel can be
 restored by Firefox's closed-tab flow and then reinserted into Bento's layout,
 and so a restart can tell which entry a restored tab is.
-`syncPanelMarkersForWorkspace` rewrites every marker of a workspace, key included,
-after each mutation that adds, removes or moves panels, and
-`restorePanelsForWorkspace` rewrites them once the persisted layout is applied. A
-key is positional, so it changes when panels ahead of it come or go; the rewrite
-keeps it equal to the key a snapshot or parking would give that panel. A marker
-written before keys existed has no `panelKey`.
+`syncPanelMarkersForWorkspace` (`createPanelMarkerSync`, `panels/PanelMarkerSync.ts`)
+rewrites every marker of a workspace, key included, after each mutation that adds,
+removes or moves panels, and `restorePanelsForWorkspace` rewrites them once the
+persisted layout is applied. A key is positional, so it changes when panels ahead
+of it come or go; the rewrite keeps it equal to the key a snapshot or parking
+would give that panel. A workspace that still has persisted entries to apply is
+not rewritten at all: its layout holds only the panels that came back, so its
+numbering is not the entries' (below). A marker written before keys existed has no
+`panelKey`.
 
 At a browser start the markers are the first restore of panels. Firefox restores
 each panel tab with its markers, `restorePanelsFromSessionMarkersAtBoot` and the
@@ -120,9 +123,16 @@ window that closed and was not restored (it has no marker tabs).
 The key a marker carried is read before anything rewrites it. The marker sync
 numbers the layout as it stands, and until the entries are applied the layout
 holds only the panels that came back, in marker order, so its numbering is not
-the entries'. `rememberMarkerPanelKey` (`background.ts`) therefore keeps each
-restored marker's key in memory for workspaces that still have persisted entries,
-and `restorePanelsForWorkspace` reads them from there and drops them once bound.
+the entries'. Two things follow. `captureKey` (`panels/PanelMarkerSync.ts`) keeps
+each restored marker's key in memory for workspaces that still have persisted
+entries, the first time the tab's marker is read and never replaced by a later
+read, and `restorePanelsForWorkspace` reads them from there and drops them once
+bound. And `sync` writes nothing for such a workspace, so an inactive workspace
+that is never activated in a session keeps the markers it came back with: the
+persisted entries are stored unchanged (their panels cannot be read to rebuild
+them), and rewritten markers would carry the temporary numbering, so two restarts
+later the entries would bind to the wrong tabs, a top and a bottom panel
+swapped. The first sync after the layout is applied writes the final keys.
 
 `PanelStore.restorePersistedLayout` replaces the workspace layout with the
 persisted one. A panel already in the layout that no entry binds to (its entry was
@@ -421,5 +431,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   URL.
 - Do not let the marker sync renumber keys before the persisted entries are
   applied. Read a marker's key at the moment the marker is read and keep it
-  (`rememberMarkerPanelKey`); the layout at that point is partial, so a rewritten
-  marker would carry keys that match no entry.
+  (`captureKey`, and never replace it by a later read); the layout at that point
+  is partial, so a rewritten marker would carry keys that match no entry. For an
+  inactive workspace whose panel addresses cannot be read, the stored entries stay
+  as they are while the sync rewrote the markers with the partial numbering, and
+  after two restarts a subdivision's top and bottom panels were swapped. `sync`
+  therefore skips a workspace with unapplied persisted entries; do not write
+  markers for it before `restorePanelsForWorkspace` has bound them.
