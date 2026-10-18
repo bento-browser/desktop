@@ -137,13 +137,12 @@ function makeWorld({ expandedWidth = 300, railWidth = 64 } = {}) {
   const script = new FakeElement('script', { display: 'none' });
   const nativeSidebar = new FakeElement('sidebar-box', { display: 'none' });
   const strip = new FakeElement('bento-strip-container');
-  const hoverZone = new FakeElement('bento-sidebar-hidden-hover-zone', { position: 'absolute' });
   const affordance = new FakeElement('bento-shell-splitter-affordance', { position: 'absolute' });
   const bookmarks = new FakeElement('PersonalToolbar');
   const divider = new FakeElement('bento-sidebar-chrome-divider');
   const navBar = new FakeElement('nav-bar');
   const navTarget = new FakeElement('nav-bar-customization-target');
-  const row = [host, splitter, overlay, script, nativeSidebar, strip, hoverZone];
+  const row = [host, splitter, overlay, script, nativeSidebar, strip];
   row.forEach((el, i) => (el.nextElementSibling = row[i + 1] ?? null));
   const byId = new Map(
     [...row, affordance, bookmarks, divider, navBar, navTarget].map((el) => [el.id, el]),
@@ -161,7 +160,6 @@ function makeWorld({ expandedWidth = 300, railWidth = 64 } = {}) {
     navTarget,
     overlay,
     nativeSidebar,
-    hoverZone,
     byId,
     reducedMotion: false,
     rail: railWidth,
@@ -366,12 +364,12 @@ test('collapse keeps the host wide, commits the push and slides the page group',
   assert.equal(world.root.getAttribute('bento-sidebar-push'), 'collapse');
   assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '236px');
   assert.equal(world.host.classes.has('bento-sidebar-collapsed'), false);
-  // In-flow children right of the host move; the overlay host, the hover zone, the
-  // script and the hidden native sidebar do not. The affordance is absolute but joins.
+  // In-flow children right of the host move; the overlay host, the script and the
+  // hidden native sidebar do not. The affordance is absolute but joins.
   for (const el of [world.splitter, world.strip, world.affordance]) {
     assert.equal(el.classes.has('bento-sidebar-push-page'), true, el.id);
   }
-  for (const el of [world.overlay, world.nativeSidebar, world.hoverZone]) {
+  for (const el of [world.overlay, world.nativeSidebar]) {
     assert.equal(el.classes.has('bento-sidebar-push-page'), false, el.id);
   }
   // The splitter slot is hidden for the slide; it keeps its layout space.

@@ -199,7 +199,6 @@
 }
 :root[bento-sidebar-addressbar='true'] #bento-shell-host,
 :root[bento-sidebar-addressbar='true'] #bento-shell-splitter,
-:root[bento-sidebar-addressbar='true'] #bento-sidebar-hidden-hover-zone,
 :root[bento-sidebar-addressbar='true'] #sidebar-container,
 :root[bento-sidebar-addressbar='true'] #sidebar-launcher-splitter,
 :root[bento-sidebar-addressbar='true'] #sidebar-box,
@@ -753,20 +752,6 @@
 }
 #bento-shell-splitter-affordance.bento-sidebar-hidden {
   display: none;
-}
-#bento-sidebar-hidden-hover-zone {
-  display: none;
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 12px;
-  z-index: 6;
-  pointer-events: none;
-}
-:root[bento-sidebar-hidden='true'] #bento-sidebar-hidden-hover-zone {
-  display: block;
-  pointer-events: auto;
 }
 
 /* Bento panel rounded corners. The real panel frame owns outer

@@ -4679,19 +4679,13 @@
     }
   }
 
-  function attachHiddenSidebarHoverZone() {
-    const shell = document.getElementById('browser');
+  // Reveals the hidden sidebar (a slide-over of the rail) while the pointer is at the
+  // window's left edge or over the host. No element catches the edge: a strip over the
+  // page would take clicks from web content.
+  function attachHiddenSidebarHoverReveal() {
     const host = document.getElementById('bento-shell-host');
-    if (!shell || !host || host.dataset.bentoHiddenSidebarHoverAttached === '1') return;
+    if (!host || host.dataset.bentoHiddenSidebarHoverAttached === '1') return;
     host.dataset.bentoHiddenSidebarHoverAttached = '1';
-
-    let zone = document.getElementById('bento-sidebar-hidden-hover-zone');
-    if (!zone) {
-      zone = document.createElementNS(HTML_NS, 'div');
-      zone.id = 'bento-sidebar-hidden-hover-zone';
-      zone.setAttribute('aria-hidden', 'true');
-      shell.appendChild(zone);
-    }
 
     const EDGE_HOVER_WIDTH_PX = 12;
     const HIDE_GRACE_MS = 120;
@@ -4714,7 +4708,7 @@
       if (hideTimer) clearTimeout(hideTimer);
       hideTimer = window.setTimeout(() => {
         hideTimer = 0;
-        if (zone.matches(':hover') || host.matches(':hover')) return;
+        if (host.matches(':hover')) return;
         setRevealed(false);
       }, HIDE_GRACE_MS);
     };
@@ -4736,10 +4730,6 @@
       }
     };
 
-    zone.addEventListener('pointerenter', reveal);
-    zone.addEventListener('mouseenter', reveal);
-    zone.addEventListener('pointerleave', scheduleHide);
-    zone.addEventListener('mouseleave', scheduleHide);
     host.addEventListener('pointerenter', reveal);
     host.addEventListener('mouseenter', reveal);
     host.addEventListener('pointerleave', scheduleHide);
@@ -17661,7 +17651,7 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
-    attachHiddenSidebarHoverZone();
+    attachHiddenSidebarHoverReveal();
     attachNativeSidebarSplitterFeedback();
     attachSidebarChromeDivider();
     attachToolbarNavigationAlignment();
