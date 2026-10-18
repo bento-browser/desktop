@@ -141,8 +141,11 @@ workspace the window opens on (a sidebar tab or one of its panels); if it belong
 to another workspace, the window selects that workspace's first tab instead.
 Relaunching does not open a second copy of a tab Firefox restored. Panels and
 pinned panels come back in their slots, each with its own width and page, without
-an extra tab or a second copy of the panel. A workspace whose window was closed
-before quitting reopens its tabs and panels the next time it is shown.
+an extra tab or a second copy of the panel. The one exception is the first launch
+after upgrading from a build that saved panel markers without a panel key: a
+pinned panel can come back twice, and the extra copy stays on every later launch
+until it is closed. A workspace whose window was closed before quitting reopens
+its tabs and panels the next time it is shown.
 Panels, pinned panels, and tabs from private windows are never written to the
 saved panel layout, the pinned panel rail, or the tabs kept when a window closes.
 Their URLs, titles, favicons, and panel slots do not come back after relaunch,
