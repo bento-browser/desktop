@@ -189,10 +189,17 @@ keyboard focus to reveal its label (motion and field:
 [technical/palettes-and-address-bar.md](technical/palettes-and-address-bar.md#search-trigger-and-field-motion)).
 Its `.bento-tab-list__search-button` rule is unlayered, like New's, and sets
 `width: 100%` of its `span.bento-tab-list__search-trigger` (the span owns the
-animated width), `min-height: 0`, `overflow: hidden` (the label is clipped by the
-square at rest, and a focus ring is a `box-shadow`, so it is not clipped) and an
-inline padding of `--bento-tab-list-search-trigger-inset`, which keeps the icon
-where it was centered in the square. The published package lays the icon and
+animated width), `min-height: 0`, `padding-block: 0`, `overflow: clip` with
+`overflow-clip-margin: content-box` and an inline padding of
+`--bento-tab-list-search-trigger-inset`, which keeps the icon where it was
+centered in the square. The label is always opaque; the clip reveals it. The
+content-box clip edge sits at the inline padding, not the border, so the label
+(it starts 29.2px in, past the 24px content edge) shows nothing in the square's
+right padding at rest, and it is uncovered as the button widens. The button's own
+painting is not clipped by its own overflow (the focus ring is a `box-shadow`, the
+pressed fill is its background). `padding-block: 0` keeps the content box the full
+row height: Mux's block padding (about 9.35px) would shrink it below the 1rem icon
+and clip the icon top and bottom. The published package lays the icon and
 label out inline in `.muxui-button-content`, which is not a flex container, so
 the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
 main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
