@@ -105,9 +105,18 @@ When changing core functionality, manually verify at least the affected subset:
   pinned tab shown as a panel in the active workspace is not unloaded and renders
   normally. Repeat with a pinned tab selected at quit: it loads at launch and is
   not dimmed. Then press Alt+Shift+R with a loaded pinned tab open: it stays
-  loaded, because the discard runs only at browser startup. If a pinned tab that
-  was not selected loads at launch, or the rows dim after they first appear, see
-  the startup pitfalls in [workspaces.md](workspaces.md);
+  loaded, because the discard runs only at browser startup. Pending tabs, not
+  loaded ones, are what is unloaded: in the Browser Toolbox, run from the
+  bento-tools background page,
+  `(await browser.tabs.query({ pinned: true })).map(t => [t.url, t.discarded])`
+  right after relaunch shows `about:blank` and `true` for the tabs that stayed
+  pending, and a pinned tab that loaded (the selected one, a shown pinned panel)
+  shows its address and `false`. Then set `browser.sessionstore.restore_on_demand`
+  to false in `about:config` and relaunch: pinned tabs that Firefox loaded are not
+  unloaded or dimmed (tabs its restore queue had not reached yet can still be, see
+  [workspaces.md](workspaces.md)). If a pinned tab that was not selected loads at
+  launch, or the rows dim after they first appear, see the startup pitfalls in
+  [workspaces.md](workspaces.md);
 - restart keeps what Firefox restored. In a workspace with many tabs, drag one tab
   to the end of the list and select it, then quit with Cmd+Q and relaunch. Before
   quitting, note the window's tab count (Browser Toolbox Console:
