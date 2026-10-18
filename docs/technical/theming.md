@@ -204,7 +204,9 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   Later layers win, so the shell layout (`bento.app`) outranks the component
   rules (`bento.components`). Every entry's `main.tsx` and the Ladle provider
   import `muxui.css` before any other Bento stylesheet, so the statement is the
-  first layer rule in every document. A new `bento.*` layer goes in that list;
+  first layer rule in every document. That includes component modules that
+  import their own CSS: `components/primitives` loads `BentoStack.css`, so
+  `muxui.css` goes above it. A new `bento.*` layer goes in that list;
   without it the layer ranks by whichever file declares it first, which differs
   between the dev server (one `<style>` per CSS module in import order), the
   build (one `style.css` concatenated in chunk order) and Ladle (story load

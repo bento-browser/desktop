@@ -20,9 +20,10 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Dialog, Text, TextField } from '@muxui/react';
-import { Column, Row } from '../components/primitives';
-
+// Before the primitives: they load BentoStack.css, and the layer order is set by
+// whichever stylesheet the dev server injects first.
 import '../theme/muxui.css';
+import { Column, Row } from '../components/primitives';
 
 import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
