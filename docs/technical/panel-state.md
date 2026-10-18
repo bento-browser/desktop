@@ -229,16 +229,12 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   strip-scroll record) overwrites the newer state. The fix is the single-flight
   queue in `Persistence`: one write in flight, newest queued snapshot wins. Route
   new triggers through `flushNow` or `schedule`; never call `#flush` directly or
-  add a second writer of `bento.panels`. This covers panels only. The same race
-  is still open for pinned panels and is tracked as a follow-up:
-  `PinnedPanelsStore.#resolveAndPersist` awaits a `tabs.get` per pin and then
-  hands the result to `pinnedPanels/Persistence`, whose writes are not
-  serialized, so two persists can resolve out of order or interleave their
-  backup and primary writes and an older pin list can overwrite a newer one. The
-  panel queue does not help there. A fix has to serialize resolution as well as
-  the write, and must keep reading each pin's tab at change time: deferring the
-  reads to the debounce timer drops pins added without metadata and loses
-  privacy and fallback metadata when the tab closes first.
+  add a second writer of `bento.panels`. Pinned panels have the same shape of race.
+  Their queue is the same, but `PinnedPanelsStore` also resolves each pin's tab at
+  change time, so it adds a generation guard, a per-pin record of the freshest
+  metadata (tab reads and store updates) that survives superseded calls, and a
+  durability barrier for awaited persists; see
+  "Pinned-panel persistence ordering" in [panel-widgets.md](panel-widgets.md).
 - Do not persist private-window state. Panel entries and layout slots
   (`bento.panels`), parked panel URLs, parked sidebar tabs
   (`bento.parkedWorkspaceTabs`, including titles), and pinned panels
