@@ -101,11 +101,12 @@ workspace in this order:
    do it: the marker restore inserts tabs by `rootIndex` and then Firefox tab
    index, and two subdivision leaves share one `rootIndex` and
    `containingRootNodeId`, so they can come back in either order. Address cannot
-   either: `Tab.url` is `browser.currentURI.spec` and Firefox has no `pendingUrl`,
-   so a restored tab that has a real browser and is still restoring reports
-   `about:blank` (pinned-panel backing tabs are native pinned tabs, which Firefox
-   never restores lazily, so every restart hits this), and a panel may have
-   navigated away.
+   either: a panel may have navigated away, and a restored tab with a real browser
+   (pinned-panel backing tabs are native pinned tabs, which Firefox never restores
+   lazily) reads `about:blank` until SessionStore has set its saved address
+   (`#restoreHistory` calls `SessionStoreUtils.restoreDocShellState`). After that
+   `Tab.url` is the real address even while the tab is pending, but a read taken
+   before it lands sees a blank tab.
 2. By exact address, among panels still in the layout (a marker without a key, or
    whose key matches no entry).
 3. By exact address, among sidebar tabs. This comes last on purpose: a sidebar
@@ -397,31 +398,31 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   [workspaces.md](workspaces.md)), so only a workspace with no restored tab
   restores its list, and the later-activation replay still consumes matching live
   tabs by URL before creating any. Matching by URL is not what makes startup safe:
-  a restored tab that is still restoring reports `about:blank`. Do not let
-  removed-tab deltas or `emitPanelsSync` prune closing-window panel ids before
-  this parking step runs.
+  a replay that matched before the restored tabs were hydrated found none of them.
+  Do not let removed-tab deltas or `emitPanelsSync` prune closing-window panel ids
+  before this parking step runs.
   Deleting a workspace removes its parked sidebar tabs, panel entries, strip
   scroll, and queued activation preferences; closing a window drops that window's
   queued activation preferences.
 - Do not replay a parked sidebar-tab list at startup for a workspace whose tabs
   Firefox restored. Cmd+Q parks every workspace of every closing window, so the
-  lists exist after every restart, and a restored tab that is still restoring (the
-  selected tab, every pinned tab) reports `about:blank`, which no parked address
-  matches. Replaying created a second copy of the tab (re-pinned when the parked
-  entry was pinned), the order Firefox restored looked reverted around it, and the
-  replay or the activation fallback selected the workspace's first tab instead of
-  the one selected at quit. The decision is membership in a window that came back
+  lists exist after every restart, and the replay matched parked addresses before
+  the restored tabs were hydrated, when a tab with a real browser (the selected
+  tab, every pinned tab) can still read `about:blank`. Replaying created a second
+  copy of the tab (re-pinned when the parked entry was pinned), the order Firefox
+  restored looked reverted around it, and the replay or the activation fallback
+  selected the workspace's first tab instead of the one selected at quit. The decision is membership in a window that came back
   from the session (`parkedWorkspacesToDiscard`), made after
   `hydrateWorkspaceIds` and before the boot backfill, and activations during boot
   wait for it (`startupRestored`). The same wait keeps the activation's panel
   restore behind the session-marker restore.
 - Do not open a tab for a persisted panel entry only because no tab shows its URL,
   and do not bind an entry by address or position when the marker carries its key.
-  A panel Firefox restored through its marker whose page is still restoring
-  (every pinned panel; `Tab.url` is `about:blank`, and no `pendingUrl` exists)
-  never matches by address, so the old URL fallback opened a second copy that
-  took the slot, left the original out of the layout, and gave the pinned panel
-  the copy to re-attach to. A layout-order fallback for the leftovers fixed that
+  A panel Firefox restored through its marker can fail to match by address: a
+  pinned panel's browser reads `about:blank` until SessionStore has set its saved
+  address, and any panel may have navigated away. The old URL fallback then opened
+  a second copy that took the slot, left the original out of the layout, and gave
+  the pinned panel the copy to re-attach to. A layout-order fallback for the leftovers fixed that
   but bound subdivision leaves that share a `rootIndex` in the wrong order (widths,
   header state and pins followed the wrong tabs), bound a panel that had navigated
   to another entry while a duplicate was opened, and let a sidebar tab at a

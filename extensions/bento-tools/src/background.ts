@@ -424,9 +424,9 @@ const markerSync = createPanelMarkerSync(panels);
 // Entry → tabId matching (`planPanelRestore`): an entry binds to the
 // panel Firefox already restored through its session marker when the
 // marker carries the entry's panelKey, even when that panel's URL cannot
-// be read yet (a pinned panel reports about:blank while it restores) or
-// has changed, so the slot is never opened a second time and no sidebar
-// tab can take it. Entries left over bind by exact URL, panels before
+// be read yet (a pinned panel reports about:blank until SessionStore sets
+// its saved address) or has changed, so the slot is never opened a second
+// time and no sidebar tab can take it. Entries left over bind by exact URL, panels before
 // sidebar tabs; a marker written before keys existed has no key and
 // matches only this way. Only an entry with no tab at all (Firefox
 // sessionstore lost it, or the panel was closed at shutdown) opens a new
