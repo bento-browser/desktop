@@ -33,6 +33,7 @@ import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
 import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
 import { planPanelRestore } from './panels/PanelRestore';
+import { createPanelMarkerSync } from './panels/PanelMarkerSync';
 import {
   parkedWorkspacesToDiscard,
   planWorkspaceParking,
@@ -49,9 +50,6 @@ import {
   readDevtoolsPanelMarker,
   readPanelMarker,
   readPanelMarkerWithRetries,
-  setPanelMarker,
-  setDevtoolsPanelMarker,
-  type PanelMarker,
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
@@ -415,18 +413,9 @@ async function restoreParkedTabsForWorkspace(
   return restored;
 }
 
-// The layout key each marker-restored panel's session marker carried, for the workspaces that
-// still have persisted entries to apply. The marker sync renumbers markers from the layout as it
-// is, which until the entries are applied holds only the panels that came back, so the key is
-// remembered here when the marker is read (before any sync) and dropped once the entries are
-// bound (`restorePanelsForWorkspace`).
-const markerPanelKeys = new Map<number, string>();
-
-function rememberMarkerPanelKey(tabId: number, marker: PanelMarker): void {
-  if (!marker.panelKey) return;
-  if (!panels.workspacesWithPersistedUrls().includes(marker.workspaceId)) return;
-  markerPanelKeys.set(tabId, marker.panelKey);
-}
+// Session markers of the panels, and the layout keys the restored ones carried until their
+// persisted entries are bound (`restorePanelsForWorkspace`); see `createPanelMarkerSync`.
+const markerSync = createPanelMarkerSync(panels);
 
 // Restore a workspace's panels from URLs persisted across the last
 // shutdown. Idempotent: takePersistedUrls clears the entry on first call,
@@ -507,7 +496,7 @@ async function restorePanelsForWorkspace(
 
   const layoutPanels = panels
     .getPanels(workspaceId)
-    .map((tabId) => ({ tabId, panelKey: markerPanelKeys.get(tabId) }));
+    .map((tabId) => ({ tabId, panelKey: markerSync.capturedKey(tabId) }));
   const plan = planPanelRestore(
     entries,
     wsTabs.map((t) => ({ id: t.id, url: tabUrls.get(t.id) })),
@@ -530,7 +519,7 @@ async function restorePanelsForWorkspace(
     }
   }
   panels.restorePersistedLayout(workspaceId, persisted.layout, panelKeyToTabId);
-  for (const { tabId } of layoutPanels) markerPanelKeys.delete(tabId);
+  markerSync.releaseKeys(layoutPanels.map(({ tabId }) => tabId));
   // The layout is final now: give every panel's marker the key and slot it has in it.
   syncPanelMarkersForWorkspace(workspaceId);
   // Restore pinned-panel bindings for this workspace now that we know
@@ -583,7 +572,7 @@ async function restorePanelsFromSessionMarkersAtBoot(): Promise<Set<string>> {
       continue;
     }
 
-    rememberMarkerPanelKey(tab.id, marker);
+    markerSync.captureKey(tab.id, marker);
     tabs.assignWorkspaceEagerly(tab.id, marker.workspaceId);
     const alreadyPanel = panels.findWorkspacesContainingTab(tab.id).includes(marker.workspaceId);
     const inserted =
@@ -1645,23 +1634,11 @@ void (async () => {
 // in the same slot the panel was in WHEN IT WAS CLOSED, not the end of the
 // list, and so a restart binds each persisted entry to the tab carrying its
 // key (the key is the panel's position in the layout, so it moves with it).
-// Fire-and-forget per tab — the marker writes are independent and only
-// matter at the next close→restore round-trip.
+// A workspace whose persisted entries are not applied yet keeps its markers
+// (`createPanelMarkerSync`). Fire-and-forget per tab — the marker writes are
+// independent and only matter at the next close→restore round-trip.
 function syncPanelMarkersForWorkspace(workspaceId: string): void {
-  const list = panels.getVisiblePanelIds(workspaceId);
-  for (const tabId of list) {
-    if (panels.isDevtoolsPanel(workspaceId, tabId)) {
-      void clearPanelMarker(tabId);
-      void setDevtoolsPanelMarker(tabId);
-      continue;
-    }
-    void clearDevtoolsPanelMarker(tabId);
-    const location = panels.getPanelRestoreLocation(workspaceId, tabId);
-    void setPanelMarker(tabId, workspaceId, {
-      ...location,
-      panelKey: panels.getPanelKey(workspaceId, tabId),
-    });
-  }
+  markerSync.sync(workspaceId);
 }
 
 function panelInsertLocationAfterSource(workspaceId: string, sourceTabId: number | null) {
@@ -1727,7 +1704,7 @@ async function maybeRestorePanelFromMarker(
     void clearPanelMarker(tabId);
     return;
   }
-  rememberMarkerPanelKey(tabId, marker);
+  markerSync.captureKey(tabId, marker);
   tabs.assignWorkspaceEagerly(tabId, marker.workspaceId);
   const inserted = panels.insertAtRestoreLocation(marker.workspaceId, tabId, marker);
   const defaultWidth = settings.snapshot().defaultPanelWidthPx;
