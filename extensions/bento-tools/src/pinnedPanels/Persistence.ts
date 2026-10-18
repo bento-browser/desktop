@@ -6,7 +6,8 @@
 // Mirrors workspaces/Persistence.ts: versioned StoredShape so a future
 // migration can be detected, two-slot backup so a corrupt primary write
 // is recoverable on next load, debounced writes so a flurry of add/remove
-// collapses into one IO.
+// collapses into one IO, and a single-flight write queue (as in
+// panels/Persistence.ts) so an older state cannot land after a newer one.
 
 const STORAGE_KEY = 'bento.pinnedPanels';
 const BACKUP_STORAGE_KEY = 'bento.pinnedPanels.backup';
@@ -136,28 +137,72 @@ export async function load(): Promise<PersistedState | null> {
   return backup;
 }
 
+/**
+ * Writes the pinned-panel list to `bento.pinnedPanels`. A write is a backup copy
+ * followed by the primary set, so two writes must never overlap: only one is in
+ * flight, and a newer request replaces any request still queued behind it. Writes
+ * land in request order and an older state cannot overwrite a newer one.
+ *
+ * `schedule` is the debounced path for frequent triggers (title, width); `flushNow`
+ * is for callers that await durability. Callers hand over complete states and must
+ * hand them over newest last (PinnedPanelsStore drops superseded resolutions).
+ */
 export class Persistence {
   #timer: ReturnType<typeof setTimeout> | null = null;
-  #pending: PersistedState | null = null;
+  /** Latest state waiting on the debounce timer. */
+  #scheduled: PersistedState | null = null;
+  /** Newest state waiting for the in-flight write to finish. */
+  #queued: PersistedState | null = null;
+  /** Callers of `flushNow` covered by `#queued`; resolved once it is written. */
+  #waiters: Array<() => void> = [];
+  #draining = false;
 
   schedule(state: PersistedState): void {
-    this.#pending = state;
+    this.#scheduled = state;
     if (this.#timer) return;
     this.#timer = setTimeout(() => {
       this.#timer = null;
-      const next = this.#pending;
-      this.#pending = null;
-      if (next) void this.#flush(next);
+      const next = this.#scheduled;
+      this.#scheduled = null;
+      if (next) void this.#enqueue(next);
     }, DEBOUNCE_MS);
   }
 
+  /** Resolves once a write at least as new as this state has landed. */
   flushNow(state: PersistedState): Promise<void> {
     if (this.#timer) {
       clearTimeout(this.#timer);
       this.#timer = null;
     }
-    this.#pending = null;
-    return this.#flush(state);
+    this.#scheduled = null;
+    return this.#enqueue(state);
+  }
+
+  #enqueue(state: PersistedState): Promise<void> {
+    this.#queued = state;
+    const written = new Promise<void>((resolve) => this.#waiters.push(resolve));
+    if (!this.#draining) void this.#drain();
+    return written;
+  }
+
+  async #drain(): Promise<void> {
+    this.#draining = true;
+    try {
+      while (this.#queued) {
+        const state = this.#queued;
+        const waiters = this.#waiters;
+        this.#queued = null;
+        this.#waiters = [];
+        try {
+          await this.#flush(state);
+        } catch (err) {
+          console.error('[bento-tools] pinnedPanels: flush failed', err);
+        }
+        for (const resolve of waiters) resolve();
+      }
+    } finally {
+      this.#draining = false;
+    }
   }
 
   async #flush(state: PersistedState): Promise<void> {
