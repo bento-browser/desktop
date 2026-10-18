@@ -171,7 +171,8 @@ so the actions remain available anywhere in a long tab list. Typing filters
 open tabs and side panels across all
 workspaces by title or web address, and a pasted full address such as
 `https://github.com/andrew` finds its tab. The field has a clear
-button labeled "Clear". While a query is active, the sidebar shows only the
+button that empties a typed query and keeps the field open; on an empty field
+the same button closes search, like Esc. While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
 Each result shows the page title with the site's domain beneath it in smaller,
