@@ -222,6 +222,14 @@ describe('createStartupPinnedTabDiscard', () => {
     expect(registry.snapshot()[0]?.discarded).toBeUndefined();
   });
 
+  it('reports a browser start only after runtime.onStartup has fired', () => {
+    const startup = createStartupPinnedTabDiscard(fakeRegistry([]), () => []);
+
+    expect(startup.browserStarted()).toBe(false);
+    startup.noteStartup();
+    expect(startup.browserStarted()).toBe(true);
+  });
+
   it('has discarded and recorded the pinned tabs by the time run resolves', async () => {
     const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 }), tab({ id: 3 })]);
     const startup = createStartupPinnedTabDiscard(registry, () => [3]);

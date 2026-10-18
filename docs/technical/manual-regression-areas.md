@@ -133,6 +133,17 @@ When changing core functionality, manually verify at least the affected subset:
   order. Also close the only window with Cmd+Shift+W, quit, relaunch: the new
   window shows the workspace's tabs from the parked list, once each, and a window
   Firefox did restore does not get its tabs a second time;
+- parked tabs survive a tools reload but not a restart: with two windows on
+  different workspaces, give window A's workspace a loaded page and an empty New
+  Tab (Cmd+T, leave it blank), then close window A with Cmd+Shift+W. The page moves
+  to window B and the empty New Tab stays behind and is parked. With window B
+  open, press Alt+Shift+R. The parked list stays
+  (`await browser.storage.local.get('bento.parkedWorkspaceTabs')`, run from the
+  bento-tools background page in the Browser Toolbox, still returns the
+  workspace), and showing A's workspace in a window restores the New Tab once.
+  Then Cmd+Q and relaunch:
+  Firefox's restored tabs are not doubled, and a workspace with no restored tab
+  still restores its list;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.
