@@ -71,9 +71,18 @@ Panel persistence write path:
   second; quit and relaunch to confirm the last URL restores.
 
 Panel session markers live in `extensions/bento-tools/src/panels/SessionMarker.ts`.
-They use `browser.sessions.setTabValue` with workspace id and restore location
-so a closed panel can be restored by Firefox's closed-tab flow and then
-reinserted into Bento's layout.
+They use `browser.sessions.setTabValue` with workspace id, restore location
+(`rootIndex`, `containingRootNodeId`) and the panel's layout key (`panelKey`, the
+key its entry has in `bento.panels`: `panel-<n>`, its position in the layout's
+visible panel order, from `PanelStore.getPanelKey`) so a closed panel can be
+restored by Firefox's closed-tab flow and then reinserted into Bento's layout,
+and so a restart can tell which entry a restored tab is.
+`syncPanelMarkersForWorkspace` rewrites every marker of a workspace, key included,
+after each mutation that adds, removes or moves panels, and
+`restorePanelsForWorkspace` rewrites them once the persisted layout is applied. A
+key is positional, so it changes when panels ahead of it come or go; the rewrite
+keeps it equal to the key a snapshot or parking would give that panel. A marker
+written before keys existed has no `panelKey`.
 
 At a browser start the markers are the first restore of panels. Firefox restores
 each panel tab with its markers, `restorePanelsFromSessionMarkersAtBoot` and the
@@ -81,22 +90,56 @@ each panel tab with its markers, `restorePanelsFromSessionMarkersAtBoot` and the
 `restorePanelsForWorkspace` apply the persisted entries from `bento.panels` (URL,
 width, header state, and the layout tree with its group ratios).
 `planPanelRestore` (`panels/PanelRestore.ts`) binds each entry to a tab of the
-workspace. A tab that shows the entry's URL is bound first, preferring panels
-already in the layout over sidebar tabs. The entries left over take the panels
-still in the layout, in layout order: those tabs came back through their marker,
-so they fill the slot even when their URL cannot be read. Only an entry with no
-tab at all opens a new tab, which is the path for a window that closed and was not
-restored (it has no marker tabs). The URL is unreliable because `Tab.url` is
-`browser.currentURI.spec` and Firefox has no `pendingUrl`: a restored tab that has
-a real browser and is still restoring reports `about:blank`. Pinned-panel backing
-tabs are native pinned tabs, which Firefox never restores lazily, so they hit this
-on every restart. The restore that a workspace activation starts for a window's
-workspace runs after the boot restore, because activations during boot wait on
-`startupRestored` (see "Restart keeps what Firefox restored" in
-[workspaces.md](workspaces.md)). Pinned panels re-attach through the same
-`panelKeyToTabId` and `urlToTabId` maps that `planPanelRestore`'s result fills,
-in `pinnedPanels.recoverTabIdsAfterPanelRestore`, so a pin binds to the restored
-tab and not to a copy.
+workspace in this order:
+
+1. By key: the entry binds to the panel in the layout whose marker carried its
+   `panelKey`, whatever that panel shows now. This is what keeps the entry's
+   width, header state and pinned-panel binding on the right tab. Position cannot
+   do it: the marker restore inserts tabs by `rootIndex` and then Firefox tab
+   index, and two subdivision leaves share one `rootIndex` and
+   `containingRootNodeId`, so they can come back in either order. Address cannot
+   either: `Tab.url` is `browser.currentURI.spec` and Firefox has no `pendingUrl`,
+   so a restored tab that has a real browser and is still restoring reports
+   `about:blank` (pinned-panel backing tabs are native pinned tabs, which Firefox
+   never restores lazily, so every restart hits this), and a panel may have
+   navigated away.
+2. By exact address, among panels still in the layout (a marker without a key, or
+   whose key matches no entry).
+3. By exact address, among sidebar tabs. This comes last on purpose: a sidebar
+   tab at a pending panel's address never takes the entry of a panel that came
+   back with its marker.
+
+A marker without a key is bound only by steps 2 and 3, never by layout order or
+leftover position. So the first restart after upgrading from markers written
+without keys can open a second copy of a panel whose address cannot be read
+(a pinned panel), once: the copy takes the entry, and the original, which no
+entry binds to, is kept (below). The markers are rewritten with keys on that
+launch. Only an entry with no tab at all opens a new tab, which is the path for a
+window that closed and was not restored (it has no marker tabs).
+
+The key a marker carried is read before anything rewrites it. The marker sync
+numbers the layout as it stands, and until the entries are applied the layout
+holds only the panels that came back, in marker order, so its numbering is not
+the entries'. `rememberMarkerPanelKey` (`background.ts`) therefore keeps each
+restored marker's key in memory for workspaces that still have persisted entries,
+and `restorePanelsForWorkspace` reads them from there and drops them once bound.
+
+`PanelStore.restorePersistedLayout` replaces the workspace layout with the
+persisted one. A panel already in the layout that no entry binds to (its entry was
+not stored, its key matched nothing, or the legacy case above) is kept at the end
+of the strip, with the width it has, instead of dropping out of the layout, where
+it would have become a sidebar tab. DevTools panels are not kept: boot closes them.
+The restore that a workspace activation starts for a window's workspace runs after
+the boot restore, because activations during boot wait on `startupRestored` (see
+"Restart keeps what Firefox restored" in [workspaces.md](workspaces.md)). Pinned
+panels re-attach through the same `panelKeyToTabId` and `urlToTabId` maps that
+`planPanelRestore`'s result fills, in `pinnedPanels.recoverTabIdsAfterPanelRestore`
+(a pin with a stored `panelKey` binds by key, so it follows the tab that carries
+it), so a pin binds to the restored tab and not to a copy.
+
+Limits. A key can only be as current as the last marker rewrite: a layout change
+followed within milliseconds by a quit or crash can leave the markers and the
+stored entries one change apart, and a key then binds the wrong tab.
 
 ## Panel actions
 
@@ -191,7 +234,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `schedulePersistCurrentState`. Keep `persistCurrentState` for discrete
   mutations and callers that must await durability.
 - Keep panel markers synced after add, remove, reorder, and restore. Closed-tab
-  restore depends on marker root indexes and containing root ids.
+  restore depends on marker root indexes and containing root ids, and the restart
+  binding depends on the marker's `panelKey`, which changes whenever a panel ahead
+  of it comes or goes (`panelLayout/removeVerticalGroup` and the missing-panel
+  cleanup in `emitPanelsSyncNow` sync too).
 - Do not clear a panel's `bento.isPanel` marker in the `tab/close` path. Firefox
   needs that tab session value to survive into the closed-tab entry so
   `Cmd+Shift+T` can route the restored tab through
@@ -357,14 +403,23 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `hydrateWorkspaceIds` and before the boot backfill, and activations during boot
   wait for it (`startupRestored`). The same wait keeps the activation's panel
   restore behind the session-marker restore.
-- Do not open a tab for a persisted panel entry only because no tab shows its URL.
+- Do not open a tab for a persisted panel entry only because no tab shows its URL,
+  and do not bind an entry by address or position when the marker carries its key.
   A panel Firefox restored through its marker whose page is still restoring
   (every pinned panel; `Tab.url` is `about:blank`, and no `pendingUrl` exists)
   never matches by address, so the old URL fallback opened a second copy that
   took the slot, left the original out of the layout, and gave the pinned panel
-  the copy to re-attach to. `planPanelRestore` pairs the entries left
-  after the address match with the panels still in the layout before any tab is
-  opened. Keep the marker restore ahead of `restorePanelsForWorkspace` at startup
-  (activations wait on `startupRestored`); run it first and the layout is empty,
-  so every unreadable panel is opened again. A panel with no restored tab at all
-  still opens from its URL.
+  the copy to re-attach to. A layout-order fallback for the leftovers fixed that
+  but bound subdivision leaves that share a `rootIndex` in the wrong order (widths,
+  header state and pins followed the wrong tabs), bound a panel that had navigated
+  to another entry while a duplicate was opened, and let a sidebar tab at a
+  pending panel's address take its entry and drop the real panel. `panelKey` in
+  the marker replaced it; do not bring the order fallback back. Keep the marker
+  restore ahead of `restorePanelsForWorkspace` at startup (activations wait on
+  `startupRestored`); run it first and the layout is empty, so every unreadable
+  panel is opened again. A panel with no restored tab at all still opens from its
+  URL.
+- Do not let the marker sync renumber keys before the persisted entries are
+  applied. Read a marker's key at the moment the marker is read and keep it
+  (`rememberMarkerPanelKey`); the layout at that point is partial, so a rewritten
+  marker would carry keys that match no entry.

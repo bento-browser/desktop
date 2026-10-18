@@ -405,8 +405,13 @@ which can be a pinned tab).
 
 Panels follow the same rule at startup: a panel tab Firefox restored with its
 session marker keeps its slot and is never opened a second time by the persisted
-URL fallback, whether or not its address is readable yet (see "Panel session
-markers" in [panel-state.md](panel-state.md)).
+URL fallback, whether or not its address is readable yet. The marker carries the
+panel's layout key (`panelKey`), and each persisted entry binds to the restored
+tab with its key before any address or position is considered, so a sidebar tab at
+a pending panel's address cannot take the entry and two panels that share a marker
+slot cannot swap (see "Panel session markers" in [panel-state.md](panel-state.md),
+which also lists what a marker without a key loses on the first launch after an
+upgrade).
 
 Pinned tabs restore on demand after a restart. Firefox restores every pinned tab
 at startup even with `browser.sessionstore.restore_on_demand` on, because
