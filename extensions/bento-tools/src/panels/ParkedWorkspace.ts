@@ -74,6 +74,34 @@ export function planWorkspaceParking(args: {
   return { ...parked, keepPanelLayout };
 }
 
+/**
+ * The parked lists a browser start drops. Firefox restores the windows of the last session with
+ * their tabs itself, so replaying a list parked at quit would open each of those tabs a second
+ * time and could move the selection. No address comparison can tell the two apart: a restored tab
+ * that is still loading, such as the selected one or a pinned one, reports no address. The decision
+ * looks at membership only: a workspace with a tab in a window that came back from the session had
+ * its tabs restored. A tab in any other window (the one a fresh start opens) does not count. Lists
+ * of other workspaces, whose window was closed and not restored, stay for their next activation.
+ *
+ * Only a real browser start (`browserStarted`, the `runtime.onStartup` signal) may drop a list.
+ * When bento-tools reloads under a running browser, a workspace can have a tab in a window that
+ * survived because a closing window handed it over, and its list still holds the tab that window
+ * could not move: dropping it would lose that tab. So with `browserStarted` false nothing is dropped.
+ */
+export function parkedWorkspacesToDiscard(
+  parkedWorkspaceIds: Iterable<string>,
+  liveTabs: ReadonlyArray<Pick<TabSnapshot, 'windowId' | 'workspaceId'>>,
+  restoredWindowIds: ReadonlySet<number>,
+  browserStarted: boolean,
+): string[] {
+  if (!browserStarted) return [];
+  const restored = new Set<string>();
+  for (const tab of liveTabs) {
+    if (tab.workspaceId && restoredWindowIds.has(tab.windowId)) restored.add(tab.workspaceId);
+  }
+  return [...parkedWorkspaceIds].filter((workspaceId) => restored.has(workspaceId));
+}
+
 export interface ParkedRestoreStep {
   entry: ParkedWorkspaceTab;
   /** The live tab that already shows the entry's address, consumed once. */

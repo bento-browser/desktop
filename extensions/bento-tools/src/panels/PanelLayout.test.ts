@@ -13,12 +13,14 @@ import {
   movePanel,
   normalizeDevtoolsAdjacency,
   removePanel,
+  removePersistedPanel,
   removeVerticalGroup,
   reorderRootNodes,
   setGroupRatio,
   splitBottomPanel,
   splitTopPanel,
   subdividePanel,
+  type PanelPersistenceWorkspaceLayout,
 } from './PanelLayout';
 
 describe('PanelLayout', () => {
@@ -149,6 +151,48 @@ describe('PanelLayout', () => {
     expect(getVisiblePanelIds(layout)).toEqual([49]);
     expect(getPanelLayoutStatus(layout, 49)).toBe('root-panel');
     expect(getRootNodeIds(layout)).toEqual(['panel:49']);
+  });
+
+  it('removes a persisted panel the way a live one is removed and keeps the other keys', () => {
+    const panel = (panelKey: string) => ({ kind: 'panel' as const, panelKey });
+    const layout: PanelPersistenceWorkspaceLayout = {
+      root: [
+        panel('panel-0'),
+        {
+          kind: 'group',
+          axis: 'vertical',
+          id: 'v',
+          ratio: 0.4,
+          children: [
+            panel('panel-1'),
+            {
+              kind: 'group',
+              axis: 'horizontal',
+              id: 'h',
+              ratio: 0.5,
+              children: [panel('panel-2'), panel('panel-3')],
+            },
+          ],
+        },
+      ],
+    };
+
+    // A split bottom left with one panel keeps its subdivision, and the other root node is as it was.
+    const bottomLeft = removePersistedPanel(layout, 'panel-2');
+    expect(bottomLeft.root[0]).toBe(layout.root[0]);
+    expect(bottomLeft.root[1]).toMatchObject({
+      id: 'v',
+      ratio: 0.4,
+      children: [panel('panel-1'), panel('panel-3')],
+    });
+    // Closing the top leaves the bottom split children as root panels.
+    expect(removePersistedPanel(layout, 'panel-1').root).toEqual([
+      panel('panel-0'),
+      panel('panel-2'),
+      panel('panel-3'),
+    ]);
+    expect(removePersistedPanel(layout, 'panel-0').root).toEqual([layout.root[1]]);
+    expect(removePersistedPanel(layout, 'missing')).toEqual(layout);
   });
 
   it('rejects malformed root reorder payloads', () => {

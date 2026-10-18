@@ -9,6 +9,10 @@
 // background.ts: any add/remove/reorder rewrites every marker in the
 // affected workspace with its current index, so the marker captures
 // the slot the panel was in WHEN IT WAS CLOSED, not when it was added.
+// The same rewrite stores the panel's persisted layout key (`panelKey`,
+// the key of its entry in bento.panels), so after a restart the entry binds
+// to the tab that carries its key rather than to a guess from position or
+// address. A marker written before keys existed has none.
 //
 // Mirrors the TabRegistry's WORKSPACE_SESSION_KEY pattern.
 
@@ -21,12 +25,14 @@ export interface PanelMarker {
   rootIndex: number;
   containingRootNodeId?: string;
   pinnedPanel?: boolean;
+  /** The panel's persisted layout key when the marker was written. */
+  panelKey?: string;
 }
 
 export async function setPanelMarker(
   tabId: number,
   workspaceId: string,
-  marker: { rootIndex: number; containingRootNodeId?: string },
+  marker: { rootIndex: number; containingRootNodeId?: string; panelKey?: string },
 ): Promise<void> {
   try {
     await browser.sessions.setTabValue(
@@ -37,6 +43,7 @@ export async function setPanelMarker(
         workspaceId,
         rootIndex: marker.rootIndex,
         containingRootNodeId: marker.containingRootNodeId,
+        panelKey: marker.panelKey,
       }),
     );
   } catch (err) {
@@ -93,6 +100,7 @@ export async function readPanelMarker(tabId: number): Promise<PanelMarker | null
               ? parsed.containingRootNodeId
               : undefined,
           pinnedPanel: parsed.pinnedPanel === true,
+          panelKey: typeof parsed.panelKey === 'string' ? parsed.panelKey : undefined,
         };
       }
       return {

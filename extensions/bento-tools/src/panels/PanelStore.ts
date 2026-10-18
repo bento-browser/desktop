@@ -26,6 +26,7 @@ import {
   panelKeysForLayout,
   removePanel,
   removePanelWithDescendants,
+  removePersistedPanel,
   removeVerticalGroup,
   removeWorkspace,
   reorderRootNodes,
@@ -100,6 +101,27 @@ export class PanelStore {
     const persisted = this.#persistedWorkspaces.get(workspaceId);
     if (persisted) this.#persistedWorkspaces.delete(workspaceId);
     return persisted;
+  }
+
+  /**
+   * Drops one panel's entry and layout node from the persisted panels a workspace has not applied
+   * yet, for a panel the user closed before they were. The other entries keep their keys, and a
+   * workspace left with no entry has nothing to apply. Returns whether an entry was dropped.
+   */
+  dropPersistedPanel(workspaceId: string, panelKey: string): boolean {
+    const persisted = this.#persistedWorkspaces.get(workspaceId);
+    if (!persisted?.entries.some((entry) => entry.panelKey === panelKey)) return false;
+    const entries = persisted.entries.filter((entry) => entry.panelKey !== panelKey);
+    if (entries.length > 0) {
+      this.#persistedWorkspaces.set(workspaceId, {
+        entries,
+        layout: removePersistedPanel(persisted.layout, panelKey),
+      });
+    } else {
+      this.#persistedWorkspaces.delete(workspaceId);
+    }
+    this.#schedulePersist();
+    return true;
   }
 
   takePersistedEntries(workspaceId: string): PersistedPanelEntry[] | undefined {
@@ -367,12 +389,22 @@ export class PanelStore {
     return true;
   }
 
+  /**
+   * Replaces the workspace's layout with the persisted one, placing each panel key's tab. A panel
+   * already in the live layout that no key claims (it came back through its session marker, but no
+   * entry binds to it) is kept at the end of the strip, not dropped out of the layout, where it
+   * would turn into a sidebar tab. DevTools panels are not kept: boot closes them.
+   */
   restorePersistedLayout(
     workspaceId: string,
     layout: PanelPersistenceWorkspaceLayout,
     tabIdByPanelKey: Map<string, number>,
   ): void {
+    const live = getVisiblePanelIds(this.#layoutByWorkspace.get(workspaceId));
     const runtime = fromPersistenceLayout(layout, tabIdByPanelKey);
+    for (const tabId of live) {
+      if (!this.isDevtoolsPanel(workspaceId, tabId)) addPanel(runtime, tabId);
+    }
     if (runtime.root.length === 0) {
       this.#layoutByWorkspace.delete(workspaceId);
     } else {
@@ -381,6 +413,12 @@ export class PanelStore {
     this.#schedulePersist();
   }
 
+  /**
+   * Replaces the workspace's live layout with persisted entries for its panels, for a window that
+   * is closing. Entries the workspace still has to apply (`takePersistedWorkspace`) are kept as
+   * they are: the live layout is then only the temporary one of the panels that came back with
+   * their markers, and its entries would replace the real ones.
+   */
   parkWorkspaceWithResolvedUrls(
     workspaceId: string,
     resolveUrl: (tabId: number) => string | undefined,
@@ -389,6 +427,31 @@ export class PanelStore {
     if (!layout) return false;
 
     const keys = this.#panelKeysForPersistence(workspaceId, layout);
+    const parked =
+      this.#persistedWorkspaces.get(workspaceId) ?? this.#parkedPanels(layout, keys, resolveUrl);
+
+    this.#layoutByWorkspace.delete(workspaceId);
+    for (const tabId of keys.keys()) {
+      this.#widthByTabId.delete(tabId);
+      this.#headerHiddenByTabId.delete(tabId);
+    }
+
+    if (parked) {
+      this.#persistedWorkspaces.set(workspaceId, parked);
+    } else {
+      this.#persistedWorkspaces.delete(workspaceId);
+    }
+
+    this.#flushPersist();
+    return parked !== undefined;
+  }
+
+  /** The entries and layout for the panels that have a URL to come back to, if any. */
+  #parkedPanels(
+    layout: WorkspacePanelLayout,
+    keys: Map<number, string>,
+    resolveUrl: (tabId: number) => string | undefined,
+  ): PersistedWorkspacePanels | undefined {
     const entries: PersistedPanelEntry[] = [];
     const keptKeysByTabId = new Map<number, string>();
     for (const [tabId, panelKey] of keys) {
@@ -402,24 +465,8 @@ export class PanelStore {
       entries.push(entry);
       keptKeysByTabId.set(tabId, panelKey);
     }
-
-    this.#layoutByWorkspace.delete(workspaceId);
-    for (const tabId of keys.keys()) {
-      this.#widthByTabId.delete(tabId);
-      this.#headerHiddenByTabId.delete(tabId);
-    }
-
-    if (entries.length > 0) {
-      this.#persistedWorkspaces.set(workspaceId, {
-        entries,
-        layout: toPersistenceLayout(layout, keptKeysByTabId),
-      });
-    } else {
-      this.#persistedWorkspaces.delete(workspaceId);
-    }
-
-    this.#flushPersist();
-    return entries.length > 0;
+    if (entries.length === 0) return undefined;
+    return { entries, layout: toPersistenceLayout(layout, keptKeysByTabId) };
   }
 
   remove(workspaceId: string, tabId: number): boolean {
