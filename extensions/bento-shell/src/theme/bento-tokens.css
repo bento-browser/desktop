@@ -69,6 +69,12 @@
       (var(--bento-tab-row-height) - var(--bento-icon-size-sm)) / 2
     );
     --bento-tab-list-search-clear-scale: 0.7;
+    /* Sidebar search results with a domain: two text lines (title, then the
+       site) in a taller row. Domain size is Mux's smallest semantic size
+       (the badge size, 11px); no text-* step is below the title's. */
+    --bento-tab-list-search-result-height-with-domain: 2.75rem;
+    --bento-tab-list-search-result-line-gap: 0.25rem;
+    --bento-tab-list-search-domain-font-size: var(--muxui-semantic-typography-badge-size);
     --bento-tab-folder-indent: var(--space-s);
     /* TabRow hover actions: an inset, then one Mux IconButton size="sm" per
        action (Convert to panel, Close; the active row hides Convert). TabRow

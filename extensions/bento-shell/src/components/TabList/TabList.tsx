@@ -28,7 +28,7 @@ import {
   pruneSelection,
   rowKey,
 } from './displayRows';
-import { matchesTabSearch } from './tabSearch';
+import { matchesTabSearch, searchResultDomain } from './tabSearch';
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
@@ -83,6 +83,8 @@ interface TabListSearchResult {
   id: number;
   kind: 'tab' | 'panel';
   title: string;
+  /** Site shown under the title; absent for pages without one (single-line row). */
+  domain?: string;
   favIconUrl?: string;
   workspaceId: string;
   workspaceName: string;
@@ -1017,7 +1019,10 @@ function TabListPane({
             return (
               <div
                 key={`${result.kind}:${result.workspaceId}:${result.id}`}
-                className="bento-tab-list-search__result"
+                className={
+                  'bento-tab-list-search__result' +
+                  (result.domain ? ' bento-tab-list-search__result--with-domain' : '')
+                }
                 style={style}
               >
                 <Button
@@ -1026,7 +1031,7 @@ function TabListPane({
                   className="bento-tab-list-search__result-main"
                   aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
                     result.workspaceName
-                  }`}
+                  }${result.domain ? `, ${result.domain}` : ''}`}
                   onActivate={() => onRunSearchResult(result)}
                 >
                   <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
@@ -1041,7 +1046,12 @@ function TabListPane({
                   ) : (
                     <span className="bento-tab-list-search__favicon bento-tab-list-search__favicon--placeholder" />
                   )}
-                  <span className="bento-tab-list-search__title">{result.title}</span>
+                  <span className="bento-tab-list-search__text">
+                    <span className="bento-tab-list-search__title">{result.title}</span>
+                    {result.domain && (
+                      <span className="bento-tab-list-search__domain">{result.domain}</span>
+                    )}
+                  </span>
                   <span className="bento-tab-list-search__kind">
                     {result.kind === 'panel' ? 'Panel' : 'Tab'}
                   </span>
@@ -1283,6 +1293,7 @@ export function TabList({
             id: tab.id,
             kind: panelWorkspaceId ? 'panel' : 'tab',
             title,
+            domain: searchResultDomain(tab.url),
             favIconUrl: tab.favIconUrl,
             workspaceId,
             workspaceName: workspace.name,

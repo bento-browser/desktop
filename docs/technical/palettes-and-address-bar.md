@@ -47,6 +47,22 @@ removed. The test is `matchesTabSearch()` in
 query that is only a scheme (`https://`, `about:`) skips the URL test. Result
 order and the 50-result cap are unchanged.
 
+Each result row has two text lines when the tab has a domain: the title, then the
+domain in a smaller muted style. `searchResultDomain(url)` in the same file
+returns it: the exact hostname for `http:` and `https:` URLs (`www.` kept, no
+port or credentials), the URL as-is for `about:` URLs, and `undefined` for
+everything else (`moz-extension:`, `data:`, `blob:`, `file:`, empty or
+unparsable), so those rows stay single-line at `--bento-tab-row-height`.
+`TabList` stores it as `TabListSearchResult.domain`, renders it in
+`.bento-tab-list-search__domain` inside `.bento-tab-list-search__text` (under the
+title), and adds the `bento-tab-list-search__result--with-domain` modifier, which
+sets `--bento-search-result-height` to
+`--bento-tab-list-search-result-height-with-domain` (2.75rem). The domain size,
+line gap and row height are `--bento-tab-list-search-*` tokens. The row's
+accessible name is the Button's `aria-label`, title first, with the domain
+appended when there is one (`Tab: Dashboard in Work, mail.google.com`), so
+same-titled tabs on different sites are distinguishable.
+
 When `searchOpen` is true, the search field covers the fixed action row. When
 the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
 display rows and the action overlay renders matching results into the pane below
@@ -99,6 +115,9 @@ keystroke) and only their title is matched.
 Pitfall: the grid for the result row is on Mux's `.muxui-button-content`, not the
 Button (see
 [../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
+The title and domain share one `.bento-tab-list-search__text` flex column in the
+third (`minmax(0, 1fr)`) column and each ellipsizes on its own; do not make the
+domain a fifth grid item or the kind label is pushed by long domains.
 
 ### Search trigger and field motion
 
