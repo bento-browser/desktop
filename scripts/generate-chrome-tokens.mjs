@@ -135,14 +135,17 @@ function readOptional(path, label) {
 // from the trailer's button, gap, padding and select widths, and the shell lays its rail and
 // its trailer out inside those hosts, so these tokens are resolved here at the shell's root
 // size and pinned in px. The trailer's grid and base widths are not listed: they are px sums
-// of the pinned tokens. Add a token when chrome sizes shell-laid-out geometry from a rem
-// one; px tokens (the sidebar min and max) need nothing.
+// of the pinned tokens. The panel header URL font size is listed because chrome sets that
+// text itself and wants Mux's text-m at the shell's 16px, not 11/16 of it. Add a token when
+// chrome sizes shell-laid-out geometry, or sets text at a Mux size, from a rem token; px
+// tokens (the sidebar min and max) need nothing.
 const SHELL_SIZED_TOKENS = [
   '--bento-tab-strip-width-collapsed',
   '--bento-panel-trailer-button-size',
   '--bento-panel-trailer-grid-gap',
   '--bento-panel-trailer-inline-padding',
   '--bento-panel-trailer-wide-width',
+  '--bento-panel-url-font-size',
 ];
 
 // A resolver for the custom properties declared in `css`: each token's value with its
@@ -272,7 +275,7 @@ function renderShellSizedSection(css) {
   const { rootPx, resolve } = createShellPxResolver(css);
   const declarations = SHELL_SIZED_TOKENS.map((name) => `  ${name}: ${resolve(name)};`);
   return `
-/* ─── Shell-sized geometry ────────────────────────────────────────── */
+/* ─── Shell-sized lengths ─────────────────────────────────────────── */
 /* Chrome's rem is the system UI font, so these tokens are pinned in px at the
    shell's root font size (${rootPx}px) to match what the shell computes. */
 :root {

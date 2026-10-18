@@ -83,7 +83,7 @@ host `#bento-add-panel-trailer` (`bento-shell-mount.css`) derives its `width`,
 widens the host from the base width to the wide width plus the padding so the select
 fits. Chrome's root font size is not the shell's, so the chrome token sheet pins the
 button, gap, padding and wide-width tokens in px at the shell's root size (see
-[Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry)): the host is 256 px
+[Shell-sized lengths](../chrome-tokens.md#shell-sized-lengths)): the host is 256 px
 wide (284 px with the select) in the shell's 16 px reading, where chrome's own rem
 gave 176 px (195 px). The flat layout measures the host's rendered width
 (`getTrailerLayoutWidth`), so the wider trailer takes 80 px (89 px with the select)

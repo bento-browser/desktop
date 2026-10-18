@@ -491,7 +491,7 @@
    symmetric rail padding. The token is rem-based and chrome's rem is
    not the shell's, so bento-chrome-tokens.css pins it in px at the
    shell's root font size (docs/chrome-tokens.md, Shell-sized
-   geometry). Keep the chrome host on this single token
+   lengths). Keep the chrome host on this single token
    so live sidebar/window resize does not get an extra calc/max()
    width path. The width never transitions: collapse and expand run
    as a transform slide (see "Sidebar push" below), and the width
@@ -1580,7 +1580,7 @@
   border: var(--bento-border-hairline) solid transparent;
   border-radius: var(--radius-s);
   color: var(--neutral-90);
-  font-size: var(--muxui-semantic-typography-text-s-font-size);
+  font-size: var(--bento-panel-url-font-size);
   font-family: inherit;
   outline: none;
   box-sizing: border-box;
@@ -1973,7 +1973,7 @@
    holds a shell document, so its geometry comes from the shared
    --bento-panel-trailer-* tokens in bento-tokens.css, which
    bento-chrome-tokens.css pins in px at the shell's root font size
-   (docs/chrome-tokens.md, Shell-sized geometry). Do not restate
+   (docs/chrome-tokens.md, Shell-sized lengths). Do not restate
    them here in rem: chrome's rem is smaller than the shell's, and
    the shell's trailer would be clipped by the narrower host. */
 #bento-add-panel-trailer {
