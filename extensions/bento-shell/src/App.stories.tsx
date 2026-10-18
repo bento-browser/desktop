@@ -15,8 +15,10 @@ import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';
 import { seedPanelsHydrated } from './state/__fixtures__/panels';
 import { seedTabFolders } from './state/__fixtures__/tabFolders';
+import { seedEmptyPinnedPanels } from './state/__fixtures__/pinnedPanels';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
 import { markToolsBootedForStory } from './state/__fixtures__/bus';
+import { useExternalMergeStore } from './state/externalMerge';
 import { useSettingsStore } from './state/settings';
 import { useSidebarAddressStore } from './state/sidebarAddress';
 import type { Action } from '@shared/protocol';
@@ -57,9 +59,10 @@ function ShellFrame({
 // panels marked hydrated for every workspace. TabList shows its skeleton
 // until tabs, folders and the active workspace's panels have all hydrated,
 // so every one of those is seeded. Settings carry the requested
-// sidebarCollapsed value. The sidebar address store is reset: a fresh shell
-// has no snapshot until the chrome bridge sends one, and the store outlives a
-// story switch, so another story's snapshot would otherwise stay.
+// sidebarCollapsed value. The sidebar address, pinned-panel and external-merge
+// stores are reset: a fresh shell has no address snapshot, no pinned panels and
+// no import running until the chrome bridge sends them, and these stores
+// outlive a story switch, so another story's data would otherwise stay.
 function seedShell(sidebarCollapsed: boolean) {
   const workspaces = seedManyWorkspaces();
   seedTabsAcrossWorkspaces(
@@ -74,6 +77,8 @@ function seedShell(sidebarCollapsed: boolean) {
   seedPanelsHydrated(workspaces.map((w) => w.id));
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
   useSidebarAddressStore.getState().reset();
+  seedEmptyPinnedPanels();
+  useExternalMergeStore.setState(useExternalMergeStore.getInitialState());
   // Fake a tools/booted event AFTER seeding so the App's "connecting…"
   // indicator clears. Order matters: useToolsPort responds to booted by
   // re-requesting snapshots; nothing answers those in Ladle, but if we
