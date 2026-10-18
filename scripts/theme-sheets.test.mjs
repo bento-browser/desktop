@@ -108,8 +108,8 @@ test('chrome base sheet carries the shared tokens and the Default theme only', (
 // Chrome's rem is the system UI font (11px on macOS) but the shell's is --font-size-root.
 // Chrome sizes #bento-shell-host (collapsed rail) and #bento-add-panel-trailer from these
 // tokens while the shell lays itself out inside them, and sets the panel header URL text at
-// Mux's text-m, so each must be the same length in both documents: the shell reads the rem
-// form at its root size, chrome reads the pinned px.
+// Mux's text-m and the panel navigator menu at text-s, so each must be the same length in
+// both documents: the shell reads the rem form at its root size, chrome reads the pinned px.
 const CHROME_ROOT_PX = 11;
 const SHELL_LAID_OUT_TOKENS = [
   '--bento-tab-strip-width-collapsed',
@@ -120,6 +120,7 @@ const SHELL_LAID_OUT_TOKENS = [
   '--bento-panel-trailer-wide-width',
   '--bento-panel-trailer-base-width',
   '--bento-panel-url-font-size',
+  '--bento-panel-nav-menu-font-size',
 ];
 
 // Evaluates a token the way a document with this root font size would: var() followed,
@@ -173,6 +174,9 @@ test('chrome reads shell-sized lengths at the shell root font size', () => {
     // Mux's text-m is 1rem: 16px in the shell, so the URL text is 16px in chrome too.
     assert.equal(chrome('--bento-panel-url-font-size'), 16);
     assert.ok(unpinned('--bento-panel-url-font-size') < 16);
+    // Mux's text-s is 0.83125rem: 13.3px in the shell, 9.1px from chrome's own rem.
+    assert.ok(Math.abs(chrome('--bento-panel-nav-menu-font-size') - 13.3) < 1e-6);
+    assert.ok(unpinned('--bento-panel-nav-menu-font-size') < 13.3);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
