@@ -489,16 +489,25 @@
 }
 
 /* The icon keeps the offset it has in the square (centered), so it does not move
-   when the trigger peeks; the label is clipped by the square at rest. */
+   when the trigger peeks. The label is always opaque: the button's own clip
+   reveals it as the trigger widens. overflow: clip with a content-box clip edge
+   cuts the children at the inline padding, not the border, so the label (it
+   starts 29.2px in, past the 24px icon edge) shows nothing in the 2rem square's
+   right padding at rest. The button's own painting (the focus ring is a
+   box-shadow, the pressed fill is its background) is outside what its overflow
+   clips. padding-block: 0 keeps the content box the full row height; Mux's block
+   padding would otherwise clip the 1rem icon top and bottom. */
 .bento-tab-list__search-button {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   height: 100%;
   min-height: 0;
+  padding-block: 0;
   padding-inline: var(--bento-tab-list-search-trigger-inset);
   justify-content: flex-start;
-  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: content-box;
 }
 
 /* Mux lays the icon and label out in its content span the same way as the New
@@ -511,16 +520,6 @@
 
 .bento-tab-list__search-label {
   margin-inline-start: var(--muxui-semantic-layout-control-gap);
-  opacity: 0;
-  transition: opacity var(--muxui-semantic-motion-state-transition);
-}
-
-/* The label follows the peek: it fades in after a short wait and out first. */
-.bento-tab-list__search-trigger:hover .bento-tab-list__search-label,
-.bento-tab-list__search-button:focus-visible .bento-tab-list__search-label {
-  opacity: 1;
-  transition: opacity var(--muxui-semantic-motion-state-transition)
-    var(--muxui-semantic-motion-state-transition-duration);
 }
 
 /* Always mounted (TabList sets inert and drops data-open while closed) so the

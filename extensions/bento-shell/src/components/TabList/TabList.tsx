@@ -961,8 +961,9 @@ function TabListPane({
     };
   }, [onCloseSearch, searchOpen, searchQuery]);
 
-  // A square icon at rest. Hover or keyboard focus widens it leftward to reveal the
-  // label (TabList.css); the accessible name stays the aria-label.
+  // A square icon at rest. Hover or keyboard focus widens it leftward; the label is
+  // always rendered at full opacity and the button's clip reveals it as it widens
+  // (TabList.css). The accessible name stays the aria-label.
   const renderSearchButton = () => (
     <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
       <Button
