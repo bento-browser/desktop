@@ -146,10 +146,13 @@ expanded:
 5. Close it every way, each time starting from an empty and a non-empty query where
    they differ: Esc (clears the query), Enter on a result, click outside (closes
    only when empty), another window or app (closes only when empty), Tab out of
-   the field (closes only when empty), and the clear button (clears and refocuses
-   without closing). The field shrinks back onto the trigger and the trigger is
-   clickable straight away; during the shrink New and the trigger still take
-   clicks.
+   the field (closes only when empty), and the clear button (with text it clears
+   and refocuses without closing; on an empty field it closes). The field
+   shrinks back onto the trigger and the trigger is clickable straight away;
+   during the shrink New and the trigger still take clicks. Click the clear
+   button on an empty field: search closes, as with Esc, and the button's
+   accessible name reads "Close search"; type a character and the name reads
+   "Clear search" again.
 6. Open, close and reopen quickly: no jump, and the field always starts from
    where the trigger is.
 7. Collapse the sidebar (rail): no Search trigger, New is a square, its

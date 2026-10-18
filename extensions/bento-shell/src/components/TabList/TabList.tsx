@@ -1000,8 +1000,13 @@ function TabListPane({
             variant="ghost"
             size="sm"
             className="bento-tab-list-search__clear-button"
-            aria-label="Clear search"
+            aria-label={searchQuery.trim().length === 0 ? 'Close search' : 'Clear search'}
             onActivate={() => {
+              // An empty field has nothing to clear, so the button closes it like Esc.
+              if (searchQuery.trim().length === 0) {
+                onCloseSearch();
+                return;
+              }
               onSearchQueryChange('');
               searchInputRef.current?.focus();
             }}

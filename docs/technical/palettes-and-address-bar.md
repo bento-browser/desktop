@@ -67,9 +67,11 @@ When `searchOpen` is true, the search field covers the fixed action row. When
 the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
 display rows and the action overlay renders matching results into the pane below
 the field. This avoids leaving tabs, folders, pinned sections, or creation
-controls visible behind the filtering surface. The clear affordance clears the
-local query, refocuses the search input, and returns the pane to the normal
-virtualized row path.
+controls visible behind the filtering surface. The clear affordance clears a
+non-empty local query, refocuses the search input, and returns the pane to the
+normal virtualized row path. When the trimmed query is empty it calls
+`onCloseSearch()` instead, exactly like Esc, and its `aria-label` reads "Close
+search" rather than "Clear search".
 
 Selecting a regular-tab result calls `TabList`'s normal `onActivate` prop so it
 uses the same tools dispatch and chrome scroll-to-main sentinel as a visible
