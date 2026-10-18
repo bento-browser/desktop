@@ -141,18 +141,23 @@ One variable drives all the geometry. `.bento-tab-list__new-actions` sets
 to the peek width. The trigger's `width`, the action highlight's `left` and
 `width` (by its `data-target`, see [workspaces.md](workspaces.md)), and the closed
 search field row's `margin-inline-start` all read it and each transition their
-own property with `--muxui-semantic-motion-reveal-transition`. They start in
-the same style recalc with the same role, so they stay in lockstep with no JS
-measuring. Opacity fades run on `--muxui-semantic-motion-state-transition`: the
-label, input and clear button fade in after one `state` duration and out with no
-wait.
+own property with Mux's reveal spring pair,
+`--muxui-semantic-motion-reveal-transition-spring-duration` with
+`--muxui-semantic-motion-reveal-transition-spring-easing` (400 ms sampled
+`linear()` spring, bounce 0; it looks settled by about 200 ms, its
+`-spring-visual-duration`). The field row's `padding-inline-start` and the clear
+button's open `scale` use the same pair. They start in the same style recalc with
+the same pair, so they stay in lockstep with no JS measuring. Opacity fades run on
+`--muxui-semantic-motion-state-transition`: the label, input and clear button fade
+in after one `state` duration and out with no wait.
 
 The overlay (`.bento-tab-list-search`) is always mounted so closing can animate.
 `TabListPane` sets `data-open` while `searchOpen` is true and `inert` otherwise.
 Closed, it is `pointer-events: none` and `visibility: hidden`, and the
-`visibility` transition runs for the `reveal` duration so it stays
-visible while it closes; open, `visibility: visible` applies at once, so the
-open effect's `focus()` and `select()` work. The box that grows is the field row
+`visibility` transition runs for the reveal spring's full duration (400 ms,
+tail included) so it stays visible while it closes; open, `visibility: visible`
+applies at once, so the open effect's `focus()` and `select()` work. The box
+that grows is the field row
 itself, by `margin-inline-start`: `0` open, and closed
 `calc(100% - var(--bento-tab-list-search-trigger-width))` with its
 `padding-inline-start` at the trigger's icon inset, so a closed (hidden) field
@@ -162,8 +167,9 @@ ring therefore draw correctly on every frame and the icon in its leading column
 rides the left edge (its inset moves from the trigger's 8px to the field's
 `--space-2xs` as it grows). Its `overflow: hidden` clips the grid while the row
 is narrower than its columns, and its `opacity` fades in over the
-`state` role on open and out, after one `reveal` duration, once the slide has
-covered the trigger on close. While open, the trigger stays visible for one
+`state` role on open and out, after the spring's visual duration, once the slide
+has all but covered the trigger on close (the spring's tail is 3% of the move and
+runs under the fade). While open, the trigger stays visible for one
 `state` duration under the fading row (no icon blink) and then hides. The clear button sits in a
 `.bento-tab-list-search__clear` wrapper that fades and scales in at the right end,
 where the trigger sat, so Mux's own button transitions stay untouched. Under
@@ -180,7 +186,12 @@ Pitfalls:
   the mid-transition box. Keep the closed margin on the same variable the trigger
   reads, or the field starts from the wrong place when the trigger is peeked.
 - Keep the closed `visibility` transition at least as long as the field row's
-  geometry transition (both `reveal`). A shorter one hides the field mid-close.
+  geometry transition (both the reveal spring pair, so 400 ms). The visual
+  duration is too short for it: the hide would cut the spring's tail. A shorter
+  one hides the field mid-close.
+- The trigger's visibility hand-off on open stays on `state`: it hides once the
+  field row is opaque (also 120 ms), and the row covers the trigger's box for the
+  whole spring, so it needs no spring-length wait.
 - The trigger's icon is inline in Mux's content span, like the New button's, so
   its label shares New's baseline. That puts the trigger icon 1.14px above the
   field row's centered icon; the swap happens under a `state`-role cross-fade. Do not

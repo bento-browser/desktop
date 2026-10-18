@@ -249,13 +249,16 @@
       margin-inline-start var(--muxui-semantic-motion-reveal-transition);
   }
 
-  /* Same role as the trigger's and New button's width, so the three land
-     together. */
+  /* Same reveal spring pair as the trigger's width and the closed field row, so
+     the highlight, the trigger and the New button (which follows the trigger
+     through flex) land together. */
   .bento-tab-list__action-highlight[data-visible] {
     transition:
       opacity var(--muxui-semantic-motion-state-transition),
-      left var(--muxui-semantic-motion-reveal-transition),
-      width var(--muxui-semantic-motion-reveal-transition);
+      left var(--muxui-semantic-motion-reveal-transition-spring-duration)
+        var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      width var(--muxui-semantic-motion-reveal-transition-spring-duration)
+        var(--muxui-semantic-motion-reveal-transition-spring-easing);
   }
 
   .bento-tab-list__hover-highlight[data-indented] {
@@ -400,8 +403,9 @@
    a square at rest, the peek width while the trigger is hovered or has keyboard
    focus. The trigger, the New button (flex: 1), the action highlight and the
    closed search field row all take their geometry from it and transition their
-   own width, left or margin with the same motion role, so they stay in lockstep with
-   no JS measuring and an open can start from wherever the trigger is. */
+   own width, left or margin with the same reveal spring pair (the New button
+   follows through flex), so they stay in lockstep with no JS measuring and an
+   open can start from wherever the trigger is. */
 .bento-tab-list__new-actions {
   --bento-tab-list-search-trigger-width: var(--bento-tab-row-height);
 
@@ -469,7 +473,8 @@
   flex: 0 0 auto;
   width: var(--bento-tab-list-search-trigger-width);
   height: 100%;
-  transition: width var(--muxui-semantic-motion-reveal-transition);
+  transition: width var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
 
 /* The field row covers the trigger while search is open. The trigger stays for
@@ -478,7 +483,8 @@
   .bento-tab-list__search-trigger {
   visibility: hidden;
   transition:
-    width var(--muxui-semantic-motion-reveal-transition),
+    width var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
     visibility var(--muxui-semantic-motion-state-transition);
 }
 
@@ -513,12 +519,14 @@
 .bento-tab-list__search-trigger:hover .bento-tab-list__search-label,
 .bento-tab-list__search-button:focus-visible .bento-tab-list__search-label {
   opacity: 1;
-  transition: opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-state-transition-duration);
+  transition: opacity var(--muxui-semantic-motion-state-transition)
+    var(--muxui-semantic-motion-state-transition-duration);
 }
 
 /* Always mounted (TabList sets inert and drops data-open while closed) so the
    field can shrink back into the trigger. Closed it ignores the pointer, and it
-   hides only after the close transition has played. */
+   hides only after the close transition has played: the visibility step runs the
+   spring's full duration (the tail included), the same pair as the field row. */
 .bento-tab-list-search {
   position: absolute;
   top: 0;
@@ -535,7 +543,8 @@
 .bento-tab-list-search:not([data-open]) {
   visibility: hidden;
   pointer-events: none;
-  transition: visibility var(--muxui-semantic-motion-reveal-transition);
+  transition: visibility var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
 
 /* The field row is the box that grows. Open, it spans the bar (margin 0). Closed,
@@ -560,23 +569,28 @@
   overflow: hidden;
   opacity: 1;
   transition:
-    margin-inline-start var(--muxui-semantic-motion-reveal-transition),
-    padding-inline-start var(--muxui-semantic-motion-reveal-transition),
+    margin-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    padding-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
     opacity var(--muxui-semantic-motion-state-transition);
 }
 
 /* Closed: track the trigger through the same variable the trigger reads, so an
    open (or a close) always starts from, and returns to, wherever it is. The fade
-   waits for the slide to settle, so the row stays solid until it has covered
-   the trigger. */
+   waits for the spring's visual duration, when it has all but covered the
+   trigger, not its 400ms tail, so the row stays solid until then. */
 .bento-tab-list-search:not([data-open]) .bento-tab-list-search__field-row {
   margin-inline-start: calc(100% - var(--bento-tab-list-search-trigger-width));
   padding-inline-start: var(--bento-tab-list-search-trigger-inset);
   opacity: 0;
   transition:
-    margin-inline-start var(--muxui-semantic-motion-reveal-transition),
-    padding-inline-start var(--muxui-semantic-motion-reveal-transition),
-    opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-reveal-transition-duration);
+    margin-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    padding-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    opacity var(--muxui-semantic-motion-state-transition)
+      var(--muxui-semantic-motion-reveal-transition-spring-visual-duration);
 }
 
 .bento-tab-list-search__field-icon {
@@ -604,7 +618,8 @@
 
 .bento-tab-list-search[data-open] .bento-tab-list-search__input {
   opacity: 1;
-  transition: opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-state-transition-duration);
+  transition: opacity var(--muxui-semantic-motion-state-transition)
+    var(--muxui-semantic-motion-state-transition-duration);
 }
 
 .bento-tab-list-search__input::placeholder {
@@ -628,8 +643,11 @@
   opacity: 1;
   scale: 1;
   transition:
-    opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-state-transition-duration),
-    scale var(--muxui-semantic-motion-reveal-transition) var(--muxui-semantic-motion-state-transition-duration);
+    opacity var(--muxui-semantic-motion-state-transition)
+      var(--muxui-semantic-motion-state-transition-duration),
+    scale var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing)
+      var(--muxui-semantic-motion-state-transition-duration);
 }
 
 .muxui-icon-button.bento-tab-list-search__clear-button {
