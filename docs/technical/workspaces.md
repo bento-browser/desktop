@@ -394,14 +394,31 @@ wait too.
 
 Selection at startup. With the parked replay gone for restored workspaces,
 nothing selects a tab unless Firefox's selected tab is outside the workspace.
-`handleWorkspaceActivation` chooses a tab only when no sidebar tab of the
-workspace in that window is `active` in the registry, and the boot check in
-`bootReady` (before the panel restore) only when no sidebar tab of the global
-fallback workspace is active in any window. Both read hydrated state now. They can
-still fire when the window's selected tab belongs to another workspace or is a
-panel, or when the global fallback workspace is shown in no window; they then
-select the remembered tab or the first sidebar tab (`wsTabs[0]`, lowest index,
-which can be a pinned tab).
+`handleWorkspaceActivation` chooses a tab only when no tab of the workspace in
+that window is `active` in the registry, and the boot check in `bootReady`
+(after the panel restore from markers, before the persisted panel restore) only
+when no tab of the global fallback workspace is active in any window
+(`hasSelectedWorkspaceTab`, `workspaces/ActivationGuard.ts`). A selected panel of
+the workspace counts as a selected tab: it is the page the user was on, shown in
+the strip, and neither path selects a sidebar tab over it. Both read hydrated
+state now. They still fire, and then select the remembered tab or the first
+sidebar tab (`wsTabs[0]`, lowest index, which can be a pinned tab), when the
+window's selected tab belongs to another workspace, or when the global fallback
+workspace is shown in no window and none of its tabs is selected.
+
+A held activation can be superseded. Activations that arrive during boot all
+resume together when `bootReady` releases `startupRestored`, so one for workspace
+A can wait while its window switches to B, and then both run. The handler
+revalidates after the hold and after each await that precedes moving, creating or
+selecting a tab (the cross-window move, the parked-list restore, the adoption
+read, and the tab read inside `activateNonPanelTab`): if the window's workspace is
+no longer the activation's (`isActivationCurrent`, which asks `getActiveId` for
+the window, or the global fallback when there is no window), it returns without
+touching tabs or panels, and the activation that replaced it does the work. The
+parked-list restore, which takes the list before it awaits, still opens the tabs
+but selects none of them once superseded. A skipped activation leaves its
+workspace's persisted panels unrestored until its next activation, which is what
+a lazy workspace does anyway.
 
 Panels follow the same rule at startup: a panel tab Firefox restored with its
 session marker keeps its slot and is never opened a second time by the persisted
@@ -978,8 +995,9 @@ opening an unwanted blank tab before the moved tabs arrive.
   select a tab load it, pinned or not, and static reading finds two that can
   select a pinned tab (not run in Bento): the boot fallback in `background.ts` and
   `handleWorkspaceActivation` select `wsTabs[0]` (the registry sorts by index, so
-  a pinned tab comes first) when no sidebar tab of the workspace is active, which
-  at startup means Firefox's selected tab is outside the workspace. The third path,
+  a pinned tab comes first) when no tab of the workspace is active, which at
+  startup means Firefox's selected tab is outside the workspace (a selected panel
+  of it does not count as outside). The third path,
   `restoreParkedTabsForWorkspace` selecting the first parked entry that a live tab
   already showed, no longer runs for a workspace Firefox restored tabs for (see
   "Restart keeps what Firefox restored"); it still runs for a workspace shown
@@ -1005,6 +1023,12 @@ opening an unwanted blank tab before the moved tabs arrive.
   surviving window that received handed-over tabs counts as restored, and the drop
   deleted the list holding the tab the closed window could not move. A crash that
   restores only some windows is the one case this still gets wrong.
+- Do not let an activation act after its window moved on. Activations held during
+  boot resume together, and the handler awaits tab moves, parked-tab restores and
+  tab reads before it creates or selects tabs; an old one (A) used to select an A
+  tab after the window had switched to B. Keep `isCurrent()` after the hold and
+  after each such await, and keep the `stillCurrent` guard before the selections
+  in `restoreParkedTabsForWorkspace` and `activateNonPanelTab`.
 - Do not run the workspace activation handler during boot before the restore has
   finished. `restoreFromSession` activates a restored window's workspace before
   `hydrateWorkspaceIds`, so an activation that runs at once sees restored tabs
