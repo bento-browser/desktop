@@ -122,6 +122,13 @@ pref("browser.migrate.zen.enabled", true);
 // rehydrate.
 pref("browser.startup.page", 3);
 
+// Firefox restores pinned tabs at startup even with restore_on_demand on (its
+// default), so every pinned tab, in every workspace, would load at launch. Keep
+// them pending like any other restored tab: they load when first selected. The
+// tab that was selected at shutdown still loads, because Firefox always
+// restores the selected tab. Has no effect if restore_on_demand is turned off.
+pref("browser.sessionstore.restore_pinned_tabs_on_demand", true);
+
 // --- Chrome defaults ------------------------------------------------------
 // Firefox defaults to showing the bookmarks toolbar only on about:newtab.
 // Bento's shell uses its own vertical/navigation surfaces, so keep the native
