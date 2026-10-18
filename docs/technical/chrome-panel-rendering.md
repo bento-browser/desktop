@@ -376,7 +376,7 @@ adds its entry, and its id in the mount probe list, in the same change.
   transient states (closing, adoption) and would fight tools.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
-  contextTab` (or the multi-selection), and the new window adopts its first tab
+contextTab` (or the multi-selection), and the new window adopts its first tab
   only when `getTabToAdopt()` receives a XUL element. While the reconciler has
   tabs marked, `tab.splitview` is Bento's own-property marker (a plain object),
   so tearing out the selected tab or a panel tab failed silently: the source
@@ -430,11 +430,11 @@ adds its entry, and its id in the mount probe list, in the same change.
     (`panelToPromoteAfterDetach`) the way the last-tab handler does. Without it
     the panel ended up selected as the main tab of a workspace with an empty
     sidebar.
-  The extension-API entry points `windows.create({ tabId })` and cross-window
-  `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
-  wrapper; Bento calls neither on a marked tab (workspace activation moves
-  unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
-  after tearing the split view down; see the next item).
+    The extension-API entry points `windows.create({ tabId })` and cross-window
+    `tabs.move` read `tab.splitview` inside Firefox and are not covered by the
+    wrapper; Bento calls neither on a marked tab (workspace activation moves
+    unmarked stray tabs, and a closing window adopts its tabs with `gBrowser.adoptTab`
+    after tearing the split view down; see the next item).
 - Window close with live tabs. Closing a window destroyed every tab it hosted, so
   the tabs of a workspace that a second window had claimed, and the hidden tabs of
   other workspaces, lost their page state and were recreated from URLs later (see
