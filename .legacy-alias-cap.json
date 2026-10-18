@@ -1,5 +1,5 @@
 {
-  "total": 389,
+  "total": 366,
   "files": {
     "extensions/bento-shell/src/app.css": 14,
     "extensions/bento-shell/src/components/AddressBar/AddressBar.css": 8,
@@ -19,7 +19,6 @@
     "extensions/bento-shell/src/edit-workspace/edit-workspace.css": 1,
     "extensions/bento-shell/src/menu/menu.css": 5,
     "extensions/bento-shell/src/theme/bento-tokens.css": 79,
-    "extensions/bento-shell/src/theme/document-base.css": 1,
-    "extensions/bento-shell/src/welcome/welcome.css": 23
+    "extensions/bento-shell/src/theme/document-base.css": 1
   }
 }

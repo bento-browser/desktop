@@ -1,0 +1,29 @@
+/* Story-only layout: the frame that holds one welcome surface at a fixed container
+ * width, on the dialog's raised surface so fills and borders read as they do there. */
+.welcome-story-frame {
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  gap: var(--muxui-semantic-layout-control-content-gap);
+  padding: var(--muxui-semantic-layout-inset-large);
+  border: 1px solid var(--muxui-semantic-border-subtle);
+  border-radius: var(--muxui-semantic-shape-overlay-radius);
+  background-color: var(--muxui-semantic-surface-raised);
+}
+
+/* Container widths the stories simulate (rem is 16px). */
+.welcome-story-frame[data-width='240'] {
+  inline-size: 15rem;
+}
+
+.welcome-story-frame[data-width='320'] {
+  inline-size: 20rem;
+}
+
+.welcome-story-frame[data-width='600'] {
+  inline-size: 37.5rem;
+}
+
+.welcome-story-frame[data-width='720'] {
+  inline-size: 45rem;
+}
