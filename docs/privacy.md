@@ -19,8 +19,8 @@ Bento exposes three selectable privacy levels and one computed state.
 
 The native Bento category in Firefox Settings shows the benefits and caveats
 for all three selectable levels.
-Onboarding shows a compact explanation for the currently selected level before
-the user continues.
+Onboarding lists each level with its one-line summary and marks Standard as
+Recommended; the user can change the level at once and continue.
 
 Remote Safe Browsing download reputation is an independent advanced setting,
 not part of preset matching. It is off by default. When enabled, Firefox may
@@ -36,8 +36,8 @@ search engine among Firefox's currently visible search engines. Bento does not
 maintain a separate provider list; ids, names, icons, ordering, and availability
 come from Firefox `SearchService.getVisibleEngines()`. Provider icons are
 converted to renderable data URLs before reaching the shell UI. During
-onboarding, Bento adds supporting text that identifies visible privacy-oriented
-engines when they are present, without filtering the Firefox-provided list.
+onboarding, Bento tags visible privacy-oriented engines with a Private label
+when they are present, without filtering the Firefox-provided list.
 
 The runtime search setter is privileged because `browser.search` cannot set the
 default engine. Bento uses a bento-tools WebExtension experiment that calls
@@ -66,12 +66,16 @@ system-principal Settings document and derives its window/private binding;
 private sessions may change safe profile settings but cannot read or mutate
 backup storage.
 
-Settings and onboarding both dispatch the same protocol actions:
+Settings dispatches these protocol actions:
 
 - `privacy/setProtectionLevel`
 - `privacy/setAdvanced`
 - `privacy/setDefaultSearchEngine`
 - `privacy/requestSnapshot`
+
+Onboarding has no advanced controls and sends three of them: `privacy/requestSnapshot`
+on load, `privacy/setProtectionLevel` when a level is chosen (and again when the
+Privacy step is left), and `privacy/setDefaultSearchEngine` when an engine is chosen.
 
 ## uBlock Origin
 
