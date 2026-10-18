@@ -237,14 +237,13 @@ quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
-After a restart, pinned tabs that Firefox restored without loading show as
-unloaded (sleeping) in the sidebar and load when first opened, like other
-restored tabs. At launch the sidebar waits up to one second for them to be marked;
-on a slow start the rows can appear first and dim as that finishes. A pinned tab
-that was the selected tab, is a panel shown in the workspace, plays audio, or is
-sharing the camera, microphone or screen is left loaded. Pinned tabs that Firefox
-restores only after the first few seconds are not marked and keep showing as
-loaded until opened.
+After a restart, pinned tabs show as unloaded (sleeping) in the sidebar from the
+first moment it lists them, and load when first opened, like other restored tabs.
+The same holds for a window restored later, such as a reopened closed window or a
+restored session. The pinned tab that was selected at quit and pinned tabs shown
+as panels in the workspace load at launch. If Firefox's restore-on-demand
+settings for pinned tabs are turned off, pinned tabs load at launch and none is
+shown as unloaded.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar
