@@ -188,8 +188,9 @@ jobs:
       - name: Undefined shell tokens and bento layer order
         # Fails when shell CSS reads var(--x) with no fallback and nothing in the
         # shell CSS or the public @muxui/react styles declares --x, or uses a
-        # bento.* layer the top-level order statement in theme/muxui.css omits (or
-        # layer CSS the check cannot read).
+        # bento.* layer the root-level order statement in theme/muxui.css omits.
+        # Layers are read with PostCSS, and a sheet or layer CSS it cannot read
+        # also fails.
         run: pnpm run lint:tokens
 
       - name: Test (shell)
