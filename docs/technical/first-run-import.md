@@ -3,22 +3,52 @@
 Part of the [technical notes index](../core-functionality-technical.md).
 
 First-run browser-data import is handled from Bento's onboarding experience. The
-welcome overlay is a multi-step Bento-motif setup flow, and browser-data import
-is one step inside that flow. The intro step writes
-`BentoSettings.uiColorMode` from its Light, Dark, and Auto selector; Auto is
-stored as `system` and resolved by the theme/chrome flows below. Fresh profiles
-default `uiColorMode` to `light`. The sidebar frame and hidden welcome frame both
-request the overlay when the settings snapshot reports `welcomeSeen=false`;
-chrome treats `BENTO_OPEN_WELCOME` from either frame as an idempotent show
-request so cold-start title races do not suppress onboarding. The React dialog is
-controlled open, disables backdrop and keyboard dismissal, and has no first-step
-skip action; chrome also consumes Esc while welcome is visible without hiding it.
-Only the final `Start browsing` action sets `welcomeSeen=true`.
+welcome overlay (`welcome.html`, source under
+`extensions/bento-shell/src/welcome/`) is a seven-step centered Mux `Dialog`
+with one topic per step, and browser-data import is the third step. The persisted
+step value is the index below.
+
+| #   | Step id      | Behaviour                                                                                                                                    | State and messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | `welcome`    | Introduction and Get started.                                                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2   | `import`     | Non-interactive list of supported sources, Skip, and Import browser data.                                                                    | Skip is a plain step change to 3. Import browser data stores step 3 and signals chrome (below).                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 3   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                |
+| 4   | `search`     | Firefox's visible engines in two columns, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty. | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`; default `ddg`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 5   | `tour`       | Workspaces, panels, and command palette tiles with shortcuts.                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 6   | `ready`      | Summary of Appearance, Privacy, and Search with Change actions, and Start browsing.                                                          | Appearance and Privacy read `uiColorMode` and `privacyProtectionLevel` from the settings snapshot. Search reads `defaultSearchEngine` from the privacy snapshot (falling back to the settings value, then `ddg`) and shows the engine name from `availableSearchEngines`. Until that list loads it shows Firefox's name for a known default id (`ddg` as DuckDuckGo, and `google`, `bing`, `wikipedia`, `ebay`, `perplexity`), else the id itself. Change jumps to step 1, 3, or 4. Start browsing closes onboarding. |
+
+Steps 1 to 6 show "Step N of 6"; every step after Welcome has a Back action.
+Back, Continue, Skip, and Change are all ordinary step changes, so each one
+stores the new index like any other (see the resume paragraph below), and focus
+moves to the new step's heading after every change but the first render. `bento-tools` stays
+the source of truth: the shell only dispatches the port messages above and reads
+the resulting snapshots.
+
+The Appearance step writes `BentoSettings.uiColorMode` from its Light, Dark, and
+Auto tiles; Auto is stored as `system` and resolved by the theme/chrome flows
+(see [theming.md](theming.md)). Fresh profiles default `uiColorMode` to `light`.
+The write happens on selection, not on Continue, so the dialog and the browser
+repaint while the step is still open. The Privacy and Search steps dispatch the
+same actions as Settings (see [privacy-search.md](privacy-search.md)) and leave
+`welcomeSeen=false`.
+
+The sidebar frame and hidden welcome frame both request the overlay when the
+settings snapshot reports `welcomeSeen=false`; chrome treats `BENTO_OPEN_WELCOME`
+from either frame as an idempotent show request so cold-start title races do not
+suppress onboarding. The React dialog is controlled open, disables backdrop and
+keyboard dismissal, and has no dismiss or skip-onboarding action (the Import
+step's Skip only advances to Privacy); chrome also consumes Esc while welcome is
+visible without hiding it. Only the final `Start browsing` action sets
+`welcomeSeen=true`.
 When import is selected, the welcome page stores the next onboarding step in
 `browser.storage.local` as `bento-welcome-step` without setting
 `settings.welcomeSeen=true`, waits for that write before signaling
 `BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>`, and advances its own step state so
-the user continues onboarding after import closes. The localStorage mirror is
+the user continues onboarding after import closes. The shell always sends the
+real next step in that title (`3` after Import, so
+`BENTO_IMPORT_BROWSER_DATA_3_<ts>`), and chrome carries exactly that value into
+the restart handoff below. The localStorage mirror is
 only a development fallback because the extension `moz-extension://` origin can
 change across the restart-to-startup-migration path. The chrome frame loader also
 carries the next step through `BENTO_WELCOME_STEP` during the native restart and
@@ -73,7 +103,15 @@ startup-migration path, the authoritative resume source is the
 `#bentoWelcomeStep` hash that chrome stamps onto the welcome frame after reading
 `BENTO_WELCOME_STEP`; `browser.storage.local` and localStorage are secondary
 resume stores. Final dismiss paths clear the stored step, set `welcomeSeen=true`,
-and close the overlay.
+and close the overlay. A stored or hashed value outside 0 to 6 is ignored; with
+no valid resume source onboarding starts at Welcome.
+Chrome's fallback constant `BENTO_WELCOME_POST_IMPORT_STEP = '2'` in
+`bento-shell-mount.js` seeds `__bentoPendingWelcomeResumeStep` and is returned by
+`parseWelcomeImportResumeStep` when an import title cannot be parsed. In the
+seven-step flow index 2 is the Import step, so a fallback now lands on Import
+instead of the step after it. This is harmless because the shell always sends
+the real next step (3) and the fallback is not reached on the normal path; it is
+left for a later chrome change.
 For local development, `scripts/sync-builtin-addon-symlinks.sh` must refresh
 every built `engine/obj-*` app bundle because `scripts/dev-launch.sh` chooses
 the newest `Bento.app`; otherwise `pnpm run dev:fresh` can launch a stale bundle
@@ -204,3 +242,40 @@ dead selections. Do not open the Firefox/Zen handoff
 automatically at process start and do not route it through Bento's Settings
 backup/import code; that code is additive workspace JSON import and has
 different data-loss semantics.
+
+## Manual verification
+
+Use a dev build with a throwaway profile, never a daily-driver profile.
+
+1. Terminal: build the app (`pnpm run build`, or `pnpm run shell:sync` after a
+   shell-only change), then launch a fresh profile, for example with the dev
+   build and `--new-instance --profile $(mktemp -d)`. Note the directory if you
+   need to relaunch the same profile in step 8.
+2. Bento window: confirm the centered welcome dialog opens on Welcome with no
+   "Step N of 6" text. Press Esc and click the scrim; the dialog must stay open.
+3. Bento window: click Get started, then step through to Ready. Confirm
+   "Step N of 6" counts 1 to 6, Back is present on every step after Welcome, and
+   Back returns to the previous step.
+4. Bento window, Appearance: click Dark, then Light, then Auto. The dialog and
+   the browser chrome repaint immediately on each click, without pressing
+   Continue.
+5. Bento window, Import: confirm the source list is not clickable and the
+   Firefox and Zen note is visible. Click Skip and confirm Privacy opens; click
+   Back once to return to Import.
+6. Bento window, Import: click Import browser data. The embedded import host
+   opens above the dialog. Close it and confirm the dialog is on Privacy
+   (step 3), not Import. Repeat, but choose the Firefox/Zen action (it needs a
+   Firefox or Zen profile on the machine) and let Bento restart: after the
+   startup migration finishes, onboarding must reopen on Privacy. The
+   `#bentoWelcomeStep=3` hash is the authoritative resume source on this path;
+   for Zen, imported workspaces and tabs must also be present.
+7. Bento window, Privacy and Search: select a level and an engine, then open
+   Ready and confirm both appear in the summary. Click each Change action and
+   confirm it jumps to Appearance, Privacy, or Search, and that Continue walks
+   forward through the later steps. Confirm DuckDuckGo is preselected on a fresh
+   profile and privacy-oriented engines carry a Private tag.
+8. Terminal: quit Bento from a mid-flow step and relaunch with the same
+   `--profile` path. Confirm onboarding reopens on that step, not on Welcome.
+9. Bento window: click Start browsing. Confirm the dialog closes and does not
+   reopen after another quit and relaunch (`welcomeSeen` is true and
+   `bento-welcome-step` is cleared).

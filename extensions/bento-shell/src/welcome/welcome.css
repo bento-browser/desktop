@@ -1,285 +1,370 @@
-/* Welcome overlay — chrome-mounted, scrim-modal onboarding surface.
- * The Bento motif is expressed as a tray of durable compartments rather
- * than as a separate illustration asset. */
+/* Welcome overlay: chrome-mounted, scrim-modal first-run onboarding. One Mux
+ * Dialog keeps its frame and footer across the steps; only the stage changes.
+ * Sizes local to this surface are the --bento-welcome-* tokens in
+ * theme/bento-tokens.css. */
 @layer bento.components {
-  .bento-welcome {
-    --bento-welcome-viewport-gap: 2rem;
-
-    box-sizing: border-box;
-    inset: auto;
-    top: 50%;
-    left: 50%;
-    right: auto;
-    bottom: auto;
-    width: min(1200px, calc(100vw - var(--bento-welcome-viewport-gap)));
-    max-width: calc(100vw - var(--bento-welcome-viewport-gap));
-    height: min(800px, calc(100vh - var(--bento-welcome-viewport-gap)));
-    max-height: calc(100vh - var(--bento-welcome-viewport-gap));
-    transform: translate(-50%, -50%);
-    overflow: auto;
-    padding: var(--space-l);
-    border-radius: var(--radius-l);
-  }
-
   .bento-welcome > .muxui-dialog-content {
     display: flex;
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow-y: auto;
   }
 
-  .bento-welcome > .muxui-dialog-content > .bento-column {
-    flex: 1 1 auto;
-    min-height: 0;
+  /* Reserves the counter line on step 0 so the stage does not shift. */
+  .bento-welcome__counter {
+    min-block-size: 1lh;
   }
 
-  .bento-welcome__topline {
-    min-height: 1.09375rem;
-  }
-
-  .bento-welcome__brand-mark,
-  .bento-welcome__tray-icon {
-    display: inline-flex;
+  .bento-welcome__stage {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    color: var(--bento-workspace-accent);
+    justify-content: safe center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    text-align: center;
   }
 
-  .bento-welcome__brand-mark {
-    width: 0.9375rem;
-    height: 0.9375rem;
+  .bento-welcome__stage > * {
+    max-inline-size: 100%;
+    margin: 0;
   }
 
-  .bento-welcome__rail {
-    flex: 0 0 auto;
+  .bento-welcome__description {
+    max-inline-size: var(--bento-welcome-measure);
+    text-wrap: balance;
   }
 
-  .bento-welcome__rail-step {
-    display: inline-flex;
-    width: 0.3125rem;
-    height: 0.3125rem;
-    border-radius: var(--radius-full, 999px);
-    background-color: var(--neutral-24);
+  .bento-welcome__illustration {
+    block-size: var(--bento-welcome-illustration);
+    inline-size: auto;
   }
 
-  .bento-welcome__rail-step[data-active='true'] {
-    width: 0.9375rem;
-    background-color: var(--bento-workspace-accent);
+  /* The heading takes focus programmatically on each step change. */
+  .bento-welcome__title:focus {
+    outline: none;
   }
 
-  .bento-welcome__layout {
+  /* Footer: Back, centred dots, step actions. The compact layout is in the
+   * max-width block below. */
+  .bento-welcome__actions {
     display: grid;
-    grid-template-columns: minmax(23.75rem, 1.15fr) minmax(17.5rem, 0.85fr);
-    gap: var(--space-l);
-    align-items: stretch;
-    flex: 1 1 auto;
-    min-height: 0;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-action-gap);
   }
 
-  .bento-welcome__tray {
+  .bento-welcome__dots {
+    display: flex;
+    gap: var(--bento-welcome-dot);
+  }
+
+  .bento-welcome__dots > span {
+    inline-size: var(--bento-welcome-dot);
+    block-size: var(--bento-welcome-dot);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-border-strong);
+    transition-property: inline-size, background-color;
+    transition-duration: var(--muxui-semantic-motion-state-transition-duration);
+    transition-timing-function: var(--muxui-semantic-motion-state-transition-easing);
+  }
+
+  .bento-welcome__dots > [data-active] {
+    inline-size: var(--bento-welcome-dot-active);
+    background-color: var(--muxui-semantic-content-default);
+  }
+
+  /* Selectable options: a Mux single-select ToggleButtonGroup laid out as a grid.
+   * Its motion layer paints the selected fill; the fill is set to a subtle surface
+   * so each option's own Text colours stay readable over it. */
+  .bento-welcome__options {
+    --muxui-toggle-button-group-motion-fill: var(--muxui-semantic-surface-hover);
+
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-rows: minmax(6.25rem, 1fr);
-    gap: var(--space-xs);
-    min-height: 0;
+    grid-auto-rows: max-content;
+    gap: var(--muxui-semantic-layout-group-gap);
+    inline-size: 100%;
+    max-inline-size: var(--bento-welcome-measure);
+    border: 0;
+    overflow: visible;
   }
 
-  .bento-welcome__tray-cell {
+  .bento-welcome__options--rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Two columns; past eight engines the list scrolls. The inset keeps focus rings unclipped. */
+  .bento-welcome__options--grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-block-size: var(--bento-welcome-list);
+    padding: var(--muxui-semantic-layout-utility-inset);
+    overflow-y: auto;
+  }
+
+  .bento-welcome__options > .muxui-toggle-button-group-motion-indicator {
+    border-radius: var(--muxui-semantic-control-radius);
+  }
+
+  .bento-welcome__option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: start;
+    align-items: baseline;
+    justify-items: start;
+    gap: var(--muxui-semantic-layout-description-gap) var(--muxui-semantic-layout-group-gap);
+    min-block-size: 0;
+    padding: var(--muxui-semantic-layout-inset-small) var(--muxui-semantic-layout-inset-medium);
+    border: 0;
+    border-radius: var(--muxui-semantic-control-radius);
+    text-align: start;
+  }
+
+  .bento-welcome__option[data-selected] {
+    outline-color: var(--muxui-semantic-border-emphasis);
+  }
+
+  .bento-welcome__option-description {
+    grid-column: 1 / -1;
+  }
+
+  /* Descendant, not child: Mux clones the selected option into its motion layer. */
+  .bento-welcome__options--tiles .bento-welcome__option {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: var(--muxui-semantic-layout-inset-small);
+  }
+
+  /* Appearance mini window; each pane carries its own data-muxui-color-scheme. */
+  .bento-welcome__preview {
     display: flex;
-    flex-direction: column;
-    justify-content: end;
-    gap: var(--space-3xs);
-    min-width: 0;
-    padding: var(--space-s);
-    border: 1px solid var(--neutral-24);
-    border-radius: var(--radius-s);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--muxui-semantic-surface-background) 92%, transparent),
-        transparent
-      ),
-      var(--muxui-semantic-surface-raised);
-    overflow-wrap: anywhere;
+    justify-self: stretch;
+    block-size: var(--bento-welcome-preview);
+    overflow: hidden;
+    border: 1px solid var(--muxui-semantic-border-default);
+    border-radius: var(--muxui-semantic-shape-option-radius);
   }
 
-  .bento-welcome__tray-cell--hero {
-    grid-column: span 2;
-    grid-row: span 2;
-    justify-content: space-between;
-    border-color: color-mix(in srgb, var(--bento-workspace-accent) 42%, var(--neutral-24));
-    background: linear-gradient(
-      135deg,
-      color-mix(
-        in srgb,
-        var(--bento-workspace-accent) 16%,
-        var(--muxui-semantic-surface-background)
-      ),
-      var(--muxui-semantic-surface-raised)
-    );
-  }
-
-  .bento-welcome__copy {
-    justify-content: center;
-    min-width: 0;
-  }
-
-  .bento-welcome__eyebrow {
-    color: var(--bento-workspace-accent);
-  }
-
-  .bento-welcome__copy-title {
-    margin: 0;
-    color: var(--muxui-modal-title-color);
-    font-family: var(--muxui-semantic-typography-label-font-family);
-    font-size: var(--muxui-modal-title-font-size);
-    font-weight: var(--muxui-semantic-typography-label-font-weight);
-    line-height: 1.3;
-  }
-
-  .bento-welcome__copy-description {
-    margin: 0;
-    color: var(--muxui-semantic-content-muted);
-  }
-
-  .bento-welcome__theme-picker {
-    margin-block-start: var(--space-xs);
-  }
-
-  .bento-welcome__choice {
-    margin-block-start: var(--space-xs);
-    max-width: 17.5rem;
-  }
-
-  .bento-welcome__choice :where(.muxui-toggle-button-group) {
-    flex-wrap: wrap;
-  }
-
-  .bento-welcome__privacy-summary {
-    padding: var(--space-s);
-    border: 1px solid var(--neutral-24);
-    border-radius: var(--radius-s);
+  .bento-welcome__preview-pane {
+    display: flex;
+    flex: 1;
     background-color: var(--muxui-semantic-surface-background);
   }
 
-  .bento-welcome__theme-options {
-    align-items: center;
+  .bento-welcome__preview-pane > :first-child:not(:last-child) {
+    flex: 0 0 25%;
+    border-inline-end: 1px solid var(--muxui-semantic-border-subtle);
+    background-color: var(--muxui-semantic-surface-raised);
   }
 
-  .bento-welcome__theme-option {
-    flex: 0 0 auto;
-    min-width: 5rem;
-    justify-content: center;
+  .bento-welcome__preview-lines {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--bento-welcome-line);
+    padding: var(--muxui-semantic-layout-inset-small);
+  }
+
+  .bento-welcome__preview-lines > span {
+    block-size: var(--bento-welcome-line);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__preview-lines > :first-child {
+    inline-size: 60%;
+  }
+
+  /* Import sources and tour tiles: static lists. */
+  .bento-welcome__tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--muxui-semantic-layout-group-gap);
+    inline-size: 100%;
+    max-inline-size: var(--bento-welcome-measure);
+    padding: 0;
+    list-style: none;
+  }
+
+  .bento-welcome__tiles > li {
+    display: flex;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-group-gap);
+    padding: var(--muxui-semantic-layout-inset-small);
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: var(--muxui-semantic-control-radius);
+    color: var(--muxui-semantic-content-muted);
+    text-align: start;
+  }
+
+  .bento-welcome__tiles--tour {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-inline-size: none;
+  }
+
+  .bento-welcome__tiles--tour > li {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--muxui-semantic-layout-inset-medium);
+  }
+
+  .bento-welcome__diagram {
+    display: flex;
+    gap: var(--muxui-semantic-layout-inset-tiny);
+    block-size: var(--bento-welcome-diagram);
+    padding: var(--muxui-semantic-layout-inset-tiny);
+    border: 1px solid var(--muxui-semantic-border-default);
+    border-radius: var(--muxui-semantic-shape-option-radius);
+  }
+
+  .bento-welcome__diagram > span {
+    flex: 1;
+    border: 1px solid var(--muxui-semantic-border-strong);
+    border-radius: var(--muxui-semantic-shape-indicator-radius);
+    background-color: var(--muxui-semantic-surface-hover);
+  }
+
+  /* Workspaces: three boxes; Panels: a page and a narrower panel; Palette: one bar. */
+  .bento-welcome__diagram[data-diagram='0'] > span {
+    flex: 0 0 22%;
+  }
+
+  .bento-welcome__diagram[data-diagram='1'] > :first-child {
+    flex: 2;
+  }
+
+  .bento-welcome__diagram[data-diagram='2'] > span {
+    flex: 0 0 70%;
+    block-size: 50%;
+    margin: auto;
+  }
+
+  .bento-welcome__shortcut {
+    margin-block-start: auto;
+    font-size: var(--muxui-semantic-typography-text-xs-font-size);
+  }
+
+  .bento-welcome kbd {
+    padding-inline: var(--muxui-semantic-layout-utility-inset);
+    border: 1px solid var(--muxui-semantic-border-strong);
+    border-radius: var(--muxui-semantic-shape-indicator-radius);
+    font-family: var(--muxui-semantic-typography-mono-font-family);
     white-space: nowrap;
   }
 
-  .bento-welcome :where(.muxui-dialog-actions) {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-    justify-content: space-between;
+  .bento-welcome__summary {
+    inline-size: 100%;
+    max-inline-size: var(--bento-welcome-measure);
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: var(--muxui-semantic-control-radius);
+    text-align: start;
   }
 
-  .bento-welcome :where(.muxui-dialog-actions) > .bento-row {
-    flex: 1 1 auto;
+  .bento-welcome__summary > div {
+    display: grid;
+    grid-template-columns: 1fr 2fr auto;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-group-gap);
+    padding: var(--muxui-semantic-layout-tight-gap) var(--muxui-semantic-layout-inset-small);
   }
 
-  .bento-welcome :where(.bento-welcome__actions--intro) {
-    justify-content: flex-end;
+  .bento-welcome__summary > div + div {
+    border-block-start: 1px solid var(--muxui-semantic-border-subtle);
   }
 
-  @media (max-width: 980px) {
-    .bento-welcome {
-      --bento-welcome-viewport-gap: 1.25rem;
+  .bento-welcome__summary dd {
+    margin: 0;
+  }
 
-      top: 50%;
-      left: 50%;
-      right: auto;
-      bottom: auto;
-      transform: translate(-50%, -50%);
-      padding: var(--space-m);
-    }
+  /* Entry motion: the stage on each step change, then its list tiles staggered
+   * (animation-delay from WelcomeSurfaces). Option tiles move with the stage:
+   * Mux's selection layer measures them, so they do not animate on their own. */
+  .bento-welcome__stage,
+  .bento-welcome__tiles > li,
+  .bento-welcome__summary > div {
+    animation: bento-welcome-enter var(--muxui-semantic-motion-reveal-transition) both;
+  }
 
-    .bento-welcome__layout {
-      grid-template-columns: 1fr;
-    }
-
-    .bento-welcome__tray {
-      grid-auto-rows: minmax(4.375rem, auto);
+  @keyframes bento-welcome-enter {
+    from {
+      opacity: 0;
+      transform: translateY(var(--muxui-semantic-layout-inset-tiny));
     }
   }
 
-  @media (max-width: 480px) {
-    .bento-welcome {
-      --bento-welcome-viewport-gap: 0.5rem;
+  @keyframes bento-welcome-fade {
+    from {
+      opacity: 0;
+    }
+  }
 
-      top: 50%;
-      left: 50%;
-      right: auto;
-      bottom: auto;
-      transform: translate(-50%, -50%);
-      padding: var(--space-s);
+  @media (prefers-reduced-motion: reduce) {
+    .bento-welcome__stage,
+    .bento-welcome__tiles > li,
+    .bento-welcome__summary > div {
+      animation-name: bento-welcome-fade;
+    }
+  }
+
+  /* Compact: the grids lose columns and the footer reflows. The three footer
+   * columns need about 42rem of dialog on the Import step (two equal side
+   * columns around the dots), so below this width the dots take their own row
+   * and Back and the actions flow after them: on one row when they fit, else
+   * Back above the actions. */
+  @media (max-width: 48rem) {
+    .bento-welcome__tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .bento-welcome__topline {
-      align-items: flex-start;
-      flex-direction: column;
+    .bento-welcome__tiles--tour,
+    .bento-welcome__options--grid {
+      grid-template-columns: minmax(0, 1fr);
     }
 
-    .bento-welcome__tray {
-      grid-template-columns: 1fr 1fr;
+    .bento-welcome__actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
     }
 
-    .bento-welcome__tray-cell--hero {
-      grid-column: span 2;
-      grid-row: span 1;
+    .bento-welcome__actions > .bento-welcome__dots {
+      order: -1;
+      flex: 1 0 100%;
+      justify-content: center;
     }
 
-    .bento-welcome :where(.muxui-dialog-actions),
-    .bento-welcome :where(.muxui-dialog-actions) > .bento-row {
-      justify-content: stretch;
-    }
-
-    .bento-welcome :where(.muxui-dialog-actions) .muxui-button {
-      flex: 1 1 100%;
+    .bento-welcome__actions > .bento-welcome__next {
+      margin-inline-start: auto;
     }
   }
 }
 
 /* Mux UI's dialog surface sizing is unlayered. Keep this override unlayered
- * too so Bento onboarding can take over the chrome overlay instead of
- * inheriting the default 30rem modal width. */
+ * too so onboarding takes over the chrome overlay instead of inheriting the
+ * default 30rem modal width. The plain transform drops Mux's entry scale: the
+ * option groups' selection layer measures its buttons once on mount, and a
+ * scaled dialog would leave the selected fill smaller than its tile. */
 .muxui-dialog.bento-welcome {
-  --bento-welcome-viewport-gap: 2rem;
-
   box-sizing: border-box;
-  inset: auto;
-  top: 50%;
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  width: min(1200px, calc(100vw - var(--bento-welcome-viewport-gap)));
-  max-width: calc(100vw - var(--bento-welcome-viewport-gap));
-  height: min(800px, calc(100vh - var(--bento-welcome-viewport-gap)));
-  max-height: calc(100vh - var(--bento-welcome-viewport-gap));
   transform: translate(-50%, -50%);
-  overflow: auto;
-  padding: var(--space-l);
-  border-radius: var(--radius-l);
+  inline-size: min(
+    var(--bento-welcome-dialog-width),
+    calc(100vw - var(--bento-welcome-viewport-gap))
+  );
+  block-size: min(
+    var(--bento-welcome-dialog-height),
+    calc(100vh - var(--bento-welcome-viewport-gap))
+  );
+  max-inline-size: none;
+  max-block-size: none;
+  padding: var(--muxui-semantic-layout-inset-large) var(--muxui-semantic-layout-inset-xlarge);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 48rem) {
   .muxui-dialog.bento-welcome {
-    --bento-welcome-viewport-gap: 1.25rem;
+    --bento-welcome-viewport-gap: var(--bento-welcome-viewport-gap-compact);
 
-    padding: var(--space-m);
-  }
-}
-
-@media (max-width: 480px) {
-  .muxui-dialog.bento-welcome {
-    --bento-welcome-viewport-gap: 0.5rem;
-
-    padding: var(--space-s);
+    padding-inline: var(--muxui-semantic-layout-inset-large);
   }
 }

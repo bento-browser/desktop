@@ -22,26 +22,9 @@
 
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Button, Dialog, Select, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
-import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left';
-import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
-import Check from 'lucide-react/dist/esm/icons/check';
-import Download from 'lucide-react/dist/esm/icons/download';
-import Grid3X3 from 'lucide-react/dist/esm/icons/grid-3x3';
-import Monitor from 'lucide-react/dist/esm/icons/monitor';
-import Moon from 'lucide-react/dist/esm/icons/moon';
-import PanelsTopLeft from 'lucide-react/dist/esm/icons/panels-top-left';
-import Search from 'lucide-react/dist/esm/icons/search';
-import Shield from 'lucide-react/dist/esm/icons/shield';
-import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
-import Sun from 'lucide-react/dist/esm/icons/sun';
-import Workflow from 'lucide-react/dist/esm/icons/workflow';
-import type {
-  SearchEngineId,
-  SelectablePrivacyProtectionLevel,
-  UiColorModePref,
-} from '@shared/protocol';
-import { PRIVACY_LEVELS, PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
+import { Dialog, Text } from '@muxui/react';
+import type { SearchEngineChoice } from '@shared/protocol';
+import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
 import '../theme/muxui.css';
 
@@ -52,184 +35,39 @@ import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
-import {
-  requestWelcome,
-  WELCOME_CLOSE_PREFIX,
-  WELCOME_IMPORT_BROWSER_DATA_PREFIX,
-} from '../bridge/useWelcome';
+import { requestWelcome, WELCOME_CLOSE_PREFIX } from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
 import { usePrivacyStore } from '../state/privacy';
-import { Column } from '../components/primitives/BentoColumn';
-import { BentoIcon } from '../components/primitives/BentoIcon';
-import { Row } from '../components/primitives/BentoRow';
-import { BentoTray, PrivacySummary } from './WelcomeSurfaces';
+import {
+  APPEARANCE_OPTIONS,
+  ImportSources,
+  LAST_STEP,
+  parseStoredStep,
+  PRIVACY_OPTIONS,
+  ReadySummary,
+  searchEngineName,
+  searchEngineOptions,
+  startImport,
+  stepAfter,
+  stepIndexOf,
+  TourTiles,
+  WELCOME_STEPS,
+  WelcomeActions,
+  WelcomeOptions,
+  WelcomeStage,
+} from './WelcomeSurfaces';
 import './welcome.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
 initToolsPort();
 
-const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
-// macOS-style modifier glyphs vs. spelled-out names elsewhere. Matches
-// what users see printed on their keyboard.
-const MOD = IS_MAC ? '⌘' : 'Ctrl';
-const ALT = IS_MAC ? '⌥' : 'Alt';
-const SHIFT = IS_MAC ? '⇧' : 'Shift';
-const PANEL_CYCLE_SHORTCUT = IS_MAC
-  ? `${MOD}${SHIFT}← / ${MOD}${SHIFT}→`
-  : `${MOD}+${SHIFT}+← / ${MOD}+${SHIFT}+→`;
-
-// Tip rows — kept in sync with the native shortcut reference and chrome bindings.
-// Workspaces: bento-tools manifest binds Ctrl+Alt+N → workspace-N.
-// Palette: bento-shell-mount.js binds Cmd/Ctrl+Alt+P.
-// Panel cycle: bento-shell-mount.js binds Cmd/Ctrl+Shift+Left/Right.
-const TIPS: Array<{ shortcut: string; description: string }> = [
-  { shortcut: `${MOD}${ALT}1-${MOD}${ALT}9`, description: 'Switch workspaces' },
-  { shortcut: `${MOD}${ALT}P`, description: 'Open the command palette' },
-  { shortcut: 'Tab panel icon', description: 'Pin a tab as a side panel' },
-  { shortcut: PANEL_CYCLE_SHORTCUT, description: 'Cycle between panels' },
-];
-
 const WELCOME_STEP_STORAGE_KEY = 'bento-welcome-step';
 const WELCOME_STEP_HASH_KEY = 'bentoWelcomeStep';
 const WELCOME_TITLE_ID = 'bento-welcome-title';
 const WELCOME_DESCRIPTION_ID = 'bento-welcome-description';
 
-type BentoBox = readonly [string, string];
-type ThemeModeOption = {
-  value: UiColorModePref;
-  label: string;
-  icon: typeof Sun;
-};
-type OnboardingStep = {
-  id: 'intro' | 'import' | 'privacy' | 'search' | 'workspaces' | 'panels' | 'finish';
-  eyebrow: string;
-  title: string;
-  description: string;
-  icon: typeof Sun;
-  boxes: readonly BentoBox[];
-};
-
-const TIP_BOXES: readonly BentoBox[] = TIPS.map((tip) => [tip.shortcut, tip.description]);
-
-const UI_COLOR_MODE_OPTIONS: readonly ThemeModeOption[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'Auto', icon: Monitor },
-];
-
-const ONBOARDING_STEPS: readonly OnboardingStep[] = [
-  {
-    id: 'intro',
-    eyebrow: 'First box',
-    title: 'Welcome to Bento',
-    description:
-      'A workspace-first browser built on Firefox. Set up a few compartments, then start browsing.',
-    icon: Sparkles,
-    boxes: [
-      ['Main', 'Your active page'],
-      ['Panels', 'Useful pages beside it'],
-      ['Workspaces', 'Task-specific boxes'],
-      ['Theme', 'A visual identity per box'],
-    ],
-  },
-  {
-    id: 'import',
-    eyebrow: 'Import',
-    title: 'Bring your browser data',
-    description:
-      'Copy bookmarks, history, passwords, and compatible Firefox-family profile data before you settle in.',
-    icon: Download,
-    boxes: [
-      ['Bookmarks', 'Saved places'],
-      ['History', 'Recent trails'],
-      ['Passwords', 'Logins'],
-      ['Profiles', 'Firefox and Zen'],
-    ],
-  },
-  {
-    id: 'privacy',
-    eyebrow: 'Privacy',
-    title: 'Choose a protection level',
-    description:
-      "Standard is Bento's compatibility-first default. Enhanced and Hardened add stricter browser protections.",
-    icon: Shield,
-    boxes: [
-      ['Standard', 'Compatibility-first'],
-      ['Enhanced', 'RFP and tighter WebRTC'],
-      ['Hardened', 'Reduced persistence'],
-      ['Custom', 'Detected later in Settings'],
-    ],
-  },
-  {
-    id: 'search',
-    eyebrow: 'Search',
-    title: 'Choose default search',
-    description:
-      'Fresh profiles start with DuckDuckGo. You can switch to any visible Firefox search engine now or later.',
-    icon: Search,
-    boxes: [
-      ['Default', 'DuckDuckGo'],
-      ['Providers', 'Firefox visible engines'],
-      ['Names', 'From SearchService'],
-      ['Settings', 'Change later'],
-    ],
-  },
-  {
-    id: 'workspaces',
-    eyebrow: 'Workspaces',
-    title: 'Keep each task in its own box',
-    description:
-      'Workspaces preserve tabs, panels, layout, and theme so each mode of work stays ready.',
-    icon: Workflow,
-    boxes: [
-      ['Research', 'Sources and notes'],
-      ['Writing', 'Draft and references'],
-      ['Ops', 'Dashboards'],
-      ['Personal', 'Everyday browsing'],
-    ],
-  },
-  {
-    id: 'panels',
-    eyebrow: 'Panels',
-    title: 'Arrange pages like compartments',
-    description:
-      'Promote tabs into panels, keep references nearby, and move through the layout without juggling windows.',
-    icon: PanelsTopLeft,
-    boxes: TIP_BOXES,
-  },
-  {
-    id: 'finish',
-    eyebrow: 'Ready',
-    title: 'Your Bento is ready',
-    description:
-      'Start with a clean workspace. Add panels as you go and let Bento remember the arrangement.',
-    icon: Check,
-    boxes: [
-      ['Open', 'Browse normally'],
-      ['Pin', 'Keep pages close'],
-      ['Split', 'Shape the workspace'],
-      ['Return', 'Pick up later'],
-    ],
-  },
-] as const;
-
 type StepIndex = number;
-
-function parseStoredStep(value: unknown): StepIndex | null {
-  const stored =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (Number.isInteger(stored) && stored >= 0 && stored < ONBOARDING_STEPS.length) {
-    return stored;
-  }
-
-  return null;
-}
 
 async function readExtensionStoredStep(): Promise<StepIndex | null> {
   if (typeof browser === 'undefined' || !browser.storage?.local) return null;
@@ -318,175 +156,39 @@ function close() {
   sendChromeTitle(`${WELCOME_CLOSE_PREFIX}_${Date.now()}`);
 }
 
-async function importBrowserData(nextStep: StepIndex): Promise<void> {
-  await storeStep(nextStep);
-  sendChromeTitle(`${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`);
-}
-
-function StepRail({ current }: { current: StepIndex }) {
-  return (
-    <Row gap="xs" align="center" className="bento-welcome__rail" aria-hidden="true">
-      {ONBOARDING_STEPS.map((step, index) => (
-        <span
-          className="bento-welcome__rail-step"
-          data-active={index === current ? 'true' : undefined}
-          key={step.id}
-        />
-      ))}
-    </Row>
-  );
-}
-
-function ThemeModePicker({
-  value,
-  onChange,
-}: {
-  value: UiColorModePref | undefined;
-  onChange: (next: UiColorModePref) => void;
-}) {
-  const current = value ?? 'light';
-
-  return (
-    <Column gap="xs" className="bento-welcome__theme-picker">
-      <Text variant="label" size="sm" color="muted">
-        Theme
-      </Text>
-      <Row gap="xs" wrap className="bento-welcome__theme-options">
-        {UI_COLOR_MODE_OPTIONS.map((option) => {
-          const selected = current === option.value;
-          return (
-            <Button
-              key={option.value}
-              variant={selected ? 'primary' : 'neutral'}
-              size="sm"
-              aria-pressed={selected}
-              onActivate={() => onChange(option.value)}
-              className="bento-welcome__theme-option"
-            >
-              <BentoIcon icon={option.icon} size="sm" />
-              {option.label}
-            </Button>
-          );
-        })}
-      </Row>
-    </Column>
-  );
-}
-
-function firstSelectedKey(keys: readonly string[]): string | null {
-  return keys[0] ?? null;
-}
-
-function PrivacyLevelPicker({ value }: { value: SelectablePrivacyProtectionLevel | undefined }) {
-  const current = value ?? 'standard';
-  const detail = PRIVACY_LEVEL_DETAILS[current];
-
-  return (
-    <Column gap="xs" className="bento-welcome__choice">
-      <ToggleButtonGroup
-        aria-label="Privacy protection level"
-        selectionMode="single"
-        selectedIds={[current]}
-        onSelectionChange={(keys) => {
-          const next = firstSelectedKey(keys);
-          if (!next) return;
-          dispatch({
-            type: 'privacy/setProtectionLevel',
-            level: next as SelectablePrivacyProtectionLevel,
-          });
-        }}
-      >
-        {PRIVACY_LEVELS.map((level) => (
-          <ToggleButton id={level.id} key={level.id} size="md">
-            {level.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
-      <PrivacySummary detail={detail} />
-    </Column>
-  );
-}
-
-const PRIVACY_ORIENTED_SEARCH_MATCHERS = [
-  'duckduckgo',
-  'ddg',
-  'qwant',
-  'ecosia',
-  'startpage',
-  'brave',
-] as const;
-
-function isPrivacyOrientedSearchEngine(engine: { id: string; name: string }) {
-  const haystack = `${engine.id} ${engine.name}`.toLowerCase();
-  return PRIVACY_ORIENTED_SEARCH_MATCHERS.some((matcher) => haystack.includes(matcher));
-}
-
-function SearchPrivacyRecommendation({
-  availableSearchEngines,
-}: {
-  availableSearchEngines: readonly { id: SearchEngineId; name: string }[];
-}) {
-  if (availableSearchEngines.length === 0) {
-    return (
-      <Text variant="body" size="sm" color="muted">
-        Loading Firefox search engines…
-      </Text>
-    );
-  }
-
-  const recommended = availableSearchEngines.filter(isPrivacyOrientedSearchEngine);
-  if (recommended.length === 0) {
-    return (
-      <Text variant="body" size="sm" color="muted">
-        For privacy, prefer a provider with minimal profiling and clear retention limits. Bento uses
-        Firefox&rsquo;s visible search engines without adding its own provider list.
-      </Text>
-    );
-  }
-
-  const names = recommended.map((engine) => engine.name).join(', ');
-  return (
-    <Text variant="body" size="sm" color="muted">
-      Recommended for privacy: {names}. These are generally better choices when you want less search
-      profiling; choose another engine when account integration or result preference matters more.
-    </Text>
-  );
-}
-
 function SearchEnginePicker({
   value,
-  availableSearchEngines,
+  engines,
 }: {
-  value: SearchEngineId | undefined;
-  availableSearchEngines: readonly { id: SearchEngineId; name: string }[];
+  value: string;
+  engines: readonly SearchEngineChoice[];
 }) {
-  const [optimisticValue, setOptimisticValue] = useState<SearchEngineId | undefined>();
-  const selectedKey = optimisticValue ?? value ?? 'ddg';
+  // Optimistic until the next privacy snapshot reports the stored engine.
+  const [optimisticValue, setOptimisticValue] = useState<string>();
 
   useEffect(() => {
     setOptimisticValue(undefined);
   }, [value]);
 
+  if (engines.length === 0) {
+    return (
+      <Text as="p" size="sm" color="muted">
+        Loading Firefox search engines…
+      </Text>
+    );
+  }
+
   return (
-    <Column gap="xs" className="bento-welcome__choice">
-      <Select.Root
-        label="Default search engine"
-        placeholder="Select search engine"
-        value={selectedKey}
-        items={availableSearchEngines.map((engine) => ({
-          id: engine.id,
-          label: engine.name,
-          textValue: engine.name,
-        }))}
-        onChange={(key) => {
-          if (!key) return;
-          const next = key as SearchEngineId;
-          setOptimisticValue(next);
-          dispatch({ type: 'privacy/setDefaultSearchEngine', id: next });
-        }}
-      />
-      <SearchPrivacyRecommendation availableSearchEngines={availableSearchEngines} />
-    </Column>
+    <WelcomeOptions
+      label="Default search engine"
+      layout="grid"
+      options={searchEngineOptions(engines)}
+      value={optimisticValue ?? value}
+      onChange={(next) => {
+        setOptimisticValue(next);
+        dispatch({ type: 'privacy/setDefaultSearchEngine', id: next });
+      }}
+    />
   );
 }
 
@@ -494,51 +196,36 @@ function WelcomeApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const welcomeSeen = useSettingsStore((s) => s.current?.welcomeSeen);
-  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
-  const privacyProtectionLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel);
-  const defaultSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
+  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode) ?? 'light';
+  const privacyLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel) ?? 'standard';
+  const storedSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
   const privacy = usePrivacyStore((s) => s.settings);
   const [stepIndex, setStepIndex] = useState<StepIndex>(0);
   const [hasLoadedStoredStep, setHasLoadedStoredStep] = useState(false);
   const hasRequestedOpenRef = useRef(false);
-  const activeStep = ONBOARDING_STEPS[stepIndex] ?? ONBOARDING_STEPS[0]!;
-  const isIntro = stepIndex === 0;
-  const isImport = activeStep.id === 'import';
-  const isPrivacy = activeStep.id === 'privacy';
-  const isSearch = activeStep.id === 'search';
-  const isFinish = stepIndex === ONBOARDING_STEPS.length - 1;
-
-  const setUiColorMode = (next: UiColorModePref) =>
-    dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const shownStepRef = useRef<StepIndex | null>(null);
+  const step = WELCOME_STEPS[stepIndex] ?? WELCOME_STEPS[0]!;
+  const engines = privacy?.availableSearchEngines ?? [];
+  const searchEngine = privacy?.defaultSearchEngine ?? storedSearchEngine ?? 'ddg';
 
   const setStep = (nextStep: StepIndex) => {
-    const clamped = Math.max(0, Math.min(nextStep, ONBOARDING_STEPS.length - 1));
+    const clamped = Math.max(0, Math.min(nextStep, LAST_STEP));
     void storeStep(clamped);
     setStepIndex(clamped);
   };
 
   const nextStep = () => {
-    if (isFinish) {
-      close();
-      return;
-    }
-    if (isPrivacy) {
-      dispatch({
-        type: 'privacy/setProtectionLevel',
-        level: privacyProtectionLevel ?? 'standard',
-      });
+    if (step.id === 'privacy') {
+      dispatch({ type: 'privacy/setProtectionLevel', level: privacyLevel });
     }
     setStep(stepIndex + 1);
   };
 
-  const previousStep = () => {
-    setStep(stepIndex - 1);
-  };
-
   const startBrowserDataImport = () => {
-    const followingStep = Math.min(stepIndex + 1, ONBOARDING_STEPS.length - 1);
+    const followingStep = stepAfter(stepIndex);
     setStepIndex(followingStep);
-    void importBrowserData(followingStep);
+    void startImport(followingStep, storeStep, sendChromeTitle);
   };
 
   useEffect(() => {
@@ -555,6 +242,15 @@ function WelcomeApp() {
     };
   }, []);
 
+  // Focus follows the step: the new heading after a change, not on the first render.
+  useEffect(() => {
+    if (!hasLoadedStoredStep) return;
+    if (shownStepRef.current !== null && shownStepRef.current !== stepIndex) {
+      headingRef.current?.focus();
+    }
+    shownStepRef.current = stepIndex;
+  }, [hasLoadedStoredStep, stepIndex]);
+
   // Chrome creates this document on the first-run open and reveals it on this signal.
   useOverlayReadySignal('welcome');
 
@@ -570,92 +266,91 @@ function WelcomeApp() {
 
   if (!hasLoadedStoredStep) return null;
 
+  const body = (() => {
+    switch (step.id) {
+      case 'appearance':
+        return (
+          <WelcomeOptions
+            label="Appearance"
+            layout="tiles"
+            options={APPEARANCE_OPTIONS}
+            value={uiColorMode}
+            onChange={(next) =>
+              dispatch({ type: 'settings/update', changes: { uiColorMode: next } })
+            }
+          />
+        );
+      case 'import':
+        return <ImportSources />;
+      case 'privacy':
+        return (
+          <WelcomeOptions
+            label="Protection level"
+            layout="rows"
+            options={PRIVACY_OPTIONS}
+            value={privacyLevel}
+            onChange={(level) => dispatch({ type: 'privacy/setProtectionLevel', level })}
+          />
+        );
+      case 'search':
+        return <SearchEnginePicker value={searchEngine} engines={engines} />;
+      case 'tour':
+        return <TourTiles />;
+      case 'ready':
+        return (
+          <ReadySummary
+            rows={[
+              {
+                label: 'Appearance',
+                value:
+                  APPEARANCE_OPTIONS.find((option) => option.id === uiColorMode)?.label ?? 'Light',
+                step: stepIndexOf('appearance'),
+              },
+              {
+                label: 'Privacy',
+                value: PRIVACY_LEVEL_DETAILS[privacyLevel].label,
+                step: stepIndexOf('privacy'),
+              },
+              {
+                label: 'Search',
+                value: searchEngineName(engines, searchEngine),
+                step: stepIndexOf('search'),
+              },
+            ]}
+            onChange={setStep}
+          />
+        );
+      default:
+        return null;
+    }
+  })();
+
   return (
     <Dialog
       open={true}
       dismissable={false}
       aria-labelledby={WELCOME_TITLE_ID}
-      aria-describedby={WELCOME_DESCRIPTION_ID}
+      aria-describedby={step.description ? WELCOME_DESCRIPTION_ID : undefined}
       className="bento-welcome"
-      actionsClassName={isIntro ? 'bento-welcome__actions--intro' : undefined}
+      actionsClassName="bento-welcome__actions"
       actions={
-        <>
-          {!isIntro ? (
-            <Button variant="neutral" onActivate={previousStep}>
-              <BentoIcon icon={ArrowLeft} size="sm" />
-              Back
-            </Button>
-          ) : null}
-
-          {isImport ? (
-            <Row gap="xs" wrap justify="end">
-              <Button variant="neutral" onActivate={nextStep}>
-                Skip import
-              </Button>
-              <Button variant="primary" onActivate={startBrowserDataImport}>
-                <BentoIcon icon={Download} size="sm" />
-                Import browser data
-              </Button>
-            </Row>
-          ) : (
-            <Button variant="primary" onActivate={nextStep}>
-              {isFinish ? 'Start browsing' : 'Next'}
-              {!isFinish ? <BentoIcon icon={ArrowRight} size="sm" /> : null}
-            </Button>
-          )}
-        </>
+        <WelcomeActions
+          index={stepIndex}
+          onBack={() => setStep(stepIndex - 1)}
+          onNext={step.id === 'ready' ? close : nextStep}
+          onImport={startBrowserDataImport}
+        />
       }
     >
-      <Column gap="l">
-        <Row align="center" justify="between" gap="m" className="bento-welcome__topline">
-          <Row align="center" gap="xs">
-            <span className="bento-welcome__brand-mark" aria-hidden="true">
-              <BentoIcon icon={Grid3X3} />
-            </span>
-            <Text variant="label" size="sm" color="muted">
-              Bento onboarding
-            </Text>
-          </Row>
-          <StepRail current={stepIndex} />
-        </Row>
-
-        <div className="bento-welcome__layout">
-          <BentoTray icon={activeStep.icon} eyebrow={activeStep.eyebrow} boxes={activeStep.boxes} />
-
-          <Column gap="m" className="bento-welcome__copy">
-            <Text variant="label" size="sm" className="bento-welcome__eyebrow">
-              {activeStep.eyebrow}
-            </Text>
-            <Text
-              as="h1"
-              variant="label"
-              size="lg"
-              id={WELCOME_TITLE_ID}
-              className="bento-welcome__copy-title"
-            >
-              {activeStep.title}
-            </Text>
-            <Text
-              as="p"
-              variant="body"
-              size="md"
-              color="muted"
-              id={WELCOME_DESCRIPTION_ID}
-              className="bento-welcome__copy-description"
-            >
-              {activeStep.description}
-            </Text>
-            {isIntro ? <ThemeModePicker value={uiColorMode} onChange={setUiColorMode} /> : null}
-            {isPrivacy ? <PrivacyLevelPicker value={privacyProtectionLevel} /> : null}
-            {isSearch ? (
-              <SearchEnginePicker
-                value={privacy?.defaultSearchEngine ?? defaultSearchEngine}
-                availableSearchEngines={privacy?.availableSearchEngines ?? []}
-              />
-            ) : null}
-          </Column>
-        </div>
-      </Column>
+      <WelcomeStage
+        step={step}
+        index={stepIndex}
+        titleId={WELCOME_TITLE_ID}
+        descriptionId={WELCOME_DESCRIPTION_ID}
+        headingRef={headingRef}
+      >
+        {body}
+      </WelcomeStage>
     </Dialog>
   );
 }

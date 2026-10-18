@@ -137,11 +137,14 @@ The address palette reads the same visible-engine data through the narrow
 exists only for the one-shot search picker and never dispatches
 `privacy/setDefaultSearchEngine`.
 
-Onboarding in `extensions/bento-shell/src/welcome/main.tsx` adds privacy and
-search steps after browser-data import. Those steps dispatch the same privacy
-actions as Settings, render compact selected-level benefit/caveat copy from
-`PRIVACY_LEVEL_DETAILS`, and still leave `welcomeSeen=false` until final
-onboarding completion.
+Onboarding in `extensions/bento-shell/src/welcome/` adds privacy and search
+steps after browser-data import. Those steps dispatch the same privacy actions
+as Settings (`privacy/setProtectionLevel` on selection and again on Continue,
+`privacy/setDefaultSearchEngine` optimistically on selection). The Privacy step
+shows each `PRIVACY_LEVELS` entry's label and one-line `summary` with a
+Recommended tag on Standard; the Search step lists the visible engines and tags
+the ones that match a small built-in list of privacy-oriented providers as
+Private. Both leave `welcomeSeen=false` until the final Start browsing action.
 
 uBlock Origin is bundled as a third built-in extension under
 `extensions/ublock-origin/`. Its provenance and update notes are recorded in
