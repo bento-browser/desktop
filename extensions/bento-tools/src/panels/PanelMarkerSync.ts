@@ -14,6 +14,7 @@ type MarkerPanels = Pick<
   | 'getPanelRestoreLocation'
   | 'getPanelKey'
   | 'workspacesWithPersistedUrls'
+  | 'dropPersistedPanel'
 >;
 
 export interface PanelMarkerSync {
@@ -27,6 +28,13 @@ export interface PanelMarkerSync {
   capturedKey(tabId: number): string | undefined;
   /** Drops the remembered keys once the persisted entries are bound. */
   releaseKeys(tabIds: Iterable<number>): void;
+  /**
+   * A tab was removed. Its remembered key goes either way. When the user closed it, the entry
+   * its panel was restored for goes too, from the workspace's persisted entries and layout, so
+   * applying them does not open the panel again. When its window is closing the entry stays: the
+   * entries are what the next start restores the window's panels from.
+   */
+  tabRemoved(tabId: number, removeInfo: { isWindowClosing: boolean }): void;
   /**
    * Rewrites the session marker of every panel in the workspace with its current slot and
    * persisted layout key. Does nothing while the workspace still has persisted entries to apply.
@@ -47,7 +55,7 @@ export interface PanelMarkerSync {
  * it has; the sync that follows the apply writes the final keys.
  */
 export function createPanelMarkerSync(panels: MarkerPanels): PanelMarkerSync {
-  const keyByTabId = new Map<number, string>();
+  const keyByTabId = new Map<number, { workspaceId: string; panelKey: string }>();
   const hasUnappliedEntries = (workspaceId: string) =>
     panels.workspacesWithPersistedUrls().includes(workspaceId);
 
@@ -55,11 +63,18 @@ export function createPanelMarkerSync(panels: MarkerPanels): PanelMarkerSync {
     captureKey(tabId, marker) {
       if (!marker.panelKey || keyByTabId.has(tabId)) return;
       if (!hasUnappliedEntries(marker.workspaceId)) return;
-      keyByTabId.set(tabId, marker.panelKey);
+      keyByTabId.set(tabId, { workspaceId: marker.workspaceId, panelKey: marker.panelKey });
     },
-    capturedKey: (tabId) => keyByTabId.get(tabId),
+    capturedKey: (tabId) => keyByTabId.get(tabId)?.panelKey,
     releaseKeys(tabIds) {
       for (const tabId of tabIds) keyByTabId.delete(tabId);
+    },
+    tabRemoved(tabId, { isWindowClosing }) {
+      const captured = keyByTabId.get(tabId);
+      keyByTabId.delete(tabId);
+      if (captured && !isWindowClosing) {
+        panels.dropPersistedPanel(captured.workspaceId, captured.panelKey);
+      }
     },
     sync(workspaceId) {
       if (hasUnappliedEntries(workspaceId)) return;
