@@ -211,7 +211,13 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   between the dev server (one `<style>` per CSS module in import order), the
   build (one `style.css` concatenated in chunk order) and Ladle (story load
   order). `pnpm run lint:tokens` fails when a shell stylesheet uses a `bento.*`
-  layer missing from that list (chrome CSS under `src/browser` is not scanned).
+  layer missing from that list. Only a top-level `@layer a, b;` statement in
+  `muxui.css` counts as the list, not one inside `@media` or another block, and
+  the check rejects layer CSS it cannot read instead of guessing: an anonymous
+  `@layer { }` block, a layer name that is not plain dotted identifiers (an escape
+  can spell `bento`), an `@import ... layer(bento...)`, and an `@layer` rule with
+  no `;` or block. Keywords match in any case, layer names do not, and custom
+  property values are skipped. Chrome CSS under `src/browser` is not scanned.
   `panel-newtab.css` does not import `muxui.css` and declares only
   `bento.tokens`.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not

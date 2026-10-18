@@ -15,9 +15,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // public @muxui/react styles.css/themes.css. Comments, strings and url() payloads are ignored.
 // Native chrome CSS under src/browser is not scanned: it reads Firefox's own tokens too.
 //
-// The same run also fails when a shell stylesheet uses a `bento` or `bento.*` cascade layer that
-// the order statement in theme/muxui.css does not list. An unlisted layer ranks by whichever file
-// declares it first, and that differs between the dev server, the build and Ladle. Chrome CSS
+// The same run also checks the `bento` and `bento.*` cascade layers of every shell stylesheet. An
+// unlisted layer ranks by whichever file declares it first, and that differs between the dev
+// server, the build and Ladle, so each must appear in the top-level `@layer a, b;` statement in
+// theme/muxui.css (the only order that counts). The check fails closed on CSS it cannot read: an
+// anonymous `@layer` block, a layer name that is not plain dotted identifiers (an escape can spell
+// `bento`), and an `@import` into a `bento` layer. Custom property values are skipped. Chrome CSS
 // under src/browser (its own document and `bento.chrome-theme` layer) is not scanned.
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
@@ -77,69 +80,107 @@ export function findUndefinedReads({ scanned, declaredIn }) {
   return missing;
 }
 
-const LAYER_TOKEN = /@layer(?![\w-])([^;{}]*)([;{])|@import(?![\w-])[^;{}]*;|[{}]/g;
+// One pass over masked CSS, in source order: an '@layer' rule (its params, then ';' or '{', or ''
+// when '}' or the end of input comes first), an '@import' rule, the start of a custom property
+// declaration (its value may hold braces and '@layer' text, so it is skipped) and braces.
+const LAYER_TOKEN =
+  /@layer(?![\w-])([^;{}]*)([;{]|(?=}|$))|@import(?![\w-])([^;{}]*)|(?<=[{};]\s*)--[\w-]*\s*:|[{}]/gi;
+const LAYER_FUNCTION = /(?<![\w-])layer\(\s*([^)]*?)\s*\)/i;
+const PLAIN_NAME = /^-?[A-Za-z_][\w-]*(?:\.-?[A-Za-z_][\w-]*)*$/;
+const isBentoLayer = (name) => name === 'bento' || name.startsWith('bento.');
+const unreadable = (name) =>
+  name
+    ? `layer name '${name}' is not plain dotted identifiers (escapes and other tokens are not read)`
+    : 'anonymous @layer is not read: name the layer';
+
+/** Index after the custom property value that starts at `from`: past its ';', or at its closing '}'. */
+function valueEnd(source, from) {
+  let depth = 0;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === '{') depth++;
+    else if (char === '}' && depth === 0) return index;
+    else if (char === '}') depth--;
+    else if (char === ';' && depth === 0) return index + 1;
+  }
+  return source.length;
+}
 
 /**
- * Every cascade layer `css` names, qualified by the layers around it (`@layer bento { @layer x {} }`
- * is `bento.x`). `kind` is `statement` for `@layer a, b;`, `block` for `@layer a { }` and `import`
- * for `@import url() layer(a);`. Comments, strings and url() payloads are ignored.
+ * The cascade layers `css` names. `names` is every layer named, qualified by the layers around it
+ * (`@layer bento { @layer x {} }` is `bento.x`). `ordered` is the names in top-level `@layer a, b;`
+ * statements, the only ones that order layers (a statement inside a block such as `@media` may not
+ * apply). `unsupported` is one reason per construct it does not read, which contributes no names:
+ * an anonymous block, a name that is not plain dotted identifiers, an `@import ... layer(bento...)`
+ * (the imported sheet's own layers would nest under it unseen) and an `@layer` with no end.
  */
-export function layerUses(css) {
-  const uses = [];
+export function readLayers(css) {
+  const source = maskText(css);
+  const names = [];
+  const ordered = [];
+  const unsupported = new Set();
   const scopes = ['']; // the enclosing layer path at each open block
   const qualify = (name) => (scopes.at(-1) ? `${scopes.at(-1)}.${name}` : name);
-  for (const [token, params, end] of maskText(css).matchAll(LAYER_TOKEN)) {
-    if (token === '}') {
-      if (scopes.length > 1) scopes.pop();
-    } else if (token === '{') {
+  const token = new RegExp(LAYER_TOKEN);
+  let match;
+  while ((match = token.exec(source))) {
+    const [text, params, end, imported] = match;
+    if (text === '{') {
       scopes.push(scopes.at(-1));
-    } else if (token.startsWith('@import')) {
-      const name = /\blayer\(\s*([^)\s]+)\s*\)/.exec(token)?.[1];
-      if (name) uses.push({ name: qualify(name), kind: 'import' });
+    } else if (text === '}') {
+      if (scopes.length > 1) scopes.pop();
+    } else if (text.startsWith('--')) {
+      token.lastIndex = valueEnd(source, token.lastIndex);
+    } else if (imported !== undefined) {
+      const name = LAYER_FUNCTION.exec(imported)?.[1];
+      if (name === undefined) continue;
+      if (!PLAIN_NAME.test(name)) unsupported.add(unreadable(name));
+      else if (isBentoLayer(name))
+        unsupported.add(
+          `@import into layer ${name} is not read: its own layers would nest under it`,
+        );
+    } else if (end === '') {
+      unsupported.add("@layer with no ';' or block");
     } else {
-      const names = params
-        .split(',')
-        .map((name) => name.trim())
-        .filter(Boolean)
-        .map(qualify);
-      for (const name of names) uses.push({ name, kind: end === ';' ? 'statement' : 'block' });
-      if (end === '{') scopes.push(names[0] ?? scopes.at(-1));
+      const listed = (end === ';' ? params.split(',') : [params]).map((name) => name.trim());
+      const bad = listed.filter((name) => !PLAIN_NAME.test(name));
+      for (const name of bad) unsupported.add(unreadable(name));
+      const qualified = bad.length > 0 ? [] : listed.map(qualify);
+      names.push(...qualified);
+      if (end === ';' && scopes.length === 1) ordered.push(...qualified);
+      if (end === '{') scopes.push(qualified[0] ?? scopes.at(-1));
     }
   }
-  return uses;
-}
-
-const isBentoLayer = (name) => name === 'bento' || name.startsWith('bento.');
-
-/** The `bento` and `bento.*` layers that `orderCss` lists in `@layer a, b;` order statements. */
-export function orderedBentoLayers(orderCss) {
-  return new Set(
-    layerUses(orderCss)
-      .filter((use) => use.kind === 'statement' && isBentoLayer(use.name))
-      .map((use) => use.name),
-  );
+  return { names, ordered, unsupported: [...unsupported] };
 }
 
 /**
- * `{ file: names[] }` of `bento` and `bento.*` layers a stylesheet uses that the order statement
- * in `orderCss` does not list, each name once.
- *
- * @param {{ scanned: Record<string, string>, orderCss: string }} input
+ * `<file>: <reason>` lines for layer problems in `scanned` (file name to CSS, including
+ * `LAYER_ORDER_FILE`). `unsupported` is what `readLayers` rejects plus a missing `bento.*` order
+ * statement; `undeclared` is each `bento` or `bento.*` layer a file uses that the top-level order
+ * statement in `LAYER_ORDER_FILE` does not list, once per file.
  */
-export function findUndeclaredLayers({ scanned, orderCss }) {
-  const ordered = orderedBentoLayers(orderCss);
-  const undeclared = {};
-  for (const [file, css] of Object.entries(scanned)) {
-    const names = [
-      ...new Set(
-        layerUses(css)
-          .map((use) => use.name)
-          .filter((name) => isBentoLayer(name) && !ordered.has(name)),
-      ),
-    ];
-    if (names.length > 0) undeclared[file] = names;
+export function findLayerProblems(scanned) {
+  const ordered = new Set(readLayers(scanned[LAYER_ORDER_FILE] ?? '').ordered);
+  const hasOrder = [...ordered].some((name) => name.startsWith('bento.'));
+  const layers = Object.entries(scanned).map(([file, css]) => [file, readLayers(css)]);
+  const unsupported = layers.flatMap(([file, read]) =>
+    read.unsupported.map((reason) => `${file}: ${reason}`),
+  );
+  if (!hasOrder) {
+    unsupported.unshift(
+      `${LAYER_ORDER_FILE}: no top-level '@layer bento.<name>, ...;' order statement`,
+    );
   }
-  return undeclared;
+  const undeclared = layers.flatMap(([file, read]) =>
+    [...new Set(read.names)]
+      .filter((name) => hasOrder && isBentoLayer(name) && !ordered.has(name))
+      .map(
+        (name) =>
+          `${file}: layer ${name} is missing from the order statement in ${LAYER_ORDER_FILE}`,
+      ),
+  );
+  return { unsupported, undeclared };
 }
 
 function cssFiles(directory) {
@@ -169,11 +210,7 @@ function main() {
     ],
   });
   // Every shell stylesheet counts for layers, presets included.
-  const orderCss = read(resolve(REPO_ROOT, LAYER_ORDER_FILE));
-  const hasOrderStatement = [...orderedBentoLayers(orderCss)].some((name) =>
-    name.startsWith('bento.'),
-  );
-  const undeclared = hasOrderStatement ? findUndeclaredLayers({ scanned: sheets, orderCss }) : {};
+  const { unsupported, undeclared } = findLayerProblems(sheets);
 
   for (const [file, names] of Object.entries(missing)) {
     console.log(`FAIL ${file}: ${names.join(', ')}`);
@@ -183,22 +220,13 @@ function main() {
       'Declare the property (bento-tokens.css for reusable values), use a token that exists, or add a var() fallback.',
     );
   }
-  if (!hasOrderStatement) {
-    console.log(`FAIL ${LAYER_ORDER_FILE}: no '@layer bento.<name>, ...;' order statement`);
-  }
-  for (const [file, names] of Object.entries(undeclared)) {
-    for (const name of names) {
-      console.log(
-        `FAIL ${file}: layer ${name} is missing from the order statement in ${LAYER_ORDER_FILE}`,
-      );
-    }
-  }
-  if (Object.keys(undeclared).length > 0) {
+  for (const problem of [...unsupported, ...undeclared]) console.log(`FAIL ${problem}`);
+  if (undeclared.length > 0) {
     console.log(
       'List the layer in that order statement at the rank it should have, or use a listed one.',
     );
   }
-  if (Object.keys(missing).length > 0 || !hasOrderStatement || Object.keys(undeclared).length > 0) {
+  if (Object.keys(missing).length > 0 || unsupported.length > 0 || undeclared.length > 0) {
     process.exit(1);
   }
   console.log(
