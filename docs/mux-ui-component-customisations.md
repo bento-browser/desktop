@@ -407,7 +407,9 @@ shell CSS reads such a name. Declared means any `--x:` in the shell CSS (generat
 presets and `bento-tokens.css` included) or in the public `@muxui/react`
 `styles.css` and `themes.css`; a `var(--x, fallback)` read is allowed, which covers
 properties components set from JS. Native chrome CSS under `src/browser` is not
-scanned.
+scanned. The same command fails a `bento.*` cascade layer that the top-level
+`@layer` statement in `theme/muxui.css` does not list, and layer CSS it cannot
+read (see `docs/technical/theming.md`).
 
 When a read names a step that does not exist (the neutral ladder is 5, 10, 12, ...,
 100; the radius ladder is none, xs, s, m, l, xl, 2xl, full), take the nearest real

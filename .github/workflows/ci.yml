@@ -185,9 +185,11 @@ jobs:
         # .legacy-alias-cap.json allows. The cap only goes down.
         run: pnpm run lint:aliases
 
-      - name: Undefined shell tokens
+      - name: Undefined shell tokens and bento layer order
         # Fails when shell CSS reads var(--x) with no fallback and nothing in the
-        # shell CSS or the public @muxui/react styles declares --x.
+        # shell CSS or the public @muxui/react styles declares --x, or uses a
+        # bento.* layer the top-level order statement in theme/muxui.css omits (or
+        # layer CSS the check cannot read).
         run: pnpm run lint:tokens
 
       - name: Test (shell)
