@@ -26,6 +26,7 @@ import {
   panelKeysForLayout,
   removePanel,
   removePanelWithDescendants,
+  removePersistedPanel,
   removeVerticalGroup,
   removeWorkspace,
   reorderRootNodes,
@@ -100,6 +101,27 @@ export class PanelStore {
     const persisted = this.#persistedWorkspaces.get(workspaceId);
     if (persisted) this.#persistedWorkspaces.delete(workspaceId);
     return persisted;
+  }
+
+  /**
+   * Drops one panel's entry and layout node from the persisted panels a workspace has not applied
+   * yet, for a panel the user closed before they were. The other entries keep their keys, and a
+   * workspace left with no entry has nothing to apply. Returns whether an entry was dropped.
+   */
+  dropPersistedPanel(workspaceId: string, panelKey: string): boolean {
+    const persisted = this.#persistedWorkspaces.get(workspaceId);
+    if (!persisted?.entries.some((entry) => entry.panelKey === panelKey)) return false;
+    const entries = persisted.entries.filter((entry) => entry.panelKey !== panelKey);
+    if (entries.length > 0) {
+      this.#persistedWorkspaces.set(workspaceId, {
+        entries,
+        layout: removePersistedPanel(persisted.layout, panelKey),
+      });
+    } else {
+      this.#persistedWorkspaces.delete(workspaceId);
+    }
+    this.#schedulePersist();
+    return true;
   }
 
   takePersistedEntries(workspaceId: string): PersistedPanelEntry[] | undefined {

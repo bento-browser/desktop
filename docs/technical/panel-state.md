@@ -140,9 +140,22 @@ they would write is the temporary one. Rewritten markers or entries would carry 
 temporary numbering, so two restarts later the entries would bind to the wrong tabs, a
 top and a bottom panel swapped, with the subdivision and widths lost. The first sync
 after the layout is applied writes the final keys, and the first flush after that
-writes the applied layout. A panel of such a workspace that closes before the apply
-keeps its entry, so the apply opens a tab for it again (the stored state from the last
-quit wins over a change made to a layout nobody could see).
+writes the applied layout.
+
+A panel of such a workspace that the user closes before the apply takes its entry
+with it. `browser.tabs.onRemoved` calls `PanelMarkerSync.tabRemoved`, which finds the
+entry by the key `captureKey` kept for the tab, and `PanelStore.dropPersistedPanel`
+removes that entry and its node in the persisted layout (`removePersistedPanel`
+runs the root node through the live layout shape, so a subdivision left with one
+panel collapses as `removePanel` collapses it) and schedules a persist. The other
+entries keep their keys and nodes, and a workspace left with no entry has nothing to
+apply. `removeInfo.isWindowClosing` tells a close from a window going away: a tab removed
+with its window (a window close or a quit) only releases its key, because the entries
+are what the next start restores that window's panels from, and the parking and flush
+guards above keep them. The prune that drops a missing tab from the live layout
+(`emitPanelsSync`) and the apply itself never touch the stored entries. A panel with no
+captured key (a marker written before keys existed, or a tab closed before its marker
+was read at boot) keeps its entry, so the apply opens a tab for it again.
 
 `PanelStore.restorePersistedLayout` replaces the workspace layout with the
 persisted one. A panel already in the layout that no entry binds to (its entry was
@@ -461,3 +474,12 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   the live layout. A regression test must give the panels readable addresses
   (`PanelMarkerSync.test.ts`): a permanent `about:blank` stub hides this because the
   flush writes nothing for a blank panel.
+- Keeping an unapplied workspace's entries must not keep the entry of a panel the user
+  closed. With only the two guards above, closing a marker-restored panel while its
+  workspace stayed unapplied left the entry in storage, and activating the workspace
+  later opened the closed panel as a new tab. `PanelMarkerSync.tabRemoved`
+  drops the entry and its layout node on a tab removal that is not `isWindowClosing`.
+  Keep the two apart: dropping entries on a window close would lose every panel of a
+  workspace nobody opened (the entries are the only record of them), and a prune of
+  missing tabs at restore must not drop them either. The tests
+  (`PanelMarkerSync.test.ts`) close a panel with and without `isWindowClosing`.

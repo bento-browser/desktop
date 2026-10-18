@@ -416,6 +416,9 @@ async function restoreParkedTabsForWorkspace(
 // Session markers of the panels, and the layout keys the restored ones carried until their
 // persisted entries are bound (`restorePanelsForWorkspace`); see `createPanelMarkerSync`.
 const markerSync = createPanelMarkerSync(panels);
+// A panel the user closes before its workspace's entries are applied leaves them too; a window
+// closing takes its tabs away and keeps them (`PanelMarkerSync.tabRemoved`).
+browser.tabs.onRemoved.addListener((tabId, removeInfo) => markerSync.tabRemoved(tabId, removeInfo));
 
 // Restore a workspace's panels from URLs persisted across the last
 // shutdown. Idempotent: takePersistedUrls clears the entry on first call,

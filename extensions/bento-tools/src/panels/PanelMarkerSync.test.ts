@@ -171,6 +171,58 @@ describe('panel marker keys', () => {
     });
   });
 
+  it('drops the entry of a panel closed before its workspace was activated', async () => {
+    tabUrl = readable;
+    await markPanels();
+    const { panels, markerSync } = await startWithInactiveWorkspace();
+
+    // What the tab removal does: the tab leaves the live layout and the browser event arrives.
+    panels.remove('ws', TOP);
+    markerSync.tabRemoved(TOP, { isWindowClosing: false });
+    await panels.persistCurrentState();
+
+    // Only the bottom entry is left, with its key and its layout node as they were.
+    expect(panels.peekAllPersistedEntries().get('ws')).toEqual([entries[1]]);
+    expect((storage['bento.panels'] as StoredPanels).byWorkspace.ws).toEqual({
+      entries: [entries[1]],
+      panelLayout: { root: [{ kind: 'panel', panelKey: 'panel-1' }] },
+    });
+    expect(markerSync.capturedKey(TOP)).toBeUndefined();
+    // Activating the workspace binds it to the tab that is still open and opens nothing.
+    const plan = planPanelRestore(
+      panels.peekAllPersistedEntries().get('ws')!,
+      [{ id: BOTTOM }],
+      [{ tabId: BOTTOM, panelKey: markerSync.capturedKey(BOTTOM) }],
+    );
+    expect(plan.map((step) => step.tabId)).toEqual([BOTTOM]);
+
+    // With its last entry gone the workspace has nothing to apply.
+    panels.remove('ws', BOTTOM);
+    markerSync.tabRemoved(BOTTOM, { isWindowClosing: false });
+    await panels.persistCurrentState();
+    expect(panels.workspacesWithPersistedUrls()).toEqual([]);
+    expect((storage['bento.panels'] as StoredPanels).byWorkspace.ws).toBeUndefined();
+  });
+
+  it('keeps the entry of a panel whose window closes', async () => {
+    tabUrl = readable;
+    await markPanels();
+    const { panels, markerSync } = await startWithInactiveWorkspace();
+
+    // The window parks its workspace, then each of its tabs is removed with it.
+    panels.parkWorkspaceWithResolvedUrls('ws', readable);
+    markerSync.tabRemoved(TOP, { isWindowClosing: true });
+    markerSync.tabRemoved(BOTTOM, { isWindowClosing: true });
+    await panels.persistCurrentState();
+
+    expect(panels.peekAllPersistedEntries().get('ws')).toEqual(entries);
+    expect((storage['bento.panels'] as StoredPanels).byWorkspace.ws).toEqual({
+      entries,
+      panelLayout: initialLayout,
+    });
+    expect(markerSync.capturedKey(TOP)).toBeUndefined();
+  });
+
   it('writes the keys of the applied layout once the entries are bound', async () => {
     await markPanels();
     const { panels, markerSync } = await startWithInactiveWorkspace();
