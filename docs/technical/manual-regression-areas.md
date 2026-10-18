@@ -143,9 +143,14 @@ When changing core functionality, manually verify at least the affected subset:
   workspace and switch to another as soon as the window appears; the window ends
   on the second workspace with one of its tabs selected
   (`gBrowser.selectedTab` belongs to it), and no tab of the first workspace is
-  selected a moment later. The superseded-activation decision is covered by a
-  unit test; this is the timing check, and it can pass without ever hitting the
-  race;
+  selected a moment later. Do it again with an empty workspace as the first one
+  and switch to the second and straight back: the window shows one tab for the
+  first workspace, not two blank ones. Close a window with Cmd+Shift+W so its
+  workspace's tabs are parked, show that workspace in another window and switch
+  that window away and back at once: no tab of the workspace is left behind in a
+  window that does not show it. The superseded-activation and superseded-restore decisions are covered
+  by unit tests; this is the timing check, and it can pass without ever hitting
+  the race;
 - panel identity across a restart: in one workspace make three panels with
   different widths, subdivide the first one (a top panel and a bottom panel, the
   bottom one a different site and width), pin one of the others as a pinned panel,

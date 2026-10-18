@@ -18,7 +18,11 @@ import {
 } from './tabs/AdoptedTab';
 import { wasHandedOver } from './tabs/Handover';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
-import { hasSelectedWorkspaceTab, isActivationCurrent } from './workspaces/ActivationGuard';
+import {
+  createActivationGenerations,
+  hasSelectedWorkspaceTab,
+  isActivationCurrent,
+} from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { createStartupPinnedTabDiscard } from './tabs/PinnedTabRestore';
@@ -31,10 +35,10 @@ import { createPanelsSyncScheduler } from './panels/PanelsSyncScheduler';
 import { planPanelRestore } from './panels/PanelRestore';
 import {
   parkedWorkspacesToDiscard,
-  planParkedRestore,
   planWorkspaceParking,
   type ParkedWorkspaceTab,
 } from './panels/ParkedWorkspace';
+import { restoreParkedEntries } from './panels/ParkedRestore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
@@ -321,6 +325,16 @@ function takeParkedWorkspaceTabs(workspaceId: string): ParkedWorkspaceTab[] {
   return entries;
 }
 
+// Puts back what a superseded restore did not start, ahead of anything parked for the workspace
+// since, so the next activation restores it.
+function returnParkedWorkspaceTabs(workspaceId: string, entries: ParkedWorkspaceTab[]): void {
+  parkedWorkspaceTabs.set(workspaceId, [
+    ...entries,
+    ...(parkedWorkspaceTabs.get(workspaceId) ?? []),
+  ]);
+  persistParkedWorkspaceTabs();
+}
+
 // At a browser start Firefox has already restored the tabs of every window that came back, so
 // the lists parked for their workspaces at quit would only open each tab a second time. Only a
 // real start may drop them (`browserStarted`): when bento-tools reloads under a running browser,
@@ -378,9 +392,9 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
   workspaces.forgetWindow(windowId);
 }
 
-// `stillCurrent` is asked before each tab is selected: restoring awaits tab reads and creates, and
-// the window may have moved to another workspace meanwhile. The tabs are still restored, but a
-// superseded restore selects none of them.
+// `stillCurrent` is asked before each entry is restored: restoring awaits tab reads and creates,
+// and the window may move to another workspace meanwhile. A superseded restore opens and selects
+// nothing more and leaves the entries it did not start in the parked list (`restoreParkedEntries`).
 async function restoreParkedTabsForWorkspace(
   workspaceId: string,
   targetWindowId: number | null,
@@ -389,74 +403,15 @@ async function restoreParkedTabsForWorkspace(
   const parked = takeParkedWorkspaceTabs(workspaceId).sort((a, b) => a.index - b.index);
   if (parked.length === 0) return false;
 
-  const existingUrlByTabId = new Map<number, string>();
-  const existingTabs = tabs
-    .snapshot()
-    .filter(
-      (tab) =>
-        tab.workspaceId === workspaceId &&
-        (targetWindowId === null || tab.windowId === targetWindowId),
-    )
-    .sort((a, b) => a.index - b.index);
-
-  for (const tab of existingTabs) {
-    try {
-      const live = await browser.tabs.get(tab.id);
-      const pendingUrl =
-        typeof (live as browser.tabs.Tab & { pendingUrl?: unknown }).pendingUrl === 'string'
-          ? (live as browser.tabs.Tab & { pendingUrl?: string }).pendingUrl
-          : undefined;
-      const url = live.url && live.url !== 'about:blank' ? live.url : pendingUrl;
-      if (url && url !== 'about:blank') existingUrlByTabId.set(tab.id, url);
-    } catch {
-      // Stale registry entries are expected during startup/session restore.
-    }
-  }
-
-  let restored = false;
-  const steps = planParkedRestore(parked, existingUrlByTabId, existingTabs.length);
-  for (const step of steps) {
-    const { entry, existingTabId } = step;
-    const active = step.active && stillCurrent();
-    if (existingTabId !== null) {
-      try {
-        if (active || entry.pinned) {
-          await browser.tabs.update(existingTabId, {
-            ...(active ? { active: true } : {}),
-            ...(entry.pinned ? { pinned: true } : {}),
-          });
-        }
-      } catch (err) {
-        console.warn('[bento-tools] parked tab session-restore match failed:', existingTabId, err);
-      }
-      if (entry.customTitle) {
-        void tabs.rename(existingTabId, entry.customTitle);
-      }
-      restored = true;
-      continue;
-    }
-
-    try {
-      const created = await browser.tabs.create({
-        url: entry.url,
-        active,
-        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
-      });
-      if (typeof created.id !== 'number') continue;
-      tabs.assignWorkspaceEagerly(created.id, workspaceId);
-      if (entry.pinned) {
-        void browser.tabs.update(created.id, { pinned: true }).catch((err) => {
-          console.warn('[bento-tools] parked tab pin restore failed:', created.id, err);
-        });
-      }
-      if (entry.customTitle) {
-        void tabs.rename(created.id, entry.customTitle);
-      }
-      restored = true;
-    } catch (err) {
-      console.warn('[bento-tools] parked tab restore failed:', entry.url, err);
-    }
-  }
+  const { restored, unrestored } = await restoreParkedEntries({
+    workspaceId,
+    targetWindowId,
+    parked,
+    tabs,
+    stillCurrent,
+    findOwningWindow: (id) => workspaces.findOwningWindow(id),
+  });
+  if (unrestored.length > 0) returnParkedWorkspaceTabs(workspaceId, unrestored);
   return restored;
 }
 
@@ -926,6 +881,8 @@ let releaseStartupActivations = () => {};
 const startupRestored = new Promise<void>((resolve) => {
   releaseStartupActivations = resolve;
 });
+// Which activation is the latest per window (`handleWorkspaceActivation`).
+const activationGenerations = createActivationGenerations();
 
 const bootReady = storesReady.then(async () => {
   await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
@@ -1945,6 +1902,7 @@ tabs.onWindowClosing(({ windowId, tabs: closingTabs }) => {
 // would throw, but the activation would have been refused anyway).
 browser.windows.onRemoved.addListener((windowId) => {
   workspaces.forgetWindow(windowId);
+  activationGenerations.forget(windowId);
   prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
 
@@ -2106,6 +2064,9 @@ async function handleWorkspaceActivation(
   wsId: string,
   targetWindowId: number | null,
 ): Promise<void> {
+  // Taken when the activation is requested, before it waits: a later activation for the same
+  // window (the window going A, B, A) supersedes this one even when the workspace matches again.
+  const isLatestActivation = activationGenerations.begin(targetWindowId);
   // At startup this waits for the restore to finish; afterwards it resolves at once.
   await startupRestored;
 
@@ -2113,7 +2074,9 @@ async function handleWorkspaceActivation(
   // during boot all resume together: this one may be old news by the time it would act. Each
   // check sits after the await that precedes tabs being moved, created or selected, and a
   // superseded activation stops; the later one that replaced it does the work for its window.
+  // The workspace alone cannot say so for A, B, A, which is why the generation was taken above.
   const isCurrent = () =>
+    isLatestActivation() &&
     isActivationCurrent(wsId, targetWindowId, (windowId) => workspaces.getActiveId(windowId));
   if (!isCurrent()) return;
 
