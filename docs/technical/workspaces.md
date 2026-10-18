@@ -158,8 +158,11 @@ switcher wrapper's content box; adding left/right padding there makes the active
 workspace avatar background look squeezed instead of square.
 Keep the chrome host pinned directly to this token rather than layering on a
 second chrome-local `calc()`/`max()` fallback; live sidebar/window resize relies
-on a single collapsed-width path. The host's width never transitions; collapse
-and expand are the transform slide in
+on a single collapsed-width path. The token is rem-based and chrome's root font
+size is not the shell's, so the chrome token sheet pins it in px (see
+[Shell-sized geometry](../chrome-tokens.md#shell-sized-geometry)): the host is the
+same 51.8 px the shell's rail layout assumes. The host's width never transitions;
+collapse and expand are the transform slide in
 [Sidebar collapse and expand](#sidebar-collapse-and-expand).
 Cmd/Ctrl+S is handled in `src/browser/base/content/bento-shell-mount.js` from a
 capture-phase keydown listener because Firefox's `key_savePage` binding is
@@ -849,17 +852,19 @@ sidebar was hidden or is being hidden).
   width the shell is rendered at. `observeRailViewport`
   (`extensions/bento-shell/src/sidebar/railViewport.ts`) watches the app root with a
   `ResizeObserver` and sets the attribute in the same frame the viewport is at most
-  `--bento-tab-strip-width-collapsed` (plus 1 px of rounding slack) wide, so chrome's
-  width snap alone switches the shell: at the end of a collapse, at the start of an
-  expand. The setting only drives what is semantic: the footer toggle's label, icon
+  `--bento-tab-strip-width-collapsed` (plus 1 px of slack for the frame's
+  whole-device-pixel rounding) wide, so chrome's width snap alone switches the shell:
+  at the end of a collapse, at the start of an expand. The setting only drives what is semantic: the footer toggle's label, icon
   and the tooltips. Components that need the state in script (`TabList`'s scroll
   metrics) read the attribute through `useRailViewport`. Hidden mode also renders at
   the rail width. The shell has no geometry transitions between the two layouts, and
   no footer cross-fade: the host fade covers the switch.
 
 Manual verification (a Bento build; the unit tests cover the sequencing only):
-collapse and expand with Cmd+S at the default width and after resizing the sidebar
-to its minimum and maximum; press Cmd+S repeatedly (ten times, quickly, then wait):
+in the collapsed rail, the host's computed width is the shell's `measureRailWidth()`
+(51.8 px), the New button is centred in the rail, and the pinned and folder band
+behind the folder squares is 32 px wide; collapse and expand with Cmd+S at the
+default width and after resizing the sidebar to its minimum and maximum; press Cmd+S repeatedly (ten times, quickly, then wait):
 the sidebar, page, toolbar band and footer end in the last state with no stuck
 offset, opacity or class (`document.documentElement.hasAttribute('bento-sidebar-push')`
 is false in the Browser Toolbox Console); with panels open, the panels are aligned
@@ -934,14 +939,19 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   attribute follows the viewport width; keep only semantic things (labels,
   tooltips, the toggle icon) on the setting. A story that shows the rail sets the
   frame width the token names, as chrome sets the host's.
-- The rail threshold is the token resolved in the shell (rem = 16 px) and the host
-  gets it resolved in chrome, where rem is the system UI font size (11 px on macOS,
-  `font: message-box`). On macOS the host is narrower than the shell's reading, which
-  is the safe side. A platform whose chrome rem is above 16 px would make the host
-  wider than the threshold and the rail would not switch on: check
-  `getComputedStyle(document.getElementById('bento-shell-host')).width` in the
-  Browser Toolbox against `measureRailWidth()` from `railViewport.ts` before
-  assuming the rail works on a new platform.
+- Do not size shell-laid-out geometry in chrome from a rem shell token. Chrome's root
+  font size is the system UI font (11 px on macOS, `font: message-box`), the shell's is
+  16 px, so `--bento-tab-strip-width-collapsed` (`calc(2rem + 2 * 0.61875rem)`) was
+  51.8 px in the shell and 35.6 px as the chrome host. The shell's rail then had a
+  15.2 px content box: the New button sat 8.4 px right of centre and the pinned and
+  folder band was 15.2 px wide behind 32 px squares. The chrome token sheet now
+  pins the token in px at `--font-size-root`; add any other rem token chrome sizes
+  shell-laid-out geometry from to `SHELL_SIZED_TOKENS` in the generator. Compare
+  `getComputedStyle(document.getElementById('bento-shell-host')).width` in the Browser
+  Toolbox with `measureRailWidth()` from `railViewport.ts` after changing the token or
+  its inputs, and on a new platform. The rail switch needs the host no wider than the
+  shell's reading plus the 1 px slack, so a chrome rem above the shell's would keep the
+  expanded layout in a rail-sized host.
 - Do not read `getBoundingClientRect` of the host or the page group during a push
   and treat it as layout geometry: it includes the transforms. A callback queued
   with `requestAnimationFrame` must check the guard when it runs, not only when it
@@ -961,7 +971,7 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   page's browsers would receive the intermediate size.
 - Do not hide the sidebar by adding `.bento-sidebar-hidden` at the start of the
   toggle. The class pins the host to the rail with `margin-right: -rail`, so the page
-  jumps into the freed space in one frame (measured: host 300 to 35.6 px, main panel
+  jumps into the freed space in one frame (measured: host 300 px to the rail, main panel
   left 305 to 5 in one frame) while only the rail's transform transitions. Hide is a
   push (`direction` `hide`, narrow end 0) and the class lands in the frame the push
   settles; `applyChromeSidebarHidden` must not settle a hide push it belongs to, and a

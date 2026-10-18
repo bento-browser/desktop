@@ -8,9 +8,16 @@ describe('isRailWidth', () => {
     expect(isRailWidth(40, 64)).toBe(true);
   });
 
+  it('is the rail when the frame rounds a fractional rail width to device pixels', () => {
+    // 51.8 CSS px is 103.6 device px at 2x; the frame is whole device pixels.
+    expect(isRailWidth(51.5, 51.8)).toBe(true);
+    expect(isRailWidth(52, 51.8)).toBe(true);
+  });
+
   it('is expanded from the first pixel past the slack', () => {
     expect(isRailWidth(65.5, 64)).toBe(false);
     expect(isRailWidth(300, 64)).toBe(false);
+    expect(isRailWidth(200, 51.8)).toBe(false);
   });
 
   it('reads an unmeasured width or token as not the rail', () => {

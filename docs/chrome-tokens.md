@@ -90,6 +90,27 @@ stylesheet import.
 Document and component styles are not copied into the native sheet. Chrome
 continues to provide its own widget styling while sharing the token values.
 
+## Shell-sized geometry
+
+A rem token is a different length in the two documents: the shell's root font size
+is `--font-size-root` (16px) and chrome's is the system UI font (11px on macOS).
+Most chrome layout is its own, tuned at chrome's rem. Geometry the shell lays
+itself out inside is the exception. Chrome sizes `#bento-shell-host` from
+`--bento-tab-strip-width-collapsed` (`calc(2rem + 2 * 0.61875rem)`) and the shell's
+rail layout assumes the 16px reading, 51.8px, while chrome computed 35.6px.
+
+The generator therefore appends an unlayered `:root` block after the token sheets
+that pins each token in `SHELL_SIZED_TOKENS` in px: it follows the token's `var()`
+references through the generated sheet, converts every rem to px at the sheet's
+`--font-size-root`, and writes `calc(32px + 9.9px + 9.9px)`. The source stays the one
+in `bento-tokens.css`, and a token that is missing, declared with different values, or
+given a `var()` fallback stops the generator. The block sits after the layered
+declaration, and unlayered rules win over layers. The monolithic (rollback) sheet
+omits it because its archived mount script ships as it was. Add a token to the list
+when chrome sizes shell-laid-out geometry from a rem token; px tokens (the sidebar
+min and max) need nothing. `scripts/theme-sheets.test.mjs` checks the pinned
+rail width against the rem sum at the shell's root font size.
+
 ## Theme behavior
 
 The chrome mount script writes the resolved light or dark mode to

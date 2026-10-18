@@ -488,7 +488,10 @@
    become tunable from bento-tokens.css without a patch rebuild.
    Collapsed pins width/min/max to --bento-tab-strip-width-
    collapsed, which already reserves the collapsed control plus
-   symmetric rail padding. Keep the chrome host on this single token
+   symmetric rail padding. The token is rem-based and chrome's rem is
+   not the shell's, so bento-chrome-tokens.css pins it in px at the
+   shell's root font size (docs/chrome-tokens.md, Shell-sized
+   geometry). Keep the chrome host on this single token
    so live sidebar/window resize does not get an extra calc/max()
    width path. The width never transitions: collapse and expand run
    as a transform slide (see "Sidebar push" below), and the width

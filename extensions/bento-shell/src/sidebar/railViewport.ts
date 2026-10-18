@@ -13,9 +13,12 @@ import { useSyncExternalStore } from 'react';
  */
 export const RAIL_ATTRIBUTE = 'data-bento-collapsed';
 
-// The rail token is rem-based, so chrome and the shell each resolve it to their
-// own fractional pixel width. The slack keeps the two readings from disagreeing
-// by a rounding error.
+// Chrome pins the host to this token resolved at the shell's root font size
+// (scripts/generate-chrome-tokens.mjs), so the host is the rail width and the shell's
+// reading of the token (here, from a fractional rem sum such as 51.8) matches it. The
+// frame is sized in whole device pixels, which rounds the width the shell sees by up to
+// half of one. The slack keeps the rail on at the end of a collapse through that
+// rounding; the next width up is the expanded minimum (200 px), far beyond it.
 const RAIL_WIDTH_SLACK_PX = 1;
 
 /** True when a shell rendered `width` wide is the rail (at most `railWidth`). */
