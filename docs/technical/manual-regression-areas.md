@@ -119,6 +119,14 @@ When changing core functionality, manually verify at least the affected subset:
   window keeps its tabs, order and selection. A dev relaunch on the same
   profile behaves the same. The Browser Console has no
   `parked tab restore failed` lines;
+- restart with panels: a workspace with three panels (one pinned, one in a
+  subdivision), then Cmd+Q and relaunch. The sidebar shows no extra tab, no panel
+  appears twice (compare the tab count before and after:
+  `gBrowser.tabs.length` in the Browser Toolbox Console), the panels keep their
+  order, widths and subdivision, and the pinned panel is still pinned (pin rail,
+  kebab menu says Unpin) and is the same tab as the panel in the strip. A panel
+  closed with Cmd+Shift+W of the only window before quitting is opened again once
+  on relaunch;
 - a workspace whose window closed comes back: with two windows on different
   workspaces, close one with Cmd+Shift+W, then open its workspace in a new window
   (or the workspace switcher of the other window): its tabs are restored once, in
