@@ -1467,11 +1467,18 @@ rel="stylesheet">` load and error events on chrome documents, and the
   WebExtension `tabs.Tab.discarded` getter (`!nativeTab.linkedPanel` in
   `ext-browser.js`) therefore reports it as `discarded: false`. Bento depends on
   both to show pending pinned tabs as sleeping: bento-tools discards them once per
-  launch from a `browser.runtime.onStartup` listener (`tabs/PinnedTabRestore.ts`,
-  wired in `background.ts`), which swaps the real browser for a lazy one through
-  `Tabbrowser.discardBrowser`. `runtime.onStartup` fires only for the
-  `APP_STARTUP` startup reason (`ext-runtime.js`), so a dev reload, install or
-  update never runs the discard. If Firefox starts creating pinned tabs lazily,
+  launch (`tabs/PinnedTabRestore.ts`, wired in `background.ts`), which swaps the
+  real browser for a lazy one through `Tabbrowser.discardBrowser`. The pass runs
+  inside bento-tools' boot, before it sends the shell its first tab snapshot, so
+  the sidebar's first rows are already dimmed. It is gated on a
+  `browser.runtime.onStartup` listener: that event fires only for the
+  `APP_STARTUP` startup reason, once the background page has loaded
+  (`ext-runtime.js`, `background-first-run` in `ext-backgroundPage.js`), so a dev
+  reload, install or update never runs the discard. `browser.tabs.discard`
+  (`ext-tabs.js`) calls `Tabbrowser.discardBrowser` without force and ignores its
+  result, and `#mayDiscardBrowser` refuses a selected tab, so the call resolves
+  without discarding it and bento-tools reads each tab back before recording the
+  discard. If Firefox starts creating pinned tabs lazily,
   they report `discarded: true` on their own and the discard selects nothing; the
   pref must still exist. The code reads these by effect through the public
   WebExtension API, so there is no firefox-compat registry entry.
@@ -1577,9 +1584,11 @@ rel="stylesheet">` load and error events on chrome documents, and the
   tabs in different workspaces, quit, relaunch: only the selected tab loads and
   each pinned tab loads when first selected), confirm `createTabsForSessionRestore`
   still excludes pinned tabs from the lazy browser, the `tabs.Tab.discarded`
-  getter is still `!linkedPanel`, and `runtime.onStartup` still fires only at app
-  startup (after the same relaunch the pending pinned tabs show as sleeping in the
-  sidebar and `tabs.query({ pinned: true })` reports `discarded: true` for them, and an
+  getter is still `!linkedPanel`, `runtime.onStartup` still fires only at app
+  startup once the background page has loaded, and `tabs.discard` still reaches
+  `discardBrowser` without force (after the same relaunch the pending pinned tabs
+  are dimmed in the sidebar's first paint of the tab list and
+  `tabs.query({ pinned: true })` reports `discarded: true` for them, and an
   Alt+Shift+R reload unloads none),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
