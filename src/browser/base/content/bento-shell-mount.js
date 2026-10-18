@@ -16031,6 +16031,9 @@
     '--bento-sidebar-push-split-from',
     '--bento-sidebar-push-split-shift',
   ];
+  // Left of the divider line when it stands for a strip whose edge is at 0 (the hidden
+  // state): the 1 px line sits just before the edge.
+  const SIDEBAR_PUSH_DIVIDER_EDGE = -1;
   const SIDEBAR_PUSH_PAGE_CLASS = 'bento-sidebar-push-page';
   const SIDEBAR_PUSH_FADE_CLASS = 'bento-sidebar-push-fade';
   const SIDEBAR_PUSH_FADE_ANIMATION = 'bento-sidebar-push-fade-in';
@@ -16108,6 +16111,10 @@
   // commits the hidden one (no divider, no offsets). The root split var, which the
   // window and #browser backgrounds read behind the host, is held at the wider of the
   // two so the host never fades over the narrower colour.
+  // The divider line sits just left of the strip's left edge. When it is absent at one
+  // end (the hidden state) it is treated as at the edge of a strip at 0, so it comes in
+  // with the strip's edge on a show and leaves with it on a hide; a hide keeps the line
+  // shown at that edge for the slide and settleSidebarPush hides it.
   // Returns { props, rootSplit }: the custom properties to set for the slide and the
   // root split var's final value, or null without the hooks.
   function commitToolbarForSidebarPush(width, finalLayoutNow, hidden = false) {
@@ -16142,12 +16149,18 @@
     } finally {
       currentSidebarHidden = wasHidden;
     }
+    // The divider sync hid the line for the hidden end; a hide still needs it to slide.
+    if (hidden && divider && from.divider !== null) {
+      divider.hidden = false;
+      divider.style.left = SIDEBAR_PUSH_DIVIDER_EDGE + 'px';
+    }
     const to = read();
     root.style.setProperty(
       '--bento-toolbar-divider-x',
       Math.max(from.rootSplit, to.rootSplit) + 'px',
     );
-    const dividerShift = from.divider === null || to.divider === null ? 0 : from.divider - to.divider;
+    const dividerShift =
+      (from.divider ?? SIDEBAR_PUSH_DIVIDER_EDGE) - (to.divider ?? SIDEBAR_PUSH_DIVIDER_EDGE);
     return {
       props: {
         '--bento-sidebar-push-divider-shift': dividerShift + 'px',
@@ -16245,6 +16258,9 @@
     // same frame as the page's final layout.
     if (direction === 'expand') syncBookmarksToolbarForSidebarWidth?.(finalWidth);
     if (hidden) {
+      // The line that left with the strip's edge is not shown in the hidden state.
+      const divider = document.getElementById('bento-sidebar-chrome-divider');
+      if (divider) divider.hidden = true;
       void host.offsetWidth;
       host.style.removeProperty('transition');
     }
