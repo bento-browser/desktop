@@ -148,9 +148,9 @@ When changing core functionality, manually verify at least the affected subset:
   first workspace, not two blank ones. Close a window with Cmd+Shift+W so its
   workspace's tabs are parked, show that workspace in another window and switch
   that window away and back at once: no tab of the workspace is left behind in a
-  window that does not show it. The superseded-activation and superseded-restore decisions are covered
-  by unit tests; this is the timing check, and it can pass without ever hitting
-  the race;
+  window that does not show it. The superseded-activation and superseded-restore
+  decisions are covered by unit tests; this is the timing check, and it can pass
+  without ever hitting the race;
 - panel identity across a restart: in one workspace make three panels with
   different widths, subdivide the first one (a top panel and a bottom panel, the
   bottom one a different site and width), pin one of the others as a pinned panel,
@@ -160,9 +160,13 @@ When changing core functionality, manually verify at least the affected subset:
   navigate one panel to another site, quit and relaunch: it comes back on that
   site, in its slot, with no extra tab. Also open a sidebar tab on the same address
   as a panel that will be restoring at launch (a pinned panel), quit, relaunch: the
-  panel is still the panel and the sidebar tab is still a sidebar tab. The first
-  launch after upgrading from a build whose markers have no panel key can show a
-  pinned panel twice, once; the second launch must not;
+  panel is still the panel and the sidebar tab is still a sidebar tab. Do the
+  subdivision in a second workspace and leave that workspace unopened across two
+  quits and relaunches (it stays inactive, so its entries are not applied), then
+  open it: the top and the bottom panel are still on their own sites and widths.
+  The first launch after upgrading from a build whose markers have no panel key
+  can show a pinned panel twice. The extra copy is not cleaned up: it stays, and
+  later launches keep both, until you close it;
 - a workspace whose window closed comes back: with two windows on different
   workspaces, close one with Cmd+Shift+W, then open its workspace in a new window
   (or the workspace switcher of the other window): its tabs are restored once, in

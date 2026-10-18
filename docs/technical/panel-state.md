@@ -115,10 +115,12 @@ workspace in this order:
 A marker without a key is bound only by steps 2 and 3, never by layout order or
 leftover position. So the first restart after upgrading from markers written
 without keys can open a second copy of a panel whose address cannot be read
-(a pinned panel), once: the copy takes the entry, and the original, which no
-entry binds to, is kept (below). The markers are rewritten with keys on that
-launch. Only an entry with no tab at all opens a new tab, which is the path for a
-window that closed and was not restored (it has no marker tabs).
+(a pinned panel): the copy takes the entry, and the original, which no entry
+binds to, is kept (below). The markers are rewritten with keys on that launch,
+but nothing removes the duplicate: persistence stores both panels from then on, so
+the extra copy comes back on every launch until the user closes it. Only an entry
+with no tab at all opens a new tab, which is the path for a window that closed and
+was not restored (it has no marker tabs).
 
 The key a marker carried is read before anything rewrites it. The marker sync
 numbers the layout as it stands, and until the entries are applied the layout

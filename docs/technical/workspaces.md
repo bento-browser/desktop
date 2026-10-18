@@ -357,15 +357,20 @@ takes the `runtime.onStartup` signal the pinned-tab pass uses
 there is no second signal). Firefox fires that event right after the background
 script's first run (`background-first-run`, `ext-backgroundPage.js`), so on a
 real start it has long arrived when the decision runs after the settle wait. When
-bento-tools reloads under a running browser (Alt+Shift+R, an install, an update)
-it never fires, and then nothing is dropped, as before this change: the lists stay
-and replay on the next activation, which waits for the hydrate and so sees loaded
-tabs. That case is the reason for the gate. A window that closed earlier in the
-session hands the tabs it can move to a surviving window and parks the one it
-cannot; after a tools reload the surviving window counts as restored, and
-dropping the list would lose that parked tab. If `onStartup` has not arrived by
-the decision point, nothing is dropped either, which falls back to that same
-behaviour (a possible duplicate instead of a lost tab). One case remains: a crash
+bento-tools reloads under a running browser (Alt+Shift+R, or an install or update
+while the browser runs) it does not fire, and then nothing is dropped, as before
+this change: the lists stay and replay on the next activation, which waits for the
+hydrate and so sees loaded tabs. That case is the reason for the gate. An update
+picked up during the browser's own startup can keep the `APP_STARTUP` reason (the
+add-on manager starts bootstrapped add-ons with it unless they were newly
+installed or enabled, `XPIProvider.sys.mjs`), so the event can fire there; that is
+a real start, and dropping the lists of restored workspaces is right. A window
+that closed earlier in the session hands the tabs it can move to a surviving
+window and parks the one it cannot; after a tools reload the surviving window
+counts as restored, and dropping the list would lose that parked tab. If
+`onStartup` has not arrived by the decision point, nothing is dropped either,
+which falls back to that same behaviour (a possible duplicate instead of a lost
+tab). One case remains: a crash
 restart is a real start, so when it restores only some windows, a workspace with
 a tab in a restored window still loses its list, even when the list holds a tab
 of a window that closed earlier in the session and was not restored. That tab is
