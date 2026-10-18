@@ -164,8 +164,8 @@ mode, `New tab` opens the centered address/search overlay in new-tab mode,
 creating the tab only after the user commits. In collapsed sidebar mode, it
 opens the same centered address/search fallback. `New panel`
 opens a blank panel in the active workspace. A
-search icon beside those controls expands into a sidebar search field over the
-action row. The creation and search controls stay fixed immediately below the
+search icon beside those controls widens on hover or keyboard focus to show its
+"Search" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
 so the actions remain available anywhere in a long tab list. Typing filters
 open tabs and side panels by title across all

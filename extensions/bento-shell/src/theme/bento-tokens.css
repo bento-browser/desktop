@@ -59,6 +59,16 @@
        values that the !important overrides there clobber. */
     --bento-tab-row-height: 2rem;
     --bento-tab-row-font-size: var(--text-xs-font-size);
+    /* Sidebar search trigger. Peek width: the trigger's width while hovered or
+       keyboard-focused, sized for the icon, its gap, the label 'Search' and
+       the same inline padding as the New button. Inset: the square trigger's
+       icon offset (the icon is centered at rest and keeps that offset when it
+       peeks). Clear scale: the clear button's size before it pops in. */
+    --bento-tab-list-search-peek-width: 5.25rem;
+    --bento-tab-list-search-trigger-inset: calc(
+      (var(--bento-tab-row-height) - var(--bento-icon-size-sm)) / 2
+    );
+    --bento-tab-list-search-clear-scale: 0.7;
     --bento-tab-folder-indent: var(--space-s);
     /* TabRow hover actions: an inset, then one Mux IconButton size="sm" per
        action (Convert to panel, Close; the active row hides Convert). TabRow
@@ -179,7 +189,7 @@
     --bento-border-color-subtle: color-mix(in srgb, currentColor 10%, transparent);
     --bento-sidebar-divider-color: var(--neutral-16);
 
-    /* Motion. Three named curves cover every Bento-authored transition;
+    /* Motion. Four named curves cover every Bento-authored transition;
        new motion should pick from these rather than introduce new ones.
        Mux components ship their own hardcoded curves internally —
        we don't override those.
@@ -187,13 +197,44 @@
          snappy:   discrete state changes (workspace switch, slide,
                    menu-driven resize). Fast start, soft settle so the
                    user sees motion react immediately then come to rest.
+         spring:   geometry that should feel physical (the sidebar search
+                   trigger, field and the highlight that follows them). A
+                   Motion spring (perceptual duration 0.3s, bounce 0.15)
+                   sampled as linear(); it reads as settled near 300ms and
+                   the 550ms duration is the whole sampled curve, including
+                   its small overshoot tail. Pair it only with
+                   --bento-duration-spring, and time any opacity fade that
+                   accompanies it from the 0.3s perceptual duration (a
+                   --bento-duration-fast delay plus --bento-duration-base),
+                   not from 550ms.
          in-out:   indefinite / looping animations (shimmer, pulse).
                    Symmetric so the loop has no obvious seam. */
     --bento-duration-fast: 100ms;
     --bento-duration-base: 200ms;
     --bento-duration-slow: 350ms;
+    --bento-duration-spring: 550ms;
     --bento-easing-standard: ease;
     --bento-easing-snappy: cubic-bezier(0.32, 0.72, 0, 1);
+    --bento-easing-spring: linear(
+      0,
+      0.1157,
+      0.3366,
+      0.5536,
+      0.7259,
+      0.8465,
+      0.9234,
+      0.9681,
+      0.9916,
+      1.0023,
+      1.0059,
+      1.0061,
+      1.005,
+      1.0035,
+      1.0023,
+      1.0014,
+      1.0007,
+      1
+    );
     --bento-easing-in-out: ease-in-out;
 
     /* Chrome panel components (header, navigator, scrollbar, etc.).

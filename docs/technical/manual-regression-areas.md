@@ -122,6 +122,45 @@ itself (the menu closes and stays closed); with it open, switch workspace
 closes; open New in two windows and see each button follow only its own menu;
 open New in the collapsed rail.
 
+## Sidebar search peek and grow
+
+The sidebar Search trigger peeks on hover and its field grows out of it (mechanism
+and pitfalls:
+[palettes-and-address-bar.md](palettes-and-address-bar.md#search-trigger-and-field-motion)).
+Gecko is unverified for this feature: the checks so far ran in Chromium through
+Ladle. In a running browser after a shell sync and Alt+Shift+R, with the sidebar
+expanded:
+
+1. Hover the Search icon: it widens leftward to "Search" in about 0.3s, the New
+   button shrinks by the same amount, the bar keeps its width, and the hover
+   highlight is exactly the widened trigger at every frame, including when you
+   enter the bar directly over Search (it starts on the square).
+2. Move the pointer between New and Search: the highlight glides and settles on
+   each button's box; leaving the bar fades it and the trigger returns to the
+   square.
+3. Tab to the Search trigger: it peeks with the focus ring; Enter opens search.
+4. Click Search, both from the square and while peeked: the field grows leftward
+   over New from the trigger's current box, the placeholder and the clear button
+   fade in just after it starts, the input is focused with its text selected, and
+   the trigger and highlight are gone.
+5. Close it every way, each time starting from an empty and a non-empty query where
+   they differ: Esc (clears the query), Enter on a result, click outside (closes
+   only when empty), another window or app (closes only when empty), Tab out of
+   the field (closes only when empty), and the clear button (clears and refocuses
+   without closing). The field shrinks back onto the trigger and the trigger is
+   clickable straight away; during the shrink New and the trigger still take
+   clicks.
+6. Open, close and reopen quickly: no jump, and the field always starts from
+   where the trigger is.
+7. Collapse the sidebar (rail): no Search trigger, New is a square, its
+   highlight is the full square, and a collapse with the pointer over Search
+   hides the highlight. Open search, then collapse: the open field is a 2rem square
+   with its icon over New (as seen in Ladle), and Esc closes it.
+8. With macOS Reduce motion on: widths, the field and the highlight change in one
+   step; only fades remain.
+9. Check light and dark, a 200px-wide sidebar (New keeps its label), and the New
+   menu: opening it keeps the New fill and no highlight.
+
 ## Palette search headers and rollback file selection
 
 Command and merge palettes, including the archived command palette, compose
