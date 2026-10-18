@@ -4,12 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { Action, TabSnapshot } from '@shared/protocol';
 import { TabList } from './TabList';
-import {
-  makeTab,
-  seedEmpty,
-  seedTabs,
-  seedTabsAcrossWorkspaces,
-} from '../../state/__fixtures__/tabs';
+import { makeTab, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
 import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
@@ -64,9 +59,23 @@ function useCollapsedAttribute(collapsed: boolean) {
   }, [collapsed]);
 }
 
+// TabList renders the skeleton until tabs, folders and the active workspace's
+// panels have all hydrated, and it lists only the active workspace's tabs. Seed
+// all of that together so a story renders on a fresh page load, not just after
+// another story has hydrated the stores.
+function seedSidebarTabs(count: number, activeIndex = 0): void {
+  seedDefaultWorkspaces();
+  const tabs = Array.from({ length: count }, (_, i) =>
+    makeTab({ id: i + 1, workspaceId: 'w-personal', active: i === activeIndex }),
+  );
+  useTabsStore.getState().applySnapshot(tabs);
+  seedTabFolders([]);
+  seedPanelsHydrated(['w-personal']);
+}
+
 export const Empty = () => {
   useEffect(() => {
-    seedEmpty();
+    seedSidebarTabs(0);
   }, []);
   return (
     <SidebarFrame>
@@ -77,7 +86,7 @@ export const Empty = () => {
 
 export const FewTabs = () => {
   useEffect(() => {
-    seedTabs(5, 1);
+    seedSidebarTabs(5, 1);
   }, []);
   return (
     <SidebarFrame>
@@ -90,7 +99,7 @@ FewTabs.storyName = '5 tabs';
 
 export const TwentyTabs = () => {
   useEffect(() => {
-    seedTabs(20, 3);
+    seedSidebarTabs(20, 3);
   }, []);
   return (
     <SidebarFrame>
@@ -103,7 +112,7 @@ TwentyTabs.storyName = '20 tabs (no scroll needed at default height)';
 
 export const VirtualizationStress = () => {
   useEffect(() => {
-    seedTabs(200, 50);
+    seedSidebarTabs(200, 50);
   }, []);
   return (
     <SidebarFrame>
@@ -116,7 +125,7 @@ VirtualizationStress.storyName = '200 tabs (virtualization perf check)';
 
 export const HugeStress = () => {
   useEffect(() => {
-    seedTabs(1000, 500);
+    seedSidebarTabs(1000, 500);
   }, []);
   return (
     <SidebarFrame>
@@ -131,11 +140,7 @@ HugeStress.storyName = '1000 tabs (extreme stress; should still scroll at 60fps)
 // bridge/newMenu.ts does when the overlay shows the New menu.
 export const NewMenuOpen = () => {
   useEffect(() => {
-    // The readiness gate needs tabs, folders and the workspace's panels hydrated.
-    seedDefaultWorkspaces();
-    seedTabsAcrossWorkspaces([{ workspaceId: 'w-personal', count: 5 }], 'w-personal');
-    seedTabFolders([]);
-    seedPanelsHydrated(['w-personal']);
+    seedSidebarTabs(5);
     useUiStore.getState().setNewMenuContextId('story-menu');
     return () => useUiStore.getState().setNewMenuContextId(null);
   }, []);
@@ -150,7 +155,7 @@ NewMenuOpen.storyName = 'New menu open';
 
 export const NarrowSidebar = () => {
   useEffect(() => {
-    seedTabs(10, 0);
+    seedSidebarTabs(10, 0);
   }, []);
   return (
     <SidebarFrame width={200}>
@@ -163,7 +168,7 @@ NarrowSidebar.storyName = 'Narrow (200px min)';
 
 export const WideSidebar = () => {
   useEffect(() => {
-    seedTabs(10, 0);
+    seedSidebarTabs(10, 0);
   }, []);
   return (
     <SidebarFrame width={500}>
@@ -176,7 +181,7 @@ WideSidebar.storyName = 'Wide (500px)';
 
 export const Collapsed = () => {
   useEffect(() => {
-    seedTabs(8, 2);
+    seedSidebarTabs(8, 2);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -193,7 +198,7 @@ export const CollapsedMany = () => {
   // tabs exist than fit on screen — the rail should scroll vertically
   // without any title text overflowing horizontally.
   useEffect(() => {
-    seedTabs(40, 5);
+    seedSidebarTabs(40, 5);
   }, []);
   useCollapsedAttribute(true);
   return (
@@ -205,14 +210,11 @@ export const CollapsedMany = () => {
 
 CollapsedMany.storyName = 'Collapsed — 40 tabs (scroll check)';
 
-// Interactive drag-and-drop reorder demo. Seeds a workspace + panels so
-// TabList's readiness gate releases (the unfiltered stories above show
-// rows because the gate's `activeWorkspaceId` falls back to null —
-// rendering the unfiltered list — but the drag flow needs a real
-// active workspace so useWorkspaceTabIds returns the seeded set and
-// drop targets resolve correctly). The onReorder callback applies the
-// browser.tabs.move semantics locally to the store so the resulting
-// order is visible without a real bento-tools port.
+// Interactive drag-and-drop reorder demo. Seeds a pinned tab and a folder
+// in the active workspace so the drag flow has real drop targets. The
+// onReorder callback applies the browser.tabs.move semantics locally to
+// the store so the resulting order is visible without a real bento-tools
+// port.
 export const DragReorder = () => {
   const [log, setLog] = useState<string[]>([]);
   useEffect(() => {
