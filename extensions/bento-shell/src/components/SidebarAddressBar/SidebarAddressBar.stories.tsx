@@ -2,15 +2,15 @@ import { useEffect } from 'react';
 import { SidebarAddressBar } from './SidebarAddressBar';
 import { seedAddressBarResults } from '../../state/__fixtures__/addressBarResults';
 import { seedSidebarAddressSnapshot } from '../../state/__fixtures__/sidebarAddress';
+import { seedPanelsByWorkspace } from '../../state/__fixtures__/panels';
 import { seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedMany } from '../../state/__fixtures__/workspaces';
-import { usePanelsStore } from '../../state/panels';
 import { useSearchEnginesStore } from '../../state/searchEngines';
 
 function seedBase() {
   seedMany();
   seedTabsAcrossWorkspaces([{ workspaceId: 'w-work', count: 5 }], 'w-work');
-  usePanelsStore.getState().apply('w-work', [3]);
+  seedPanelsByWorkspace({ 'w-work': [3] });
   seedAddressBarResults('bento');
   useSearchEnginesStore.getState().apply({
     defaultSearchEngine: 'ddg',
