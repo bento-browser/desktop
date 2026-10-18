@@ -1456,40 +1456,58 @@ rel="stylesheet">` load and error events on chrome documents, and the
   always restores it. The pref only takes effect while `restore_on_demand` stays
   true, which Bento does not pin. The backing tabs of pinned panels are native
   pinned tabs too: those in a workspace the window is not showing now stay
-  pending, while panels of the shown workspace still load at startup because
+  pending, while panels of the shown workspace load at startup because
   `materializePanelTab` in the mount script inserts their browsers to render the
-  strip. Both prefs are read by name, so there is no firefox-compat registry
-  entry.
+  strip (they are unloaded with the other pending pinned tabs first, below, and
+  `materializePanelTab` reloads them). The prefs are read by name, so they have no
+  firefox-compat registry entry; the `TabRestoreQueue` condition they feed does.
 - Pinned tabs created non-lazily (2026-10-18): `createTabsForSessionRestore` in
   `Tabbrowser.sys.mjs` builds a restored tab with a lazy browser only when
   `createLazyBrowser = restoreTabsLazily && !select && !tabData.pinned` holds, so a
   restored pinned tab always gets a real browser, even while pending. The
   WebExtension `tabs.Tab.discarded` getter (`!nativeTab.linkedPanel` in
-  `ext-browser.js`) therefore reports it as `discarded: false`. Bento depends on
-  both to show pending pinned tabs as sleeping: bento-tools discards them once per
-  launch (`tabs/PinnedTabRestore.ts`, wired in `background.ts`), which swaps the
-  real browser for a lazy one through `Tabbrowser.discardBrowser`. The pass runs
-  inside bento-tools' boot, before it sends the shell its first tab snapshot, so
-  the sidebar's first rows are already dimmed. It is gated on a
-  `browser.runtime.onStartup` listener: that event fires only for the
-  `APP_STARTUP` startup reason, once the background page has loaded
-  (`ext-runtime.js`, `background-first-run` in `ext-backgroundPage.js`), so a dev
-  reload, install or update never runs the discard. `browser.tabs.discard`
-  (`ext-tabs.js`) calls `Tabbrowser.discardBrowser` without force and ignores its
-  result, and `#mayDiscardBrowser` refuses a selected tab, so the call resolves
-  without discarding it and bento-tools reads each tab back before recording the
-  discard. If Firefox starts creating pinned tabs lazily,
-  they report `discarded: true` on their own and the discard selects nothing; the
-  pref must still exist. The pass discards only tabs that are still pending, and
-  reads "pending" from the public WebExtension API: a pending real browser never
-  navigated, so `tabs.Tab.url` (`browser.currentURI.spec`, `ext-tabs-base.js`) is
-  `about:blank` (the remote browser's `RemoteWebNavigation.currentURI` default,
-  replaced only by `updateForLocationChange` in `browser-custom-element.mjs`)
-  while a loaded or loading tab reports its address or `status: "loading"` (the
-  `busy` attribute, `ext-browser.js`); an audible or sharing tab
-  (`Tab.audible`, `Tab.sharingState`) is never discarded, because
-  `#mayDiscardBrowser` does not refuse one. The code reads these by effect through
-  the public WebExtension API, so there is no firefox-compat registry entry.
+  `ext-browser.js`) therefore reports it as `discarded: false`, and no WebExtension
+  field tells it from a loaded tab: SessionStore sets the saved address before any
+  load (`#restoreHistory` calls `SessionStoreUtils.restoreDocShellState`, which
+  calls `SetCurrentURIForSessionStore` in `SessionStoreUtils.cpp`), so
+  `tabs.Tab.url` shows the real address. Only the `pending` attribute that
+  `SessionStore.#restoreTab` sets (and `#markTabAsRestoring` clears) marks it.
+- Pinned tabs unloaded from chrome (2026-10-18): the mount script
+  (`src/browser/base/content/bento-shell-mount.js`: `attachRestoredPinnedTabUnload`,
+  `pinnedTabsToUnload`, `pinnedRestoreOnDemand`) listens for `SSWindowRestored` on
+  its window and calls `gBrowser.discardBrowser(tab)` without force for every tab
+  that is `pinned`, has the `pending` attribute, is not `selected`, and is neither
+  `soundplaying` nor `sharing` (nor a panel the window already renders), so the
+  pending real browser becomes a lazy one and the tab reports `discarded: true`.
+  It acts only while `browser.sessionstore.restore_on_demand` and
+  `restore_pinned_tabs_on_demand` are both true, the condition under which
+  `TabRestoreQueue.shift` and `willRestoreSoon` leave pinned tabs pending; with
+  either false the queue loads them, and discarding one that is still queued would
+  remove it from the queue (`#cleanUpRemovedBrowser`). `SessionStore` dispatches
+  `SSWindowRestored` on every window it restores (startup, reopened closed window,
+  restored session, `setBrowserState`, `setWindowState`) after the window's tabs
+  are created and marked pending, and at a startup before it notifies
+  `sessionstore-windows-restored`, which is what starts bento-tools' persistent
+  background page (`ExtensionParent.browserStartupPromise`, used in
+  `ext-backgroundPage.js`). The discard runs synchronously inside the dispatch, so
+  the extension's first `tabs.query` and the sidebar's first rows already show the
+  tabs as unloaded. `Tabbrowser.#mayDiscardBrowser` refuses a selected or closing
+  tab, a tab with an open dialog or a vetoing `beforeunload`, and one that is
+  already lazy, but not an audible or sharing one, so those two checks are
+  Bento's. The pinned panel tabs of the shown workspace are unloaded with the rest
+  (the window has no panels yet when it is restored) and `materializePanelTab`
+  inserts and reloads them when `panels/sync` arrives. The restore that
+  `onBeforeBrowserWindowShown` does for a macOS app whose last window was closed
+  (`#restoreLastWindow` in `#initializeWindow`) dispatches only the
+  `sessionstore-single-window-restored` observer, so its pinned tabs are not
+  unloaded. The sidebar's "Unload tab" item makes the same `discardBrowser` call
+  through `browser.tabs.discard` (`ext-tabs.js`). If Firefox starts creating pinned
+  tabs lazily, they report `discarded: true` on their own and the unload picks
+  nothing (`discardBrowser` returns false for a lazy tab); the pref must still
+  exist. Registry entries: `gBrowser.discardBrowser` (probed at runtime),
+  `SSWindowRestored`, `tab [pending] attribute`, `tab [soundplaying] attribute`,
+  `tab [sharing] attribute` and `TabRestoreQueue pinned on-demand gate` (checked
+  against the engine source).
 - Firefox 158.0 review (2026-10-14): Firefox 158.0 was released on 2026-10-13
   (security advisory MFSA 2026-106); its source digest is the row for
   `source/firefox-158.0.source.tar.xz` in `releases/158.0/SHA256SUMS`.
@@ -1591,14 +1609,17 @@ rel="stylesheet">` load and error events on chrome documents, and the
   skips the priority bucket when it and `restore_on_demand` are true (pin two
   tabs in different workspaces, quit, relaunch: only the selected tab loads and
   each pinned tab loads when first selected), confirm `createTabsForSessionRestore`
-  still excludes pinned tabs from the lazy browser, the `tabs.Tab.discarded`
-  getter is still `!linkedPanel`, `runtime.onStartup` still fires only at app
-  startup once the background page has loaded, and `tabs.discard` still reaches
-  `discardBrowser` without force (after the same relaunch the pending pinned tabs
-  are dimmed in the sidebar's first paint of the tab list and
-  `tabs.query({ pinned: true })` reports `discarded: true` for them, and an
-  Alt+Shift+R reload unloads none; a pending pinned tab still reports
-  `url: "about:blank"` from `tabs.get` while a loaded one reports its address),
+  still excludes pinned tabs from the lazy browser, `SessionStore` still sets the
+  `pending` attribute in `#restoreTab` and dispatches `SSWindowRestored` before
+  `sessionstore-windows-restored` (`pnpm run firefox:compat:engine` greps the
+  event, the attribute and the queue condition), `Tabbrowser.discardBrowser`
+  still takes the tab and an optional force flag, and the `tabs.Tab.discarded`
+  getter is still `!linkedPanel` (after the same relaunch the pending pinned tabs
+  are dimmed in the sidebar's first paint of the tab list, with no row showing
+  undimmed first, `tab.hasAttribute('pending')` is true and `tab.linkedPanel` is
+  empty for them in the Browser Toolbox Console, and
+  `tabs.query({ pinned: true })` reports `discarded: true`; an Alt+Shift+R reload
+  and a relaunch with `restore_pinned_tabs_on_demand` false unload none),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and
@@ -2019,6 +2040,7 @@ below is generated; edit the registry, then run
 | `gBrowser.on_visibilitychange` | method (runtime) | No-ops while split view is active so Firefox does not deactivate panel docShells. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:9314` |
 | `gBrowser._findTabToBlurTo` | method (runtime) | Excludes panel and other-workspace tabs when Firefox picks the next selected tab. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7053` |
 | `gBrowser.insertBrowser` | method (runtime) | Materializes restored pending panel tabs without selecting them (public since 157; _insertBrowser before). | `materializePanelTab` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3241` |
+| `gBrowser.discardBrowser` | method (runtime) | Unloads a pinned tab Firefox restored pending (a real browser, not a lazy one), without force: its own guard refuses the selected, closing, dialog and beforeunload cases. The tab keeps its session state and loads when selected. | `attachRestoredPinnedTabUnload` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3396` |
 | `MozTabbrowserTab.isEmpty` | member (runtime) | Prototype getter wrapped so a panel browser with no browsingContext reads as not empty. | `attachTabSelectListener` | `browser/components/tabbrowser/content/tab.js:288` |
 | `MozTabbrowserTab.splitview` | member (runtime) | Prototype getter shadowed per tab with Object.defineProperty to carry the Bento split marker. | `reconcilePanelsSplitView`, `makeSplitViewMarker` | `browser/components/tabbrowser/content/tab.js:406` |
 | `MozBrowser.prototype.removeProgressListener` | method (runtime) | Swallows NS_ERROR_FAILURE from removing a listener on a browser that is being torn down. | `attachTabSelectListener`, `isStaleWebProgressRemoveError` | `toolkit/content/widgets/browser-custom-element.mjs:987` |
@@ -2187,6 +2209,11 @@ below is generated; edit the registry, then run
 | `TabOpen` | source (engine only) | Reconciles panels when a tab opens (new-tab flows where TabSelect does not reach the listener). | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:5529` |
 | `TabAttrModified` | source (engine only) | Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes. | `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2314` |
 | `SSTabRestored` | source (engine only) | Refreshes the sidebar address snapshot after session restore fills a tab. | `attachSidebarAddressSnapshotListeners` | `browser/components/sessionstore/SessionStore.sys.mjs:8093` |
+| `SSWindowRestored` | source (engine only) | Fires on a window once SessionStore has created and marked its restored tabs, for a startup, reopened-window or restored-session restore, and before sessionstore-windows-restored (which starts the bento-tools background page). Bento unloads the window's pending pinned tabs inside the dispatch, so the first tab query already sees them as discarded. | `attachRestoredPinnedTabUnload` | `browser/components/sessionstore/SessionStore.sys.mjs:8078` |
+| `tab [pending] attribute` | source (engine only) | SessionStore sets it on every restored tab that has not loaded yet and clears it when the content restore starts; it is the only sign of a pending tab (the saved address is already the browser URL). Bento selects pinned tabs to unload by it, reloads a pending panel tab it materializes, and copies the custom values of a pending tab it adopts. | `pinnedTabsToUnload`, `materializePanelTab`, `adoptTabInto` | `browser/components/sessionstore/SessionStore.sys.mjs:6527` |
+| `tab [soundplaying] attribute` | source (engine only) | A tab playing audio is never unloaded as a pending pinned tab, and the panel navigator shows the playing state of the main tab by it. | `pinnedTabsToUnload`, `isMainTabAudioPlaying` | `browser/components/tabbrowser/content/tab.js:876` |
+| `tab [sharing] attribute` | source (engine only) | A tab sharing the camera, microphone or screen is never unloaded as a pending pinned tab. | `pinnedTabsToUnload` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2356` |
+| `TabRestoreQueue pinned on-demand gate` | source (engine only) | Pinned tabs stay pending only while restore_on_demand and restore_pinned_tabs_on_demand are both true; otherwise the queue loads them in turn. Bento unloads pending pinned tabs only under the same condition, so it never unloads a tab the queue is about to load. | `pinnedRestoreOnDemand` | `browser/components/sessionstore/SessionStore.sys.mjs:9209` |
 | `MozDOMFullscreen:Entered` | source (engine only) | Marks the panel whose page requested DOM fullscreen. | `attachBentoDomFullscreenRequesterTracking`, `markBentoDomFullscreenRequester` | `dom/base/Document.cpp:17080` |
 | `MozDOMFullscreen:Exited` | source (engine only) | Clears the DOM fullscreen requester mark. | `attachBentoDomFullscreenRequesterTracking`, `clearBentoDomFullscreenRequester` | `dom/base/Document.cpp:16083` |
 | `aftercustomization` | source (engine only) | Re-aligns toolbar navigation buttons and the bookmarks toolbar, and re-mounts the panel navigator, after the user customizes the toolbar. | `attachToolbarNavigationAlignment`, `attachBookmarksToolbarAlignment`, `watchPanelNavigatorToolbarPlacement` | `browser/components/customizableui/CustomizeMode.sys.mjs:683` |

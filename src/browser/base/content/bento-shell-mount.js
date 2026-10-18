@@ -96,12 +96,12 @@
   // Runtime half of the firefox-compat check; scripts/firefox-compat-registry.mjs
   // holds the use, sites and locators, and a test keeps this list equal to its
   // runtime entries. After delayed startup each window probes the list once and
-  // logs '[bento-compat] missing <id>', never throwing or changing behaviour. The
-  // probe is passive: it reads descriptors and never calls an accessor. A member
-  // anywhere on the prototype chain is present; an owner that is still a lazy
-  // accessor is deferred, and a module is imported only once Cu.isESModuleLoaded
-  // says it is loaded. It sits above the patch sites (they call
-  // bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
+  // logs '[bento-compat] missing <id>', never throwing. The probe is passive: it
+  // reads descriptors and never calls an accessor. A member anywhere on the
+  // prototype chain is present; an owner that is still a lazy accessor is
+  // deferred, and a module is imported only if Cu.isESModuleLoaded. It sits
+  // above the patch sites (they call bentoCompatNoteNative);
+  // window.BentoFirefoxCompat.check() re-runs it.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
@@ -111,7 +111,7 @@
         'insertBrowser()', 'showSplitViewPanels()', 'activeSplitView', 'on_TabSplitViewActivate()',
         'on_TabSplitViewDeactivate()', 'warmupTab()', 'tabpanels', 'tabContainer', 'addTrustedTab()',
         'addTab()', 'getTabForBrowser()', 'selectedBrowsers', 'moveTabBefore()', 'moveTabAfter()',
-        'replaceTabWithWindow()', 'replaceTabsWithWindow()', 'adoptTab()',
+        'replaceTabWithWindow()', 'replaceTabsWithWindow()', 'adoptTab()', 'discardBrowser()',
       ],
       MozTabbrowserTab: ['isEmpty', 'splitview', 'linkedPanel'],
       'MozBrowser.prototype': [
@@ -17250,6 +17250,55 @@
     );
   }
 
+  // With browser.sessionstore.restore_pinned_tabs_on_demand (prefs/bento.js) Firefox restores
+  // pinned tabs without loading them, but as pending tabs with a real browser: only other
+  // restored tabs get a lazy one (createTabsForSessionRestore excludes pinned tabs). The
+  // WebExtension 'discarded' flag is !linkedPanel, so the sidebar would draw them as loaded, and
+  // 'pending' is a chrome attribute that no extension API reports (SessionStore sets the saved
+  // address before any load, so Tab.url is no sign). Pending pinned tabs go back to lazy ones
+  // here. Panel tabs are skipped when this window already renders them.
+  function pinnedTabsToUnload(tabs, isRenderedPanel) {
+    return tabs.filter(
+      (tab) =>
+        tab.pinned &&
+        tab.hasAttribute('pending') &&
+        !tab.selected &&
+        !tab.hasAttribute('soundplaying') &&
+        !tab.hasAttribute('sharing') &&
+        !isRenderedPanel(tab),
+    );
+  }
+
+  // Pinned tabs stay pending only while both prefs are true (TabRestoreQueue drains them in
+  // turn otherwise, and the ones still queued are pending too), so only then is "pending" a
+  // restore-on-demand tab and not one about to load.
+  function pinnedRestoreOnDemand() {
+    return (
+      Services.prefs.getBoolPref('browser.sessionstore.restore_on_demand', true) &&
+      Services.prefs.getBoolPref('browser.sessionstore.restore_pinned_tabs_on_demand', false)
+    );
+  }
+
+  // SSWindowRestored fires once for every window SessionStore restores (startup, reopened
+  // closed window, restored session), after its tabs exist and are marked pending, and the
+  // discard runs inside the dispatch. At startup that is before sessionstore-windows-restored,
+  // which is what starts the bento-tools background page, so its first tab query already sees
+  // these tabs as discarded and the sidebar's first rows are dimmed. discardBrowser without
+  // force refuses a selected, closing or dialog tab itself.
+  function attachRestoredPinnedTabUnload() {
+    window.addEventListener('SSWindowRestored', () => {
+      try {
+        if (!pinnedRestoreOnDemand()) return;
+        const isRenderedPanel = (tab) => currentPanelTabIds.has(getBentoTabId(tab));
+        for (const tab of pinnedTabsToUnload(window.gBrowser.tabs, isRenderedPanel)) {
+          window.gBrowser.discardBrowser(tab);
+        }
+      } catch (err) {
+        console.warn('[bento-shell-mount] restored pinned tab unload failed:', err);
+      }
+    });
+  }
+
   // PopupNotifications gates "show this popup right now" on
   // _isActiveBrowser, which compares the popup's browser against
   // gBrowser.selectedBrowser. For Bento panels the panel's tab is
@@ -17365,6 +17414,7 @@
   registerContentKeyActor();
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
+  attachRestoredPinnedTabUnload();
   patchPopupNotificationsForSplitView();
   ensureExtensionsUIObservers();
   scheduleBentoFirefoxCompatChecks();
