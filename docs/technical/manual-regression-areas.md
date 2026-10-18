@@ -94,12 +94,16 @@ When changing core functionality, manually verify at least the affected subset:
   positions restored;
 - profile restart with pinned tabs: pin one tab in each of two workspaces and
   leave a regular tab selected, quit, relaunch. Only the selected tab loads (and
-  the shown workspace's panels); both pinned tabs stay pending (sleeping rows in
-  the sidebar, `tab.hasAttribute('pending')` in the Browser Toolbox Console), and
-  each loads when clicked, the second after switching to its workspace. Repeat
-  with a pinned tab selected at quit: it loads at launch. If a pinned tab that was
-  not selected loads at launch, see the startup pitfall in
-  [workspaces.md](workspaces.md);
+  the shown workspace's panels); both pinned tabs stay pending and are dimmed
+  (sleeping rows in the sidebar, `tab.hasAttribute('pending')` in the Browser
+  Toolbox Console, `tabs.query({ pinned: true })` reports `discarded: true`).
+  Clicking one loads the right page, the second after switching to its
+  workspace, and Back works. A pinned tab shown as a panel in the active
+  workspace is not unloaded and renders normally. Repeat with a pinned tab
+  selected at quit: it loads at launch and is not dimmed. Then press Alt+Shift+R
+  with a loaded pinned tab open: it stays loaded, because the discard runs only
+  at browser startup. If a pinned tab that was not selected loads at launch, see
+  the startup pitfalls in [workspaces.md](workspaces.md);
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.

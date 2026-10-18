@@ -1452,14 +1452,29 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `shift()` and `willRestoreSoon()` drain that priority bucket unless both prefs
   are true. Bento's pinned sidebar tabs are native pinned tabs, so each launch
   loaded all of them, in every workspace. With the pref true they stay pending
-  (shown as sleeping) until first selected; the tab selected at shutdown still
-  loads because Firefox always restores it. The pref only takes effect while
-  `restore_on_demand` stays true, which Bento does not pin. The backing tabs of
-  pinned panels are native pinned tabs too: those in a workspace the window is not
-  showing now stay pending, while panels of the shown workspace still load at
-  startup because `materializePanelTab` in the mount script inserts their browsers
-  to render the strip. Both prefs are read by name, so there is no
-  firefox-compat registry entry.
+  until first selected; the tab selected at shutdown still loads because Firefox
+  always restores it. The pref only takes effect while `restore_on_demand` stays
+  true, which Bento does not pin. The backing tabs of pinned panels are native
+  pinned tabs too: those in a workspace the window is not showing now stay
+  pending, while panels of the shown workspace still load at startup because
+  `materializePanelTab` in the mount script inserts their browsers to render the
+  strip. Both prefs are read by name, so there is no firefox-compat registry
+  entry.
+- Pinned tabs created non-lazily (2026-10-18): `createTabsForSessionRestore` in
+  `Tabbrowser.sys.mjs` builds a restored tab with a lazy browser only when
+  `createLazyBrowser = restoreTabsLazily && !select && !tabData.pinned` holds, so a
+  restored pinned tab always gets a real browser, even while pending. The
+  WebExtension `tabs.Tab.discarded` getter (`!nativeTab.linkedPanel` in
+  `ext-browser.js`) therefore reports it as `discarded: false`. Bento depends on
+  both to show pending pinned tabs as sleeping: bento-tools discards them once per
+  launch from a `browser.runtime.onStartup` listener (`tabs/PinnedTabRestore.ts`,
+  wired in `background.ts`), which swaps the real browser for a lazy one through
+  `Tabbrowser.discardBrowser`. `runtime.onStartup` fires only for the
+  `APP_STARTUP` startup reason (`ext-runtime.js`), so a dev reload, install or
+  update never runs the discard. If Firefox starts creating pinned tabs lazily,
+  they report `discarded: true` on their own and the discard selects nothing; the
+  pref must still exist. The code reads these by effect through the public
+  WebExtension API, so there is no firefox-compat registry entry.
 - Firefox 158.0 review (2026-10-14): Firefox 158.0 was released on 2026-10-13
   (security advisory MFSA 2026-106); its source digest is the row for
   `source/firefox-158.0.source.tar.xz` in `releases/158.0/SHA256SUMS`.
@@ -1560,7 +1575,12 @@ rel="stylesheet">` load and error events on chrome documents, and the
   still exists in `browser/app/profile/firefox.js` and `TabRestoreQueue` still
   skips the priority bucket when it and `restore_on_demand` are true (pin two
   tabs in different workspaces, quit, relaunch: only the selected tab loads and
-  each pinned tab loads when first selected),
+  each pinned tab loads when first selected), confirm `createTabsForSessionRestore`
+  still excludes pinned tabs from the lazy browser, the `tabs.Tab.discarded`
+  getter is still `!linkedPanel`, and `runtime.onStartup` still fires only at app
+  startup (after the same relaunch the pending pinned tabs show as sleeping in the
+  sidebar and `tabs.query({ pinned: true })` reports `discarded: true` for them, and an
+  Alt+Shift+R reload unloads none),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and
