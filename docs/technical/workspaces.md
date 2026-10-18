@@ -168,9 +168,10 @@ reserved for Bento. The handler reads `sidebarShortcutBehavior` from the latest
 `BentoSettings.sidebarCollapsed` and clears `sidebarHidden`; chrome shows the
 change as the slide described below. In `hide` mode it
 sets both `sidebarHidden=true` and `sidebarCollapsed=true`; the next shortcut
-press clears both so the sidebar returns expanded. Chrome applies
-`.bento-sidebar-hidden` to `#bento-shell-host`, `#bento-shell-splitter`, and
-`#bento-shell-splitter-affordance`, pins the host to the collapsed rail width,
+press clears both so the sidebar returns expanded. Both directions are the
+slide described below; the hidden state itself is `.bento-sidebar-hidden` on
+`#bento-shell-host`, `#bento-shell-splitter`, and
+`#bento-shell-splitter-affordance`: it pins the host to the collapsed rail width,
 cancels its hbox footprint with an equal negative right margin, translates the
 rail off the left edge, and hides the splitter. A chrome-side
 `#bento-sidebar-hidden-hover-zone` at the left edge, plus a window pointer-move
@@ -751,10 +752,11 @@ The slide ("push") makes the sidebar and the page one strip. Layout changes once
 per toggle, only `transform` and `opacity` animate, and the duration and easing
 are the Mux `reveal` role (the fade is `calc()` over that duration, 0.4 of it,
 with `--muxui-semantic-motion-constant-easing`; Bento has no motion tokens of its
-own). `delta` is the expanded host width minus the layout space the host holds at
-the narrow end (the rail, or 0 when the sidebar was hidden).
+own). `delta` is the host's width (expanded, or the rail's for a hide from the rail)
+minus the layout space the host holds at the narrow end (the rail, or 0 when the
+sidebar was hidden or is being hidden).
 
-- The host keeps its expanded width for the whole slide and holds only the narrow
+- The host keeps its width for the whole slide and holds only the narrow
   end's layout space through `margin-right: -delta`, stacked over the page
   (`:root[bento-sidebar-push]`). The page lays out once, at its final geometry.
 - The page group is every in-flow child of `#browser` right of the host (the
@@ -776,10 +778,23 @@ the narrow end (the rail, or 0 when the sidebar was hidden).
   settles it at its final state first (margin, transforms, opacity, classes, root
   attribute and custom properties all gone), then starts the new slide from there.
   The first apply at boot, `prefers-reduced-motion: reduce`, an unmeasurable rail
-  and any toggle that hides or stays hidden switch instantly, as before.
-- Hide mode is its own transform slide and is unchanged, including the hover
-  reveal. Expanding out of the hidden state is a push with `delta` equal to the
-  whole expanded width.
+  and any toggle that stays hidden switch instantly, as before.
+- Hide is a collapse to a narrow end of 0 (`:root[bento-sidebar-push='hide']`, the
+  same keyframes). Hide mode keeps `sidebarCollapsed` true, so a sidebar that is a
+  rail already hides with no collapsed change: `applyChromeSidebarCollapsed` starts the
+  slide for the toggle into the hidden state, not only for a collapsed change, and
+  `applyChromeSidebarHidden`, which the payload runs next, leaves the host's class to
+  the slide. The host keeps the width it has (expanded or rail) and the page lays out
+  at its final geometry at the start; the splitter and its affordance take their hidden
+  state at once for that reason. The host leaves the window completely, so there is no
+  fade, in or out: the end can switch to the rail layout unseen. `settleSidebarPush`
+  puts `.bento-sidebar-hidden` and `.bento-sidebar-collapsed` on in the one style
+  change that drops the transforms, with the hidden rule's transform transition held
+  off for that change (an inline `transition: none`, restored after a layout flush).
+  The end state is the one a boot into the hidden state has. The hover reveal and its own transform transition are unchanged, except that
+  `reveal` ignores the pointer while a push runs, so a pointer at the left edge cannot
+  leave the revealed class waiting for the class that lands at the end. Expanding out
+  of the hidden state is a push with `delta` equal to the whole expanded width.
 - The expanded width is computed (inline width inside the min and max the sheet
   pins), not measured: measuring would flush layout at the intermediate geometry
   and hand the page's browsers a size they never keep.
@@ -799,7 +814,9 @@ the narrow end (the rail, or 0 when the sidebar was hidden).
   `sidebarHostLayoutBox`, which removes the host's own translation and measures the
   strip's inset from the host's margin box, so a push out of the hidden state
   (host parked at `translateX(-100%)`, margin-right `-rail`) prepares from the
-  layout origin.
+  layout origin. A hide commits the hidden toolbar (hooks run with the hidden flag
+  set: no navigation offset, bookmarks offset 0, split 0) and a push out of the hidden
+  state a shown one.
 - While `bento-sidebar-push` is on the root, `isBentoChromeLiveResizing()` is true,
   so the divider, toolbar navigation, bookmarks alignment, affordance and strip
   scrollbar observers hold off. Their pending animation frames are cancelled when a
@@ -838,7 +855,11 @@ the sidebar, page, toolbar band and footer end in the last state with no stuck
 offset, opacity or class (`document.documentElement.hasAttribute('bento-sidebar-push')`
 is false in the Browser Toolbox Console); with panels open, the panels are aligned
 with their splitters after each toggle; with the bookmarks toolbar shown; in hide
-mode, hide, hover-reveal, and show; with the OS reduced-motion setting on (no slide);
+mode, hide from the expanded sidebar and from the rail (the page, toolbar controls and
+divider slide with the sidebar, the sidebar does not fade, the final frame has no jump),
+hover-reveal, and show (the divider enters with the strip's edge, not static at its final
+position), Cmd+S again mid-slide in both directions, and ten quick presses; with the OS
+reduced-motion setting on (no slide);
 cold start collapsed and expanded (no animation); a long tab list scrolled
 partway, collapsed and expanded (the custom scrollbar matches the rail).
 
@@ -928,6 +949,16 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   collapsed class is removed (`sidebarExpandedWidth` computes it). Do not call
   anything that reads layout between removing the class and adding the margin: the
   page's browsers would receive the intermediate size.
+- Do not hide the sidebar by adding `.bento-sidebar-hidden` at the start of the
+  toggle. The class pins the host to the rail with `margin-right: -rail`, so the page
+  jumps into the freed space in one frame (measured: host 300 to 35.6 px, main panel
+  left 305 to 5 in one frame) while only the rail's transform transitions. Hide is a
+  push (`direction` `hide`, narrow end 0) and the class lands in the frame the push
+  settles; `applyChromeSidebarHidden` must not settle a hide push it belongs to, and a
+  hide must start when `sidebarCollapsed` already matched (hide from the rail).
+- Do not let the hidden class's transform transition run when it lands at the end of a
+  hide: the before-change transform is the finished animation's `-delta`, so the host
+  would transition from there. The settle holds the transition off for that change.
 - Do not write a raw duration or easing for the fade. It is `calc()` over the Mux
   `reveal` duration with the `constant` easing, which keeps `pnpm run lint:motion`
   satisfied and the fade in step with the slide when a theme changes the role.

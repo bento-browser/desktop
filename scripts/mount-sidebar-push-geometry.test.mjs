@@ -3,7 +3,8 @@
 // functions run against fake elements whose rects follow a small model of the layout the CSS
 // produces: the host is as wide as its classes say, takes a negative right margin while a push
 // runs or the sidebar is hidden, and carries the transform each of those starts from; the strip
-// sits at the host's footprint and the page group carries the collapse's start transform. Rects
+// sits at the host's footprint and the page group carries the collapse's (and the hide's) start
+// transform. Rects
 // include transforms, as getBoundingClientRect does, which is the point of these cases.
 // mount-sidebar-push.test.mjs covers the sequencing of the push itself.
 import assert from 'node:assert/strict';
@@ -63,9 +64,11 @@ const FUNCTIONS = [
   'startSidebarPush',
   'settleSidebarPush',
   'isSidebarCollapsedTarget',
+  'isSidebarHiddenTarget',
   'clearSidebarPushFade',
   'syncGeometryAfterSidebarPush',
   'applyChromeSidebarCollapsed',
+  'applyChromeSidebarHidden',
 ];
 
 class FakeElement {
@@ -114,6 +117,11 @@ class FakeElement {
     this.attributes.delete(name);
   }
 
+  toggleAttribute(name, force) {
+    if (force) this.attributes.set(name, '');
+    else this.attributes.delete(name);
+  }
+
   addEventListener(type, handler) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler]);
   }
@@ -133,12 +141,18 @@ const px = (n) => n + 'px';
 
 /**
  * A window with the sidebar host, the strip, the toolbar and the real updaters attached. The
- * model: while a push runs, the host keeps its expanded width with margin-right -delta and sits
- * at the transform its animation starts from (0 on a collapse, -delta on an expand); the strip
- * sits at the host's footprint, translated by +delta on a collapse. Hidden mode is the rail
+ * model: while a push runs, the host keeps its width with margin-right -delta and sits
+ * at the transform its animation starts from (0 on a collapse or hide, -delta on an expand); the
+ * strip sits at the host's footprint, translated by +delta on a collapse or hide. Hidden mode is the rail
  * width with margin-right -rail and translateX(-100%).
  */
-function makeWorld({ expandedWidth = 300, railWidth = 64, hidden = false, collapsed = false } = {}) {
+function makeWorld({
+  expandedWidth = 300,
+  railWidth = 64,
+  hidden = false,
+  collapsed = false,
+  splitterGap = 0,
+} = {}) {
   const root = new FakeElement('root');
   const host = new FakeElement('bento-shell-host');
   host.style.width = expandedWidth + 'px';
@@ -189,11 +203,14 @@ function makeWorld({ expandedWidth = 300, railWidth = 64, hidden = false, collap
   const hostMargin = () => (pushDirection() ? -delta() : isHidden() ? -railWidth : 0);
   const hostShift = () => {
     if (pushDirection() === 'expand') return -delta();
-    if (pushDirection() === 'collapse') return 0;
+    if (pushDirection() === 'collapse' || pushDirection() === 'hide') return 0;
     return isHidden() ? -railWidth : 0;
   };
-  const stripFootprint = () => hostWidth() + hostMargin();
-  const stripShift = () => (pushDirection() === 'collapse' ? delta() : 0);
+  // The splitter's slot between the host and the strip; the hidden state drops it.
+  const splitterSlot = () => (splitter.classes.has('bento-sidebar-hidden') ? 0 : splitterGap);
+  const stripFootprint = () => hostWidth() + hostMargin() + splitterSlot();
+  const stripShift = () =>
+    pushDirection() === 'collapse' || pushDirection() === 'hide' ? delta() : 0;
 
   host.getBoundingClientRect = () => ({
     left: hostShift(),
@@ -218,6 +235,10 @@ function makeWorld({ expandedWidth = 300, railWidth = 64, hidden = false, collap
     height: 600,
   });
   strip.computedStyle = () => ({ display: 'block', position: 'relative' });
+  splitter.computedStyle = () => ({
+    display: splitter.classes.has('bento-sidebar-hidden') ? 'none' : 'block',
+    position: 'relative',
+  });
   bookmarks.computedStyle = () => ({ display: 'block', position: 'relative', height: '28px', minHeight: '28px' });
   bookmarks.getBoundingClientRect = () => ({ left: 0, right: 1000, top: 40, bottom: 68, width: 1000, height: 28 });
   for (const el of [toolbox, tabsToolbar, navBar]) {
@@ -345,6 +366,7 @@ function makeWorld({ expandedWidth = 300, railWidth = 64, hidden = false, collap
           attachBookmarksToolbarAlignment();
         },
         apply: applyChromeSidebarCollapsed,
+        applyHidden: applyChromeSidebarHidden,
         setHidden: (value) => { currentSidebarHidden = value; },
       });`,
       sandbox,
@@ -352,6 +374,11 @@ function makeWorld({ expandedWidth = 300, railWidth = 64, hidden = false, collap
     ),
   );
 
+  /** What the BENTO_PANELS payload runs for the two settings, in its order. */
+  world.payload = (collapsed, hidden) => {
+    world.apply(collapsed, { hidden });
+    world.applyHidden(hidden);
+  };
   /** Runs every queued animation frame once, like the next frame. */
   world.runFrames = () => {
     const queued = [...world.frames];
@@ -454,8 +481,85 @@ test('an expand out of the hidden state prepares the toolbar from the host layou
   const expandedWorld = makeWorld({ expandedWidth: 300, railWidth: 64 });
   assert.equal(state.nav, expandedWorld.toolbarState().nav);
   assert.equal(state.minWidth, expandedWorld.toolbarState().minWidth);
-  world.host.classes.delete('bento-sidebar-hidden');
+  assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '300px');
+  world.applyHidden(false);
+  assert.equal(world.host.classes.has('bento-sidebar-hidden'), false);
   world.endMotion();
   // The bookmarks toolbar starts where the strip will: the expanded width, no inset.
   assert.equal(world.toolbarState().bookmarks, '300px');
+});
+
+test('a hide commits the hidden toolbar at the start and the updaters keep it after the slide', () => {
+  // The splitter slot between the host and the strip goes with the hidden state, so the
+  // bookmarks offset cannot be derived from the shown sidebar's width and inset.
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64, splitterGap: 6 });
+  const shown = world.toolbarState();
+  assert.equal(shown.divider, '299px');
+  assert.notEqual(shown.nav, '0px');
+  assert.equal(shown.bookmarks, '306px');
+  world.payload(true, true);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'hide');
+  assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '300px');
+  const started = world.toolbarState();
+  // Hidden values from the first frame: no navigation offset, the bookmarks toolbar at the
+  // window edge (it rides the page group from delta back to 0), the split held wide.
+  assert.equal(started.nav, '0px');
+  assert.equal(started.bookmarks, '0px');
+  assert.equal(started.rootSplit, '299px');
+  const divider = world.byId.get('bento-sidebar-chrome-divider');
+  // Nothing the hooks queued reads the translated geometry while the slide runs, and a
+  // mutation of the bookmarks toolbar does not read the strip's translation into its offset.
+  world.runFrames();
+  for (const callback of world.mutationCallbacks) callback();
+  world.runFrames();
+  assert.deepEqual(world.toolbarState(), started);
+  assert.equal(world.bookmarks.classes.has('bento-sidebar-push-page'), true);
+  world.endMotion();
+  world.runFrames();
+  world.runFrames();
+  const ended = world.toolbarState();
+  assert.equal(divider.hidden, true);
+  assert.equal(ended.nav, '0px');
+  assert.equal(ended.bookmarks, '0px');
+  assert.equal(ended.rootSplit, '0px');
+  assert.equal(world.host.classes.has('bento-sidebar-hidden'), true);
+  assert.equal(world.root.hasAttribute('bento-sidebar-push'), false);
+  // The same toolbar a boot into the hidden state has.
+  const booted = makeWorld({ expandedWidth: 300, railWidth: 64, hidden: true, splitterGap: 6 });
+  assert.equal(ended.nav, booted.toolbarState().nav);
+  assert.equal(ended.bookmarks, booted.toolbarState().bookmarks);
+  assert.equal(ended.rootSplit, booted.toolbarState().rootSplit);
+});
+
+test('a hide from the rail slides the rail footprint out and ends hidden', () => {
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64, collapsed: true, splitterGap: 6 });
+  assert.equal(world.toolbarState().bookmarks, '70px');
+  world.payload(true, true);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'hide');
+  assert.equal(world.root.props.get('--bento-sidebar-push-delta'), '64px');
+  assert.equal(world.toolbarState().bookmarks, '0px');
+  world.endMotion();
+  world.runFrames();
+  world.runFrames();
+  assert.equal(world.byId.get('bento-sidebar-chrome-divider').hidden, true);
+  assert.equal(world.toolbarState().bookmarks, '0px');
+  assert.equal(world.host.classes.has('bento-sidebar-hidden'), true);
+});
+
+test('showing right after a hide starts the divider and the toolbar from the hidden state', () => {
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64 });
+  world.payload(true, true);
+  // Interrupted before the hide ended: it settles first, then the show begins.
+  world.payload(false, false);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(world.root.props.get('--bento-sidebar-push-nav-from'), '0px');
+  assert.equal(world.host.classes.has('bento-sidebar-hidden'), false);
+  const divider = world.byId.get('bento-sidebar-chrome-divider');
+  assert.equal(divider.hidden, false);
+  assert.equal(divider.style.left, '299px');
+  world.endMotion();
+  world.runFrames();
+  world.runFrames();
+  assert.equal(world.toolbarState().bookmarks, '300px');
+  assert.equal(world.root.hasAttribute('bento-sidebar-push'), false);
 });
