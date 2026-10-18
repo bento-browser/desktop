@@ -75,6 +75,10 @@ the main content slot. Regression check: put a tab inside a folder in workspace
 B, search for it from workspace A, click the result, and confirm workspace B
 opens with that exact folder member in the main content slot.
 
+Pitfall: the grid for the result row is on Mux's `.muxui-button-content`, not the
+Button (see
+[../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
+
 ### Search trigger and field motion
 
 The trigger is a Mux `Button` (ghost, `sm`) with the search icon and a `Search`

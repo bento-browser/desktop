@@ -741,10 +741,8 @@
 }
 
 .muxui-button.bento-tab-list-search__result-main {
-  display: grid;
-  grid-template-columns: var(--bento-favicon-size) var(--bento-favicon-size) minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  justify-content: stretch;
   gap: var(--space-xs);
   box-sizing: border-box;
   width: 100%;
@@ -754,6 +752,18 @@
   border-radius: var(--radius-s);
   background-color: transparent;
   color: var(--neutral-90);
+}
+
+/* Button's label part wraps the avatar, favicon, text and kind, so the grid
+   goes on it, not the Button: as the Button's only grid item it sat in the
+   first favicon column and squeezed the text to nothing. */
+.bento-tab-list-search__result-main .muxui-button-content {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: var(--bento-favicon-size) var(--bento-favicon-size) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
 }
 
 .muxui-button.bento-tab-list-search__result-main:hover:not([data-disabled], [data-pending]),

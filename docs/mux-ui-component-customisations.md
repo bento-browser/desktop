@@ -123,7 +123,11 @@ Generic buttons and picker triggers use Mux `Button` or `IconButton`. Button
 wraps its children in its `label` part (`.muxui-button-content`). The workspace
 theme picker trigger styles that part, scoped to the trigger, as a filling flex
 row so the theme name grows and the chevron sits at the end; the rule holds for
-the published package's inline wrapper and Mux main's inline-flex one. Emoji
+the published package's inline wrapper and Mux main's inline-flex one. Sidebar
+search results do the same with a grid: the four-column avatar, favicon, text
+and kind layout is on that part, not on the Button, where the part was the only
+grid item and the text collapsed to nothing. The rule works for the published
+package's inline wrapper and Mux main's inline-flex one. Emoji
 categories use public `Tabs` with controlled `value`/`onChange`; Mux owns tab
 roles, panel association, selection, and arrow-key navigation. Scoped layout
 keeps the existing emoji panel above its category strip. The RC can update
