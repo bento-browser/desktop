@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
+  LAYER_ORDER_FILE,
   declaredProperties,
+  findUndeclaredLayers,
   findUndefinedReads,
+  layerUses,
+  orderedBentoLayers,
   unguardedReads,
 } from './check-undefined-tokens.mjs';
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 test('declaredProperties finds declarations, not reads, text or comments', () => {
   const css = `
@@ -80,5 +90,74 @@ test('findUndefinedReads reports only reads that no stylesheet declares', () => 
       declaredIn: ['.b { content: "--missing: example"; }'],
     }),
     { 'a.css': ['--missing'] },
+  );
+});
+
+test('layerUses reads blocks, statements, imports and nested layers, not comments or strings', () => {
+  const css = `
+    @layer muxui, bento;
+    @layer bento.tokens, bento.app;
+    @import url('x.css') layer(muxui);
+    @layer bento.components { .a { color: red; } }
+    @layer bento { @layer inner { @media (min-width: 1px) { @layer deep { .b {} } } } .c {} }
+    @media print { @layer bento.app { .d {} } }
+    /* @layer bento.commented { } */
+    .e { content: "@layer bento.quoted { }"; }
+  `;
+  assert.deepEqual(
+    layerUses(css).map((use) => `${use.kind} ${use.name}`),
+    [
+      'statement muxui',
+      'statement bento',
+      'statement bento.tokens',
+      'statement bento.app',
+      'import muxui',
+      'block bento.components',
+      'block bento',
+      'block bento.inner',
+      'block bento.inner.deep',
+      'block bento.app',
+    ],
+  );
+});
+
+test('orderedBentoLayers lists only bento layers named in order statements', () => {
+  const css = `
+    @layer muxui, bento;
+    @layer bento.tokens, bento.app;
+    @layer bento.components { .a {} }
+  `;
+  assert.deepEqual([...orderedBentoLayers(css)], ['bento', 'bento.tokens', 'bento.app']);
+  assert.deepEqual([...orderedBentoLayers('@layer bento.x { .a {} }')], []);
+});
+
+test('findUndeclaredLayers reports a bento layer missing from the order statement', () => {
+  const orderCss = '@layer muxui, bento; @layer bento.tokens, bento.components, bento.app;';
+  const undeclared = findUndeclaredLayers({
+    scanned: {
+      'ok.css': '@layer bento.components { .a {} } @layer bento.app { .b {} } .c {}',
+      'new.css': '@layer bento.overlay { .d {} } @layer bento.overlay { .e {} }',
+      'nested.css': '@layer bento.components { @layer extra { .f {} } }',
+      'other.css': '@layer muxui { .g {} } @layer unrelated { .h {} }',
+    },
+    orderCss,
+  });
+  assert.deepEqual(undeclared, {
+    'new.css': ['bento.overlay'],
+    'nested.css': ['bento.components.extra'],
+  });
+});
+
+test('the shell stylesheets only use bento layers that muxui.css orders', () => {
+  const result = spawnSync(process.execPath, [resolve(SCRIPT_DIR, 'check-undefined-tokens.mjs')], {
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /OK bento layers/);
+
+  const orderCss = readFileSync(resolve(SCRIPT_DIR, '..', LAYER_ORDER_FILE), 'utf8');
+  assert.ok(
+    [...orderedBentoLayers(orderCss)].some((name) => name.startsWith('bento.')),
+    `${LAYER_ORDER_FILE} lost its @layer bento.* order statement`,
   );
 });

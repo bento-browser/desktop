@@ -210,7 +210,9 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   without it the layer ranks by whichever file declares it first, which differs
   between the dev server (one `<style>` per CSS module in import order), the
   build (one `style.css` concatenated in chunk order) and Ladle (story load
-  order). `panel-newtab.css` does not import `muxui.css` and declares only
+  order). `pnpm run lint:tokens` fails when a shell stylesheet uses a `bento.*`
+  layer missing from that list (chrome CSS under `src/browser` is not scanned).
+  `panel-newtab.css` does not import `muxui.css` and declares only
   `bento.tokens`.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
