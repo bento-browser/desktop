@@ -123,6 +123,18 @@ test('readLayers qualifies nested layers and ignores comments and strings', () =
   assert.deepEqual(unsupported, []);
 });
 
+test('nested layer names are qualified through @media, @supports, @container and style rules', () => {
+  const css = `
+    @layer bento {
+      @supports (display: grid) { @layer s { .a {} } }
+      @container (min-width: 1px) { @layer c { .b {} } }
+      .host { @media print { @layer m { color: red; } } }
+    }
+    .outer { @layer bento.n { .d { color: red; } } }
+  `;
+  assert.deepEqual(readLayers(css).names, ['bento', 'bento.s', 'bento.c', 'bento.m', 'bento.n']);
+});
+
 test('findLayerProblems reports a bento layer missing from the order statement', () => {
   const orderCss = '@layer muxui, bento; @layer bento.tokens, bento.components, bento.app;';
   const problems = findLayerProblems({
@@ -215,23 +227,77 @@ test('layer names with escapes or other tokens are rejected', () => {
   const css = String.raw`
     @layer \62 ento.extra { .a {} }
     @layer bento.ok, bento\.escaped;
-    @import url(x.css) layer(\62 ento);
+    @layer bento.\"x { .b { content: "y" } }
   `;
   const { names, unsupported } = readLayers(css);
   assert.deepEqual(names, []);
   assert.deepEqual(
     unsupported.map((reason) => reason.split(' is not')[0]),
-    ["layer name '\\62 ento.extra'", "layer name 'bento\\.escaped'", "layer name '\\62 ento'"],
+    ["layer name '\\62 ento.extra'", "layer name 'bento\\.escaped'", "layer name 'bento.\\\"x'"],
   );
 });
 
-test('an @layer rule that never ends is rejected, such as one hidden by an escaped quote', () => {
-  // The escaped quote starts a string in masked text and swallows the block that follows.
-  const hidden = String.raw`@layer bento.\"x { .a { content: "y" } }`;
-  assert.deepEqual(readLayers(hidden).unsupported, ["@layer with no ';' or block"]);
-  assert.deepEqual(readLayers('.a {} @layer bento.app').unsupported, [
-    "@layer with no ';' or block",
-  ]);
+test('an escaped at-rule name or @import param is rejected, not read as another keyword', () => {
+  // An escape ends the name PostCSS reads: `@l\61yer` is the at-rule "l", and `@\6c ayer` has no
+  // name at all, which PostCSS refuses to parse.
+  const { names, unsupported } = readLayers(String.raw`
+    @l\61yer bento.extra { .a {} }
+    .b { @layer\62 ento { .c {} } }
+    @import "x.css" l\61yer(bento.extra);
+    @import url(y.css) layer(\62 ento);
+  `);
+  assert.deepEqual(names, []);
+  assert.deepEqual(
+    unsupported.map((reason) => reason.split(/:| is not/)[0]),
+    [
+      'at-rule name with an escape',
+      'at-rule name with an escape',
+      "layer name '\\62 ento'",
+      '@import with an escape',
+      '@import with an escape',
+    ],
+  );
+  assert.match(
+    readLayers(String.raw`@\6c ayer bento.extra { .a {} }`).unsupported.join('\n'),
+    /^CSS did not parse: At-rule without name \(line 1, column 1\)$/,
+  );
+});
+
+test('CSS that does not parse fails naming the file, a statement at the end needs no semicolon', () => {
+  for (const css of [
+    '@layer bento.app { .a {',
+    '@layer bento.app { .a {} } /* open',
+    '.a { x: "y }',
+  ]) {
+    const { unsupported } = findLayerProblems({
+      [LAYER_ORDER_FILE]: '@layer muxui, bento; @layer bento.app;',
+      'broken.css': css,
+    });
+    assert.equal(unsupported.length, 1, css);
+    assert.match(unsupported[0], /^broken\.css: CSS did not parse: /, css);
+  }
+  assert.deepEqual(readLayers('.a {} @layer bento.app').names, ['bento.app']);
+});
+
+test('an order statement with a string or url() is invalid and authorizes nothing', () => {
+  // Browsers discard the whole statement, so bento.app is not ordered either.
+  for (const invalid of [
+    '@layer bento.app, "oops" bento.extra;',
+    '@layer bento.app, url(x.css) bento.extra;',
+    "@layer bento.app, 'oops', bento.extra;",
+  ]) {
+    const { unsupported, undeclared } = findLayerProblems({
+      [LAYER_ORDER_FILE]: `@layer muxui, bento; @layer bento.tokens; ${invalid}`,
+      'a.css': '@layer bento.app { .a {} } @layer bento.extra { .b {} }',
+    });
+    assert.equal(unsupported.length, 1, invalid);
+    assert.match(unsupported[0], new RegExp(`^${LAYER_ORDER_FILE}: layer name '`), invalid);
+    assert.deepEqual(
+      undeclared.map((line) => line.split(' is missing')[0]),
+      ['a.css: layer bento.app', 'a.css: layer bento.extra'],
+      invalid,
+    );
+  }
 });
 
 test('custom property values are not read as layers, in the order file or elsewhere', () => {
@@ -242,6 +308,26 @@ test('custom property values are not read as layers, in the order file or elsewh
     @layer bento.real { .d {} }
   `;
   assert.deepEqual(readLayers(css), { names: ['bento.real'], ordered: [], unsupported: [] });
+});
+
+test('an escaped brace or a function in a custom property value neither hides nor adds a layer', () => {
+  // The escaped brace is not a block, and a ';' inside fn() or [] does not end the value.
+  const css = String.raw`
+    .a { --x: \{; --f: fn(a; @layer bento.phantom;); --g: [a; @layer bento.other;]; --h: fn(
+      a; @layer bento.multi;
+    ); }
+    @layer bento.extra { .b {} }
+  `;
+  assert.deepEqual(readLayers(css), { names: ['bento.extra'], ordered: [], unsupported: [] });
+
+  const { unsupported, undeclared } = findLayerProblems({
+    [LAYER_ORDER_FILE]: '@layer muxui, bento; @layer bento.app;',
+    'a.css': css,
+  });
+  assert.deepEqual(unsupported, []);
+  assert.deepEqual(undeclared, [
+    `a.css: layer bento.extra is missing from the order statement in ${LAYER_ORDER_FILE}`,
+  ]);
 });
 
 test('the shell stylesheets only use bento layers that muxui.css orders', () => {

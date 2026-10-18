@@ -17,13 +17,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 //
 // The same run also checks the `bento` and `bento.*` cascade layers of every shell stylesheet. An
 // unlisted layer ranks by whichever file declares it first, and that differs between the dev
-// server, the build and Ladle, so each must appear in the top-level `@layer a, b;` statement in
-// theme/muxui.css (the only order that counts). The check fails closed on CSS it cannot read: an
-// anonymous `@layer` block, a layer name that is not plain dotted identifiers (an escape can spell
-// `bento`), and an `@import` into a `bento` layer. Custom property values are skipped. Chrome CSS
-// under src/browser (its own document and `bento.chrome-theme` layer) is not scanned.
+// server, the build and Ladle, so each must appear in the `@layer a, b;` statement at the top level
+// of theme/muxui.css (the only order that counts). Layers are read from the sheets' PostCSS trees
+// (the shell's own devDependency), so custom property values, strings and comments never count. The
+// check fails closed on CSS it cannot read: a sheet PostCSS cannot parse, an at-rule name or
+// `@import` with an escape, an anonymous `@layer` block, a layer name that is not plain dotted
+// identifiers (an escape can spell `bento`; a statement with one such name orders nothing) and an
+// `@import` into a `bento` layer. Chrome CSS under src/browser (its own document and
+// `bento.chrome-theme` layer) is not scanned.
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
+// Resolved from the shell package, which owns the pinned PostCSS; the repo root adds no dependency.
+const shellRequire = createRequire(resolve(SHELL_DIR, 'package.json'));
+const { parse } = shellRequire('postcss');
 const MUX_SHEETS = ['@muxui/react/styles.css', '@muxui/react/themes.css'];
 export const LAYER_ORDER_FILE = 'extensions/bento-shell/src/theme/muxui.css';
 
@@ -80,90 +86,100 @@ export function findUndefinedReads({ scanned, declaredIn }) {
   return missing;
 }
 
-// One pass over masked CSS, in source order: an '@layer' rule (its params, then ';' or '{', or ''
-// when '}' or the end of input comes first), an '@import' rule, the start of a custom property
-// declaration (its value may hold braces and '@layer' text, so it is skipped) and braces.
-const LAYER_TOKEN =
-  /@layer(?![\w-])([^;{}]*)([;{]|(?=}|$))|@import(?![\w-])([^;{}]*)|(?<=[{};]\s*)--[\w-]*\s*:|[{}]/gi;
-const LAYER_FUNCTION = /(?<![\w-])layer\(\s*([^)]*?)\s*\)/i;
 const PLAIN_NAME = /^-?[A-Za-z_][\w-]*(?:\.-?[A-Za-z_][\w-]*)*$/;
 const isBentoLayer = (name) => name === 'bento' || name.startsWith('bento.');
 const unreadable = (name) =>
   name
     ? `layer name '${name}' is not plain dotted identifiers (escapes and other tokens are not read)`
     : 'anonymous @layer is not read: name the layer';
-
-/** Index after the custom property value that starts at `from`: past its ';', or at its closing '}'. */
-function valueEnd(source, from) {
-  let depth = 0;
-  for (let index = from; index < source.length; index++) {
-    const char = source[index];
-    if (char === '{') depth++;
-    else if (char === '}' && depth === 0) return index;
-    else if (char === '}') depth--;
-    else if (char === ';' && depth === 0) return index + 1;
-  }
-  return source.length;
-}
+// PostCSS drops comments from params and keeps the original text in raws; read the original so a
+// comment inside a name stays visible and fails the name check.
+const paramsOf = (node) => node.raws.params?.raw ?? node.params;
 
 /**
- * The cascade layers `css` names. `names` is every layer named, qualified by the layers around it
- * (`@layer bento { @layer x {} }` is `bento.x`). `ordered` is the names in top-level `@layer a, b;`
- * statements, the only ones that order layers (a statement inside a block such as `@media` may not
- * apply). `unsupported` is one reason per construct it does not read, which contributes no names:
- * an anonymous block, a name that is not plain dotted identifiers, an `@import ... layer(bento...)`
- * (the imported sheet's own layers would nest under it unseen) and an `@layer` with no end.
+ * The cascade layers `css` names, read from its PostCSS tree so custom property values, strings and
+ * comments never count. `names` is every layer named, qualified by the layers around it
+ * (`@layer bento { @layer x {} }` is `bento.x`), also through other blocks such as `@media` and style
+ * rules. `ordered` is the names in `@layer a, b;` statements whose parent is the sheet root, the
+ * only ones that order layers (a statement inside a block such as `@media` may not apply).
+ * `unsupported` is one reason per construct it does not read: CSS PostCSS cannot parse, an at-rule
+ * name or `@import` with an escape, an anonymous block, a name that is not plain dotted
+ * identifiers (that name list contributes no names, so it orders nothing) and an
+ * `@import ... layer(bento...)` (the imported sheet's own layers would nest under it unseen).
  */
 export function readLayers(css) {
-  const source = maskText(css);
+  let root;
+  try {
+    root = parse(css);
+  } catch (error) {
+    if (error.name !== 'CssSyntaxError') throw error;
+    const where = `line ${error.line}, column ${error.column}`;
+    return {
+      names: [],
+      ordered: [],
+      unsupported: [`CSS did not parse: ${error.reason} (${where})`],
+    };
+  }
   const names = [];
   const ordered = [];
   const unsupported = new Set();
-  const scopes = ['']; // the enclosing layer path at each open block
-  const qualify = (name) => (scopes.at(-1) ? `${scopes.at(-1)}.${name}` : name);
-  const token = new RegExp(LAYER_TOKEN);
-  let match;
-  while ((match = token.exec(source))) {
-    const [text, params, end, imported] = match;
-    if (text === '{') {
-      scopes.push(scopes.at(-1));
-    } else if (text === '}') {
-      if (scopes.length > 1) scopes.pop();
-    } else if (text.startsWith('--')) {
-      token.lastIndex = valueEnd(source, token.lastIndex);
-    } else if (imported !== undefined) {
-      const name = LAYER_FUNCTION.exec(imported)?.[1];
-      if (name === undefined) continue;
-      if (!PLAIN_NAME.test(name)) unsupported.add(unreadable(name));
-      else if (isBentoLayer(name))
+
+  const visit = (container, scope) => {
+    const qualify = (name) => (scope ? `${scope}.${name}` : name);
+    for (const node of container.nodes ?? []) {
+      if (node.type !== 'atrule') {
+        visit(node, scope);
+        continue;
+      }
+      const params = paramsOf(node);
+      const keyword = node.name.toLowerCase();
+      let inner = scope;
+      // An escape ends the name PostCSS reads: `@l\61yer x` is the at-rule "l" with params "\61yer x".
+      if (node.raws.afterName === '' && params.startsWith('\\')) {
         unsupported.add(
-          `@import into layer ${name} is not read: its own layers would nest under it`,
+          `at-rule name with an escape is not read: @${node.name}${params.split(/\s/, 1)[0]}`,
         );
-    } else if (end === '') {
-      unsupported.add("@layer with no ';' or block");
-    } else {
-      const listed = (end === ';' ? params.split(',') : [params]).map((name) => name.trim());
-      const bad = listed.filter((name) => !PLAIN_NAME.test(name));
-      for (const name of bad) unsupported.add(unreadable(name));
-      const qualified = bad.length > 0 ? [] : listed.map(qualify);
-      names.push(...qualified);
-      if (end === ';' && scopes.length === 1) ordered.push(...qualified);
-      if (end === '{') scopes.push(qualified[0] ?? scopes.at(-1));
+      }
+      if (keyword === 'import') {
+        if (params.includes('\\')) {
+          unsupported.add(`@import with an escape is not read: ${params}`);
+        } else {
+          for (const [, argument] of params.matchAll(/(?<![\w-])layer\(([^)]*)\)/gi)) {
+            const name = argument.trim();
+            if (!PLAIN_NAME.test(name)) unsupported.add(unreadable(name));
+            else if (isBentoLayer(name))
+              unsupported.add(
+                `@import into layer ${name} is not read: its own layers would nest under it`,
+              );
+          }
+        }
+      } else if (keyword === 'layer') {
+        const isBlock = node.nodes !== undefined;
+        const listed = (isBlock ? [params] : params.split(',')).map((name) => name.trim());
+        const bad = listed.filter((name) => !PLAIN_NAME.test(name));
+        for (const name of bad) unsupported.add(unreadable(name));
+        const qualified = bad.length > 0 ? [] : listed.map(qualify);
+        names.push(...qualified);
+        if (!isBlock && node.parent.type === 'root') ordered.push(...qualified);
+        inner = qualified[0] ?? scope;
+      }
+      visit(node, inner);
     }
-  }
+  };
+  visit(root, '');
   return { names, ordered, unsupported: [...unsupported] };
 }
 
 /**
  * `<file>: <reason>` lines for layer problems in `scanned` (file name to CSS, including
  * `LAYER_ORDER_FILE`). `unsupported` is what `readLayers` rejects plus a missing `bento.*` order
- * statement; `undeclared` is each `bento` or `bento.*` layer a file uses that the top-level order
+ * statement; `undeclared` is each `bento` or `bento.*` layer a file uses that the root-level order
  * statement in `LAYER_ORDER_FILE` does not list, once per file.
  */
 export function findLayerProblems(scanned) {
-  const ordered = new Set(readLayers(scanned[LAYER_ORDER_FILE] ?? '').ordered);
-  const hasOrder = [...ordered].some((name) => name.startsWith('bento.'));
   const layers = Object.entries(scanned).map(([file, css]) => [file, readLayers(css)]);
+  const ordered = new Set(layers.find(([file]) => file === LAYER_ORDER_FILE)?.[1].ordered);
+  const hasOrder = [...ordered].some((name) => name.startsWith('bento.'));
   const unsupported = layers.flatMap(([file, read]) =>
     read.unsupported.map((reason) => `${file}: ${reason}`),
   );
@@ -192,7 +208,6 @@ function cssFiles(directory) {
 }
 
 function main() {
-  const muxRequire = createRequire(resolve(SHELL_DIR, 'package.json'));
   const read = (path) => readFileSync(path, 'utf8');
   const shellFiles = cssFiles(resolve(SHELL_DIR, 'src'));
   const sheets = Object.fromEntries(
@@ -206,7 +221,7 @@ function main() {
     ),
     declaredIn: [
       ...Object.values(sheets),
-      ...MUX_SHEETS.map((name) => read(muxRequire.resolve(name))),
+      ...MUX_SHEETS.map((name) => read(shellRequire.resolve(name))),
     ],
   });
   // Every shell stylesheet counts for layers, presets included.

@@ -211,13 +211,18 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   between the dev server (one `<style>` per CSS module in import order), the
   build (one `style.css` concatenated in chunk order) and Ladle (story load
   order). `pnpm run lint:tokens` fails when a shell stylesheet uses a `bento.*`
-  layer missing from that list. Only a top-level `@layer a, b;` statement in
-  `muxui.css` counts as the list, not one inside `@media` or another block, and
-  the check rejects layer CSS it cannot read instead of guessing: an anonymous
-  `@layer { }` block, a layer name that is not plain dotted identifiers (an escape
-  can spell `bento`), an `@import ... layer(bento...)`, and an `@layer` rule with
-  no `;` or block. Keywords match in any case, layer names do not, and custom
-  property values are skipped. Chrome CSS under `src/browser` is not scanned.
+  layer missing from that list. It reads each sheet's PostCSS tree (the shell's
+  own `postcss` devDependency), so declaration values, strings and comments never
+  count as layers. Only a root-level `@layer a, b;` statement in `muxui.css`
+  counts as the list, not one inside `@media` or another block, and a statement
+  with any invalid name orders nothing. The check rejects layer CSS it cannot read
+  instead of guessing: a sheet PostCSS cannot parse, an escape in an at-rule name
+  or in `@import` params (`@l\61yer`), an anonymous `@layer { }` block, a layer
+  name that is not plain dotted identifiers (an escape or a string can spell
+  `bento`), and an `@import ... layer(bento...)`. Keywords match in any case,
+  layer names do not, and nested blocks (also through `@media`, `@supports`,
+  `@container` and style rules) qualify the names inside them. Chrome CSS under
+  `src/browser` is not scanned.
   `panel-newtab.css` does not import `muxui.css` and declares only
   `bento.tokens`.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
