@@ -167,6 +167,13 @@ expanded:
 11. Paste a full address of an open tab (for example
     `https://github.com/andrew/repo`): that tab is listed, and so is any tab
     whose address contains the part after the scheme.
+12. Result rows show the page title with the site's domain on a second, smaller
+    line (about 2.75rem tall; `www.` is kept, `about:` pages show their
+    address). Long titles and long domains each end in an ellipsis without
+    moving the "Tab" or "Panel" label. Hover a row: the close button sits
+    centered over the taller row with the hover fill behind it.
+13. A non-web page (for example a Bento settings or other extension page) shows a
+    single line at the standard row height with no domain.
 
 ## Palette search headers and rollback file selection
 

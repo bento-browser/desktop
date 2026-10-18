@@ -4,7 +4,12 @@
 import { useEffect, useState } from 'react';
 import type { Action, TabSnapshot } from '@shared/protocol';
 import { TabList } from './TabList';
-import { seedEmpty, seedTabs, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
+import {
+  makeTab,
+  seedEmpty,
+  seedTabs,
+  seedTabsAcrossWorkspaces,
+} from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
 import { makeFolder, seedTabFolders } from '../../state/__fixtures__/tabFolders';
@@ -344,3 +349,99 @@ export const CrossWorkspaceSearch = () => {
 };
 
 CrossWorkspaceSearch.storyName = 'Cross-workspace search';
+
+// TabList owns the search state, so open the field and type the way a user
+// does: click the trigger, then set the input through the native setter so
+// React sees an input event. Both are looked up in the incoming pane: during a
+// workspace slide the outgoing pane is rendered first and its search is a no-op.
+function useOpenSearch(query: string) {
+  useEffect(() => {
+    let frame = 0;
+    const open = () => {
+      const pane = document.querySelector<HTMLElement>(
+        '.bento-tab-list-pane:not([class*="bento-tab-list-pane--exit-"])',
+      );
+      const trigger = pane?.querySelector<HTMLElement>('.bento-tab-list__search-button');
+      const input = pane?.querySelector<HTMLInputElement>('.bento-tab-list-search__input');
+      if (!trigger || !input) {
+        frame = requestAnimationFrame(open);
+        return;
+      }
+      trigger.click();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, query);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    frame = requestAnimationFrame(open);
+    return () => cancelAnimationFrame(frame);
+  }, [query]);
+}
+
+// Search results with the domain under the title: normal, long title, long
+// domain, www kept, an about: page, a panel, and a moz-extension page with no
+// domain (single-line row).
+export const SearchResultDomains = () => {
+  useOpenSearch('bento');
+  useEffect(() => {
+    seedDefaultWorkspaces();
+    useWorkspacesStore.getState().applySnapshot(
+      [
+        { id: 'w-personal', name: 'Personal', icon: 'P', createdAt: 1 },
+        { id: 'w-work', name: 'Work', icon: 'W', themeId: 'teal', createdAt: 2 },
+        { id: 'w-side', name: 'Side project', icon: 'S', themeId: 'terracotta', createdAt: 3 },
+      ],
+      'w-personal',
+      {},
+    );
+    const tabs = [
+      makeTab({
+        id: 1,
+        workspaceId: 'w-personal',
+        active: true,
+        title: 'Bento Browser on GitHub',
+        url: 'https://github.com/andrewtran/bento-browser',
+      }),
+      makeTab({
+        id: 2,
+        workspaceId: 'w-personal',
+        title: 'Bento roadmap',
+        url: 'https://www.notion.so/bento/roadmap',
+      }),
+      makeTab({
+        id: 3,
+        workspaceId: 'w-work',
+        title:
+          'Bento: a very long tab title that should definitely get truncated with an ellipsis when it runs out of space',
+        url: 'https://mail.google.com/mail/u/0/#inbox',
+      }),
+      makeTab({
+        id: 4,
+        workspaceId: 'w-work',
+        title: 'Bento staging dashboard',
+        url: 'https://bento-staging-environment.internal.some-very-long-company-name.example.com/dashboard',
+      }),
+      makeTab({ id: 5, workspaceId: 'w-side', title: 'Bento new tab', url: 'about:blank' }),
+      makeTab({
+        id: 6,
+        workspaceId: 'w-side',
+        title: 'Bento extension settings',
+        url: 'moz-extension://bento-shell/settings.html',
+      }),
+      makeTab({
+        id: 7,
+        workspaceId: 'w-work',
+        title: 'Bento docs (panel)',
+        url: 'https://docs.bento.example/guide',
+      }),
+    ];
+    useTabsStore.getState().applySnapshot(tabs);
+    seedTabFolders([]);
+    seedPanelsByWorkspace({ 'w-personal': [], 'w-work': [7], 'w-side': [] });
+  }, []);
+  return (
+    <SidebarFrame>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+SearchResultDomains.storyName = 'Search result domains';

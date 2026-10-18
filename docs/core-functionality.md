@@ -174,9 +174,12 @@ workspaces by title or web address, and a pasted full address such as
 button labeled "Clear". While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
-Results use the same row footprint as sidebar tabs, identify each result's workspace with its
-workspace icon or initial, tint the workspace marker with that workspace's theme,
-and selecting a result switches to that tab or focuses that panel. When pinned
+Each result shows the page title with the site's domain beneath it in smaller,
+muted text. Pages without a web domain, such as extension pages, show the title
+alone in a standard-height row, and built-in `about:` pages show their address.
+Results identify each result's workspace with its workspace icon or initial,
+tint the workspace marker with that workspace's theme, and selecting a result
+switches to that tab or focuses that panel. When pinned
 tabs exist, those tabs remain part of the scrolling list below the fixed controls.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
 context menu. Folders live below pinned tabs and above the regular tab section,

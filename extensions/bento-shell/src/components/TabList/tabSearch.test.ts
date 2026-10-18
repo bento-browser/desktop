@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesTabSearch } from './tabSearch';
+import { matchesTabSearch, searchResultDomain } from './tabSearch';
 
 describe('matchesTabSearch', () => {
   it('matches the title case-insensitively', () => {
@@ -65,5 +65,28 @@ describe('matchesTabSearch', () => {
     expect(matchesTabSearch('docs', 'Docs', undefined)).toBe(true);
     expect(matchesTabSearch('docs', 'Docs', '')).toBe(true);
     expect(matchesTabSearch('docs', 'Inbox', '')).toBe(false);
+  });
+});
+
+describe('searchResultDomain', () => {
+  it('returns the exact hostname for http and https URLs, keeping www', () => {
+    expect(searchResultDomain('https://mail.google.com/mail/u/0/')).toBe('mail.google.com');
+    expect(searchResultDomain('http://www.example.org:8080/a?b=c')).toBe('www.example.org');
+    expect(searchResultDomain('https://user:pass@example.org/')).toBe('example.org');
+  });
+
+  it('returns about: URLs as-is', () => {
+    expect(searchResultDomain('about:blank')).toBe('about:blank');
+    expect(searchResultDomain('about:preferences#privacy')).toBe('about:preferences#privacy');
+  });
+
+  it('returns nothing for other schemes, empty, missing or unparsable URLs', () => {
+    expect(searchResultDomain('moz-extension://abc/page.html')).toBeUndefined();
+    expect(searchResultDomain('data:text/html,hi')).toBeUndefined();
+    expect(searchResultDomain('blob:https://example.org/uuid')).toBeUndefined();
+    expect(searchResultDomain('file:///Users/me/a.html')).toBeUndefined();
+    expect(searchResultDomain('')).toBeUndefined();
+    expect(searchResultDomain(undefined)).toBeUndefined();
+    expect(searchResultDomain('not a url')).toBeUndefined();
   });
 });

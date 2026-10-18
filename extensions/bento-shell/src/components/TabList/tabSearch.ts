@@ -21,3 +21,21 @@ export function matchesTabSearch(query: string, title: string, url?: string): bo
   const urlQuery = query.replace(QUERY_SCHEME, '');
   return urlQuery.length > 0 && url.replace(URL_SCHEME, '').toLocaleLowerCase().includes(urlQuery);
 }
+
+/**
+ * The site shown under a search result's title: the exact hostname for http(s)
+ * URLs (`www.` kept), the URL itself for `about:` pages, and undefined for
+ * everything else (extension, data, blob and file URLs, or an empty or
+ * unparsable URL), so those rows stay single-line.
+ */
+export function searchResultDomain(url?: string): string | undefined {
+  if (!url) return undefined;
+  try {
+    const { protocol, hostname } = new URL(url);
+    if (protocol === 'about:') return url;
+    if (protocol === 'http:' || protocol === 'https:') return hostname || undefined;
+  } catch {
+    // Unparsable URL: no domain.
+  }
+  return undefined;
+}
