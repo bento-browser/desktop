@@ -10,12 +10,17 @@ import { useTabsStore, useWorkspaceTabIds } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePanelsStore } from '../../state/panels';
 import { useSettingsStore } from '../../state/settings';
+import { useUiStore } from '../../state/ui';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { useTabFoldersStore, useWorkspaceFolders } from '../../state/tabFolders';
 import { TabRow } from '../TabRow/TabRow';
 import { FolderRow } from '../FolderRow/FolderRow';
 import { TabListSkeleton } from './TabListSkeleton';
-import { rowHighlightProps, useRowHoverHighlight } from './useRowHoverHighlight';
+import {
+  rowHighlightProps,
+  useActionHoverHighlight,
+  useRowHoverHighlight,
+} from './useHoverHighlight';
 import {
   buildDisplayRows,
   displayRowsLayoutKey,
@@ -23,6 +28,7 @@ import {
   pruneSelection,
   rowKey,
 } from './displayRows';
+import { matchesTabSearch, searchResultDomain } from './tabSearch';
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
@@ -77,6 +83,8 @@ interface TabListSearchResult {
   id: number;
   kind: 'tab' | 'panel';
   title: string;
+  /** Site shown under the title; absent for pages without one (single-line row). */
+  domain?: string;
   favIconUrl?: string;
   workspaceId: string;
   workspaceName: string;
@@ -273,6 +281,9 @@ function TabListPane({
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const newMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  // The New menu is up in the chrome overlay. Read from the store, not held
+  // here: a workspace switch remounts this pane while the menu stays open.
+  const newMenuOpen = useUiStore((s) => s.newMenuContextId !== null);
   const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
   const suppressAutoScrollLayoutRef = useRef<string | null>(null);
@@ -282,10 +293,15 @@ function TabListPane({
   // target so the indicator hides.
   const [dropSlot, setDropSlot] = useState<number | null>(null);
   const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
-  // Sliding hover highlight (see useRowHoverHighlight); hidden for the whole drag.
-  const hoverHighlightRef = useRowHoverHighlight(
-    viewportRef,
-    dragSourceId !== null || dragFolderId !== null,
+  // Sliding hover highlights (see useHoverHighlight): one for the rows, one for
+  // the New and Search buttons. Both are hidden for the whole drag; the action
+  // one also while the search field covers the buttons.
+  const dragging = dragSourceId !== null || dragFolderId !== null;
+  const hoverHighlightRef = useRowHoverHighlight(viewportRef, dragging);
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const actionHighlightRef = useActionHoverHighlight(
+    actionBarRef,
+    dragging || searchOpen || newMenuOpen,
   );
 
   const updateScrollMetrics = useCallback(() => {
@@ -908,9 +924,11 @@ function TabListPane({
     };
   }, [onCloseSearch, searchOpen, searchQuery]);
 
+  // A square icon at rest. Hover or keyboard focus widens it leftward to reveal the
+  // label (TabList.css); the accessible name stays the aria-label.
   const renderSearchButton = () => (
     <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
-      <IconButton
+      <Button
         variant="ghost"
         size="sm"
         className="bento-tab-list__search-button"
@@ -918,7 +936,8 @@ function TabListPane({
         onActivate={onOpenSearch}
       >
         <BentoIcon icon={Search} size="sm" />
-      </IconButton>
+        <span className="bento-tab-list__search-label">Search</span>
+      </Button>
     </span>
   );
 
@@ -929,6 +948,9 @@ function TabListPane({
       ref={newMenuTriggerRef}
       className="bento-tab-list__new-action-button"
       aria-label="New"
+      aria-haspopup="menu"
+      aria-expanded={newMenuOpen}
+      data-bento-menu-open={newMenuOpen ? 'true' : undefined}
       onActivate={() => {
         const rect = newMenuTriggerRef.current?.getBoundingClientRect();
         if (rect) onOpenNewMenu(rect);
@@ -939,9 +961,14 @@ function TabListPane({
     </Button>
   );
 
+  // Always mounted so closing can animate back into the trigger. Closed, it is
+  // inert and hidden (after the close transition, see TabList.css) and its field
+  // row sits exactly on the trigger.
   const renderSearchOverlay = (filtering = false) => (
     <div
       className={'bento-tab-list-search' + (filtering ? ' bento-tab-list-search--filtering' : '')}
+      data-open={searchOpen ? '' : undefined}
+      inert={!searchOpen}
       onBlur={(e) => {
         const nextFocus = e.relatedTarget as Node | null;
         if (nextFocus && e.currentTarget.contains(nextFocus)) return;
@@ -968,18 +995,25 @@ function TabListPane({
             }
           }}
         />
-        <IconButton
-          variant="ghost"
-          size="sm"
-          className="bento-tab-list-search__clear-button"
-          aria-label="Clear search"
-          onActivate={() => {
-            onSearchQueryChange('');
-            searchInputRef.current?.focus();
-          }}
-        >
-          <BentoIcon icon={X} size="sm" />
-        </IconButton>
+        <span className="bento-tab-list-search__clear">
+          <IconButton
+            variant="ghost"
+            size="sm"
+            className="bento-tab-list-search__clear-button"
+            aria-label={searchQuery.trim().length === 0 ? 'Close search' : 'Clear search'}
+            onActivate={() => {
+              // An empty field has nothing to clear, so the button closes it like Esc.
+              if (searchQuery.trim().length === 0) {
+                onCloseSearch();
+                return;
+              }
+              onSearchQueryChange('');
+              searchInputRef.current?.focus();
+            }}
+          >
+            <BentoIcon icon={X} size="sm" />
+          </IconButton>
+        </span>
       </div>
       {searchQuery.trim().length > 0 && (
         <div className="bento-tab-list-search__results">
@@ -990,7 +1024,10 @@ function TabListPane({
             return (
               <div
                 key={`${result.kind}:${result.workspaceId}:${result.id}`}
-                className="bento-tab-list-search__result"
+                className={
+                  'bento-tab-list-search__result' +
+                  (result.domain ? ' bento-tab-list-search__result--with-domain' : '')
+                }
                 style={style}
               >
                 <Button
@@ -999,7 +1036,7 @@ function TabListPane({
                   className="bento-tab-list-search__result-main"
                   aria-label={`${result.kind === 'panel' ? 'Panel' : 'Tab'}: ${result.title} in ${
                     result.workspaceName
-                  }`}
+                  }${result.domain ? `, ${result.domain}` : ''}`}
                   onActivate={() => onRunSearchResult(result)}
                 >
                   <span className="bento-tab-list-search__workspace-avatar" aria-hidden="true">
@@ -1014,7 +1051,12 @@ function TabListPane({
                   ) : (
                     <span className="bento-tab-list-search__favicon bento-tab-list-search__favicon--placeholder" />
                   )}
-                  <span className="bento-tab-list-search__title">{result.title}</span>
+                  <span className="bento-tab-list-search__text">
+                    <span className="bento-tab-list-search__title">{result.title}</span>
+                    {result.domain && (
+                      <span className="bento-tab-list-search__domain">{result.domain}</span>
+                    )}
+                  </span>
                   <span className="bento-tab-list-search__kind">
                     {result.kind === 'panel' ? 'Panel' : 'Tab'}
                   </span>
@@ -1044,10 +1086,17 @@ function TabListPane({
   return (
     <div className={className}>
       <div className="bento-tab-list-pane__sticky-actions">
-        <div className="bento-tab-list__new-actions">
+        <div ref={actionBarRef} className="bento-tab-list__new-actions">
+          {/* Painted behind the buttons (they are positioned and later in DOM
+              order); positioned by useActionHoverHighlight. */}
+          <div
+            ref={actionHighlightRef}
+            className="bento-tab-list__action-highlight"
+            aria-hidden="true"
+          />
           {renderNewButton()}
           {renderSearchButton()}
-          {searchOpen && renderSearchOverlay(searchFiltering)}
+          {renderSearchOverlay(searchFiltering)}
         </div>
       </div>
       <div
@@ -1237,7 +1286,7 @@ export function TabList({
     return Object.values(tabsById)
       .flatMap((tab): TabListSearchResult[] => {
         const title = tab.customTitle || tab.title || 'Untitled';
-        if (!title.toLocaleLowerCase().includes(query)) return [];
+        if (!matchesTabSearch(query, title, tab.url)) return [];
         const panelWorkspaceId = panelWorkspaceById.get(tab.id);
         const workspaceId = panelWorkspaceId ?? tab.workspaceId;
         if (!workspaceId) return [];
@@ -1249,6 +1298,7 @@ export function TabList({
             id: tab.id,
             kind: panelWorkspaceId ? 'panel' : 'tab',
             title,
+            domain: searchResultDomain(tab.url),
             favIconUrl: tab.favIconUrl,
             workspaceId,
             workspaceName: workspace.name,

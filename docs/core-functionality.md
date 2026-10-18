@@ -164,18 +164,23 @@ mode, `New tab` opens the centered address/search overlay in new-tab mode,
 creating the tab only after the user commits. In collapsed sidebar mode, it
 opens the same centered address/search fallback. `New panel`
 opens a blank panel in the active workspace. A
-search icon beside those controls expands into a sidebar search field over the
-action row. The creation and search controls stay fixed immediately below the
+search icon beside those controls widens on hover or keyboard focus to show its
+"Search" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
 so the actions remain available anywhere in a long tab list. Typing filters
-open tabs and side panels by title across all
-workspaces. The field has a clear
-button labeled "Clear". While a query is active, the sidebar shows only the
+open tabs and side panels across all
+workspaces by title or web address, and a pasted full address such as
+`https://github.com/andrew` finds its tab. The field has a clear
+button that empties a typed query and keeps the field open; on an empty field
+the same button closes search, like Esc. While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
-Results use the same row footprint as sidebar tabs, identify each result's workspace with its
-workspace icon or initial, tint the workspace marker with that workspace's theme,
-and selecting a result switches to that tab or focuses that panel. When pinned
+Each result shows the page title with the site's domain beneath it in smaller,
+muted text. Pages without a web domain, such as extension pages, show the title
+alone in a standard-height row, and built-in `about:` pages show their address.
+Results identify each result's workspace with its workspace icon or initial,
+tint the workspace marker with that workspace's theme, and selecting a result
+switches to that tab or focuses that panel. When pinned
 tabs exist, those tabs remain part of the scrolling list below the fixed controls.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
 context menu. Folders live below pinned tabs and above the regular tab section,
@@ -213,7 +218,10 @@ states.
 Hovering a tab or folder row in the sidebar list shows one neutral highlight
 that glides from row to row and fades out when the pointer leaves the list. It
 is hidden while dragging a row and does not slide when the user has asked the
-system to reduce motion.
+system to reduce motion. The New and Search buttons above the list share that
+look with their own highlight, which glides between the two buttons and stays
+inside the action bar; moving into the list fades it out as the row highlight
+fades in. It is hidden while Search is open.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.

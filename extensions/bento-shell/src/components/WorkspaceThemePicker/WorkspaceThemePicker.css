@@ -8,6 +8,17 @@
   padding-inline: var(--space-2xs);
 }
 
+/* Button's label part wraps the swatch, name and chevron. It fills the trigger
+ * as one centered row so the name grows and the chevron sits at the end, with
+ * an inline (published Mux) or shrink-to-fit inline-flex (Mux main) wrapper. */
+.bento-workspace-theme-picker__trigger .muxui-button-content {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+}
+
 .bento-workspace-theme-picker__trigger-swatch,
 .bento-workspace-theme-picker__option-swatch {
   width: var(--bento-workspace-theme-picker-swatch-size);

@@ -35,6 +35,14 @@ export default defineConfig(
       define: {
         'process.env.NODE_ENV': JSON.stringify('production'),
       },
+
+      // @ladle/react loads these two for its a11y and msw addons, so a cold optimizer cache only
+      // finds them after the first story renders. Vite then re-optimizes and changes every ?v= hash,
+      // and a page that misses the reload (dropped HMR socket) imports a second React on its next
+      // story navigation. The addons are not in this package, so name them here to bundle them first.
+      optimizeDeps: {
+        include: ['axe-core', 'msw/browser'],
+      },
     },
     muxLocalViteConfig(resolveMuxLocal(), searchForWorkspaceRoot(resolve(__dirname, '..'))),
   ),
