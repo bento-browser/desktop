@@ -1483,7 +1483,8 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `restore_pinned_tabs_on_demand` are both true, the condition under which
   `TabRestoreQueue.shift` and `willRestoreSoon` leave pinned tabs pending; with
   either false the queue loads them, and discarding one that is still queued would
-  remove it from the queue (`#cleanUpRemovedBrowser`). `SessionStore` dispatches
+  remove it from the queue (`#cleanUpRemovedBrowser` ends in
+  `#resetLocalTabRestoringState`). `SessionStore` dispatches
   `SSWindowRestored` on every window it restores (startup, reopened closed window,
   restored session, `setBrowserState`, `setWindowState`) after the window's tabs
   are created and marked pending, and at a startup before it notifies
@@ -1619,7 +1620,10 @@ rel="stylesheet">` load and error events on chrome documents, and the
   undimmed first, `tab.hasAttribute('pending')` is true and `tab.linkedPanel` is
   empty for them in the Browser Toolbox Console, and
   `tabs.query({ pinned: true })` reports `discarded: true`; an Alt+Shift+R reload
-  and a relaunch with `restore_pinned_tabs_on_demand` false unload none),
+  and a relaunch with `restore_pinned_tabs_on_demand` false unload none), confirm
+  `runtime.onStartup` still fires only at app startup once the background page has
+  loaded (`ext-runtime.js`, `ext-backgroundPage.js`), which bento-tools' parked tab
+  list gate relies on (an Alt+Shift+R reload must not drop the lists),
   and re-evaluate whether each experiment patch is still needed. Run
   `pnpm run firefox:patches:test`, `pnpm run firefox:patches:check`,
   `node --test scripts/rust-thin-lto.test.mjs`, and
