@@ -345,25 +345,48 @@ browser, no `linkedPanel`) only when
 `restoreTabsLazily && !select && !tabData.pinned`, so a pending pinned tab gets a
 real browser, and the WebExtension `tabs.Tab.discarded` getter
 (`!nativeTab.linkedPanel`) reports it as `discarded: false`. bento-tools
-therefore discards those tabs once per browser launch. `background.ts` registers
-`browser.runtime.onStartup` during its first script run; Firefox registers that
-event only for the `APP_STARTUP` startup reason (`ext-runtime.js`), so it does not
-fire on a dev reload (Alt+Shift+R), an install or an update, when pinned tabs may
-be loaded and in use. The listener waits for `bootReady` (restored tabs settled,
-workspace ids hydrated, the active workspace's panels restored) and passes
-`discardRestoredPinnedTabs` (`tabs/PinnedTabRestore.ts`) the registry snapshot and
-`getActiveWorkspacePanelTabIds()`, the same shown-panel set `SleepPolicy`
-protects. `pinnedTabsToDiscard` selects tabs that are pinned, not the selected tab
-of their window, not already discarded, and not a panel in the layout of an
-active workspace: the mount script renders those panels straight away
-(`materializePanelTab`), so a discard would only reload them. Each pick is read
-live right before `browser.tabs.discard`, so a tab the user selected meanwhile
-stays loaded, and a failure logs `[bento-tools] pinned tab discard failed` and
-moves on. The discard keeps the tab's session state, so selecting it loads its
-page and history as before. A pending tab then reports `discarded: true`
+therefore discards those tabs once per browser launch, during boot and before the
+sidebar first draws them. `background.ts` registers `browser.runtime.onStartup`
+during its first script run (`createStartupPinnedTabDiscard`,
+`tabs/PinnedTabRestore.ts`); Firefox registers that event only for the
+`APP_STARTUP` startup reason (`ext-runtime.js`) and fires it once the background
+page has loaded, so it does not fire on a dev reload (Alt+Shift+R), an install or
+an update, when pinned tabs may be loaded and in use. `bootReady` calls the pass
+right after the active workspace's panels are restored, which is hundreds of
+milliseconds after the first script run (the settle wait alone is at least 300 ms),
+so on a real startup the event has long arrived; if it has not, the pass does
+nothing and the tabs stay as Firefox restored them. `pinnedTabsToDiscard` selects
+tabs from the registry (minus closing and private tabs) that are pinned, not the
+selected tab of their window, not already discarded, and not a panel in the layout
+of an active workspace (`getActiveWorkspacePanelTabIds()`, the same shown-panel
+set `SleepPolicy` protects): the mount script renders those panels straight away
+(`materializePanelTab`), so a discard would only reload them. All picks are
+discarded at once with `browser.tabs.discard`. That call resolves even when
+Firefox declines, and Firefox never unloads a selected tab, so each tab is read
+back and `TabRegistry.markDiscarded` records it only when it reports
+`discarded: true`. A failure logs `[bento-tools] pinned tab discard failed` and
+the others carry on. The discard keeps the tab's session state, so selecting it
+loads its page and history as before. A discarded tab reports `discarded: true`
 (`TabSnapshot.discarded`), the row shows in the sleeping style, and `SleepPolicy`
 skips pinned and discarded tabs, so the idle sweep never puts a woken pinned tab
 back to sleep.
+
+Timing against the sidebar's readiness gate matters. The sidebar draws no tab rows
+until its tabs store, tab-folders store and the active workspace's panels entry
+have hydrated (`TabList.tsx`). bento-tools sends all three from one
+`bootReady.then` block in its `runtime.onConnectExternal` handler (`tabs/snapshot`,
+`tabFolders/snapshot`, then a `panels/sync` per workspace), so none reaches the
+shell before `bootReady` resolves. The pass is part of `bootReady`: it starts
+after the panel restore, runs alongside the stale-marker sweep, and is awaited at
+the end, so the first `tabs/snapshot` already carries `discarded: true` and the
+rows are dimmed from their first paint. `markDiscarded` writes the flag into the
+registry the moment the discard is confirmed, rather than waiting for
+`tabs.onUpdated`, which would reach the shell as a later update and dim the rows
+one by one; the later event finds nothing left to change. The wait is capped at
+`PINNED_DISCARD_WAIT_MS` (one second; a parallel pass is expected to take tens of
+milliseconds, not measured) so a stuck discard cannot hold the sidebar back; the
+pass then logs `[bento-tools] pinned tab discard still running` and a discard that
+finishes later reaches the shell as an ordinary tab update.
 
 The pass runs once, after boot settles. A tab restored later than the settle wait
 (three seconds at most) stays loaded until selected, as before the pass existed,
@@ -854,6 +877,16 @@ opening an unwanted blank tab before the moved tabs arrive.
   on a dev reload, install or update the pinned tabs may be loaded and in use. It
   must skip a window's selected tab and the panels of active workspaces, which
   would otherwise be unloaded and immediately re-materialized.
+- Do not move the startup discard after `bootReady` or make it wait for
+  `tabs.onUpdated`. Run from a `runtime.onStartup` listener that waited for
+  `bootReady`, and discarding tabs one at a time, it ran after the shell had
+  already received its first `tabs/snapshot` and painted: the pinned rows showed as
+  loaded, then dimmed one after another as each `tabs.onUpdated` arrived. The pass
+  has to finish inside `bootReady` (before the `bootReady.then` that sends
+  `tabs/snapshot`, `tabFolders/snapshot` and `panels/sync`), discard in parallel,
+  and call `TabRegistry.markDiscarded` for each confirmed tab so that snapshot
+  already has the flag. Keep the wait capped, and keep reading each tab back
+  before marking it: `tabs.discard` resolves when Firefox declines.
 - Do not wake a pending pinned tab to read its metadata. `tabs.get`, `tabs.query`
   and `sessions.getTabValue` leave it pending; `tabs.reload`, `tabs.update` with
   `active: true` or `url`, `tabs.create` with its address, and

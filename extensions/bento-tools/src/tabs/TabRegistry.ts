@@ -552,6 +552,16 @@ export class TabRegistry {
     return this.#privateTabIds.has(id);
   }
 
+  /** Records a discard Firefox has confirmed, ahead of the tabs.onUpdated that
+   * reports it, so a snapshot taken right after already has it. The later
+   * onUpdated then finds nothing to change. */
+  markDiscarded(id: number): void {
+    const tab = this.#tabs.get(id);
+    if (!tab || tab.discarded) return;
+    tab.discarded = true;
+    this.#enqueue({ kind: 'updated', id, changes: { discarded: true } });
+  }
+
   onDeltas(listener: Listener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);

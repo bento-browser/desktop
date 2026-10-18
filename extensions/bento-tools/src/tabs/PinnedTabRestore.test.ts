@@ -1,6 +1,11 @@
 import type { TabSnapshot } from '@shared/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { discardRestoredPinnedTabs, pinnedTabsToDiscard } from './PinnedTabRestore';
+import {
+  PINNED_DISCARD_WAIT_MS,
+  createStartupPinnedTabDiscard,
+  discardRestoredPinnedTabs,
+  pinnedTabsToDiscard,
+} from './PinnedTabRestore';
 
 function tab(overrides: Partial<TabSnapshot> & { id: number }): TabSnapshot {
   return {
@@ -12,6 +17,23 @@ function tab(overrides: Partial<TabSnapshot> & { id: number }): TabSnapshot {
     audible: false,
     muted: false,
     ...overrides,
+  };
+}
+
+/** The slice of TabRegistry the pass uses, backed by a plain list. */
+function fakeRegistry(
+  initial: TabSnapshot[],
+  extra: { closing?: number[]; private?: number[] } = {},
+) {
+  const tabs = new Map(initial.map((t) => [t.id, t]));
+  return {
+    snapshot: vi.fn(() => Array.from(tabs.values())),
+    isClosing: (id: number) => extra.closing?.includes(id) ?? false,
+    isPrivate: (id: number) => extra.private?.includes(id) ?? false,
+    markDiscarded: vi.fn((id: number) => {
+      const t = tabs.get(id);
+      if (t) t.discarded = true;
+    }),
   };
 }
 
@@ -45,15 +67,143 @@ describe('pinnedTabsToDiscard', () => {
 });
 
 describe('discardRestoredPinnedTabs', () => {
-  const live: Record<number, Partial<browser.tabs.Tab>> = {};
+  /** What `tabs.get` reports once `tabs.discard` has run, per tab id. */
+  const discardedAfter: Record<number, boolean> = {};
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    for (const id of Object.keys(live)) delete live[Number(id)];
+    for (const id of Object.keys(discardedAfter)) delete discardedAfter[Number(id)];
     vi.stubGlobal('browser', {
       tabs: {
-        get: vi.fn(async (id: number) => ({ id, pinned: true, active: false, ...live[id] })),
         discard: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn(async (id: number) => ({ id, discarded: discardedAfter[id] ?? true })),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('marks each discarded tab in the registry before it resolves', async () => {
+    const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 })]);
+
+    await discardRestoredPinnedTabs(registry, new Set());
+
+    expect(browser.tabs.discard).toHaveBeenCalledTimes(2);
+    expect(registry.markDiscarded.mock.calls).toEqual([[1], [2]]);
+    expect(registry.snapshot().every((t) => t.discarded)).toBe(true);
+  });
+
+  it('starts every discard before the first one finishes', async () => {
+    const finish: Array<() => void> = [];
+    vi.mocked(browser.tabs.discard).mockImplementation(
+      () => new Promise<void>((resolve) => finish.push(resolve)),
+    );
+    const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 }), tab({ id: 3 })]);
+
+    const pass = discardRestoredPinnedTabs(registry, new Set());
+    await vi.waitFor(() => expect(browser.tabs.discard).toHaveBeenCalledTimes(3));
+    expect(registry.markDiscarded).not.toHaveBeenCalled();
+
+    for (const resolve of finish) resolve();
+    await pass;
+
+    expect(registry.markDiscarded).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not mark a tab Firefox declined to discard', async () => {
+    discardedAfter[1] = false;
+    const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 })]);
+
+    await discardRestoredPinnedTabs(registry, new Set());
+
+    expect(registry.markDiscarded.mock.calls).toEqual([[2]]);
+  });
+
+  it('leaves selected, shown, closing and private tabs alone', async () => {
+    const registry = fakeRegistry(
+      [
+        tab({ id: 1, active: true }),
+        tab({ id: 2 }),
+        tab({ id: 3 }),
+        tab({ id: 4 }),
+        tab({ id: 5 }),
+      ],
+      { closing: [3], private: [4] },
+    );
+
+    await discardRestoredPinnedTabs(registry, new Set([2]));
+
+    expect(browser.tabs.discard).toHaveBeenCalledTimes(1);
+    expect(browser.tabs.discard).toHaveBeenCalledWith(5);
+  });
+
+  it('logs a failed discard and still discards the others', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(browser.tabs.discard).mockRejectedValueOnce(new Error('Invalid tab ID: 1'));
+    const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 })]);
+
+    await expect(discardRestoredPinnedTabs(registry, new Set())).resolves.toBeUndefined();
+
+    expect(registry.markDiscarded.mock.calls).toEqual([[2]]);
+    expect(warn).toHaveBeenCalledWith(
+      '[bento-tools] pinned tab discard failed for tab',
+      1,
+      expect.any(Error),
+    );
+  });
+
+  it('stops waiting after the cap, and a late discard still lands in the registry', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let finish: () => void = () => undefined;
+    vi.mocked(browser.tabs.discard).mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const registry = fakeRegistry([tab({ id: 1 })]);
+
+    let resolved = false;
+    const pass = discardRestoredPinnedTabs(registry, new Set()).then(() => (resolved = true));
+    await vi.advanceTimersByTimeAsync(PINNED_DISCARD_WAIT_MS - 1);
+    expect(resolved).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await pass;
+    expect(resolved).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('still running'));
+    expect(registry.markDiscarded).not.toHaveBeenCalled();
+
+    finish();
+    await vi.waitFor(() => expect(registry.markDiscarded).toHaveBeenCalledWith(1));
+  });
+
+  it('leaves no timer behind when the discards finish in time', async () => {
+    vi.useFakeTimers();
+
+    await discardRestoredPinnedTabs(fakeRegistry([tab({ id: 1 })]), new Set());
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not start a timer or call Firefox when nothing needs discarding', async () => {
+    vi.useFakeTimers();
+
+    await discardRestoredPinnedTabs(fakeRegistry([tab({ id: 1, active: true })]), new Set());
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(browser.tabs.discard).not.toHaveBeenCalled();
+  });
+});
+
+describe('createStartupPinnedTabDiscard', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal('browser', {
+      tabs: {
+        discard: vi.fn().mockResolvedValue(undefined),
+        get: vi.fn(async (id: number) => ({ id, discarded: true })),
       },
     });
   });
@@ -62,35 +212,44 @@ describe('discardRestoredPinnedTabs', () => {
     vi.unstubAllGlobals();
   });
 
-  it('discards the selected tabs', async () => {
-    await discardRestoredPinnedTabs([tab({ id: 1 }), tab({ id: 2 })], new Set());
+  it('does nothing until runtime.onStartup has fired, as on a dev reload', async () => {
+    const registry = fakeRegistry([tab({ id: 1 })]);
+    const startup = createStartupPinnedTabDiscard(registry, () => []);
 
-    expect(browser.tabs.discard).toHaveBeenCalledTimes(2);
-    expect(browser.tabs.discard).toHaveBeenNthCalledWith(1, 1);
-    expect(browser.tabs.discard).toHaveBeenNthCalledWith(2, 2);
+    await startup.run();
+
+    expect(browser.tabs.discard).not.toHaveBeenCalled();
+    expect(registry.snapshot()[0]?.discarded).toBeUndefined();
   });
 
-  it('leaves a tab the user selected after the snapshot was taken', async () => {
-    live[1] = { active: true };
+  it('has discarded and recorded the pinned tabs by the time run resolves', async () => {
+    const registry = fakeRegistry([tab({ id: 1 }), tab({ id: 2 }), tab({ id: 3 })]);
+    const startup = createStartupPinnedTabDiscard(registry, () => [3]);
+    startup.noteStartup();
 
-    await discardRestoredPinnedTabs([tab({ id: 1 }), tab({ id: 2 })], new Set());
+    await startup.run();
 
-    expect(browser.tabs.discard).toHaveBeenCalledTimes(1);
-    expect(browser.tabs.discard).toHaveBeenCalledWith(2);
+    // A boot that sends its first snapshot after run() resolves sends this.
+    expect(registry.snapshot().map((t) => [t.id, t.discarded ?? false])).toEqual([
+      [1, true],
+      [2, true],
+      [3, false],
+    ]);
   });
 
-  it('logs a failed discard and carries on with the next tab', async () => {
+  it('never rejects, so a failing pass cannot stop boot', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.mocked(browser.tabs.discard).mockRejectedValueOnce(new Error('Invalid tab ID: 1'));
+    const registry = fakeRegistry([tab({ id: 1 })]);
+    registry.snapshot.mockImplementation(() => {
+      throw new Error('registry unavailable');
+    });
+    const startup = createStartupPinnedTabDiscard(registry, () => []);
+    startup.noteStartup();
 
-    await expect(
-      discardRestoredPinnedTabs([tab({ id: 1 }), tab({ id: 2 })], new Set()),
-    ).resolves.toBeUndefined();
+    await expect(startup.run()).resolves.toBeUndefined();
 
-    expect(browser.tabs.discard).toHaveBeenCalledTimes(2);
     expect(warn).toHaveBeenCalledWith(
-      '[bento-tools] pinned tab discard failed for tab',
-      1,
+      '[bento-tools] startup pinned tab discard failed:',
       expect.any(Error),
     );
   });
