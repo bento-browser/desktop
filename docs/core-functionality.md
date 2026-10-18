@@ -237,10 +237,10 @@ quiet, the normal idle rules apply to it again.
 When a workspace contains pinned regular tabs, the sidebar separates that group
 from the New menu and regular tabs with a divider instead of a text
 subheading.
-After a restart, pinned tabs show as unloaded (sleeping) in the sidebar from the
-first moment it lists them, and load when first opened, like other restored tabs.
-The same holds for a window restored later, such as a reopened closed window or a
-restored session. The pinned tab that was selected at quit and pinned tabs shown
+After a restart, pinned tabs show as unloaded (sleeping) in the sidebar within a
+moment of the restore and stay unloaded until first opened, like other restored
+tabs. The same holds for a window restored later, such as a reopened closed window
+or a restored session. The pinned tab that was selected at quit and pinned tabs shown
 as panels in the workspace load at launch. If Firefox's restore-on-demand
 settings for pinned tabs are turned off, pinned tabs load at launch and none is
 shown as unloaded.
