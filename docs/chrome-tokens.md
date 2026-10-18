@@ -109,7 +109,7 @@ Type is the same problem. Mux's typography tokens are rem tokens too
 directly in chrome `text-m` renders at 11px, 11/16 of its shell size, and `text-s`
 at 9.1px. Two chrome rules want Mux's real size at the shell's scale, so each reads
 an alias token that the generator pins in px: the panel header URL field
-(`.bento-panel-header-url`) reads `--bento-panel-url-font-size` (`text-m`, 16px), and
+(`.bento-panel-header-url`) reads `--bento-panel-url-font-size` (`text-s`, 13.3px), and
 the panel navigator menu items (`.bento-panel-nav-menu__item`) read
 `--bento-panel-nav-menu-font-size` (`text-s`, 13.3px). The same treatment applies to
 any chrome rule that should show a Mux type size at the shell's scale.

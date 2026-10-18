@@ -136,7 +136,7 @@ function readOptional(path, label) {
 // its trailer out inside those hosts, so these tokens are resolved here at the shell's root
 // size and pinned in px. The trailer's grid and base widths are not listed: they are px sums
 // of the pinned tokens. The panel header URL and panel navigator menu font sizes are listed
-// because chrome sets that text itself and wants Mux's text-m and text-s at the shell's
+// because chrome sets that text itself and wants Mux's text-s at the shell's
 // scale, not 11/16 of it. Add a token when chrome sizes shell-laid-out geometry, or sets
 // text at a Mux size, from a rem token; px tokens (the sidebar min and max) need nothing.
 const SHELL_SIZED_TOKENS = [
