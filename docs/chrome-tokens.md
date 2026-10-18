@@ -107,10 +107,12 @@ itself out inside is the exception. Two chrome hosts hold a shell document:
 Type is the same problem. Mux's typography tokens are rem tokens too
 (`--muxui-semantic-typography-text-m-font-size` resolves to `1rem`), so used
 directly in chrome `text-m` renders at 11px, 11/16 of its shell size, and `text-s`
-at 9.1px. The panel header URL field (`.bento-panel-header-url`) wants Mux's real
-`text-m`, 16px, so it reads `--bento-panel-url-font-size` (an alias of the `text-m`
-token) and the generator pins that in px. The same treatment applies to any chrome
-rule that should show a Mux type size at the shell's scale.
+at 9.1px. Two chrome rules want Mux's real size at the shell's scale, so each reads
+an alias token that the generator pins in px: the panel header URL field
+(`.bento-panel-header-url`) reads `--bento-panel-url-font-size` (`text-m`, 16px), and
+the panel navigator menu items (`.bento-panel-nav-menu__item`) read
+`--bento-panel-nav-menu-font-size` (`text-s`, 13.3px). The same treatment applies to
+any chrome rule that should show a Mux type size at the shell's scale.
 
 The generator therefore appends an unlayered `:root` block after the token sheets
 that pins each token in `SHELL_SIZED_TOKENS` in px: it follows the token's `var()`

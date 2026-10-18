@@ -238,6 +238,11 @@
        pins it in px (SHELL_SIZED_TOKENS in scripts/generate-chrome-tokens.mjs). */
     --bento-panel-url-font-size: var(--muxui-semantic-typography-text-m-font-size);
 
+    /* Panel navigator context menu items, chrome-only buttons in
+       .bento-panel-nav-menu__item. Mux's text-s is a rem token and chrome's rem is not
+       the shell's, so the chrome sheet pins it in px like the URL size above. */
+    --bento-panel-nav-menu-font-size: var(--muxui-semantic-typography-text-s-font-size);
+
     /* Custom always-on horizontal scrollbar between the strip and the
        navigator. */
     --bento-scrollbar-thickness: 8px;
