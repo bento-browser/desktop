@@ -198,7 +198,7 @@
     .toolbarbutton-text,
     .toolbarbutton-badge-stack
   ) {
-    transition: background-color 0.3s ease;
+    transition: background-color var(--muxui-semantic-motion-state-transition);
   }
 
   /* ─── Unified chrome surface ──────────────────────────────────────
@@ -959,7 +959,7 @@
    * consumes chrome tokens rather than React components. Keep it
    * scoped to [customizing] so ordinary chrome keeps its existing layout. */
   :root[customizing] {
-    --drag-drop-transition-duration: var(--bento-duration-slow) !important;
+    --drag-drop-transition-duration: var(--muxui-semantic-motion-reveal-transition-duration) !important;
     --font-weight-heading: var(--heading-font-weight) !important;
     --font-weight-semibold: var(--heading-font-weight) !important;
     --link-color: var(--color-70) !important;
@@ -1159,10 +1159,10 @@
     user-select: none !important;
     white-space: nowrap !important;
     transition:
-      background-color var(--bento-duration-fast) var(--bento-easing-standard),
-      border-color var(--bento-duration-fast) var(--bento-easing-standard),
-      color var(--bento-duration-fast) var(--bento-easing-standard),
-      box-shadow var(--bento-duration-fast) var(--bento-easing-standard) !important;
+      background-color var(--muxui-semantic-motion-state-transition),
+      border-color var(--muxui-semantic-motion-state-transition),
+      color var(--muxui-semantic-motion-state-transition),
+      box-shadow var(--muxui-semantic-motion-state-transition) !important;
   }
 
   #customization-reset-button:focus-visible,

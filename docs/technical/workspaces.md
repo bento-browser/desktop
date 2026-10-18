@@ -92,7 +92,9 @@ both render the shared `WorkspaceAudioParticles` layer only when a workspace has
 an `audible && !muted` tab. The layer is positioned outside `Avatar.Root` so its
 notes can float beyond the avatar's clipped bounds. It emits finite notes on the
 same varied upward paths as panel navigator particles; an audio-off update stops
-new emissions while existing notes complete their fade-out. Menu particles use
+new emissions while existing notes complete their fade-out (each note removes
+itself through `afterMotion` on its animation end, with a timer fallback sized from
+the computed animation, so a note never outlives a changed duration). Menu particles use
 `--neutral-30` so they contrast with the menu surface.
 
 The workspace editor is a chrome-mounted `Dialog` frame that reads
@@ -156,28 +158,36 @@ switcher wrapper's content box; adding left/right padding there makes the active
 workspace avatar background look squeezed instead of square.
 Keep the chrome host pinned directly to this token rather than layering on a
 second chrome-local `calc()`/`max()` fallback; live sidebar/window resize relies
-on a single collapsed-width path plus the `bento-sidebar-resizing` and
-`bento-window-resizing` transition guards above.
+on a single collapsed-width path. The token is rem-based and chrome's root font
+size is not the shell's, so the chrome token sheet pins it in px (see
+[Shell-sized lengths](../chrome-tokens.md#shell-sized-lengths)): the host is the
+same 51.8 px the shell's rail layout assumes. The host's width never transitions;
+collapse and expand are the transform slide in
+[Sidebar collapse and expand](#sidebar-collapse-and-expand).
 Cmd/Ctrl+S is handled in `src/browser/base/content/bento-shell-mount.js` from a
 capture-phase keydown listener because Firefox's `key_savePage` binding is
 reserved for Bento. The handler reads `sidebarShortcutBehavior` from the latest
 `BENTO_PANELS` payload. In `collapse` mode it toggles
-`BentoSettings.sidebarCollapsed` and clears `sidebarHidden`. In `hide` mode it
+`BentoSettings.sidebarCollapsed` and clears `sidebarHidden`; chrome shows the
+change as the slide described below. In `hide` mode it
 sets both `sidebarHidden=true` and `sidebarCollapsed=true`; the next shortcut
-press clears both so the sidebar returns expanded. Chrome applies
-`.bento-sidebar-hidden` to `#bento-shell-host`, `#bento-shell-splitter`, and
-`#bento-shell-splitter-affordance`, pins the host to the collapsed rail width,
+press clears both so the sidebar returns expanded. Both directions are the
+slide described below; the hidden state itself is `.bento-sidebar-hidden` on
+`#bento-shell-host`, `#bento-shell-splitter`, and
+`#bento-shell-splitter-affordance`: it pins the host to the collapsed rail width,
 cancels its hbox footprint with an equal negative right margin, translates the
-rail off the left edge, and hides the splitter. A chrome-side
-`#bento-sidebar-hidden-hover-zone` at the left edge, plus a window pointer-move
-fallback, toggles `.bento-sidebar-hidden-revealed` while hovered so the
+rail off the left edge, and hides the splitter. A window capture
+`pointermove`/`mousemove` handler (`attachHiddenSidebarHoverReveal`) toggles
+`.bento-sidebar-hidden-revealed` while the pointer is within 12 px of the left edge or
+over the host (host `pointerenter`/`pointerleave`, a short grace timer and window blur
+hide it again), so the
 collapsed rail slides over the content without changing the content layout.
 While `sidebarHidden` is true, the divider, toolbar-navigation, and
 bookmarks-toolbar alignment paths must treat the sidebar width as zero even
 during hover reveal.
 Expanded tab scrolling relies on the virtualizer's visible-range updates and
-the native scrollbar. `TabListPane` reads the existing effective collapsed
-setting (`sidebarCollapsed` or `sidebarHidden`) and skips its custom-scrollbar
+the native scrollbar. `TabListPane` reads the shell's rail visual state
+(`useRailViewport`, the `data-bento-collapsed` attribute below) and skips its custom-scrollbar
 pixel metrics, React state updates, and hide timer while expanded. Those updates
 belong to the collapsed custom scrollbar, which remains responsible for thumb
 position, hover visibility and pointer dragging. A layout effect synchronizes
@@ -279,9 +289,9 @@ and DOM attributes only, so neither `TabListPane` nor the rows re-render.
 `TabList.css` does the rest: the fill is `--bento-surface-hover`, the height and
 radius match a row, `data-indented` applies `--bento-tab-folder-indent`, and
 `html[data-bento-collapsed='true']` makes it the centered square of the
-collapsed rail. The slide (`transform`, `--bento-duration-base` with
-`--bento-easing-snappy`), width and margin transitions apply only under
-`[data-visible]`; opacity fades in and out with `--bento-duration-fast`.
+collapsed rail. The slide (`transform`, the Mux `reveal` motion role), width and
+margin transitions apply only under `[data-visible]`; opacity fades in and out
+on the `state` role.
 `prefers-reduced-motion: reduce` keeps only the fade.
 Tab and folder rows no longer have a plain `:hover` background. Active rows are
 opaque and cover the highlight, and selected rows are translucent and composite
@@ -297,15 +307,15 @@ selector and a `place` function. The action highlight is
 `.bento-tab-list__action-highlight` (`aria-hidden`), the first child of the bar,
 painted behind the positioned buttons. Its geometry is CSS's, not a measured
 rect, because the Search trigger widens on hover and the New button shrinks with
-it over a spring (see [palettes-and-address-bar.md](palettes-and-address-bar.md#sidebar-tab-and-panel-search)).
+it with a transition (see [palettes-and-address-bar.md](palettes-and-address-bar.md#sidebar-tab-and-panel-search)).
 `place` sets `data-target` (`new` or `search`) and `TabList.css` gives each
 target its final box from `--bento-tab-list-search-trigger-width`, the bar's
 variable that holds the Search trigger's width right now: New is `left: 0` and
 `100%` minus that width minus the bar gap; Search is at `100%` minus that width
 with that width. The highlight transitions `left` and `width` with
-`--bento-duration-spring` / `--bento-easing-spring`, the same curve and duration
-the trigger, the New button and the closed search field row use, so all of them
-land together (the list highlight keeps `--bento-easing-snappy`). A fresh show is
+`--muxui-semantic-motion-reveal-transition`, the same role the trigger, the
+New button and the closed search field row use, so all of them land together.
+A fresh show is
 the one case that is not a pure CSS target: `place` writes the hovered button's
 current box inline as the starting position (the trigger has only just begun to
 widen), the hook flushes and sets `data-visible`, and `settleAction` removes the
@@ -338,8 +348,9 @@ size of an `IconButton size="sm"`, and the large and medium layout insets). The
 actions' `padding-left` uses the same inset token. Short titles that end before
 the buttons are unaffected. The mask is applied with the same selectors that set
 the actions' `opacity: 1`, and its `mask-image` transition is discrete with a
-delay (`--bento-tab-row-mask-linger`, 0 while the mask applies) so the title
-stays masked for the 100 ms the buttons fade out.
+delay (one `state` duration, written as `calc()` over the Mux token so the motion
+check sees no raw time; zero while the mask applies) so the title stays masked
+while the buttons fade out.
 
 The hook re-syncs in a layout effect after every `TabListPane` commit, using
 the tracked wrapper's current data attributes, so the highlight follows its row
@@ -733,6 +744,140 @@ used by single-tab moves after the batch finishes. Creating the workspace
 inactive prevents the activation orchestrator from seeing an empty workspace and
 opening an unwanted blank tab before the moved tabs arrive.
 
+## Sidebar collapse and expand
+
+State and bridge: tools owns `BentoSettings.sidebarCollapsed` and `sidebarHidden`;
+the shell mirrors them and sends them back to chrome in the `BENTO_PANELS` title
+payload; `applyChromeSidebarCollapsed` in `bento-shell-mount.js` receives them and
+`bento-shell-mount.css` ("Sidebar push") animates. Nothing is persisted by the
+slide. A toggle is the setting changing; every other payload repeats the same
+value and does nothing.
+
+The slide ("push") makes the sidebar and the page one strip. Layout changes once
+per toggle, only `transform` and `opacity` animate, and the duration and easing
+are the Mux `reveal` role (the fade is `calc()` over that duration, 0.4 of it,
+with `--muxui-semantic-motion-constant-easing`; Bento has no motion tokens of its
+own). `delta` is the host's width (expanded, or the rail's for a hide from the rail)
+minus the layout space the host holds at the narrow end (the rail, or 0 when the
+sidebar was hidden or is being hidden).
+
+- The host keeps its width for the whole slide and holds only the narrow
+  end's layout space through `margin-right: -delta`, stacked over the page
+  (`:root[bento-sidebar-push]`). The page lays out once, at its final geometry.
+- The page group is every in-flow child of `#browser` right of the host (the
+  splitters, a native sidebar, the panel strip), found by computed style rather
+  than a fixed id list, plus the splitter affordance and `#PersonalToolbar`
+  (which starts at the strip's left edge). The overlay hosts and the hidden hover
+  zone are absolute and stay put.
+- Collapse: the host goes from `translateX(0)` to `translateX(-delta)` and the page
+  group from `translateX(delta)` to 0, so nothing moves at the first frame; the
+  host fades out over the last 0.4 of the slide. When the slide ends, one style
+  change snaps the host to the rail (the collapsed class, margin and transforms
+  gone) and fades it back in over 0.4. Expand mirrors it: the host is widened and
+  margined at once, starts at `translateX(-delta)` and opacity 0, fades in over the
+  first 0.4 while the page group goes from 0 to `delta`; the end drops the margin
+  and transforms in one frame, so the page lays out once to its narrower geometry.
+- The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
+  `afterMotion` on the host's slide animation (never a copied duration).
+  `settleSidebarPush` is also the interruption: a toggle during a slide or the fade
+  settles it at its final state first (margin, transforms, opacity, classes, root
+  attribute and custom properties all gone), then starts the new slide from there.
+  The first apply at boot, `prefers-reduced-motion: reduce`, an unmeasurable rail
+  and any toggle that stays hidden switch instantly, as before. Under reduced motion
+  the hidden rule's own transform transition is off too
+  (`@media (prefers-reduced-motion: reduce)` after the hidden rules), so hide, show
+  and the hover reveal are all instant.
+- Hide is a collapse to a narrow end of 0 (`:root[bento-sidebar-push='hide']`, the
+  same keyframes). Hide mode keeps `sidebarCollapsed` true, so a sidebar that is a
+  rail already hides with no collapsed change: `applyChromeSidebarCollapsed` starts the
+  slide for the toggle into the hidden state, not only for a collapsed change, and
+  `applyChromeSidebarHidden`, which the payload runs next, leaves the host's class to
+  the slide. The host keeps the width it has (expanded or rail) and the page lays out
+  at its final geometry at the start; the splitter and its affordance take their hidden
+  state at once for that reason. The host leaves the window completely, so there is no
+  fade, in or out: the end can switch to the rail layout unseen. `settleSidebarPush`
+  puts `.bento-sidebar-hidden` and `.bento-sidebar-collapsed` on in the one style
+  change that drops the transforms, with the hidden rule's transform transition held
+  off for that change (an inline `transition: none`, restored after a layout flush),
+  and hides the divider line. The end state is the one a boot into the hidden state
+  has. The hover reveal and its own transform transition are unchanged, except that
+  `reveal` ignores the pointer while a push runs, so a pointer at the left edge cannot
+  leave the revealed class waiting for the class that lands at the end. Expanding out
+  of the hidden state is a push with `delta` equal to the whole expanded width.
+- The expanded width is computed (inline width inside the min and max the sheet
+  pins), not measured: measuring would flush layout at the intermediate geometry
+  and hand the page's browsers a size they never keep.
+- The toolbar band follows the same edge. `commitToolbarForSidebarPush` commits its
+  final geometry at the start through the hooks the sidebar splitter drag drives
+  (divider, toolbar split, Back/Forward/Reload offset, bookmarks offset), and the
+  CSS slides each from where it was: the divider line by transform; Back, Forward,
+  Reload and the panel navigator by a transform from the old offset to the new one
+  (the same transform mode a live drag uses, margin back at the end); the toolbar's
+  sidebar-coloured segment, whose boundary is a gradient, by a `#nav-bar::before`
+  that covers the difference between the old and new split. The backgrounds behind
+  the host keep the wider split for the slide. The bookmarks toolbar is positioned
+  by a margin and slides with the page group, whose layout is the final one on a
+  collapse and the initial one on an expand, so a collapse commits its offset at
+  the start while an expand keeps the initial offset and applies the final one in
+  the frame the push settles. The hooks read the host through
+  `sidebarHostLayoutBox`, which removes the host's own translation and measures the
+  strip's inset from the host's margin box, so a push out of the hidden state
+  (host parked at `translateX(-100%)`, margin-right `-rail`) prepares from the
+  layout origin. A hide commits the hidden toolbar (hooks run with the hidden flag
+  set: no navigation offset, bookmarks offset 0, split 0) and a push out of the hidden
+  state a shown one. The divider line is 1 px just left of the strip's edge; where it
+  is absent at one end it counts as at the edge of a strip at 0 (`-1`), so its shift
+  is the whole delta in or out. A hide lays it out at `-1px`, shown, and
+  `settleSidebarPush` hides it.
+- While `bento-sidebar-push` is on the root, `isBentoChromeLiveResizing()` is true,
+  so the divider, toolbar navigation, bookmarks alignment, affordance and strip
+  scrollbar observers hold off. Their pending animation frames are cancelled when a
+  push starts (a settle that interrupted the previous slide queued them) and each
+  frame callback checks `isBentoSidebarPushing()` itself, since the scheduling
+  guard only runs when the frame is queued. The bookmarks toolbar's mutation
+  observer, which the push's own class change triggers and which bypasses that
+  guard, skips the offset read while a push runs and still updates the height. The end runs one refresh: the settled event, the
+  flat panel layout, splitters, overlays and strip scrollbar against the final
+  untransformed geometry.
+- Audit of reads that can run during the slide. Group-internal geometry
+  (`syncInterPanelSplitters`, `computePanelLayoutGeometry`, `viewportRectForLayoutRect`)
+  is translation-invariant: widths and `clientWidth` ignore transforms, and
+  positions are differences between rects under the same transformed ancestor, so
+  the flat layout the `#tabbrowser-tabpanels` observer computes at the first layout
+  is already final. Reads that mix the group with the host, toolbar or window
+  (`rectOverlapsBentoSidebar`, the toolbar updaters, popup anchoring from
+  `getBoundingClientRect`) describe the painted geometry at that instant and are
+  redone at the end; interactions during the 200 ms are not guarded.
+- Shell: the rail layout is `data-bento-collapsed` on `<html>`, and it follows the
+  width the shell is rendered at. `observeRailViewport`
+  (`extensions/bento-shell/src/sidebar/railViewport.ts`) watches the app root with a
+  `ResizeObserver` and sets the attribute in the same frame the viewport is at most
+  `--bento-tab-strip-width-collapsed` (plus 1 px of slack for the frame's
+  whole-device-pixel rounding) wide, so chrome's width snap alone switches the shell:
+  at the end of a collapse, at the start of an expand. The setting only drives what is semantic: the footer toggle's label, icon
+  and the tooltips. Components that need the state in script (`TabList`'s scroll
+  metrics) read the attribute through `useRailViewport`. Hidden mode also renders at
+  the rail width. The shell has no geometry transitions between the two layouts, and
+  no footer cross-fade: the host fade covers the switch.
+
+Manual verification (a Bento build; the unit tests cover the sequencing only):
+in the collapsed rail, the host's computed width is the shell's `measureRailWidth()`
+(51.8 px), the New button is centred in the rail, and the pinned and folder band
+behind the folder squares is 32 px wide; collapse and expand with Cmd+S at the
+default width and after resizing the sidebar to its minimum and maximum; press Cmd+S repeatedly (ten times, quickly, then wait):
+the sidebar, page, toolbar band and footer end in the last state with no stuck
+offset, opacity or class (`document.documentElement.hasAttribute('bento-sidebar-push')`
+is false in the Browser Toolbox Console); with panels open, the panels are aligned
+with their splitters after each toggle; with the bookmarks toolbar shown; in hide
+mode, hide from the expanded sidebar and from the rail (the page, toolbar controls and
+divider slide with the sidebar, the sidebar does not fade, the final frame has no jump),
+hover-reveal, and show (the divider enters with the strip's edge, not static at its final
+position), Cmd+S again mid-slide in both directions, and ten quick presses; with the OS
+reduced-motion setting on (no slide; in hide mode the hide, the show and the hover
+reveal are instant, with no rail slide over the page after the page has moved);
+cold start collapsed and expanded (no animation); a long tab list scrolled
+partway, collapsed and expanded (the custom scrollbar matches the rail).
+
 ## Workspace pitfalls
 
 - Do not give tab or folder rows their own plain `:hover` background, and do not
@@ -742,8 +887,8 @@ opening an unwanted blank tab before the moved tabs arrive.
   hovered row. A selected hover is the accent over `transparent`.
 - Do not paint an opaque backstop (a gradient of `--bento-surface-hover-solid`,
   the selected tint or `--color-60`) behind a tab row's hover actions. It appears
-  with `:hover` over `--bento-duration-fast` and disappears on its own, while the
-  highlight needs `--bento-duration-base` to slide in, so moving along the button
+  with `:hover` over the `state` duration and disappears on its own, while the
+  highlight needs the longer `reveal` duration to slide in, so moving along the button
   column showed solid hover-colored blocks ahead of and behind the gliding
   highlight, with the button hover fills sitting on them. Mask the title instead
   (see above). The mask width must match the actions' real width: if the action
@@ -779,13 +924,82 @@ opening an unwanted blank tab before the moved tabs arrive.
   because it is a percentage. But a fresh show over Search that took the final
   (peeked) box straight away appeared 52px wider than the trigger that was still
   widening (measured: highlight 84px against a 40.7px trigger 40 ms in), so it
-  starts on the trigger's current box and the spring carries both. The
+  starts on the trigger's current box and the transition carries both. The
   container's `ResizeObserver` remains only to hide a Search target that has
   lost its box (the collapsed rail).
 - Do not let the highlight outlive its row. Anything that unmounts, fades
   (`data-row-inert`) or drags the hovered row must go through the hook's
   post-commit sync, or the highlight sits at a stale offset after a reorder,
   removal or folder collapse.
+- Do not drive the shell's rail visuals from the `sidebarCollapsed` setting or
+  from the order of the title IPC. The setting reaches the shell before chrome
+  starts the slide, and a push keeps the shell at its expanded width until chrome
+  narrows the host, so a setting-driven rail layout would show at the wrong time
+  (the icon-only rows at the first frame of a collapse, while still 300 px wide). The
+  attribute follows the viewport width; keep only semantic things (labels,
+  tooltips, the toggle icon) on the setting. A story that shows the rail sets the
+  frame width the token names, as chrome sets the host's.
+- Do not size shell-laid-out geometry in chrome from a rem shell token. Chrome's root
+  font size is the system UI font (11 px on macOS, `font: message-box`), the shell's is
+  16 px, so `--bento-tab-strip-width-collapsed` (`calc(2rem + 2 * 0.61875rem)`) was
+  51.8 px in the shell and 35.6 px as the chrome host. The shell's rail then had a
+  15.2 px content box: the New button sat 8.4 px right of centre and the pinned and
+  folder band was 15.2 px wide behind 32 px squares. The chrome token sheet now
+  pins the token in px at `--font-size-root`; add any other rem token chrome sizes
+  shell-laid-out geometry from to `SHELL_SIZED_TOKENS` in the generator. Compare
+  `getComputedStyle(document.getElementById('bento-shell-host')).width` in the Browser
+  Toolbox with `measureRailWidth()` from `railViewport.ts` after changing the token or
+  its inputs, and on a new platform. The rail switch needs the host no wider than the
+  shell's reading plus the 1 px slack, so a chrome rem above the shell's would keep the
+  expanded layout in a rail-sized host.
+- Do not read `getBoundingClientRect` of the host or the page group during a push
+  and treat it as layout geometry: it includes the transforms. A callback queued
+  with `requestAnimationFrame` must check the guard when it runs, not only when it
+  is scheduled, and any read of the host that can happen while it is hidden or
+  pushed goes through `sidebarHostLayoutBox`. Mixed reads (a
+  group rect compared with the host, toolbar or window) belong in code that is held
+  off by `isBentoChromeLiveResizing()` and refreshed in `syncGeometryAfterSidebarPush`,
+  or must read untransformed values. Group-internal reads are fine.
+- Do not add a `transition` on `#bento-shell-host`'s width, or an animation of the
+  rows' width, padding or gap between the layouts, to "smooth" the snap. Layout
+  would run per frame again, the chrome observers would rerun the flat panel layout
+  per frame, and the shell would show the rail layout partway. The host fade-through
+  is what hides the switch.
+- Do not measure the expanded width for an expand by flushing layout after the
+  collapsed class is removed (`sidebarExpandedWidth` computes it). Do not call
+  anything that reads layout between removing the class and adding the margin: the
+  page's browsers would receive the intermediate size.
+- Do not hide the sidebar by adding `.bento-sidebar-hidden` at the start of the
+  toggle. The class pins the host to the rail with `margin-right: -rail`, so the page
+  jumps into the freed space in one frame (measured: host 300 px to the rail, main panel
+  left 305 to 5 in one frame) while only the rail's transform transitions. Hide is a
+  push (`direction` `hide`, narrow end 0) and the class lands in the frame the push
+  settles; `applyChromeSidebarHidden` must not settle a hide push it belongs to, and a
+  hide must start when `sidebarCollapsed` already matched (hide from the rail).
+- Do not let the hidden class's transform transition run when it lands at the end of a
+  hide: the before-change transform is the finished animation's `-delta`, so the host
+  would transition from there. The settle holds the transition off for that change.
+- Do not default the divider's shift to 0 when it has no previous position. A show
+  from the hidden state read the hidden divider as absent, and the 1 px line sat static
+  at its final left for the whole slide, cutting through the sliding panels. An absent
+  line is at the edge of a strip at 0, which makes its shift the whole delta, in on a
+  show and out on a hide.
+- Do not select on `:root[bento-sidebar-hidden='true']`. `applyChromeSidebarHidden`
+  sets the attribute with `toggleAttribute`, which writes an empty value, so
+  `='true'` never matches (use `:root[bento-sidebar-hidden]`). A
+  `#bento-sidebar-hidden-hover-zone` strip at the left edge was gated on that selector
+  and stayed `display: none` for its whole life; it was removed, not fixed, because
+  showing it would put a 12 px pointer-capturing strip over the left edge of web
+  content whenever the sidebar is hidden and block clicks there. The window pointer
+  handler reveals the sidebar without catching pointer events.
+- Do not leave the hidden rule's transform transition live under reduced motion. The
+  no-slide hide (`prefers-reduced-motion: reduce`) moves the page at once and then
+  toggles `.bento-sidebar-hidden`, so the transition would play the rail sliding
+  out over the finished layout. A `prefers-reduced-motion: reduce` block after the
+  hidden rules turns it off, which also makes the hover reveal instant.
+- Do not write a raw duration or easing for the fade. It is `calc()` over the Mux
+  `reveal` duration with the `constant` easing, which keeps `pnpm run lint:motion`
+  satisfied and the fade in step with the slide when a theme changes the role.
 - Do not render the same workspace in two windows unless the panel architecture
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.
@@ -1110,6 +1324,19 @@ opening an unwanted blank tab before the moved tabs arrive.
   in-memory only for the same reason; adoption additionally requires a window
   created after the settle, a fresh session read, and no stored value on any tab
   of the window (`tabsToAdopt`).
+- Do not start the workspace fade's `bento-workspace-stabilizing` timer from an
+  uncancelled frame. `performWorkspaceSwitchFade` removes the curtain class in a
+  `requestAnimationFrame` and starts the stabilize timer there. With a measured
+  zero-length fade the swap runs at once, so two switches could both queue a frame
+  before either ran; each frame then assigned `__workspaceFadeCleanupTimer` without
+  clearing the earlier handle. The first timer was unreachable:
+  `cancelWorkspaceFadeForMainOnly` left it pending, and after a new switch it ended
+  suppression early (and cleared the newer timer's handle). The frame handle is
+  now `__workspaceFadeCleanupFrame`. A new switch, `clearWorkspaceFadeClasses` and
+  the cancel all go through `cancelWorkspaceFadeCleanup`, which cancels the frame
+  and the timer, and the frame callback clears any timer before it starts one.
+  The archived mount script carries the same code. Covered by
+  `scripts/mount-motion.test.mjs` and `scripts/rollback-motion.test.mjs`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

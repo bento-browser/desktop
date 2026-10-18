@@ -155,7 +155,9 @@ content dim exactly. The popover background represents the first active modal;
 when a modal is stacked over another modal, `bento-shell-mount.js` adds matching
 fading child scrim layers so the toolbar/urlbar receives the same compounded
 dim as the content-area `Dialog.Backdrop` stack. `showPopover()` /
-`hidePopover()` control top-layer membership; opacity drives the fade; a
+`hidePopover()` control top-layer membership; opacity drives the fade (Mux `modal`
+role; the popover is hidden once the measured fade has ended, and a re-show cancels
+that wait); a
 `resize` listener keeps the height aligned. Ownership is reference-counted by
 overlay id (`palette`, `confirm`, `edit-workspace`, `merge-palette`,
 `workspace-palette`, `welcome`) so a stacked modal can close without removing

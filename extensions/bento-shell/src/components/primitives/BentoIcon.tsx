@@ -1,5 +1,4 @@
 import type { LucideIcon } from 'lucide-react/dist/lucide-react';
-import type { AnimationEventHandler } from 'react';
 
 const ICON_SIZES = {
   xs: 12,
@@ -14,7 +13,6 @@ export interface BentoIconProps {
   label?: string;
   className?: string;
   strokeWidth?: number;
-  onAnimationEnd?: AnimationEventHandler<SVGSVGElement>;
 }
 
 /** Small Bento-owned presentation adapter for Lucide icons in Mux pilot UI. */
@@ -24,7 +22,6 @@ export function BentoIcon({
   label,
   className,
   strokeWidth = 2,
-  onAnimationEnd,
 }: BentoIconProps) {
   const classes = ['bento-icon', `bento-icon--${size}`, className].filter(Boolean).join(' ');
   return (
@@ -35,7 +32,6 @@ export function BentoIcon({
       aria-label={label}
       focusable="false"
       strokeWidth={strokeWidth}
-      onAnimationEnd={onAnimationEnd}
     />
   );
 }

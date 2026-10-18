@@ -50,13 +50,13 @@ Each of these can produce visible sliding if it runs during the fade-in window o
 
 | Source                                                      | What it animates                                       | Duration                          | Trigger condition                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------ | --------------------------------- | ------------------------------------------------------ |
-| `__mainWidthTransitionForNextReconcile`                     | Main panel `width`, `min-width`, `flex-basis`          | 200 ms (`--bento-duration-base`)  | `wsChanged` in `handlePanelsTitle`                     |
+| `__mainWidthTransitionForNextReconcile`                     | Main panel `width`, `min-width`, `flex-basis`          | 200 ms (Mux `reveal` role)        | `wsChanged` in `handlePanelsTitle`                     |
 | `scrollPanelToLeftmost(mainEl)`                             | `tabpanels.scrollLeft` (smooth)                        | ~500 ms native smooth-scroll      | `mainChanged && panels.length > 0`                     |
 | `scrollPanelIntoViewFromRight`                              | `tabpanels.scrollLeft` (smooth)                        | ~500 ms                           | New panel added (`newTabIds.length > 0`)               |
-| Favicon `.bento-panel-nav__icon` `--entering` / `--leaving` | `width`, `padding`, `margin`, `opacity`                | 200 ms (`--bento-duration-base`)  | refreshPanelNav adds/removes icons                     |
+| Favicon `.bento-panel-nav__icon` `--entering` / `--leaving` | `width`, `padding`, `margin`, `opacity`                | 200 ms (Mux `reveal` role)        | refreshPanelNav adds/removes icons                     |
 | Strip scroll restore                                        | `tabpanels.scrollLeft` (instant)                       | 0 (instant via direct assignment) | `__pendingStripScrollRestore !== null` after wsChanged |
 | Inter-panel splitter repositioning                          | Absolute-positioned splitter `left` (instant JS write) | 0                                 | `syncInterPanelSplitters` called from scroll listener  |
-| `runPendingPanelFlip` (FLIP animation for drag-reorder)     | `transform: translateX`                                | 200 ms (`--bento-duration-base`)  | `__bentoPendingFlip` set (drag commit only)            |
+| `runPendingPanelFlip` (FLIP animation for drag-reorder)     | `transform: translateX`                                | 200 ms (Mux `reveal` role)        | `__bentoPendingFlip` set (drag commit only)            |
 
 ## Current fade implementation (at HEAD)
 
@@ -67,8 +67,7 @@ Commit `c35af31` ("Persist panel strip scroll per workspace") + the workspace-sw
 ```css
 #tabbrowser-tabpanels,
 #bento-strip-container {
-  transition: opacity var(--bento-duration-fast, 140ms)
-    var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1));
+  transition: opacity var(--muxui-semantic-motion-state-transition);
 }
 #tabbrowser-tabpanels.bento-workspace-switching,
 #bento-strip-container.bento-workspace-switching {

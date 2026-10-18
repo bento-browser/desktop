@@ -77,6 +77,66 @@ node scripts/build-rollback-variant.mjs rollback-transition-r1 check
 node scripts/build-rollback-variant.mjs rollback-final-r2 check
 ```
 
+## Motion tokens
+
+The live theme no longer defines the Bento motion tokens (`--bento-duration-*`,
+`--bento-easing-*`, `--bento-pinned-panels-state-transition-duration`,
+`--bento-sidebar-collapse-transition`), and the archive builds against the live
+theme files, so it reads only `--muxui-semantic-motion-*` composites: the
+`<role>-transition` pair for shorthands and the `progress-*-duration` tokens with
+`constant-easing` or `progress-easing` for loops. Each archived call site uses the
+role its live counterpart uses (state for colour, border and focus-ring changes,
+reveal for geometry, FLIP settles and the footer fade, dismiss for the startup
+veil and panel removal, modal for overlay hosts and scrims, loops for the veil
+pulse, spinner and audio particles). Sites with no live counterpart follow the same
+rules: the subdivision flex and opacity animations and the split-panel focus rings
+use reveal and state respectively. Do not add raw times or easing keywords to an
+archived `transition` or `animation` value, and do not reintroduce a fallback value
+inside `var()`.
+
+- **Timers.** A JS timer never mirrors a CSS duration. The archived mount script
+  carries one helper, `afterMotion` (with `cancelMotion`), and the archived shell
+  one, `src/rollbackMotion.ts` (`afterTransition`). Each measures the element's
+  resolved transition or animation after the styles that start it are applied,
+  filtered by property or animation name, and runs the cleanup at the matching
+  `transitionend` or `animationend` with a timer at the measured time as the
+  fallback. A requested property takes its timing from the last
+  `transition-property` entry that names it, explicitly or through `all`
+  (`all, opacity` with `0.2s, 0s` measures 0 for opacity), and only a requested
+  property's end event finishes the wait. A measured 0 runs the cleanup before the
+  helper returns, so a caller that stores the returned cancel function must not
+  store it once the cleanup has run (`performWorkspaceSwitchFade` checks `swapped`).
+  A detached element waits a 1200 ms ceiling, and a newer call for the same element
+  and key replaces a pending one. Show and interrupt paths call `cancelMotion` so an
+  old cleanup cannot hide or reset a host that was reopened or grabbed again.
+  Subdivision animations register with `frames`, which measures after the frame
+  callback that applies the target layout. The workspace fade keeps
+  `bento-workspace-stabilizing` for `workspaceStabilizeMs()`: the longer of the
+  measured fade-in and the `reveal` duration token (those layout transitions are
+  switched off while the class is set, so they are read from the token) plus the
+  slack, as a timer that `clearWorkspaceFadeClasses` and
+  `cancelWorkspaceFadeForMainOnly` cancel, together with the frame that starts it
+  (a newer switch cancels both). `scripts/rollback-motion.test.mjs` runs
+  these helpers and the fade.
+- **final-r2 overlay hosts.** The chrome-layout patch creates `#bento-palette-host`,
+  `#bento-merge-palette-host` and `#bento-confirm-host` without an inline
+  transition, and the archived `ensureOverlayHost` returns early for hosts that
+  already exist. The archived injected stylesheet therefore gives those three hosts
+  the `modal` fade. An engine built from an older patch keeps its inline
+  transition, which wins over the rule.
+- **Validation.** `rollback:check` does not resolve CSS variables. After a Mux or
+  theme change, confirm that every `--muxui-semantic-motion-*` name under
+  `rollback/` is declared in `node_modules/@muxui/react/generated/styles.css`
+  (shell, both variants) and in a chrome token sheet generated to a temporary path
+  with `node scripts/generate-chrome-tokens.mjs --output <tmp file>` (final-r2
+  chrome). The repository motion check (`pnpm run lint:motion`) does scan the
+  archived mount's injected CSS and inline strings, and the archived `.css`, `.ts`
+  and `.tsx` files: it fails on a raw time or easing in a `transition` or
+  `animation` declaration, a transition or animation style write (`style.transition`,
+  a quoted key, `style.setProperty`, also in a conditional), or a string naming a
+  motion token. It reads text only, so it does not resolve
+  variables and ignores copy that merely reads like a time.
+
 ## Security parity
 
 The rollback variants overlay archived sources on the current tree, so they

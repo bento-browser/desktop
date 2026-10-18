@@ -50,7 +50,7 @@ html[data-bento-address-bar='true'] #root {
   background-color: var(--neutral-5);
   pointer-events: auto;
   transform: translateX(-50%);
-  transition: opacity 0.18s ease;
+  transition: opacity var(--muxui-semantic-motion-modal-transition);
 }
 
 .muxui-command-palette__backdrop.bento-address-bar__backdrop

@@ -1033,7 +1033,7 @@ export const MEMBERS = [
     kind: 'element',
     how: 'queries',
     probe: 'R',
-    sites: ['attachSidebarChromeDivider', 'attachHiddenSidebarHoverZone'],
+    sites: ['attachSidebarChromeDivider'],
     use: 'Root hbox that holds the Bento host elements added by patch chrome-layout/01.',
     at: [FF.browserBox, '<hbox flex="1" id="browser"', 5],
   },

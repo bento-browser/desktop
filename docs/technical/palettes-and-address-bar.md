@@ -130,8 +130,9 @@ label, inside `span.bento-tab-list__search-trigger` (which carries the `title`).
 Its accessible name stays the `aria-label` "Search tabs and panels". At rest it is
 the 2rem square; hovering it, or keyboard focus-visible on it, widens it leftward
 to `--bento-tab-list-search-peek-width` (5.25rem, icon, gap, the label and the
-New button's inline padding) and fades the label in, while the New button
-(`flex: 1`) shrinks by the same amount so the bar keeps its width. Mux's button
+New button's inline padding), while the New button (`flex: 1`) shrinks by the
+same amount so the bar keeps its width. The label never fades: it is always
+opaque and the button's clip uncovers it (below). Mux's button
 ring uses native `:focus-visible` (React Aria also sets `data-focus-visible`);
 Bento uses `:focus-visible`. The trigger is hidden in the collapsed rail.
 
@@ -141,19 +142,32 @@ One variable drives all the geometry. `.bento-tab-list__new-actions` sets
 to the peek width. The trigger's `width`, the action highlight's `left` and
 `width` (by its `data-target`, see [workspaces.md](workspaces.md)), and the closed
 search field row's `margin-inline-start` all read it and each transition their
-own property with `--bento-duration-spring` and `--bento-easing-spring`, the
-Motion spring (perceptual 0.3s, bounce 0.15) sampled as `linear()`. They start in
-the same style recalc with the same curve, so they stay in lockstep with no JS
-measuring. Opacity fades are timed from the 0.3s perceptual duration, not the
-550ms: the label, input and clear button fade in after `--bento-duration-fast`
-over `--bento-duration-base` and out in `--bento-duration-fast`.
+own property with Mux's reveal spring pair,
+`--muxui-semantic-motion-reveal-transition-spring-duration` with
+`--muxui-semantic-motion-reveal-transition-spring-easing` (400 ms sampled
+`linear()` spring, bounce 0; it looks settled by about 200 ms, its
+`-spring-visual-duration`). The field row's `padding-inline-start` and the clear
+button's open `scale` use the same pair. They start in the same style recalc with
+the same pair, so they stay in lockstep with no JS measuring. Opacity fades run on
+`--muxui-semantic-motion-state-transition`: the input and clear button fade in
+after one `state` duration and out with no wait.
+
+The label is clipped, not faded. The button is `overflow: clip` with
+`overflow-clip-margin: content-box` and `padding-block: 0`, so its children are
+cut at the inline padding (the content edge, `width - inset`), not at the border.
+At rest the label starts 29.2px in (8px inset, 16px icon, 5.2px gap), past the
+24px content edge of the 2rem square, so none of it shows; as the trigger widens
+the edge moves right and uncovers the label from its first letter, at every
+frame with no extra transition. The ring (a `box-shadow`) and the pressed fill
+belong to the button itself, so its own overflow does not clip them.
 
 The overlay (`.bento-tab-list-search`) is always mounted so closing can animate.
 `TabListPane` sets `data-open` while `searchOpen` is true and `inert` otherwise.
 Closed, it is `pointer-events: none` and `visibility: hidden`, and the
-`visibility` transition is delayed by `--bento-duration-spring` so it stays
-visible while it closes; open, `visibility: visible` applies at once, so the
-open effect's `focus()` and `select()` work. The box that grows is the field row
+`visibility` transition runs for the reveal spring's full duration (400 ms,
+tail included) so it stays visible while it closes; open, `visibility: visible`
+applies at once, so the open effect's `focus()` and `select()` work. The box
+that grows is the field row
 itself, by `margin-inline-start`: `0` open, and closed
 `calc(100% - var(--bento-tab-list-search-trigger-width))` with its
 `padding-inline-start` at the trigger's icon inset, so a closed (hidden) field
@@ -162,10 +176,11 @@ a close returns to, wherever the trigger is. The row's own background, radius an
 ring therefore draw correctly on every frame and the icon in its leading column
 rides the left edge (its inset moves from the trigger's 8px to the field's
 `--space-2xs` as it grows). Its `overflow: hidden` clips the grid while the row
-is narrower than its columns, and its `opacity` fades in over
-`--bento-duration-fast` on open and out after the spring has covered the trigger
-on close. While open, the trigger stays visible for `--bento-duration-fast` under
-the fading row (no icon blink) and then hides. The clear button sits in a
+is narrower than its columns, and its `opacity` fades in over the
+`state` role on open and out, after the spring's visual duration, once the slide
+has all but covered the trigger on close (the spring's tail is 3% of the move and
+runs under the fade). While open, the trigger stays visible for one
+`state` duration under the fading row (no icon blink) and then hides. The clear button sits in a
 `.bento-tab-list-search__clear` wrapper that fades and scales in at the right end,
 where the trigger sat, so Mux's own button transitions stay untouched. Under
 `prefers-reduced-motion: reduce` no width, margin or slide transitions run; only
@@ -180,18 +195,27 @@ Pitfalls:
   cuts the ring, radius and background off the grown box, and a measured rect is
   the mid-transition box. Keep the closed margin on the same variable the trigger
   reads, or the field starts from the wrong place when the trigger is peeked.
-- Keep the closed `visibility` delay at least `--bento-duration-spring`. A shorter
-  delay hides the field mid-close.
+- Keep the closed `visibility` transition at least as long as the field row's
+  geometry transition (both the reveal spring pair, so 400 ms). The visual
+  duration is too short for it: the hide would cut the spring's tail. A shorter
+  one hides the field mid-close.
+- Keep `padding-block: 0` on the Search button. Mux's block padding (about 9.35px)
+  leaves a content box of about 13px, and the content-box clip would cut the 16px
+  icon top and bottom.
+- The trigger's visibility hand-off on open stays on `state`: it hides once the
+  field row is opaque (also 120 ms), and the row covers the trigger's box for the
+  whole spring, so it needs no spring-length wait.
 - The trigger's icon is inline in Mux's content span, like the New button's, so
   its label shares New's baseline. That puts the trigger icon 1.14px above the
-  field row's centered icon; the swap happens under a 100ms cross-fade. Do not
+  field row's centered icon; the swap happens under a `state`-role cross-fade. Do not
   turn the span into a flex container to center it: the label then sits about
   2px above "New".
 - Esc and the other close paths leave focus on the page, as before; the input is
   inert, so the browser drops focus rather than returning it to the trigger.
-- Verified in Chromium (Ladle) only. Gecko behaviour of `:has()`, `inert`, the
-  `visibility` delay and the highlight start is unverified; see the manual
-  checks in [manual-regression-areas.md](manual-regression-areas.md#sidebar-search-peek-and-grow).
+- Verified in Chromium and in Playwright's Firefox build, both through
+  Ladle (peek, label clip, open and close timing). The built Bento app's Gecko
+  behaviour of `:has()`, `inert`, the `visibility` delay and the highlight start
+  is unverified; see the manual checks in [manual-regression-areas.md](manual-regression-areas.md#sidebar-search-peek-and-grow).
 
 ## Floating Address Bar
 

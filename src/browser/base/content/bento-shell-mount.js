@@ -50,6 +50,178 @@
   const BENTO_CONTENT_LOAD_FLAGS =
     Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
 
+  // ─── Motion timing ─────────────────────────────────────────────────────
+  // CSS owns every duration (the Mux --muxui-semantic-motion-* tokens). Script that
+  // has to act when motion ends reads the time from the element's computed style
+  // through measureMotion and afterMotion instead of mirroring a number. The shell has
+  // the same pair in extensions/bento-shell/src/motion/afterMotion.ts; keep them in step.
+  const MOTION_SLACK_MS = 50; // added to a measured time before the timer fallback fires
+  const MOTION_UNAVAILABLE_CEILING_MS = 1000; // wait for an element with no computed style
+  const motionWaits = new WeakMap(); // element -> Map<key, cancel>
+
+  function motionList(value) {
+    return String(value ?? '')
+      .split(',')
+      .map((part) => part.trim());
+  }
+
+  // Computed times are '<number>s' or '<number>ms'; anything else counts as 0.
+  function motionTimeMs(text) {
+    const match = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(ms|s)$/i.exec(text ?? '');
+    if (!match) return 0;
+    return Number(match[1]) * (match[2].toLowerCase() === 's' ? 1000 : 1);
+  }
+
+  // Longest time the transitions and animations on 'el' that match 'filter'
+  // ({ properties, animations }) take: delay plus duration, times the iteration
+  // count for an animation. Repeated duration and delay lists are expanded to the
+  // number of properties or names. An infinite animation never ends and is skipped.
+  // A requested property takes its timing from the LAST transition-property entry
+  // that names it, explicitly or through 'all' (CSS Transitions), so 'all, opacity'
+  // with '0.2s, 0s' measures 0 for opacity; without a property filter each entry
+  // that no later entry overrides counts on its own.
+  // Call it after the styles that start the motion are applied. Returns
+  // { ms, ending } with ending the 't:<property>' / 'a:<name>' entries that end
+  // last (requested properties only when filtered; ms 0 means nothing runs, which
+  // is a valid answer), or null when the element has no computed style
+  // (disconnected). display:none still reports its configured times.
+  function measureMotion(el, filter = {}) {
+    const view = el?.ownerDocument?.defaultView;
+    if (!el || el.isConnected === false || !view) return null;
+    const style = view.getComputedStyle(el);
+    if (!style || (style.transitionDuration === '' && style.animationDuration === '')) {
+      return null;
+    }
+    let ms = 0;
+    let ending = new Set();
+    const note = (entry, end) => {
+      if (end > ms) {
+        ms = end;
+        ending = new Set([entry]);
+      } else if (end === ms && end > 0) {
+        ending.add(entry);
+      }
+    };
+    const properties = motionList(style.transitionProperty);
+    const durations = motionList(style.transitionDuration);
+    const delays = motionList(style.transitionDelay);
+    const noteTransition = (property, i) =>
+      note(
+        't:' + property,
+        motionTimeMs(durations[i % durations.length]) + motionTimeMs(delays[i % delays.length]),
+      );
+    const lastEntryFor = (property) => {
+      let last = -1;
+      properties.forEach((entry, i) => {
+        if (entry === 'all' || entry === property) last = i;
+      });
+      return last;
+    };
+    if (filter.properties) {
+      for (const property of filter.properties) {
+        const i = lastEntryFor(property);
+        if (i !== -1) noteTransition(property, i);
+      }
+    } else {
+      properties.forEach((property, i) => {
+        if (property === 'none' || property === '' || lastEntryFor(property) !== i) return;
+        noteTransition(property, i);
+      });
+    }
+    const names = motionList(style.animationName);
+    const animationDurations = motionList(style.animationDuration);
+    const animationDelays = motionList(style.animationDelay);
+    const counts = motionList(style.animationIterationCount);
+    names.forEach((name, i) => {
+      if (name === 'none' || name === '') return;
+      if (filter.animations && !filter.animations.includes(name)) return;
+      const count = counts[i % counts.length];
+      if (count === 'infinite') return;
+      const iterations = Number(count);
+      note(
+        'a:' + name,
+        motionTimeMs(animationDelays[i % animationDelays.length]) +
+          motionTimeMs(animationDurations[i % animationDurations.length]) *
+            (Number.isFinite(iterations) ? iterations : 1),
+      );
+    });
+    return { ms, ending };
+  }
+
+  // Aborts the wait started for (el, key), with its timer and listeners.
+  function cancelMotion(el, key) {
+    if (!el) return;
+    motionWaits.get(el)?.get(key)?.();
+  }
+
+  // Runs 'done' once when the motion on 'el' that matches 'filter' has finished.
+  // Nothing to wait for (0 ms) runs it now. Otherwise the wait ends on the end
+  // event of whatever finishes last, or on a timer a little after the measured
+  // time; an element with no computed style waits for the fallback ceiling. 'done'
+  // runs at most once. A later wait with the same 'key' on the same element, and
+  // cancelMotion(el, key), drop the earlier one; call it when the element is shown
+  // again or the motion is interrupted. Returns the cancel function.
+  function afterMotion(el, key, filter, done) {
+    cancelMotion(el, key);
+    const measured = measureMotion(el, filter);
+    if (measured && measured.ms === 0) {
+      done();
+      return () => {};
+    }
+    let waits = motionWaits.get(el);
+    if (!waits) {
+      waits = new Map();
+      motionWaits.set(el, waits);
+    }
+    let finished = false;
+    let timer = null;
+    const stop = () => {
+      clearTimeout(timer);
+      el.removeEventListener('transitionend', onEnd);
+      el.removeEventListener('animationend', onEnd);
+      if (waits.get(key) === cancel) waits.delete(key);
+    };
+    const cancel = () => {
+      finished = true;
+      stop();
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      stop();
+      done();
+    };
+    const onEnd = (event) => {
+      if (event.target !== el || !measured) return;
+      // With a property filter 'ending' names requested properties only, so an
+      // unrelated property's transitionend never finishes the wait.
+      const ends =
+        event.type === 'transitionend'
+          ? measured.ending.has('t:' + event.propertyName) ||
+            (!filter.properties && measured.ending.has('t:all'))
+          : measured.ending.has('a:' + event.animationName);
+      if (ends) finish();
+    };
+    waits.set(key, cancel);
+    timer = setTimeout(
+      finish,
+      measured ? measured.ms + MOTION_SLACK_MS : MOTION_UNAVAILABLE_CEILING_MS,
+    );
+    if (measured) {
+      el.addEventListener('transitionend', onEnd);
+      el.addEventListener('animationend', onEnd);
+    }
+    return cancel;
+  }
+
+  // The value of a motion token as ms, for a window that has to outlast CSS
+  // transitions that are switched off while it runs (so they cannot be measured).
+  function motionTokenMs(name) {
+    return motionTimeMs(
+      window.getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+    );
+  }
+
   function seedChromeColorMode() {
     const root = document.documentElement;
     if (!root) return;
@@ -881,10 +1053,11 @@
     overlays.onVeilLifted();
     const veil = document.getElementById('bento-startup-veil');
     if (!veil || veil.hasAttribute('hidden')) return;
-    window.setTimeout(() => {
+    // The veil fades out through its CSS dismiss transition; remove it once that ends.
+    afterMotion(veil, 'hide', { properties: ['opacity'] }, () => {
       veil.setAttribute('hidden', 'true');
       veil.remove();
-    }, 180);
+    });
   }
 
   function armStartupVeilFallback() {
@@ -1762,7 +1935,7 @@
       'position: absolute; top: 0; left: 0; width: 100%; height: 100%;' +
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
       ' display: none; opacity: 0;' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     parent.appendChild(host);
   }
 
@@ -1833,7 +2006,7 @@
       ' height: 0; max-width: none; max-height: none; margin: 0; padding: 0;' +
       ' border: 0; overflow: hidden; pointer-events: auto; opacity: 0;' +
       ' background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     parent.appendChild(scrim);
   }
 
@@ -1960,7 +2133,19 @@
   // subsequent opens have zero React work and only the chrome-side
   // CSS transition runs.
 
-  const PALETTE_TRANSITION_MS = 180; // matches inline transition duration
+  // Hides a host once its fade-out has finished (its CSS modal transition; no
+  // duration is repeated here). Only commits display:none if the host is still
+  // hidden: a re-show during the fade cancels the wait (every reveal calls
+  // cancelMotion(host, 'hide')), and the opacity check covers a show that
+  // raced it. Call right after setting opacity to 0.
+  function hideOverlayHostAfterFade(host, afterHide) {
+    afterMotion(host, 'hide', { properties: ['opacity'] }, () => {
+      if (host.style.opacity !== '0') return;
+      host.style.display = 'none';
+      host.setAttribute('hidden', 'true');
+      afterHide?.();
+    });
+  }
 
   // Every show* function reveals its host through this, and sends the messages
   // that belong to the open from inside `reveal`. An overlay whose document does
@@ -2007,6 +2192,7 @@
     dismissMergePalette();
     openOverlay('palette', () => {
       showOverlayToolbarScrim('palette');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       // Force a layout pass so the browser registers display:flex BEFORE we
@@ -2028,14 +2214,7 @@
     }
     hideOverlayToolbarScrim('palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      // Only commit display:none if still hidden — guards against a
-      // re-show during the transition.
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, PALETTE_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   function togglePalette() {
@@ -2051,8 +2230,6 @@
   }
 
   // ─── Workspace palette overlay ────────────────────────────────────────
-  const WORKSPACE_PALETTE_TRANSITION_MS = 180;
-
   function isWorkspacePaletteVisible(host) {
     return host.style.display !== 'none';
   }
@@ -2066,6 +2243,7 @@
     dismissPalette();
     openOverlay('workspace-palette', () => {
       showOverlayToolbarScrim('workspace-palette');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
@@ -2084,15 +2262,9 @@
     }
     hideOverlayToolbarScrim('workspace-palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, WORKSPACE_PALETTE_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
-  const MERGE_PALETTE_TRANSITION_MS = 180;
   let mergePaletteOpenSeq = 0;
 
   function nextMergePaletteNonce(kind) {
@@ -2114,6 +2286,7 @@
     const nonce = nextMergePaletteNonce('open');
     openOverlay('merge-palette', () => {
       showOverlayToolbarScrim('merge-palette');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
@@ -2136,12 +2309,7 @@
     }
     hideOverlayToolbarScrim('merge-palette');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, MERGE_PALETTE_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   function toggleMergePalette() {
@@ -2175,7 +2343,7 @@
   const ADDRBAR_OPEN_RETRY_MS = 120;
   const ADDRBAR_OPEN_RETRY_LIMIT = 8;
   const ADDRBAR_OPEN_FALLBACK_REVEAL_MS = 1400;
-  const ADDRBAR_HOST_TRANSITION = 'opacity 0.18s var(--bento-easing-standard, ease)';
+  const ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)';
   let addrbarOpenSeq = 0;
   let pendingAddrbarReveal = null;
 
@@ -2258,6 +2426,7 @@
   }
 
   function prepareAddrbarHostForOpen(host, placement = null) {
+    cancelMotion(host, 'hide');
     const previousTransition = host.style.transition;
     host.style.transition = 'none';
     host.style.pointerEvents = 'none';
@@ -2509,12 +2678,7 @@
     if (!host) return;
     host.style.pointerEvents = 'none';
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, PALETTE_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   // ─── Confirm overlay (workspace delete, etc.) ──────────────────────────
@@ -2524,8 +2688,6 @@
   // title-IPC (BENTO_OPEN_CONFIRM_*) and confirm-content title-IPC
   // (BENTO_CLOSE_CONFIRM_*). The payload travels independently via the
   // 'bento-confirm-bus' BroadcastChannel.
-  const CONFIRM_TRANSITION_MS = 180;
-
   function isConfirmVisible(host) {
     return host.style.display !== 'none';
   }
@@ -2538,6 +2700,7 @@
     }
     openOverlay('confirm', () => {
       showOverlayToolbarScrim('confirm');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
@@ -2556,20 +2719,13 @@
     }
     hideOverlayToolbarScrim('confirm');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, CONFIRM_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   // ─── Edit-workspace overlay ────────────────────────────────────────────
   // Same chrome-overlay pattern as confirm/palette: a transparent
   // <browser> sized to fill the window hosts the form Dialog. Sidebar
   // never holds modal UI.
-  const EDIT_WORKSPACE_TRANSITION_MS = 180;
-
   function isEditWorkspaceVisible(host) {
     return host.style.display !== 'none';
   }
@@ -2582,6 +2738,7 @@
     }
     openOverlay('edit-workspace', () => {
       showOverlayToolbarScrim('edit-workspace');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
@@ -2600,12 +2757,7 @@
     }
     hideOverlayToolbarScrim('edit-workspace');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, EDIT_WORKSPACE_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   // ─── Workspace-switcher overlay ────────────────────────────────────────
@@ -2664,8 +2816,6 @@
   // and signals BENTO_OPEN_WELCOME_<ts>; welcome content flips the flag only
   // on final dismiss paths so the import step can show the embedded Firefox
   // migration host without marking onboarding complete.
-  const WELCOME_TRANSITION_MS = 180;
-
   // The scrim is a popover strip whose height tracks the toolbar (= the
   // gap above #browser) so it dims exactly the toolbar strip and never
   // overlaps the content backdrop. showPopover()/hidePopover() control
@@ -2694,7 +2844,7 @@
     layer.style.cssText =
       'position: absolute; inset: 0; background-color: var(--scrim, rgba(0, 0, 0, 0.48));' +
       ' opacity: 0; pointer-events: none;' +
-      ' transition: opacity 0.18s var(--bento-easing-standard, ease);';
+      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
     return layer;
   }
 
@@ -2714,6 +2864,7 @@
     layers.forEach((layer, index) => {
       if (index < targetExtraLayerCount) {
         layer.removeAttribute('data-bento-closing');
+        cancelMotion(layer, 'close');
         requestAnimationFrame(() => {
           if (!layer.hasAttribute('data-bento-closing')) layer.style.opacity = '1';
         });
@@ -2723,9 +2874,9 @@
       if (layer.hasAttribute('data-bento-closing')) return;
       layer.setAttribute('data-bento-closing', 'true');
       layer.style.opacity = '0';
-      setTimeout(() => {
+      afterMotion(layer, 'close', { properties: ['opacity'] }, () => {
         if (layer.hasAttribute('data-bento-closing')) layer.remove();
-      }, WELCOME_TRANSITION_MS);
+      });
     });
   }
 
@@ -2735,6 +2886,7 @@
     if (!scrim) return;
     if (getOverlayToolbarScrimHeight() <= 0) return;
     const wasOpen = isOverlayToolbarScrimOpen(scrim);
+    cancelMotion(scrim, 'hide');
     if (!wasOpen) scrim.style.opacity = '0';
     sizeOverlayToolbarScrim(scrim);
     syncOverlayToolbarScrimLayers(scrim);
@@ -2759,6 +2911,7 @@
     const scrim = document.getElementById('bento-overlay-toolbar-scrim');
     if (!scrim) return;
     if (activeToolbarScrimOwners.size > 0) {
+      cancelMotion(scrim, 'hide');
       sizeOverlayToolbarScrim(scrim);
       syncOverlayToolbarScrimLayers(scrim);
       scrim.style.opacity = '1';
@@ -2766,7 +2919,7 @@
     }
     syncOverlayToolbarScrimLayers(scrim);
     scrim.style.opacity = '0';
-    setTimeout(() => {
+    afterMotion(scrim, 'hide', { properties: ['opacity'] }, () => {
       if (
         activeToolbarScrimOwners.size === 0 &&
         scrim.style.opacity === '0' &&
@@ -2778,7 +2931,7 @@
           console.warn('[bento-shell-mount] overlay toolbar scrim hidePopover failed:', err);
         }
       }
-    }, WELCOME_TRANSITION_MS);
+    });
   }
 
   // Keep the strip aligned to the toolbar while it's visible (window
@@ -2802,6 +2955,7 @@
     }
     openOverlay('welcome', () => {
       showOverlayToolbarScrim('welcome');
+      cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
@@ -2817,12 +2971,7 @@
     if (!host) return;
     hideOverlayToolbarScrim('welcome');
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-      }
-    }, WELCOME_TRANSITION_MS);
+    hideOverlayHostAfterFade(host);
   }
 
   function isEmbeddedImportVisible(host) {
@@ -2849,6 +2998,7 @@
     }
 
     setBentoEmbeddedImportSrc();
+    cancelMotion(host, 'hide');
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
@@ -2860,16 +3010,12 @@
     const host = document.getElementById('bento-embedded-import-host');
     if (!host) return;
     host.style.opacity = '0';
-    setTimeout(() => {
-      if (host.style.opacity === '0') {
-        host.style.display = 'none';
-        host.setAttribute('hidden', 'true');
-        const frame = document.getElementById('bento-embedded-import-frame');
-        frame?.removeAttribute('src');
-        const welcomeFrame = document.getElementById('bento-welcome-frame');
-        setTimeout(() => welcomeFrame?.focus(), 0);
-      }
-    }, WELCOME_TRANSITION_MS);
+    hideOverlayHostAfterFade(host, () => {
+      const frame = document.getElementById('bento-embedded-import-frame');
+      frame?.removeAttribute('src');
+      const welcomeFrame = document.getElementById('bento-welcome-frame');
+      setTimeout(() => welcomeFrame?.focus(), 0);
+    });
   }
 
   // scopeFirefoxZen=true is the explicit "Import Firefox or Zen" path: it
@@ -3635,7 +3781,6 @@
     { className: 'bento-panel-nav__audio-particle--3', shapes: ICONS.music4 },
   ];
   const PANEL_NAV_AUDIO_EMIT_INTERVAL_MS = 540;
-  const PANEL_NAV_AUDIO_PARTICLE_TTL_MS = 1800;
   let nextPanelNavAudioOwnerId = 1;
 
   function appendIconShapes(svg, shapes) {
@@ -3757,9 +3902,9 @@
       particle.remove();
       cleanupPanelNavAudioParticles(btn);
     };
-    particle.addEventListener('animationend', cleanup, { once: true });
     particlesRoot.appendChild(particle);
-    window.setTimeout(cleanup, PANEL_NAV_AUDIO_PARTICLE_TTL_MS);
+    // The particle goes at the end of its CSS animation (or the timer fallback).
+    afterMotion(particle, 'particle', { animations: ['bento-panel-nav-music-particle'] }, cleanup);
   }
 
   function startPanelNavAudioEmitter(btn) {
@@ -4143,6 +4288,29 @@
   let prepareBookmarksToolbarForSidebarResize = null;
   let syncBookmarksToolbarForSidebarWidth = null;
   let finishBookmarksToolbarSidebarResize = null;
+  // Cancels of the pending animation frames of the updaters that read the host, the
+  // strip or the toolbar (divider, toolbar navigation, bookmarks toolbar, splitter
+  // affordance). A sidebar push cancels them when it starts; the refresh at its end
+  // schedules them again.
+  const sidebarGeometryFrameCancels = [];
+
+  // The sidebar host as it is laid out, without the transforms on it. Hidden mode
+  // parks it at translateX(-100%) and a push translates it, so a rect read through
+  // either is not where the toolbar aligns to. footprintRight is where the next
+  // sibling starts: the right edge plus the negative right margin that hidden mode
+  // and a push give the host, which is the edge the strip's inset is measured from.
+  function sidebarHostLayoutBox(host) {
+    const rect = host.getBoundingClientRect();
+    const style = getComputedStyle(host);
+    const shift = new DOMMatrix(style.transform).m41;
+    const right = rect.right - shift;
+    return {
+      left: rect.left - shift,
+      right,
+      width: rect.width,
+      footprintRight: right + (Number.parseFloat(style.marginRight) || 0),
+    };
+  }
 
   function isBentoWindowResizing() {
     return document.documentElement.getAttribute('bento-window-resizing') === 'true';
@@ -4150,6 +4318,17 @@
 
   function isBentoSidebarResizing() {
     return document.documentElement.getAttribute('bento-sidebar-resizing') === 'true';
+  }
+
+  // Root attribute for the length of a sidebar push slide (see "Sidebar push" in
+  // bento-shell-mount.css). While it is set the host and the page group carry
+  // transforms, so geometry reads of them are not layout geometry: the observers
+  // that read it are held off like during a live resize (isBentoChromeLiveResizing)
+  // and settleSidebarPush refreshes them once at the end.
+  const SIDEBAR_PUSH_ATTR = 'bento-sidebar-push';
+
+  function isBentoSidebarPushing() {
+    return document.documentElement.hasAttribute(SIDEBAR_PUSH_ATTR);
   }
 
   let bentoPanelResizeDepth = 0;
@@ -4330,7 +4509,12 @@
   }
 
   function isBentoChromeLiveResizing() {
-    return isBentoWindowResizing() || isBentoSidebarResizing() || isBentoPanelResizing();
+    return (
+      isBentoWindowResizing() ||
+      isBentoSidebarResizing() ||
+      isBentoPanelResizing() ||
+      isBentoSidebarPushing()
+    );
   }
 
   function attachSidebarSplitterFeedback() {
@@ -4469,11 +4653,17 @@
     splitter.addEventListener('mousedown', suppressNativeSplitterDrag, true);
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const scheduleAffordancePosition = () => {
       if (isBentoChromeLiveResizing()) return;
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        // A frame queued before a push began would read the translated splitter.
+        if (isBentoSidebarPushing()) return;
         updateAffordancePosition();
       });
     };
@@ -4489,19 +4679,13 @@
     }
   }
 
-  function attachHiddenSidebarHoverZone() {
-    const shell = document.getElementById('browser');
+  // Reveals the hidden sidebar (a slide-over of the rail) while the pointer is at the
+  // window's left edge or over the host. No element catches the edge: a strip over the
+  // page would take clicks from web content.
+  function attachHiddenSidebarHoverReveal() {
     const host = document.getElementById('bento-shell-host');
-    if (!shell || !host || host.dataset.bentoHiddenSidebarHoverAttached === '1') return;
+    if (!host || host.dataset.bentoHiddenSidebarHoverAttached === '1') return;
     host.dataset.bentoHiddenSidebarHoverAttached = '1';
-
-    let zone = document.getElementById('bento-sidebar-hidden-hover-zone');
-    if (!zone) {
-      zone = document.createElementNS(HTML_NS, 'div');
-      zone.id = 'bento-sidebar-hidden-hover-zone';
-      zone.setAttribute('aria-hidden', 'true');
-      shell.appendChild(zone);
-    }
 
     const EDGE_HOVER_WIDTH_PX = 12;
     const HIDE_GRACE_MS = 120;
@@ -4512,7 +4696,8 @@
       document.documentElement.toggleAttribute('bento-sidebar-hidden-revealed', active);
     };
     const reveal = () => {
-      if (!currentSidebarHidden) return;
+      // Not while a hide slide runs: the class would show the host the moment it ends.
+      if (!currentSidebarHidden || isBentoSidebarPushing()) return;
       if (hideTimer) {
         clearTimeout(hideTimer);
         hideTimer = 0;
@@ -4523,7 +4708,7 @@
       if (hideTimer) clearTimeout(hideTimer);
       hideTimer = window.setTimeout(() => {
         hideTimer = 0;
-        if (zone.matches(':hover') || host.matches(':hover')) return;
+        if (host.matches(':hover')) return;
         setRevealed(false);
       }, HIDE_GRACE_MS);
     };
@@ -4545,10 +4730,6 @@
       }
     };
 
-    zone.addEventListener('pointerenter', reveal);
-    zone.addEventListener('mouseenter', reveal);
-    zone.addEventListener('pointerleave', scheduleHide);
-    zone.addEventListener('mouseleave', scheduleHide);
     host.addEventListener('pointerenter', reveal);
     host.addEventListener('mouseenter', reveal);
     host.addEventListener('pointerleave', scheduleHide);
@@ -4764,7 +4945,7 @@
 
     let sidebarLeftForDrag = 0;
     prepareSidebarChromeDividerForSidebarResize = () => {
-      sidebarLeftForDrag = host.getBoundingClientRect().left;
+      sidebarLeftForDrag = sidebarHostLayoutBox(host).left;
     };
     syncSidebarChromeDividerForSidebarWidth = (width) => {
       if (currentSidebarHidden || width <= 0) {
@@ -4782,8 +4963,14 @@
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateDivider = () => {
       raf = 0;
+      // A frame queued before a push began would read the translated host.
+      if (isBentoSidebarPushing()) return;
       if (currentSidebarHidden) {
         divider.hidden = true;
         updateToolbarBackgroundSplit(0);
@@ -4840,16 +5027,16 @@
     target.dataset.bentoToolbarNavAlignmentAttached = '1';
 
     const readMetrics = () => {
-      const hostRect = host.getBoundingClientRect();
+      const hostBox = sidebarHostLayoutBox(host);
       const targetRect = target.getBoundingClientRect();
       const groupWidth = [backButton, forwardButton, stopReloadButton].reduce((sum, el) => {
         const rect = el.getBoundingClientRect();
         return sum + Math.max(0, rect.width || 0);
       }, 0);
       return {
-        hostLeft: hostRect.left,
-        hostRight: hostRect.right,
-        hostWidth: hostRect.width,
+        hostLeft: hostBox.left,
+        hostRight: hostBox.right,
+        hostWidth: hostBox.width,
         targetLeft: targetRect.left,
         targetWidth: targetRect.width,
         groupWidth,
@@ -4917,8 +5104,14 @@
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateOffset = () => {
       raf = 0;
+      // A frame queued before a push began would read the translated host.
+      if (isBentoSidebarPushing()) return;
       applyOffset(readMetrics());
     };
     const scheduleUpdate = () => {
@@ -5011,23 +5204,32 @@
     let dragHostLeft = 0;
     let dragStripInset = 0;
     prepareBookmarksToolbarForSidebarResize = () => {
-      const hostRect = host.getBoundingClientRect();
+      const hostBox = sidebarHostLayoutBox(host);
       const stripRect = getStrip()?.getBoundingClientRect?.();
-      dragHostLeft = hostRect.left;
+      dragHostLeft = hostBox.left;
       dragStripInset =
-        stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostRect.right : 0;
+        stripRect && Number.isFinite(stripRect.left) ? stripRect.left - hostBox.footprintRight : 0;
     };
     syncBookmarksToolbarForSidebarWidth = (width) => {
-      applyOffset(dragHostLeft + Math.max(0, width) + dragStripInset);
+      applyOffset(currentSidebarHidden ? 0 : dragHostLeft + Math.max(0, width) + dragStripInset);
     };
     finishBookmarksToolbarSidebarResize = () => {
       scheduleUpdate();
     };
 
     let raf = 0;
+    sidebarGeometryFrameCancels.push(() => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    });
     const updateLayout = () => {
       raf = 0;
-      applyOffset(readOffset());
+      // While a sidebar push runs the strip is translated, and the offset is the one
+      // the push committed for its direction (the final one on a collapse, the
+      // initial one on an expand until it ends), so it is not read back. This also
+      // covers the mutation observer below, which bypasses the scheduling guard when
+      // the push adds its class to the toolbar. The height is not affected by it.
+      if (!isBentoSidebarPushing()) applyOffset(readOffset());
       applyHeight(readHeight());
     };
     const scheduleUpdate = () => {
@@ -7050,6 +7252,7 @@
     const finalWidth = animateWidth ? panelEl.getBoundingClientRect().width : 0;
     if (animateWidth && (!Number.isFinite(finalWidth) || finalWidth <= 0)) return;
     const clearSizingAfter = !!options.clearSizingAfter;
+    cancelMotion(panelEl, 'enter');
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
     if (animateTransform) panelEl.style.transform = 'scale(0.98)';
@@ -7060,14 +7263,11 @@
     }
     panelEl.getBoundingClientRect();
     requestAnimationFrame(() => {
-      const transitions = ['opacity 140ms var(--bento-easing-standard)'];
-      if (animateTransform) transitions.push('transform 180ms var(--bento-easing-standard)');
+      const reveal = 'var(--muxui-semantic-motion-reveal-transition)';
+      const transitions = ['opacity ' + reveal];
+      if (animateTransform) transitions.push('transform ' + reveal);
       if (animateWidth) {
-        transitions.push(
-          'width 180ms var(--bento-easing-standard)',
-          'min-width 180ms var(--bento-easing-standard)',
-          'flex-basis 180ms var(--bento-easing-standard)',
-        );
+        transitions.push('width ' + reveal, 'min-width ' + reveal, 'flex-basis ' + reveal);
       }
       panelEl.style.transition = transitions.join(', ');
       panelEl.style.opacity = '1';
@@ -7077,27 +7277,21 @@
         panelEl.style.minWidth = finalWidth + 'px';
         panelEl.style.flex = '0 0 ' + finalWidth + 'px';
       }
-      let onTransitionEnd = null;
-      const cleanup = () => {
-        panelEl.style.removeProperty('transition');
-        panelEl.style.removeProperty('opacity');
-        panelEl.style.removeProperty('transform');
-        if (animateWidth && clearSizingAfter) {
-          panelEl.style.removeProperty('width');
-          panelEl.style.removeProperty('min-width');
-          panelEl.style.removeProperty('flex');
-        }
-        if (onTransitionEnd) panelEl.removeEventListener('transitionend', onTransitionEnd);
-      };
-      onTransitionEnd = (event) => {
-        if (event.target !== panelEl) return;
-        if (animateWidth && event.propertyName !== 'width' && event.propertyName !== 'flex-basis')
-          return;
-        if (!animateWidth && event.propertyName !== 'opacity') return;
-        cleanup();
-      };
-      panelEl.addEventListener('transitionend', onTransitionEnd);
-      setTimeout(cleanup, 260);
+      afterMotion(
+        panelEl,
+        'enter',
+        { properties: ['opacity', 'transform', 'width', 'min-width', 'flex-basis'] },
+        () => {
+          panelEl.style.removeProperty('transition');
+          panelEl.style.removeProperty('opacity');
+          panelEl.style.removeProperty('transform');
+          if (animateWidth && clearSizingAfter) {
+            panelEl.style.removeProperty('width');
+            panelEl.style.removeProperty('min-width');
+            panelEl.style.removeProperty('flex');
+          }
+        },
+      );
     });
   }
 
@@ -7188,6 +7382,7 @@
       // dx ≈ 0.
       const isDragged = tabId === snapshot.__draggedTabId;
       if (isDragged) {
+        cancelMotion(panelEl, 'flip');
         panelEl.style.transition = 'none';
         panelEl.style.transform = '';
       }
@@ -7201,6 +7396,7 @@
     // they were before the reorder (or for the dragged panel,
     // where the cursor released).
     for (const { panelEl, dx } of moved) {
+      cancelMotion(panelEl, 'flip');
       panelEl.style.transition = 'none';
       panelEl.style.transform = 'translateX(' + dx + 'px)';
     }
@@ -7211,21 +7407,15 @@
     // transform — panels glide to their settled slots.
     requestAnimationFrame(() => {
       for (const { panelEl, isDragged } of moved) {
-        panelEl.style.transition =
-          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         panelEl.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        // transitionend, or the measured transition time if that event misses.
+        afterMotion(panelEl, 'flip', { properties: ['transform'] }, () => {
           panelEl.style.transition = '';
           if (isDragged && !panelEl.classList.contains('bento-panel--dragging')) {
             panelEl.style.zIndex = '';
           }
-          panelEl.removeEventListener('transitionend', cleanup);
-        };
-        panelEl.addEventListener('transitionend', cleanup);
-        // Belt-and-suspenders: if transitionend somehow misses,
-        // wipe styles after the transition would have completed.
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -7251,21 +7441,18 @@
     }
     if (moved.length === 0) return;
     for (const { btn, dx } of moved) {
+      cancelMotion(btn, 'flip');
       btn.style.transition = 'none';
       btn.style.transform = 'translateX(' + dx + 'px)';
     }
     void list.offsetWidth;
     requestAnimationFrame(() => {
       for (const { btn } of moved) {
-        btn.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        btn.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         btn.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        afterMotion(btn, 'flip', { properties: ['transform'] }, () => {
           btn.style.transition = '';
-          btn.removeEventListener('transitionend', cleanup);
-        };
-        btn.addEventListener('transitionend', cleanup);
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -7334,21 +7521,18 @@
     }
     if (moved.length === 0) return;
     for (const { el, dx } of moved) {
+      cancelMotion(el, 'flip');
       el.style.transition = 'none';
       el.style.transform = 'translateX(' + dx + 'px)';
     }
     void window.gBrowser?.tabpanels?.offsetWidth;
     requestAnimationFrame(() => {
       for (const { el } of moved) {
-        el.style.transition = 'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        el.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         el.style.transform = '';
-        const cleanup = (e) => {
-          if (e && e.propertyName !== 'transform') return;
+        afterMotion(el, 'flip', { properties: ['transform'] }, () => {
           el.style.transition = '';
-          el.removeEventListener('transitionend', cleanup);
-        };
-        el.addEventListener('transitionend', cleanup);
-        setTimeout(() => cleanup({ propertyName: 'transform' }), 400);
+        });
       }
     });
   }
@@ -8361,7 +8545,6 @@
   let currentFocusedPanelTabId = null;
   let panelFocusTimer = null;
   let panelNavContextMenu = null;
-  const PANEL_REMOVE_ANIMATION_MS = 190;
   const SPLITTER_FOCUS_AUTOSCROLL_SUPPRESS_MS = 900;
   let __suppressPanelFocusAutoScrollUntil = 0;
 
@@ -8636,7 +8819,8 @@
     panel.style.removeProperty('transform');
     panel.classList.add('bento-panel--removing');
 
-    setTimeout(() => {
+    // Close the tab once the CSS dismiss fade on .bento-panel--removing has finished.
+    afterMotion(panel, 'remove', { properties: ['opacity'] }, () => {
       stageTopLevelPanelCloseGapFlip(panel);
       for (const entry of promotedChildWidths) {
         dispatchShellAction({
@@ -8648,7 +8832,7 @@
       if (!dispatchShellAction({ type: 'tab/close', id: tabId })) {
         __bentoPendingCloseGapFlip = null;
       }
-    }, PANEL_REMOVE_ANIMATION_MS);
+    });
   }
 
   // Cmd/Ctrl+W in a side panel closes THAT panel, not the active tab.
@@ -8711,8 +8895,9 @@
   // Browser:SavePage command — File → Save Page As stays available via
   // the menu for users who still need to save.
   //
-  // Current state is read from #bento-shell-host's classes (set by the
-  // BENTO_PANELS settings payload). Dispatch settings/update with the
+  // Current state is read from #bento-shell-host (set by the BENTO_PANELS
+  // settings payload; during a sidebar push the push's target, since the
+  // collapsed class only lands when the slide ends). Dispatch settings/update with the
   // toggled value; tools persists + broadcasts back through the same
   // channel so the next press sees the updated minimized state.
   window.addEventListener(
@@ -8727,7 +8912,7 @@
       const host = document.getElementById('bento-shell-host');
       const currentlyHidden =
         currentSidebarHidden || !!host?.classList.contains('bento-sidebar-hidden');
-      const currentlyCollapsed = !!host?.classList.contains('bento-sidebar-collapsed');
+      const currentlyCollapsed = isSidebarCollapsedTarget(host);
       if (currentlyHidden) {
         dispatchShellAction({
           type: 'settings/update',
@@ -8802,21 +8987,13 @@
     // there lags the cursor. Menu-driven resizes have no follow-along
     // pointer, so snapping reads as jarring; ease the change instead.
     // Same shape as the workspace-switch main-panel transition (see
-    // reconcilePanels). Snappy curve matches the workspace-switch tab-
-    // list slide so simultaneous transitions feel like one motion.
-    // Inline `transition` is cleared after 250ms so subsequent drags
-    // revert to instant.
-    const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
+    // reconcilePanels). Both run on the Mux reveal role, like the
+    // workspace-switch tab-list slide, so simultaneous transitions feel
+    // like one motion. The inline 'transition' is cleared once the motion
+    // has finished (see below) so subsequent drags revert to instant.
+    const reveal = 'var(--muxui-semantic-motion-reveal-transition)';
     targetPanelEl.style.transition =
-      'width var(--bento-duration-base, 200ms) ' +
-      snappy +
-      ', min-width var(--bento-duration-base, 200ms) ' +
-      snappy +
-      ', flex-basis var(--bento-duration-base, 200ms) ' +
-      snappy;
-    window.setTimeout(() => {
-      targetPanelEl.style.removeProperty('transition');
-    }, 250);
+      'width ' + reveal + ', min-width ' + reveal + ', flex-basis ' + reveal;
     targetPanelEl.style.width = px + 'px';
     targetPanelEl.style.minWidth = px + 'px';
     targetPanelEl.style.flex = '0 0 ' + px + 'px';
@@ -8829,10 +9006,19 @@
       syncInterPanelSplitters();
       updateStripScrollbar();
     }
-    window.setTimeout(() => {
-      syncInterPanelSplitters();
-      updateStripScrollbar();
-    }, 260);
+    // After the width transition: clear it, then re-sync the splitters and strip
+    // extent against the settled geometry. Called after the width writes above, so
+    // a zero-length transition (no motion) syncs against the final layout.
+    afterMotion(
+      targetPanelEl,
+      'width',
+      { properties: ['width', 'min-width', 'flex-basis'] },
+      () => {
+        targetPanelEl.style.removeProperty('transition');
+        syncInterPanelSplitters();
+        updateStripScrollbar();
+      },
+    );
     dispatchShellAction({ type: 'panel/setWidth', id: tabId, widthPx: px });
   }
 
@@ -9615,6 +9801,7 @@
         const transition = p?.style?.transition || '';
         const transform = p?.style?.transform || '';
         if (!transform && !transition.includes('transform')) continue;
+        cancelMotion(p, 'flip');
         p.style.transition = 'none';
         p.style.transform = '';
         if (p !== panelEl) p.style.zIndex = '';
@@ -9827,6 +10014,7 @@
       // transform should stick to the cursor 1:1. The release
       // handler re-enables it before resetting transform so the
       // snap-back / settle is animated.
+      cancelMotion(panelEl, 'flip');
       panelEl.style.transition = 'none';
       panelEl.style.zIndex = '10';
       hidePanelNavContextMenu();
@@ -9893,16 +10081,12 @@
       // Snap-back path: no commit OR no actual reorder. Animate
       // the dragged panel back to its original slot.
       if (dragging && !dispatched) {
-        panelEl.style.transition =
-          'transform var(--bento-duration-base) var(--bento-easing-standard)';
+        panelEl.style.transition = 'transform var(--muxui-semantic-motion-reveal-transition)';
         panelEl.style.transform = '';
-        const cleanup = () => {
+        afterMotion(panelEl, 'flip', { properties: ['transform'] }, () => {
           panelEl.style.transition = '';
           panelEl.style.zIndex = '';
-          panelEl.removeEventListener('transitionend', cleanup);
-        };
-        panelEl.addEventListener('transitionend', cleanup);
-        setTimeout(cleanup, 400);
+        });
       }
       handle.classList.remove('bento-panel-header-drag-handle--dragging');
       panelEl.classList.remove('bento-panel--dragging');
@@ -11436,9 +11620,9 @@
       const styles = getComputedStyle(trailer);
       const styleWidth = cssLengthToPx(styles.width, 0);
       if (styleWidth > 0) return styleWidth;
-      const minWidth = cssLengthToPx(styles.minWidth, 0);
-      if (minWidth > 0) return minWidth;
-      return currentSavedPanelCount > 8 ? 192 : 162;
+      // The host's widths come from the pinned --bento-panel-trailer-* tokens, so there
+      // is no px guess to fall back on here.
+      return cssLengthToPx(styles.minWidth, 0);
     } finally {
       if (saved.width) trailer.style.width = saved.width;
       else trailer.style.removeProperty('width');
@@ -13066,23 +13250,23 @@
           // (the flag is only set when handlePanelsTitle observes a
           // workspace-id change in the payload).
           if (__mainWidthTransitionForNextReconcile) {
-            // Snappy easing matches the workspace-switch tab-list slide
+            // The Mux reveal role matches the workspace-switch tab-list slide
             // (TabList.css) so the simultaneous main-panel resize and
             // sidebar tab swap feel like one motion.
-            const snappy = 'var(--bento-easing-snappy, cubic-bezier(0.32, 0.72, 0, 1))';
+            const reveal = 'var(--muxui-semantic-motion-reveal-transition)';
             panelEl.style.transition =
-              'width var(--bento-duration-base, 200ms) ' +
-              snappy +
-              ', min-width var(--bento-duration-base, 200ms) ' +
-              snappy +
-              ', flex-basis var(--bento-duration-base, 200ms) ' +
-              snappy;
-            // Clear the inline transition after it would have completed
-            // so subsequent inline width writes (e.g. drag pointermove)
+              'width ' + reveal + ', min-width ' + reveal + ', flex-basis ' + reveal;
+            // Clear the inline transition once it has finished so
+            // subsequent inline width writes (e.g. drag pointermove)
             // are instant.
-            window.setTimeout(() => {
-              panelEl.style.removeProperty('transition');
-            }, 250);
+            afterMotion(
+              panelEl,
+              'width',
+              { properties: ['width', 'min-width', 'flex-basis'] },
+              () => {
+                panelEl.style.removeProperty('transition');
+              },
+            );
             __mainWidthTransitionForNextReconcile = false;
           }
           panelEl.style.width = mainPanelWidth + 'px';
@@ -15311,7 +15495,12 @@
       // CSS narrows the sidebar to a rail showing only favicons and the
       // workspace avatar.
       if (typeof decoded.sidebarCollapsed === 'boolean') {
-        applyChromeSidebarCollapsed(decoded.sidebarCollapsed);
+        applyChromeSidebarCollapsed(decoded.sidebarCollapsed, {
+          hidden:
+            typeof decoded.sidebarHidden === 'boolean'
+              ? decoded.sidebarHidden
+              : currentSidebarHidden,
+        });
       }
       if (
         decoded.sidebarShortcutBehavior === 'collapse' ||
@@ -15431,7 +15620,7 @@
     } else {
       return;
     }
-    // OS-level reduced-motion: skip the fade (and the 140ms
+    // OS-level reduced-motion: skip the fade (and the
     // pre-reconcile delay it implies) so the swap is instant for
     // users who've opted out of animation. Matches the React
     // sidebar's TabList.css behaviour.
@@ -15504,12 +15693,47 @@
   // it's still present after WORKSPACE_FADE_WATCHDOG_MS. Without
   // these guards a single failed reconcile would strand opacity at
   // 0 — chrome would go blank until process restart.
+  // __workspaceSwitchTimer is the cancel function of the wait for the fade-out
+  // (afterMotion); the other two are timer ids. The fade and the stabilize window
+  // take their lengths from the CSS (measureMotion); only the watchdog is a literal.
   let __workspaceSwitchTimer = null;
   let __workspaceFadeWatchdog = null;
   let __workspaceFadeCleanupTimer = null;
+  // The frame that starts the stabilize timer. Cancelled with the timer, so a replaced
+  // or cancelled switch cannot start a stale timer later or overwrite a newer one's handle.
+  let __workspaceFadeCleanupFrame = null;
   const WORKSPACE_FADE_WATCHDOG_MS = 1500;
-  const WORKSPACE_FADE_MS = 140;
-  const WORKSPACE_STABILIZE_MS = 260;
+  // The element whose opacity transition times the workspace fade (the three fade
+  // targets share one CSS rule).
+  function workspaceFadeTarget() {
+    return (
+      document.getElementById('bento-strip-container') ||
+      document.getElementById('bento-panel-nav') ||
+      window.gBrowser?.tabpanels ||
+      null
+    );
+  }
+  // How long layout-transition suppression ('bento-workspace-stabilizing') must last
+  // once the fade-in starts: through the fade-in itself and through the reveal layout
+  // transitions it hides. Those are switched off while the class is set, so they
+  // cannot be measured; their duration is read from the token.
+  function workspaceStabilizeMs() {
+    const target = workspaceFadeTarget();
+    const fade = target ? measureMotion(target, { properties: ['opacity'] }) : null;
+    const fadeMs = fade ? fade.ms : MOTION_UNAVAILABLE_CEILING_MS;
+    const layoutMs = motionTokenMs('--muxui-semantic-motion-reveal-transition-duration');
+    return Math.max(fadeMs, layoutMs) + MOTION_SLACK_MS;
+  }
+  function cancelWorkspaceFadeCleanup() {
+    if (__workspaceFadeCleanupFrame !== null) {
+      cancelAnimationFrame(__workspaceFadeCleanupFrame);
+      __workspaceFadeCleanupFrame = null;
+    }
+    if (__workspaceFadeCleanupTimer !== null) {
+      clearTimeout(__workspaceFadeCleanupTimer);
+      __workspaceFadeCleanupTimer = null;
+    }
+  }
   function clearWorkspaceFadeClasses() {
     const sc = document.getElementById('bento-strip-container');
     const nav = document.getElementById('bento-panel-nav');
@@ -15517,10 +15741,7 @@
     if (sc) sc.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (nav) nav.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
     if (tp) tp.classList.remove('bento-workspace-switching', 'bento-workspace-stabilizing');
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
-    }
+    cancelWorkspaceFadeCleanup();
   }
   function cancelWorkspaceFadeForMainOnly() {
     const sc = document.getElementById('bento-strip-container');
@@ -15536,11 +15757,12 @@
     const hadTimer =
       __workspaceSwitchTimer !== null ||
       __workspaceFadeWatchdog !== null ||
+      __workspaceFadeCleanupFrame !== null ||
       __workspaceFadeCleanupTimer !== null;
     if (!hadFadeClass && !hadTimer) return;
 
     if (__workspaceSwitchTimer) {
-      clearTimeout(__workspaceSwitchTimer);
+      __workspaceSwitchTimer();
       __workspaceSwitchTimer = null;
     }
     if (__workspaceFadeWatchdog) {
@@ -15619,12 +15841,12 @@
     const hasExplicitScrollTarget = Number.isInteger(options.scrollToPanelTabId);
     const stripContainer = document.getElementById('bento-strip-container');
     const tp = window.gBrowser?.tabpanels;
-    if (__workspaceSwitchTimer) clearTimeout(__workspaceSwitchTimer);
-    if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
-    if (__workspaceFadeCleanupTimer) {
-      clearTimeout(__workspaceFadeCleanupTimer);
-      __workspaceFadeCleanupTimer = null;
+    if (__workspaceSwitchTimer) {
+      __workspaceSwitchTimer();
+      __workspaceSwitchTimer = null;
     }
+    if (__workspaceFadeWatchdog) clearTimeout(__workspaceFadeWatchdog);
+    cancelWorkspaceFadeCleanup();
     // Watchdog armed BEFORE we add the class so any throw between
     // here and the cleanup rAF still gets a chance to clear the
     // class and restore visibility.
@@ -15644,14 +15866,16 @@
       }
     }, WORKSPACE_FADE_WATCHDOG_MS);
     armWorkspaceSwitchFade();
-    __workspaceSwitchTimer = setTimeout(() => {
+    let swapped = false;
+    const swapBehindFade = () => {
+      swapped = true;
       __workspaceSwitchTimer = null;
       // Suppress every in-reconcile animation. The fade IS our
       // transition; any layout animation here would tail past the
       // fade-in and the user would see panels sliding into place.
       //  - Clear __mainWidthTransitionForNextReconcile (set above on
       //    wsChanged) so reconcile snaps the main-panel width
-      //    instead of running a 200ms width transition.
+      //    instead of running a width transition.
       //  - Set __workspaceSwitchSwapping so reconcilePanelsSplitView
       //    skips its smooth scrollPanelToLeftmost auto-scroll-to-main.
       __mainWidthTransitionForNextReconcile = false;
@@ -15696,7 +15920,8 @@
         // threw — otherwise the chrome stays at opacity 0 forever.
         // The watchdog above is the belt; this `finally` is the
         // suspenders.
-        requestAnimationFrame(() => {
+        __workspaceFadeCleanupFrame = requestAnimationFrame(() => {
+          __workspaceFadeCleanupFrame = null;
           const nav = document.getElementById('bento-panel-nav');
           if (stripContainer) stripContainer.classList.remove('bento-workspace-switching');
           if (nav) nav.classList.remove('bento-workspace-switching');
@@ -15705,6 +15930,7 @@
           // we remove it in the same frame as the opacity class, pending
           // width/flex changes can begin animating under the fade-in and
           // look like the strip is sliding to the destination workspace.
+          if (__workspaceFadeCleanupTimer !== null) clearTimeout(__workspaceFadeCleanupTimer);
           __workspaceFadeCleanupTimer = setTimeout(() => {
             __workspaceFadeCleanupTimer = null;
             if (stripContainer) {
@@ -15713,14 +15939,28 @@
             const nav = document.getElementById('bento-panel-nav');
             if (nav) nav.classList.remove('bento-workspace-stabilizing');
             if (tp) tp.classList.remove('bento-workspace-stabilizing');
-          }, WORKSPACE_STABILIZE_MS);
+          }, workspaceStabilizeMs());
           if (__workspaceFadeWatchdog) {
             clearTimeout(__workspaceFadeWatchdog);
             __workspaceFadeWatchdog = null;
           }
         });
       }
-    }, WORKSPACE_FADE_MS);
+    };
+    // The fade-out is the CSS opacity transition on the fade targets; swap behind
+    // it once it has finished.
+    const fadeTarget = workspaceFadeTarget();
+    if (fadeTarget) {
+      const cancelSwap = afterMotion(
+        fadeTarget,
+        'swap',
+        { properties: ['opacity'] },
+        swapBehindFade,
+      );
+      if (!swapped) __workspaceSwitchTimer = cancelSwap;
+    } else {
+      swapBehindFade();
+    }
   }
   // True while the deferred reconcile inside performWorkspaceSwitchFade
   // is running. Read by reconcilePanelsSplitView to skip the smooth
@@ -15749,29 +15989,343 @@
   let __stripScrollDispatchTimer = null;
   const STRIP_SCROLL_DEBOUNCE_MS = 250;
 
-  function applyChromeSidebarCollapsed(collapsed) {
+  // ─── Sidebar push ──────────────────────────────────────────────────────
+  // Cmd+S in 'collapse' mode, expanding out of the hidden state and hiding the
+  // sidebar in 'hide' mode slide the sidebar and the page as one strip. Layout
+  // changes once per toggle and only transform and opacity animate: the host keeps
+  // its width for the whole slide and holds only the narrow end's layout space
+  // through a negative right margin, so the page lays out once at its final
+  // geometry; transforms on the host and on the page group (everything in #browser
+  // right of the host) hide the difference and move as one. The CSS is in
+  // bento-shell-mount.css ("Sidebar push"), the mechanism and its pitfalls in
+  // docs/technical/workspaces.md.
+  //
+  //   collapse  commit margin and transforms, slide, then in one style change snap
+  //             the host to the rail, drop the transforms and fade the host back in;
+  //   hide      the same slide to a narrow end of 0, so the host leaves the window;
+  //             the end puts the hidden class on (and the collapsed one, as hide mode
+  //             sets both) in the one style change that drops the transforms, with
+  //             no fade, as the host is already out of sight;
+  //   expand    widen the host and commit margin and transforms, slide, then drop
+  //             both in one frame so the page lays out once to its narrower
+  //             geometry.
+  //
+  // The shell narrows its own layout when its viewport does (railViewport.ts), so
+  // the snap alone switches it.
+  const SIDEBAR_PUSH_DELTA_PROP = '--bento-sidebar-push-delta';
+  // Everything a push sets on the root, for its end.
+  const SIDEBAR_PUSH_PROPS = [
+    SIDEBAR_PUSH_DELTA_PROP,
+    '--bento-sidebar-push-divider-shift',
+    '--bento-sidebar-push-nav-from',
+    '--bento-sidebar-push-split-from',
+    '--bento-sidebar-push-split-shift',
+  ];
+  // Left of the divider line when it stands for a strip whose edge is at 0 (the hidden
+  // state): the 1 px line sits just before the edge.
+  const SIDEBAR_PUSH_DIVIDER_EDGE = -1;
+  const SIDEBAR_PUSH_PAGE_CLASS = 'bento-sidebar-push-page';
+  const SIDEBAR_PUSH_FADE_CLASS = 'bento-sidebar-push-fade';
+  const SIDEBAR_PUSH_FADE_ANIMATION = 'bento-sidebar-push-fade-in';
+  const SIDEBAR_PUSH_KEY = 'sidebar-push';
+  const SIDEBAR_PUSH_REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+  const SIDEBAR_PUSH_SLIDE_ANIMATION = {
+    collapse: 'bento-sidebar-push-host-collapse',
+    hide: 'bento-sidebar-push-host-collapse',
+    expand: 'bento-sidebar-push-host-expand',
+  };
+  // The running push, { host, collapsed, hidden, direction, ... }, or null. hidden is
+  // whether the push ends in the hidden state.
+  let sidebarPush = null;
+  // Width of the collapsed rail in px, measured once from its token.
+  let sidebarRailWidthPx = 0;
+
+  function sidebarRailWidth() {
+    if (sidebarRailWidthPx > 0) return sidebarRailWidthPx;
+    const probe = document.createElementNS(HTML_NS, 'div');
+    probe.style.cssText =
+      'position:absolute;visibility:hidden;pointer-events:none;height:0;' +
+      'width:var(--bento-tab-strip-width-collapsed)';
+    document.documentElement.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    if (width > 0) sidebarRailWidthPx = width;
+    return width;
+  }
+
+  // The width the host gets once it is not collapsed: its own width (inline, written
+  // by the splitter drag and the persisted attribute) inside the min/max the sheet
+  // pins. Computed instead of measured because an expand must not flush layout
+  // before the host and page are in their pushed geometry; a flush at the
+  // intermediate one would hand the page's browsers a size they never keep.
+  function sidebarExpandedWidth(host) {
+    const requested =
+      Number.parseFloat(host.style.width) ||
+      Number(host.getAttribute('width')) ||
+      BENTO_EXPANDED_SIDEBAR_DEFAULT_WIDTH;
+    const min = tokenPx(
+      '--bento-tab-strip-width-min-effective',
+      tokenPx('--bento-tab-strip-width-min', 200),
+    );
+    const max = tokenPx('--bento-tab-strip-width-max', 600);
+    return Math.min(max, Math.max(min, requested));
+  }
+
+  // The page group: everything that sits right of the host and moves with the
+  // page. That is the in-flow children of #browser after the host (the splitters,
+  // a native sidebar, the panel strip), plus the splitter affordance, which is
+  // absolutely positioned at the splitter. The overlay hosts and the hidden-sidebar
+  // hover zone are absolute and stay put; hidden children are not rendered.
+  function sidebarPushPageElements(host) {
+    const els = [];
+    for (let el = host.nextElementSibling; el; el = el.nextElementSibling) {
+      const style = getComputedStyle(el);
+      if (style.display === 'none' || style.position === 'absolute') continue;
+      els.push(el);
+    }
+    // The bookmarks toolbar starts at the strip's left edge (its margin follows it).
+    for (const id of ['bento-shell-splitter-affordance', 'PersonalToolbar']) {
+      const el = document.getElementById(id);
+      if (el) els.push(el);
+    }
+    return els;
+  }
+
+  // The toolbar band follows the sidebar edge as well: Back, Forward, Reload and the
+  // panel navigator sit at it, the toolbar's sidebar-coloured segment and the divider
+  // line end at it. Their final geometry is committed now, through the hooks the
+  // sidebar splitter drag drives (prepare, then sync for the new width), and each
+  // slides from where it was; the CSS reads these custom properties. Must run before
+  // anything else of the push touches layout: the hooks measure the host as it is.
+  // A push out of the hidden state commits the geometry of a shown sidebar, and a hide
+  // commits the hidden one (no divider, no offsets). The root split var, which the
+  // window and #browser backgrounds read behind the host, is held at the wider of the
+  // two so the host never fades over the narrower colour.
+  // The divider line sits just left of the strip's left edge. When it is absent at one
+  // end (the hidden state) it is treated as at the edge of a strip at 0, so it comes in
+  // with the strip's edge on a show and leaves with it on a hide; a hide keeps the line
+  // shown at that edge for the slide and settleSidebarPush hides it.
+  // Returns { props, rootSplit }: the custom properties to set for the slide and the
+  // root split var's final value, or null without the hooks.
+  function commitToolbarForSidebarPush(width, finalLayoutNow, hidden = false) {
+    if (!syncSidebarChromeDividerForSidebarWidth) return null;
+    const root = document.documentElement;
+    const divider = document.getElementById('bento-sidebar-chrome-divider');
+    const length = (el, name) => Number.parseFloat(el?.style.getPropertyValue(name)) || 0;
+    const read = () => ({
+      divider: divider && !divider.hidden ? Number.parseFloat(divider.style.left) || 0 : null,
+      split: length(document.getElementById('nav-bar'), '--bento-toolbar-divider-x'),
+      rootSplit: length(root, '--bento-toolbar-divider-x'),
+      nav: length(
+        document.getElementById('nav-bar-customization-target'),
+        '--bento-toolbar-nav-offset',
+      ),
+    });
+    const from = read();
+    const wasHidden = currentSidebarHidden;
+    currentSidebarHidden = hidden;
+    try {
+      prepareSidebarChromeDividerForSidebarResize?.();
+      prepareToolbarNavigationForSidebarResize?.();
+      prepareBookmarksToolbarForSidebarResize?.();
+      syncSidebarChromeDividerForSidebarWidth(width);
+      syncToolbarNavigationForSidebarWidth?.(width);
+      // The bookmarks toolbar is positioned by its margin and slides with the page
+      // group, whose layout is the final one on a collapse or hide and the initial one
+      // on an expand (the slide ends at the final layout). So those commit its offset
+      // now, and an expand keeps the initial offset and applies the final one when
+      // the push settles.
+      if (finalLayoutNow) syncBookmarksToolbarForSidebarWidth?.(width);
+    } finally {
+      currentSidebarHidden = wasHidden;
+    }
+    // The divider sync hid the line for the hidden end; a hide still needs it to slide.
+    if (hidden && divider && from.divider !== null) {
+      divider.hidden = false;
+      divider.style.left = SIDEBAR_PUSH_DIVIDER_EDGE + 'px';
+    }
+    const to = read();
+    root.style.setProperty(
+      '--bento-toolbar-divider-x',
+      Math.max(from.rootSplit, to.rootSplit) + 'px',
+    );
+    const dividerShift =
+      (from.divider ?? SIDEBAR_PUSH_DIVIDER_EDGE) - (to.divider ?? SIDEBAR_PUSH_DIVIDER_EDGE);
+    return {
+      props: {
+        '--bento-sidebar-push-divider-shift': dividerShift + 'px',
+        '--bento-sidebar-push-nav-from': from.nav + 'px',
+        '--bento-sidebar-push-split-from': from.split + 'px',
+        '--bento-sidebar-push-split-shift': from.split - to.split + 'px',
+      },
+      rootSplit: to.rootSplit,
+    };
+  }
+
+  // Starts the slide for a toggle to `collapsed`. `wasHidden` is the expand out of
+  // the hidden state, where the host holds no layout space at all; `hiding` is a hide,
+  // which slides the host out to the same 0. Returns false when there is nothing to
+  // slide (no measurable rail or distance); the caller then switches instantly.
+  function startSidebarPush(host, collapsed, wasHidden, hiding = false) {
+    const rail = sidebarRailWidth();
+    if (!(rail > 0)) return false;
+    // Measured before anything below touches layout. delta is the distance the
+    // host's right edge and the page's left edge travel: the host's width (expanded,
+    // or the rail's when it is one already) minus the layout space the host holds at
+    // the narrow end.
+    const hostWidth =
+      collapsed || hiding ? host.getBoundingClientRect().width : sidebarExpandedWidth(host);
+    const narrowFootprint = hiding || (!collapsed && wasHidden) ? 0 : rail;
+    const delta = hostWidth - narrowFootprint;
+    if (!(delta >= 1)) return false;
+
+    const root = document.documentElement;
+    const direction = hiding ? 'hide' : collapsed ? 'collapse' : 'expand';
+    const expands = direction === 'expand';
+    const finalWidth = hiding ? 0 : collapsed ? rail : hostWidth;
+    // Frames queued by an earlier settle (an interrupted slide) would read the
+    // translated geometry of this one.
+    for (const cancel of sidebarGeometryFrameCancels) cancel();
+    const toolbar = commitToolbarForSidebarPush(finalWidth, !expands, hiding);
+    const pageEls = sidebarPushPageElements(host);
+    sidebarPush = {
+      host,
+      collapsed,
+      hidden: hiding,
+      direction,
+      pageEls,
+      finalWidth,
+      rootSplit: toolbar?.rootSplit,
+    };
+    root.style.setProperty(SIDEBAR_PUSH_DELTA_PROP, delta + 'px');
+    for (const [name, value] of Object.entries(toolbar?.props ?? {})) {
+      root.style.setProperty(name, value);
+    }
+    // An expand widens the host now; a collapse or hide keeps it as wide as it is
+    // until the slide ends.
+    if (expands) host.classList.remove('bento-sidebar-collapsed');
+    for (const el of pageEls) el.classList.add(SIDEBAR_PUSH_PAGE_CLASS);
+    root.setAttribute(SIDEBAR_PUSH_ATTR, direction);
+    // Read after the styles above: a missing or disabled animation measures 0 and
+    // settles at once, with the final state and no frames in between.
+    afterMotion(
+      host,
+      SIDEBAR_PUSH_KEY,
+      { animations: [SIDEBAR_PUSH_SLIDE_ANIMATION[direction]] },
+      () => settleSidebarPush({ fade: direction === 'collapse' }),
+    );
+    return true;
+  }
+
+  // Ends the running push in its final state: the margin, transforms and classes
+  // go and the host takes its target width in the same style change. With `fade`
+  // (a collapse reaching its end) the host then fades back in from the opacity the
+  // slide left it at. A hide puts the hidden class on in that same change, with its
+  // transform transition held off: the host is out of the window at both ends of the
+  // switch, and the end state is the one a hide has always had. Also the way to
+  // interrupt a push: a new toggle settles the running one first, so no transform,
+  // margin, opacity or class outlives it.
+  function settleSidebarPush({ fade = false } = {}) {
+    const push = sidebarPush;
+    if (!push) return;
+    sidebarPush = null;
+    const { host, collapsed, hidden, direction, pageEls, finalWidth, rootSplit } = push;
+    const root = document.documentElement;
+    cancelMotion(host, SIDEBAR_PUSH_KEY);
+    if (hidden) {
+      host.style.setProperty('transition', 'none');
+      host.classList.add('bento-sidebar-hidden');
+    }
+    host.classList.toggle('bento-sidebar-collapsed', collapsed);
+    for (const el of pageEls) el.classList.remove(SIDEBAR_PUSH_PAGE_CLASS);
+    root.removeAttribute(SIDEBAR_PUSH_ATTR);
+    for (const name of SIDEBAR_PUSH_PROPS) root.style.removeProperty(name);
+    // The split the backgrounds behind the host read was held wide for the slide.
+    if (rootSplit !== undefined) {
+      root.style.setProperty('--bento-toolbar-divider-x', rootSplit + 'px');
+    }
+    // An expand's bookmarks offset, held at the initial one for the slide, in the
+    // same frame as the page's final layout.
+    if (direction === 'expand') syncBookmarksToolbarForSidebarWidth?.(finalWidth);
+    if (hidden) {
+      // The line that left with the strip's edge is not shown in the hidden state.
+      const divider = document.getElementById('bento-sidebar-chrome-divider');
+      if (divider) divider.hidden = true;
+      void host.offsetWidth;
+      host.style.removeProperty('transition');
+    }
+    if (fade) {
+      host.classList.add(SIDEBAR_PUSH_FADE_CLASS);
+      afterMotion(host, SIDEBAR_PUSH_KEY, { animations: [SIDEBAR_PUSH_FADE_ANIMATION] }, () =>
+        host.classList.remove(SIDEBAR_PUSH_FADE_CLASS),
+      );
+    }
+    syncGeometryAfterSidebarPush();
+  }
+
+  // Whether the sidebar is collapsed or sliding toward collapsed: what a toggle flips.
+  function isSidebarCollapsedTarget(host) {
+    if (sidebarPush) return sidebarPush.collapsed;
+    return !!host?.classList.contains('bento-sidebar-collapsed');
+  }
+
+  // Whether the sidebar is hidden or sliding toward hidden. The hidden class only
+  // lands when a hide slide ends.
+  function isSidebarHiddenTarget(host) {
+    if (sidebarPush) return sidebarPush.hidden;
+    return !!host?.classList.contains('bento-sidebar-hidden');
+  }
+
+  function clearSidebarPushFade(host) {
+    cancelMotion(host, SIDEBAR_PUSH_KEY);
+    host.classList.remove(SIDEBAR_PUSH_FADE_CLASS);
+  }
+
+  // The one refresh of everything that was held off while the push carried
+  // transforms: the sidebar divider, toolbar split, toolbar navigation and
+  // bookmarks toolbar alignment listen for the settled event, and the flat panel
+  // layout, splitters, overlays and strip scrollbar are redone against the final
+  // untransformed geometry so the panels end exactly aligned.
+  function syncGeometryAfterSidebarPush() {
+    finishSidebarChromeDividerSidebarResize?.();
+    finishToolbarNavigationSidebarResize?.();
+    finishBookmarksToolbarSidebarResize?.();
+    window.dispatchEvent(new CustomEvent(BENTO_RESIZE_SETTLED_EVENT));
+    try {
+      if (!refreshFlatPanelLayoutFromLiveState()) {
+        syncInterPanelSplitters();
+        updateFlatLayoutOverlayPositions(window.gBrowser?.tabpanels, currentPanelLayoutGeometry);
+        updateStripScrollbar();
+      }
+    } catch (err) {
+      console.warn('[bento-shell-mount] sidebar push layout sync failed:', err);
+    }
+  }
+
+  // `hidden` is where sidebarHidden is heading in the same payload. A toggle into
+  // the hidden state is a change of its own, because hide mode keeps the setting
+  // collapsed: a sidebar that is a rail already hides with no collapsed change. It
+  // slides like a collapse (hidden class at the end, see settleSidebarPush), and
+  // applyChromeSidebarHidden, which runs next, leaves the host's class to it. A
+  // toggle that stays hidden, the first apply at boot and reduced motion switch
+  // instantly.
+  function applyChromeSidebarCollapsed(collapsed, { hidden = currentSidebarHidden } = {}) {
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
-    // First apply at boot: skip the CSS width transition so the
-    // persisted state paints at its target width immediately. Without
-    // this the user sees the sidebar mount at 300px (the patch's inline
-    // width) and animate to 4rem once the title-IPC arrives — reads as
-    // a flash. Subsequent toggles get the transition for the smooth
-    // collapse/expand UX.
-    if (!host.__bentoSidebarApplied) {
-      host.__bentoSidebarApplied = true;
-      const wasCollapsed = host.classList.contains('bento-sidebar-collapsed');
-      if (wasCollapsed !== collapsed) {
-        host.style.transition = 'none';
+    const first = !host.__bentoSidebarApplied;
+    host.__bentoSidebarApplied = true;
+    const hiding = hidden && !isSidebarHiddenTarget(host);
+    // BENTO_PANELS carries the setting on every payload; only a change toggles.
+    if (collapsed !== isSidebarCollapsedTarget(host) || hiding) {
+      settleSidebarPush();
+      clearSidebarPushFade(host);
+      // After the settle: an interrupted hide has put the class on by now.
+      const wasHidden = host.classList.contains('bento-sidebar-hidden');
+      const slide =
+        !first && (hiding || !hidden) && !window.matchMedia(SIDEBAR_PUSH_REDUCED_MOTION).matches;
+      if (!slide || !startSidebarPush(host, collapsed, wasHidden, hiding)) {
         host.classList.toggle('bento-sidebar-collapsed', collapsed);
-        // Force layout commit so the next style change is treated as a
-        // new transition, not a continuation of the suppressed one.
-
-        host.offsetWidth;
-        host.style.removeProperty('transition');
       }
-    } else {
-      host.classList.toggle('bento-sidebar-collapsed', collapsed);
     }
     // Hide the resize splitter when collapsed — there's nothing to drag
     // when the rail is at its minimum width.
@@ -15785,12 +16339,23 @@
     currentSidebarHidden = hidden === true;
     const host = document.getElementById('bento-shell-host');
     if (!host) return;
+    // A push settles first unless it is the one this call belongs to: the hide slide
+    // (the host's class lands when it ends) or an expand out of the hidden state
+    // (both start in applyChromeSidebarCollapsed). A push running the other way, or a
+    // hide slide when the sidebar is being shown, ends in place so the change below
+    // starts from a plain rail or expanded host.
+    if (sidebarPush && sidebarPush.hidden !== currentSidebarHidden) settleSidebarPush();
     document.documentElement.toggleAttribute('bento-sidebar-hidden', currentSidebarHidden);
     if (!currentSidebarHidden) {
       host.classList.remove('bento-sidebar-hidden-revealed');
       document.documentElement.removeAttribute('bento-sidebar-hidden-revealed');
     }
-    if (!host.__bentoSidebarHiddenApplied) {
+    if (sidebarPush?.hidden) {
+      // The hide slide puts the host's class on when it settles. The splitter and its
+      // affordance below take their hidden state now: the page lays out at its final
+      // geometry for the slide.
+      host.__bentoSidebarHiddenApplied = true;
+    } else if (!host.__bentoSidebarHiddenApplied) {
       host.__bentoSidebarHiddenApplied = true;
       const wasHidden = host.classList.contains('bento-sidebar-hidden');
       if (wasHidden !== currentSidebarHidden) {
@@ -17086,7 +17651,7 @@
     unifyMainWithStrip();
     setupPanelNavigator();
     attachSidebarSplitterFeedback();
-    attachHiddenSidebarHoverZone();
+    attachHiddenSidebarHoverReveal();
     attachNativeSidebarSplitterFeedback();
     attachSidebarChromeDivider();
     attachToolbarNavigationAlignment();
