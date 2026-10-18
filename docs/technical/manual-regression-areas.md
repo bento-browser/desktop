@@ -8,8 +8,9 @@ When changing core functionality, manually verify at least the affected subset:
   running browser after any Vite chunking or Mux/React Aria change;
 - sidebar collapse and expand with Cmd+S (the push slide; the checklist is under
   "Sidebar collapse and expand" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)),
-  including repeated presses, reduced motion and a cold start collapsed, and in hide
-  mode the hide (from the expanded sidebar and from the rail: the page, toolbar controls
+  including repeated presses, reduced motion (hide, show and the hover reveal are
+  instant, no rail slide after the page has moved) and a cold start collapsed, and in
+  hide mode the hide (from the expanded sidebar and from the rail: the page, toolbar controls
   and divider slide with the sidebar, no jump at the end), the left-edge hover reveal
   and the show (the divider enters with the strip's edge, never static at its final
   position), including Cmd+S again mid-slide;
