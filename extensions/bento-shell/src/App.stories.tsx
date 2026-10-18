@@ -6,9 +6,11 @@
 // uses, so the layout transitions exactly as it does in chrome.
 import { useEffect } from 'react';
 import { App } from './App';
-// The shell layout (sidebar column, footer stacking in the collapsed rail) lives
-// in app.css, which the Ladle provider leaves out because its html/body/#root
-// rules reach every story. Only the App stories need it, so load it here.
+// The shell layout (sidebar column, footer stacking in the collapsed rail). Every
+// selector in it is scoped to the shell's own classes, so loading it here does not
+// touch other stories. Keep it after the App import: the bento.app layer must come
+// after bento.components, as in the built shell, or app.css loses its overrides
+// (the footer's justify-content) to the component layer.
 import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';

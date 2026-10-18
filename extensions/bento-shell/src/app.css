@@ -1,8 +1,7 @@
-/* Top-level shell layout. Sits on top of the chrome <browser>'s body. */
+/* Top-level shell layout. Sits on top of the chrome <browser>'s body. Every
+ * selector here is scoped to the shell's own classes, so Ladle loads it too;
+ * the page's html/body/#root sizing is in shell-document.css. */
 @layer bento.app {
-  html,
-  body,
-  #root,
   .bento-shell-app {
     height: 100%;
     width: 100%;
