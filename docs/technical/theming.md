@@ -196,16 +196,37 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   part of `app.css`; `main.tsx` imports it right before `app.css`, and it still
   reaches every entry's document through the shared `style.css`. `app.css` now
   holds only selectors scoped to the shell's own classes, so Ladle loads it
-  from `App.stories.tsx` (after the `App` import, so `bento.app` follows
-  `bento.components` as in the built sheet; importing it earlier, for example
-  from the Ladle provider, flips the layer order and the footer's
-  `justify-content` override loses to the component layer) and never loads
-  `shell-document.css`.
+  from `App.stories.tsx` (only the App stories render the shell layout; where
+  the import sits no longer changes the layer order, see the next bullet) and
+  never loads `shell-document.css`.
+- CSS layer order is declared once, in `theme/muxui.css`: `@layer muxui, bento;`
+  and then `@layer bento.tokens, bento.fonts, bento.components, bento.app;`.
+  Later layers win, so the shell layout (`bento.app`) outranks the component
+  rules (`bento.components`). Every entry's `main.tsx` and the Ladle provider
+  import `muxui.css` before any other Bento stylesheet, so the statement is the
+  first layer rule in every document. A new `bento.*` layer goes in that list;
+  without it the layer ranks by whichever file declares it first, which differs
+  between the dev server (one `<style>` per CSS module in import order), the
+  build (one `style.css` concatenated in chunk order) and Ladle (story load
+  order). `panel-newtab.css` does not import `muxui.css` and declares only
+  `bento.tokens`.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
 
 ## Theme pitfalls
 
+- The dev server (`pnpm --filter @bento/shell dev`) once ranked `bento.app`
+  below `bento.components` while the build ranked it above. `main.tsx` imports
+  `shell-document.css` and `app.css` (both `bento.app`) before `App` pulls in
+  the component sheets, and the dev server injects CSS in that import order, so
+  `.bento-stack[data-bento-layout='row'] { justify-content: flex-start }` beat
+  the footer's `justify-content: flex-end` and the footer icons sat on the left
+  in dev only. The build concatenates component chunks first, which hid it.
+  Found 2026-10-18; the order statement in `theme/muxui.css` fixes all three
+  environments. To check one, walk `document.styleSheets` for
+  `CSSLayerStatementRule` and `CSSLayerBlockRule` names in first-declared order
+  (expect `bento.tokens`, `bento.fonts`, `bento.components`, `bento.app`), or read
+  the first `@layer` declarations of each built CSS asset.
 - Every native document that links `bento-chrome-tokens.css` needs
   `data-bento-theme` and `data-color-mode` on its root. The legacy aliases
   (`--neutral-*`, `--color-*`, `--radius-*`, `--shadow-*`, `--space-2xs`) and the
