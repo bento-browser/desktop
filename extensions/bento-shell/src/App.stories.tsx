@@ -8,9 +8,8 @@ import { useEffect } from 'react';
 import { App } from './App';
 // The shell layout (sidebar column, footer stacking in the collapsed rail). Every
 // selector in it is scoped to the shell's own classes, so loading it here does not
-// touch other stories. Keep it after the App import: the bento.app layer must come
-// after bento.components, as in the built shell, or app.css loses its overrides
-// (the footer's justify-content) to the component layer.
+// touch other stories. Its bento.app layer ranks above bento.components through the
+// order statement in theme/muxui.css, whatever order the imports run in.
 import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';

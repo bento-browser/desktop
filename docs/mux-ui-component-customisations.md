@@ -241,8 +241,10 @@ consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
-places the public Mux component styles in the low-precedence `muxui` layer, then
-the entry point loads Bento tokens, generated preset layers, and
+places the public Mux component styles in the low-precedence `muxui` layer and
+declares the `bento` sublayer order (`bento.tokens`, `bento.fonts`,
+`bento.components`, `bento.app`; later wins) before any other Bento stylesheet.
+Then the entry point loads Bento tokens, generated preset layers, and
 `theme/document-base.css`, the shared `html`/`body` defaults. Theme and mode
 attributes belong on the same scope element. `themeScope.ts` resolves aliases
 and unknown ids for presentation while `bento-tools` keeps persisted ids
@@ -338,7 +340,8 @@ matches the public stylesheet, so a Mux rename shows up as a failure.
 ## CSS and tokens
 
 Component rules belong inside the owning CSS layer and use scoped component
-selectors. Keep global selectors away from semantic elements and overlay
+selectors. The layer order is the `@layer` statement in `theme/muxui.css`; add a
+new `bento.*` layer there. Keep global selectors away from semantic elements and overlay
 internals. Use public Mux semantic roles for new theme decisions and Bento
 tokens for product-specific behavior. Existing CSS may use the generated
 legacy aliases such as `--neutral-*`, `--color-*`, `--space-*`, `--radius-*`,
