@@ -105,6 +105,42 @@ test('chrome base sheet carries the shared tokens and the Default theme only', (
   }
 });
 
+// Chrome's rem is the system UI font (11px on macOS) but the shell's is --font-size-root,
+// and chrome sizes the shell's host from the collapsed rail token. The base sheet must pin
+// that token in px, equal to the rem sum the shell computes.
+test('chrome pins the collapsed rail width at the shell root font size', () => {
+  const { directory, base } = generate();
+  try {
+    const rootPx = Number.parseFloat(base.match(/--font-size-root:\s*([\d.]+)px/)[1]);
+    const rem = (name) => Number.parseFloat(base.match(new RegExp(`${name}:\\s*([\\d.]+)rem`))[1]);
+    const pinned = base.match(/\n:root \{\s*--bento-tab-strip-width-collapsed: ([^;]+);\s*\}/)[1];
+    assert.doesNotMatch(pinned, /rem|var\(/);
+    const pinnedPx = [...pinned.matchAll(/([\d.]+)px/g)].reduce(
+      (sum, [, px]) => sum + Number(px),
+      0,
+    );
+    // The control is one tab row tall and the rail pads both sides by --space-2xs.
+    const shellRems =
+      rem('--bento-tab-row-height') + 2 * rem('--muxui-reference-dimension-space-2xs');
+    assert.ok(Math.abs(pinnedPx - shellRems * rootPx) < 1e-6, `${pinned} vs ${shellRems}rem`);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the archived rollback sheet keeps the rem form of the rail width', () => {
+  const { directory, base } = generate(['--monolithic']);
+  try {
+    assert.doesNotMatch(base, /Shell-sized geometry/);
+    assert.match(
+      base,
+      /--bento-tab-strip-width-collapsed: calc\(\s*var\(--bento-sidebar-collapsed-control-size\)/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('chrome theme sheets are native, unlayered, and scoped to one theme each', () => {
   const { directory, themesDir } = generate();
   try {
