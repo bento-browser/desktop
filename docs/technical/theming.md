@@ -328,8 +328,8 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   11 px in chrome and 16 px in the shell, and `text-s` is 9.1 px in chrome and
   13.3 px in the shell. The panel header URL field (`.bento-panel-header-url`) first
   used `text-s` (commit eb27adcf) and read as 9.1 px text. It now reads
-  `--bento-panel-url-font-size`, an alias of `text-m` that `SHELL_SIZED_TOKENS`
-  pins at 16 px, which fits the 24 px field (`--bento-control-size-sm`). The panel
+  `--bento-panel-url-font-size`, an alias of `text-s` that `SHELL_SIZED_TOKENS`
+  pins at 13.3 px (`text-m`, 16 px, read too large in the 24 px field). The panel
   navigator menu items (`.bento-panel-nav-menu__item`) read
   `--bento-panel-nav-menu-font-size`, an alias of `text-s` pinned at 13.3 px; the
   item's 24 px `min-height` (`--bento-control-size-sm`) holds the line. Do the same

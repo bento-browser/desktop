@@ -234,9 +234,9 @@
     --bento-panel-header-height: 32px;
 
     /* Panel header URL field, a chrome-only input in .bento-panel-header-url. Mux's
-       text-m is a rem token, and chrome's rem is not the shell's, so the chrome sheet
+       text-s is a rem token, and chrome's rem is not the shell's, so the chrome sheet
        pins it in px (SHELL_SIZED_TOKENS in scripts/generate-chrome-tokens.mjs). */
-    --bento-panel-url-font-size: var(--muxui-semantic-typography-text-m-font-size);
+    --bento-panel-url-font-size: var(--muxui-semantic-typography-text-s-font-size);
 
     /* Panel navigator context menu items, chrome-only buttons in
        .bento-panel-nav-menu__item. Mux's text-s is a rem token and chrome's rem is not
