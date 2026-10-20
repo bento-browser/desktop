@@ -6,16 +6,22 @@ html,
 body {
   box-sizing: border-box;
   min-width: 0;
-  min-height: 100%;
   margin: 0;
   /* In-content common.css paints ':root' with the canvas colour; a plain declaration loses to it. */
   background: transparent !important;
 }
 
+/* The body's min-height is a percentage of the root, which needs a definite height: with an
+ * auto-height root the grid collapsed to its content and the card sat at the top. */
 html {
   --font-size-root: 16px;
 
   font-size: 100%;
+  block-size: 100%;
+}
+
+body {
+  min-block-size: 100%;
 }
 
 /* 'html:root' outweighs common.css's ':root { color-scheme: light dark }', which follows the OS. */
@@ -51,6 +57,11 @@ body {
   --bento-migration-accent-hover: var(--color-50);
   --bento-migration-accent-active: var(--color-40);
   --bento-migration-accent-fg: var(--color-60-fg);
+  --bento-migration-card-sheen: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--neutral-5) 58%, transparent),
+    transparent 46%
+  );
   --bento-migration-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   --background-color-canvas: transparent;
@@ -241,11 +252,104 @@ body {
   width: min(33.75rem, calc(100vw - var(--space-l)));
   min-height: 21.25rem;
   border-color: var(--bento-migration-border);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--neutral-5) 58%, transparent), transparent 46%),
-    var(--bento-migration-surface);
+  background: var(--bento-migration-card-sheen), var(--bento-migration-surface);
   color: var(--bento-migration-text);
   box-shadow: var(--shadow-l);
+}
+
+/* Handoff with the onboarding dialog (docs/technical/first-run-import.md). The mount script
+ * drives html[data-bento-morph] through bento-migration-host.js, so the card reads as the
+ * dialog reshaping into the wizard:
+ *   from   the card sits at the dialog's rectangle, content hidden (the dialog's surface)
+ *   open   the card moves to its centred rectangle; the content fades in after 40% of the move
+ *   shown  the card is pinned at its current rectangle, no motion (start of the way back)
+ *   close  the card moves back to the dialog's rectangle while the content fades out
+ * Only the card's edges move: the content keeps its laid-out size, centred, and is clipped. The
+ * rectangles are px custom properties set by the script. Any other state (the attribute absent)
+ * is the card in normal flow. */
+html[data-bento-morph] .bento-migration-host {
+  position: fixed;
+  left: var(--bento-morph-x);
+  top: var(--bento-morph-y);
+  width: var(--bento-morph-w);
+  height: var(--bento-morph-h);
+  /* The resting card's minimum height would stop it taking a short dialog's rectangle. */
+  min-height: 0;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bento-morph-radius);
+  border-color: var(--bento-morph-border);
+  background: var(--bento-migration-surface);
+  pointer-events: none;
+}
+
+html[data-bento-morph] .bento-migration-host > * {
+  flex: none;
+  width: var(--bento-morph-content-w);
+  opacity: var(--bento-morph-content-opacity);
+}
+
+/* The sheen is a layer of its own here so it can fade in with the move. */
+html[data-bento-morph] .bento-migration-host::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--bento-migration-card-sheen);
+  opacity: var(--bento-morph-sheen);
+  pointer-events: none;
+}
+
+/* At the dialog's rectangle the card has the dialog's surface, so the swap between the two is
+ * invisible. The shadow is the same token on both (--shadow-l is Mux's modal elevation). */
+html[data-bento-morph='from'] .bento-migration-host,
+html[data-bento-morph='close'] .bento-migration-host {
+  --bento-morph-x: var(--bento-morph-dialog-x);
+  --bento-morph-y: var(--bento-morph-dialog-y);
+  --bento-morph-w: var(--bento-morph-dialog-w);
+  --bento-morph-h: var(--bento-morph-dialog-h);
+  --bento-morph-radius: var(--bento-morph-dialog-radius);
+  --bento-morph-border: var(--muxui-semantic-border-subtle);
+  --bento-morph-sheen: 0;
+  --bento-morph-content-opacity: 0;
+}
+
+html[data-bento-morph='from'][data-color-mode='dark'] .bento-migration-host,
+html[data-bento-morph='close'][data-color-mode='dark'] .bento-migration-host {
+  --bento-morph-border: var(--muxui-semantic-color-neutral-default-90);
+}
+
+html[data-bento-morph='open'] .bento-migration-host,
+html[data-bento-morph='shown'] .bento-migration-host {
+  --bento-morph-x: var(--bento-morph-card-x);
+  --bento-morph-y: var(--bento-morph-card-y);
+  --bento-morph-w: var(--bento-morph-card-w);
+  --bento-morph-h: var(--bento-morph-card-h);
+  --bento-morph-radius: var(--radius-m);
+  --bento-morph-border: var(--bento-migration-border);
+  --bento-morph-sheen: 1;
+  --bento-morph-content-opacity: 1;
+}
+
+/* The geometry runs on the Mux reveal role. To use another role, change the two tokens in the
+ * first rule and the duration in the delay below (a transition cannot read an indirect var()). */
+html[data-bento-morph='open'] .bento-migration-host,
+html[data-bento-morph='close'] .bento-migration-host,
+html[data-bento-morph='open'] .bento-migration-host::before,
+html[data-bento-morph='close'] .bento-migration-host::before {
+  transition-property: left, top, width, height, border-radius, border-color, opacity;
+  transition-duration: var(--muxui-semantic-motion-reveal-transition-duration);
+  transition-timing-function: var(--muxui-semantic-motion-reveal-transition-easing);
+}
+
+html[data-bento-morph='open'] .bento-migration-host > * {
+  transition: opacity var(--muxui-semantic-motion-modal-transition)
+    calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4);
+}
+
+html[data-bento-morph='close'] .bento-migration-host > * {
+  transition: opacity var(--muxui-semantic-motion-dismiss-transition);
 }
 
 .bento-migration-host__header {

@@ -3,11 +3,15 @@
  * Sizes local to this surface are the --bento-welcome-* tokens in
  * theme/bento-tokens.css. */
 @layer bento.components {
+  /* The block-end padding is room for the entry slide: a transformed box counts toward
+   * scrollable overflow, so without it this scroller shows a scrollbar while the stage (and the
+   * tiles) sit offset by the slide distance, then drops it when the slide ends. */
   .bento-welcome > .muxui-dialog-content {
     display: flex;
     flex: 1;
     flex-direction: column;
     min-block-size: 0;
+    padding-block-end: var(--muxui-semantic-layout-inset-tiny);
     overflow-y: auto;
   }
 
@@ -176,7 +180,7 @@
     inline-size: 60%;
   }
 
-  /* Import sources and tour tiles: static lists. */
+  /* Tour tiles: a static list. */
   .bento-welcome__tiles {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -240,6 +244,92 @@
     margin: auto;
   }
 
+  /* Import sources (docs/technical/first-run-import.md): a real button per browser chrome found, in
+   * four columns (two when compact). The Firefox or Zen tile takes the columns left in its row;
+   * WelcomeSurfaces sets data-span and data-span-compact. Mux's ghost Button supplies the hover and
+   * pressed fills and the focus ring; the border is its outline colour. */
+  .bento-welcome__sources {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--muxui-semantic-layout-group-gap);
+    inline-size: 100%;
+    max-inline-size: var(--bento-welcome-measure);
+    padding: 0;
+    list-style: none;
+  }
+
+  .bento-welcome__sources > li {
+    display: flex;
+    min-inline-size: 0;
+  }
+
+  .bento-welcome__sources > li[data-span='2'] {
+    grid-column: span 2;
+  }
+
+  .bento-welcome__sources > li[data-span='3'] {
+    grid-column: span 3;
+  }
+
+  .bento-welcome__sources > li[data-span='4'] {
+    grid-column: span 4;
+  }
+
+  /* Static stand-ins while chrome looks for browsers: no shimmer, no loop. */
+  .bento-welcome__source-placeholder {
+    block-size: var(--bento-welcome-source-height);
+    border-radius: var(--muxui-semantic-control-radius);
+    background-color: var(--muxui-semantic-action-neutral-background);
+  }
+
+  .bento-welcome__source {
+    --muxui-button-border: var(--muxui-semantic-border-strong);
+
+    flex: 1;
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: var(--bento-welcome-source-height);
+    padding-block: 0;
+    padding-inline: var(--muxui-semantic-layout-inset-small);
+    text-align: start;
+  }
+
+  .bento-welcome__source:hover:not([data-disabled]),
+  .bento-welcome__source[data-hovered]:not([data-disabled]) {
+    --muxui-button-border: var(--muxui-semantic-border-emphasis);
+  }
+
+  /* Leading logo or glyph, the name (and a sub-label), then the chevron. */
+  .bento-welcome__source > .muxui-button-content {
+    display: grid;
+    flex: 1;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--muxui-semantic-layout-group-gap);
+    min-inline-size: 0;
+  }
+
+  .bento-welcome__source-leading {
+    display: flex;
+    inline-size: var(--bento-welcome-source-logo);
+    block-size: var(--bento-welcome-source-logo);
+  }
+
+  .bento-welcome__source-logo {
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .bento-welcome__source-label {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .bento-welcome__source .bento-icon {
+    color: var(--muxui-semantic-content-muted);
+  }
+
   .bento-welcome__shortcut {
     margin-block-start: auto;
     font-size: var(--muxui-semantic-typography-text-xs-font-size);
@@ -282,6 +372,7 @@
    * Mux's selection layer measures them, so they do not animate on their own. */
   .bento-welcome__stage,
   .bento-welcome__tiles > li,
+  .bento-welcome__sources > li,
   .bento-welcome__summary > div {
     animation: bento-welcome-enter var(--muxui-semantic-motion-reveal-transition) both;
   }
@@ -302,9 +393,63 @@
   @media (prefers-reduced-motion: reduce) {
     .bento-welcome__stage,
     .bento-welcome__tiles > li,
+    .bento-welcome__sources > li,
     .bento-welcome__summary > div {
       animation-name: bento-welcome-fade;
     }
+  }
+
+  /* Handoff to the import wizard (docs/technical/first-run-import.md). Chrome puts the wizard's
+   * card over the dialog and cuts the dialog out and back in around it; the state is a modifier
+   * class (welcome/importHandoff.ts):
+   *   out        the content fades out (dismiss) while the wizard loads
+   *   hidden     the dialog is cut out instantly while the wizard is up
+   *   restoring  cut back in, content still hidden; it fades in (modal) when the class is removed
+   *   faded      crossfade: the whole dialog fades out and back (modal)
+   * The dialog takes no pointer input in any of them. */
+  .bento-welcome {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      visibility var(--muxui-semantic-motion-modal-transition);
+  }
+
+  .bento-welcome > * {
+    transition: opacity var(--muxui-semantic-motion-modal-transition);
+  }
+
+  .bento-welcome--out,
+  .bento-welcome--hidden,
+  .bento-welcome--restoring,
+  .bento-welcome--faded {
+    pointer-events: none;
+  }
+
+  .bento-welcome--out > *,
+  .bento-welcome--hidden > *,
+  .bento-welcome--restoring > * {
+    opacity: 0;
+  }
+
+  .bento-welcome--out > * {
+    transition: opacity var(--muxui-semantic-motion-dismiss-transition);
+  }
+
+  .bento-welcome--hidden,
+  .bento-welcome--restoring {
+    transition: none;
+  }
+
+  .bento-welcome--hidden {
+    visibility: hidden;
+  }
+
+  .bento-welcome--faded {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .bento-welcome--faded > * {
+    transition: none;
   }
 
   /* Compact: the grids lose columns and the footer reflows. The three footer
@@ -313,8 +458,17 @@
    * and Back and the actions flow after them: on one row when they fit, else
    * Back above the actions. */
   @media (max-width: 48rem) {
-    .bento-welcome__tiles {
+    .bento-welcome__tiles,
+    .bento-welcome__sources {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .bento-welcome__sources > li[data-span] {
+      grid-column: auto;
+    }
+
+    .bento-welcome__sources > li[data-span-compact='2'] {
+      grid-column: span 2;
     }
 
     .bento-welcome__tiles--tour,

@@ -1409,7 +1409,10 @@ rel="stylesheet">` load and error events on chrome documents, and the
   browser-data import state. When the user chooses it, chrome code opens an
   embedded Bento chrome host that renders Firefox's reusable migration wizard for
   ordinary in-window imports and injects Bento/Mux styling into its open shadow
-  root. Full Mozilla Firefox or macOS Zen Browser profile imports remain an
+  root. The card opens at the onboarding dialog's rectangle and reshapes into the
+  wizard (and back on Cancel or Done), so the dialog and the wizard read as one
+  card; the host reports ready when the wizard's `#wizard-deck` leaves
+  `page-loading`. Full Mozilla Firefox or macOS Zen Browser profile imports remain an
   explicit startup handoff because those migrators copy profile databases before
   the new Bento profile is initialized. When the user takes that explicit
   Firefox/Zen action, chrome sets the `BENTO_MIGRATION_SCOPE=firefox-zen`
@@ -1442,7 +1445,16 @@ rel="stylesheet">` load and error events on chrome documents, and the
   string requirements, startup-only migrator filtering, the
   `#getMigratorAndProfiles` filtering structure (where the Bento scope check is
   inserted), the `firefox`/`zen` migrator key strings, or Firefox/Zen profile
-  path conventions, chrome restart environment propagation, the welcome-frame
+  path conventions, the wizard's `#wizard-deck` `selected-view` attribute and its
+  `page-loading` initial value (the morph waits on it, and falls back to the plain
+  fade after a ceiling), the Import step's tiles (the migrators' `static key` and
+  `brandImage` getters, the `MigrationUtils.getMigrator` result, `enabled`,
+  `hasPermissions`, `canGetPermissions` and `getSourceProfiles` that decide whether
+  the wizard lists a browser, `FirefoxProfileMigrator.getAllProfiles`, and the
+  wizard's `setState`, the selection state's `migrators` and `migratorKey`,
+  `MigrationWizardChild.setComponentState` waiving Xrays, and
+  `MigrationWizardConstants.PAGES.SELECTION`, which the preselecting hook
+  depends on), chrome restart environment propagation, the welcome-frame
   hash URL convention, macOS app bundle locations, `moz-icon://` icon behavior,
   `zen-sessions.jsonlz4` structure, Firefox SessionStore JSON structure, or
   WebExtension sessions extData key encoding can stop the onboarding import
@@ -1454,7 +1466,9 @@ rel="stylesheet">` load and error events on chrome documents, and the
   profile while Mozilla Firefox and/or macOS Zen `profiles.ini` files exist,
   confirm Bento onboarding appears first, advance to the import state, click
   import, confirm the embedded import host appears without closing the Bento
-  window, confirm non-startup migrators can populate in the embedded wizard, then
+  window as one card reshaping from the dialog (no second dialog visible, the
+  scrim unchanged) and that Cancel returns on Privacy the same way, confirm
+  non-startup migrators can populate in the embedded wizard, then
   use the Firefox/Zen action and confirm Bento restarts into the native startup
   migration wizard scoped to ONLY Firefox/Zen profiles (Chrome/Safari/CSV/HTML
   absent) and preselected on a Firefox/Zen entry rather than Chrome. Confirm
@@ -1465,6 +1479,14 @@ rel="stylesheet">` load and error events on chrome documents, and the
   installed Firefox/Zen app icons rather than Bento's icon or a blank icon, the
   success view includes the session resource without a warning icon, and clicking
   Done immediately shows the restored Zen tabs without requiring another restart.
+  Confirm the Import step shows a tile (with its logo) for each browser the wizard
+  lists, no more and no fewer: open Other sources and compare the wizard's
+  selector list with the tiles. If `MigrationUtils.getMigrator` now awaits
+  `canGetPermissions()` the detection's extra test is redundant but harmless; if the
+  wizard's list rule changes, change `wizardListsMigrator` to match. Click a tile
+  other than the wizard's first entry and confirm the selector shows that browser.
+  Confirm the Firefox or Zen tile appears only when a Firefox or Zen profile is
+  registered, and that it restarts into the startup wizard scoped to Firefox/Zen.
   Confirm Bento creates
   matching workspaces, the Zen pinned tab appears as a pinned Bento tab, and the
   Zen essential tab appears as a pinned Bento panel. Also confirm copied
@@ -2175,11 +2197,11 @@ below is generated; edit the registry, then run
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |
 | `MozBrowser.prototype.renderLayers` | member (runtime) | Bento re-enables layer rendering for panel browsers after a failed split-view layout. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:540` |
 | `MozBrowser.prototype.preserveLayers` | method (runtime) | Called before deactivating a panel docShell so it repaints without a blank frame. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:951` |
-| `MozBrowser.prototype.messageManager` | member (runtime) | Loads Bento frame scripts into extension and panel browsers. | `installPanelNavigatorTooltipFrameScript`, `ensurePanelScrollFrameScript` | `toolkit/content/widgets/browser-custom-element.mjs:581` |
+| `MozBrowser.prototype.messageManager` | member (runtime) | Loads Bento frame scripts into extension and panel browsers. | `installPanelNavigatorTooltipFrameScript`, `ensurePanelScrollFrameScript`, `postToWelcomePage` | `toolkit/content/widgets/browser-custom-element.mjs:581` |
 | `MozBrowser.prototype.contentTitle` | member (runtime) | The title-IPC handler reads frame.contentTitle after pagetitlechanged. | `attachPaletteCloseListener` | `toolkit/content/widgets/browser-custom-element.mjs:674` |
 | `MozBrowser.prototype.getInPermitUnload` | method (runtime) | Says synchronously whether a tab is answering a beforeunload check. permitUnload throws when asked again, so a close repeated meanwhile hands nothing over and such a window takes no tabs. | `isCheckingUnload` | `toolkit/content/widgets/browser-custom-element.mjs:1718` |
 | `MozBrowser.mIconURL` | member (runtime) | Panel header favicon fallback reads the browser mIconURL field. | `createPanelHeader` | `toolkit/content/widgets/browser-custom-element.mjs:140` |
-| `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:368` |
+| `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL`, `WELCOME_HANDOFF_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:368` |
 | `pagetitlechanged` | source (engine only) | Chrome-only bubbling event on the embedding <browser>; the title-IPC control plane. | `attachPaletteCloseListener` | `dom/ipc/WindowGlobalParent.cpp:558` |
 | `PopupNotifications._isActiveBrowser` | method (runtime) | Also accepts browsers of split-view panel tabs so panel-originated popups show. | `patchPopupNotificationsForSplitView` | `toolkit/modules/PopupNotifications.sys.mjs:1666` |
 | `PanelUI.ensureReady` | method (runtime) | Builds the app menu before Bento anchors it to a sidebar footer button. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:560` |
@@ -2320,6 +2342,26 @@ below is generated; edit the registry, then run
 | `MigrationWizard:Close` | source (engine only) | Tells the embedded import host the wizard finished so it can close. | `src/browser/base/content/bento-migration-host.js#MigrationWizard:Close` | `browser/components/migration/content/migration-wizard.mjs:1482` |
 | `migration-wizard.requestState` | source (engine only) | Asks the embedded migration wizard to render its initial state. | `src/browser/base/content/bento-migration-host.js#requestState` | `browser/components/migration/content/migration-wizard.mjs:419` |
 | `migration-wizard element` | source (engine only) | Custom element the import host waits for before bridging styles. | `src/browser/base/content/bento-migration-host.js#whenDefined('migration-wizard')` | `browser/components/migration/content/migration-wizard.mjs:1619` |
+| `migration-wizard #wizard-deck` | source (engine only) | Deck inside the wizard whose selected-view leaves page-loading once the wizard shows its first state; the import host reports ready then. | `src/browser/base/content/bento-migration-host.js#wizard-deck` | `browser/components/migration/content/migration-wizard.mjs:39` |
+| `resource:///modules/FirefoxProfileMigrator.sys.mjs` | module (runtime) | Finds a Mozilla Firefox or Zen profile for the onboarding Import step's Firefox or Zen tile. ZenProfileMigrator, the other export it reads, comes from Bento's patch core-ui/09. | `hasFirefoxZenProfile` | `browser/components/migration/FirefoxProfileMigrator.sys.mjs:36` |
+| `FirefoxProfileMigrator.getAllProfiles` | source (engine only) | Lists the Firefox and Zen profile registries for the Import step's Firefox or Zen tile. getSourceProfiles reads MigrationUtils.profileStartup, which only a startup migration has. | `getAllProfiles` | `browser/components/migration/FirefoxProfileMigrator.sys.mjs:61` |
+| `MigrationUtils.getMigrator` | source (engine only) | Gets a browser's migrator for the Import step's tiles. It does not await canGetPermissions(), so it also returns Chromium browsers whose data folder has no readable Local State; detection applies the wizard's own test as well. | `getMigrator` | `browser/components/migration/MigrationUtils.sys.mjs:447` |
+| `MigratorBase.enabled` | source (engine only) | The wizard lists only enabled migrators (browser.migrate.<key>.enabled); the Import step applies the same test. | `migrator?.enabled` | `browser/components/migration/MigratorBase.sys.mjs:201` |
+| `MigratorBase.hasPermissions` | source (engine only) | Part of the wizard's test for listing a migrator, applied by the Import step. | `hasPermissions` | `browser/components/migration/MigratorBase.sys.mjs:214` |
+| `MigratorBase.canGetPermissions` | source (engine only) | Part of the wizard's test for listing a migrator without permissions (Safari asks after the user picks it), applied by the Import step. | `canGetPermissions` | `browser/components/migration/MigratorBase.sys.mjs:242` |
+| `MigratorBase.getSourceProfiles` | source (engine only) | Part of the wizard's test for listing a migrator: an array must be non-empty, null is a source without a profile list. | `getSourceProfiles` | `browser/components/migration/MigratorBase.sys.mjs:100` |
+| `MigratorBase.brandImage` | source (engine only) | The chrome:// logo of a migrator; chrome re-encodes it as a data URL for the onboarding page, which cannot load chrome:// images. | `brandImage` | `browser/components/migration/MigratorBase.sys.mjs:78` |
+| `migrator key chrome` | source (engine only) | Key of the Chrome migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'chrome'` | `browser/components/migration/ChromeProfileMigrator.sys.mjs:97` |
+| `migrator key safari` | source (engine only) | Key of the Safari migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'safari'` | `browser/components/migration/SafariProfileMigrator.sys.mjs:527` |
+| `migrator key chromium-edge` | source (engine only) | Key of the Edge migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'chromium-edge'` | `browser/components/migration/ChromeProfileMigrator.sys.mjs:1156` |
+| `migrator key brave` | source (engine only) | Key of the Brave migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'brave'` | `browser/components/migration/ChromeProfileMigrator.sys.mjs:1135` |
+| `migrator key vivaldi` | source (engine only) | Key of the Vivaldi migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'vivaldi'` | `browser/components/migration/ChromeProfileMigrator.sys.mjs:1276` |
+| `migrator key opera` | source (engine only) | Key of the Opera migrator: the onboarding Import step reports availability under it and the wizard preselects it. | `'opera'` | `browser/components/migration/ChromeProfileMigrator.sys.mjs:1219` |
+| `migration-wizard.setState` | source (engine only) | The import host wraps the wizard element's setState once to add state.migratorKey to the first selection state, so an onboarding tile opens the wizard with its browser selected. | `src/browser/base/content/bento-migration-host.js#wizard.setState` | `browser/components/migration/content/migration-wizard.mjs:446` |
+| `MigrationWizardChild.setComponentState` | source (engine only) | The wizard actor delivers every state through the element's own setState (Cu.waiveXrays(el).setState), which is what lets the host's wrapper see it. | `src/browser/base/content/bento-migration-host.js#setComponentState` | `browser/components/migration/MigrationWizardChild.sys.mjs:433` |
+| `migration-wizard selection state migratorKey` | source (engine only) | Key of the migrator the selection page selects. A key the page does not list throws and leaves the wizard on its loading page, so the host adds it only when listed. | `src/browser/base/content/bento-migration-host.js#state.migratorKey` | `browser/components/migration/content/migration-wizard.mjs:722` |
+| `migration-wizard selection state migrators` | source (engine only) | Entries (each with a key) the selection page lists; the host checks the chosen key against them. | `src/browser/base/content/bento-migration-host.js#state.migrators` | `browser/components/migration/content/migration-wizard.mjs:678` |
+| `MigrationWizardConstants.PAGES.SELECTION` | source (engine only) | Page id of the wizard's selection state, which the host imports from chrome://browser/content/migration/migration-wizard-constants.mjs. | `src/browser/base/content/bento-migration-host.js#migration-wizard-constants.mjs` | `browser/components/migration/content/migration-wizard-constants.mjs:18` |
 | `migration-wizard #browser-profile-selector` | source (engine only) | Profile selector button inside the wizard's shadow root; the host restyles it. | `src/browser/base/content/bento-migration-host.js#browser-profile-selector` | `browser/components/migration/content/migration-wizard.mjs:56` |
 | `migration-wizard .resource-selection-details` | source (engine only) | Resource list details block the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-selection-details` | `browser/components/migration/content/migration-wizard.mjs:83` |
 | `migration-wizard #resource-selection-summary` | source (engine only) | Summary line of the resource list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-selection-summary` | `browser/components/migration/content/migration-wizard.mjs:84` |

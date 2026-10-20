@@ -269,11 +269,10 @@
   // holds the use, sites and locators, and a test keeps this list equal to its
   // runtime entries. After delayed startup each window probes the list once and
   // logs '[bento-compat] missing <id>', never throwing. The probe is passive: it
-  // reads descriptors and never calls an accessor. A member anywhere on the
-  // prototype chain is present; an owner that is still a lazy accessor is
-  // deferred, and a module is imported only if Cu.isESModuleLoaded. It sits
-  // above the patch sites (they call bentoCompatNoteNative);
-  // window.BentoFirefoxCompat.check() re-runs it.
+  // reads descriptors, never calls an accessor. A member anywhere on the prototype
+  // chain is present; an owner that is a lazy accessor is deferred, and a module
+  // is imported only if Cu.isESModuleLoaded. It sits above the patch sites (they
+  // call bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
@@ -323,6 +322,7 @@
       'moz-src:///toolkit/components/search/SearchService.sys.mjs': 'SearchService',
       'moz-src:///toolkit/components/search/SearchUtils.sys.mjs': 'SearchUtils',
       'resource:///modules/MigrationUtils.sys.mjs': 'MigrationUtils',
+      'resource:///modules/FirefoxProfileMigrator.sys.mjs': 'FirefoxProfileMigrator',
       'resource:///modules/ExtensionsUI.sys.mjs': 'ExtensionsUI',
       'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs': 'SessionStore',
       'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs': 'SessionSaver',
@@ -421,8 +421,7 @@
       }
       const target =
         BENTO_COMPAT_PROBES.proto.includes(id) && owner != null ? Object.getPrototypeOf(owner) : owner;
-      // A method behind an accessor cannot be call-checked without invoking
-      // the getter, so it counts as present.
+      // A method behind an accessor cannot be checked without invoking it: present.
       const isFunction = kind === 'method' ? (value) => typeof value === 'function' : undefined;
       return bentoCompatHas(target, member, isFunction) ? 'ok' : 'missing';
     } catch {
@@ -430,8 +429,8 @@
     }
   }
 
-  // Lists the ids of each outcome; probed counts present plus missing. Before
-  // delayed startup (started false) every member is deferred.
+  // Lists the ids of each outcome; probed = present + missing. Before delayed
+  // startup every member is deferred.
   function runBentoFirefoxCompat(win = window, started = true) {
     const present = [];
     const missing = [];
@@ -1753,12 +1752,14 @@
     return __bentoWelcomeResumeStep;
   }
 
-  function parseWelcomeImportResumeStep(title) {
-    if (!title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX + '_')) {
+  // The resume step in 'BENTO_IMPORT_BROWSER_DATA_<step>_...' (or the title of another sentinel with
+  // the same shape, named by `prefix`).
+  function parseWelcomeImportResumeStep(title, prefix = WELCOME_IMPORT_BROWSER_DATA_PREFIX) {
+    if (!title.startsWith(prefix + '_')) {
       return BENTO_WELCOME_POST_IMPORT_STEP;
     }
 
-    const suffix = title.slice(WELCOME_IMPORT_BROWSER_DATA_PREFIX.length + 1);
+    const suffix = title.slice(prefix.length + 1);
     const parts = suffix.split('_');
     if (parts.length < 2) return BENTO_WELCOME_POST_IMPORT_STEP;
 
@@ -1778,15 +1779,23 @@
 
   const BENTO_EMBEDDED_IMPORT_URL = 'chrome://browser/content/bento-migration-host.html';
 
-  function setBentoEmbeddedImportSrc() {
+  // `handoff` (the choreographed open, see importHandoff) adds the dialog's rectangle and the ts
+  // the page echoes in its ready title. `migrator` is the key of the browser an onboarding tile
+  // chose; the page selects it in the wizard when the wizard lists it.
+  function setBentoEmbeddedImportSrc({ handoff = null, migrator = null } = {}) {
     const frame = document.getElementById('bento-embedded-import-frame');
     if (!frame) return;
     const mode = document.documentElement.getAttribute('data-color-mode') === 'dark' ? 'dark' : 'light';
     const params = new URLSearchParams({
       source: 'welcome',
       mode,
-      ts: String(Date.now()),
+      ts: handoff?.hostTs ?? String(Date.now()),
     });
+    if (handoff) {
+      const { x, y, w, h, r } = handoff.rect;
+      params.set('dialog', [x, y, w, h, r].join(','));
+    }
+    if (migrator) params.set('migrator', migrator);
     frame.setAttribute('src', `${BENTO_EMBEDDED_IMPORT_URL}?${params.toString()}`);
   }
 
@@ -2962,6 +2971,9 @@
       host.style.opacity = '1';
       const frame = document.getElementById('bento-welcome-frame');
       setTimeout(() => frame?.focus(), 0);
+      // The page is subscribed (this runs on its ready signal): start looking for the browsers
+      // the Import step offers, so the report is usually there by the time it is reached.
+      void sendImportSourcesToWelcome();
     });
   }
 
@@ -2978,7 +2990,421 @@
     return host.style.display !== 'none';
   }
 
-  function showEmbeddedBrowserImportFromWelcome() {
+  // ─── Onboarding to import-wizard handoff ───────────────────────────────
+  // The wizard runs in #bento-embedded-import-frame, a chrome page in this process; the onboarding
+  // dialog is in #bento-welcome-frame, a remote extension page. Both hosts fill #browser, so a
+  // rectangle in one is the same rectangle in the other. To read as one card only the import card
+  // travels: it appears at the dialog's rectangle with the dialog's surface (the dialog is cut out
+  // at that moment) and reshapes to its own; on the way back it returns to the dialog's rectangle
+  // and the dialog is cut back in. bento-migration-host.js owns the card (window.bentoImportMorph),
+  // the stylesheets own every duration, and afterMotion waits on them. Messages:
+  //   welcome page to chrome (titles): BENTO_IMPORT_BROWSER_DATA_<step>_<ts>, with
+  //     _<x>_<y>_<w>_<h>_<r>_<vw>_<vh> (dialog rectangle and viewport) when it can morph;
+  //     BENTO_WELCOME_HANDOFF_READY_<ts> (dialog content faded out), _HIDDEN_ and _RESTORED_
+  //     (acknowledge 'hide' and 'restore' below, once painted).
+  //   host page to chrome: BENTO_EMBEDDED_IMPORT_READY_<hostTs> (wizard rendered).
+  //   chrome to welcome page (frame script, content.postMessage): { kind: 'bento-welcome-handoff',
+  //     phase, token } with phase 'hide' | 'restore' (cut the dialog out | in) | 'reveal' (fade its
+  //     content in) | 'fade-out' | 'fade-in' (crossfade: reduced motion, or a window resized
+  //     meanwhile) | 'reset' (abandon: the dialog as it was). The same relay carries the Import
+  //     step's sources (see "Import sources" below).
+  // Out: both pages ready -> card visible over the dialog -> 'hide' -> HIDDEN -> card moves.
+  // Back: card moves -> 'restore' -> RESTORED -> host hidden at once -> 'reveal'.
+  // Every wait has a ceiling; on timeout, a missing frame script, or a close mid-motion the plain
+  // host fade over a restored dialog (the behaviour before the handoff) takes over.
+  // A resize at any phase makes the recorded rectangles stale (the dialog recentres, the card's
+  // centred rectangle moves): the morph is dropped for the crossfade before either swap.
+  const IMPORT_HANDOFF_CEILING_MS = 1500;
+  const IMPORT_HANDOFF_HOST_ATTR = 'data-bento-import-handoff';
+  const WELCOME_HANDOFF_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'if (!globalThis.__bentoWelcomeHandoffRelayInstalled) {' +
+    '  globalThis.__bentoWelcomeHandoffRelayInstalled = true;' +
+    '  addMessageListener("BentoWelcomeHandoff", function(msg) {' +
+    '    try {' +
+    '      content.postMessage(msg.data, "*");' +
+    '    } catch (e) {}' +
+    '  });' +
+    '}';
+  const WELCOME_HANDOFF_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(WELCOME_HANDOFF_FRAME_SCRIPT_SRC);
+  // The running handoff, or null: { token, hostTs, rect, viewport, mode: 'morph' | 'crossfade',
+  // phase: waiting | hiding | opening | open | closing | restoring, hostReady, pageReady, timer,
+  // cancels }.
+  let importHandoff = null;
+
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  }
+
+  // The title's ts and, when the welcome page could measure, the dialog rectangle and viewport.
+  // A last part 's-<key>' names the browser to select in the wizard; a key that is not a plain
+  // lowercase word is dropped (the wizard page checks it against its own list as well).
+  function parseWelcomeImportHandoff(title) {
+    const parts = title.slice(WELCOME_IMPORT_BROWSER_DATA_PREFIX.length + 1).split('_');
+    const token = /^\d+$/.test(parts[1] ?? '') ? parts[1] : null;
+    if (token === null) return null;
+    const rest = parts.slice(2);
+    const chosen = rest.length > 0 && rest[rest.length - 1].startsWith('s-') ? rest.pop() : '';
+    const source = /^s-[a-z0-9-]{1,32}$/.test(chosen) ? chosen.slice(2) : null;
+    const valid = rest.length === 7 && rest.every((part) => /^\d+(?:\.\d+)?$/.test(part));
+    const [x, y, w, h, r, vw, vh] = valid ? rest.map(Number) : [];
+    if (!valid || !(w > 0 && h > 0 && vw > 0 && vh > 0)) {
+      return { token, rect: null, viewport: null, source };
+    }
+    return { token, rect: { x, y, w, h, r }, viewport: { w: vw, h: vh }, source };
+  }
+
+  // The host page's card API, or null when that page is not in a handoff.
+  function importMorphApi() {
+    try {
+      const api = document.getElementById('bento-embedded-import-frame')?.contentWindow
+        ?.bentoImportMorph;
+      return typeof api?.open === 'function' ? api : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Posts `data` to the welcome page as a window message (its 'kind' names it); false when the
+  // page cannot be reached. The relay is loaded before each send: it installs once per
+  // frame-script global and survives nothing else.
+  function postToWelcomePage(data) {
+    const messageManager = document.getElementById('bento-welcome-frame')?.messageManager;
+    if (!messageManager || typeof messageManager.loadFrameScript !== 'function') return false;
+    try {
+      messageManager.loadFrameScript(WELCOME_HANDOFF_FRAME_SCRIPT_URL, false);
+      messageManager.sendAsyncMessage('BentoWelcomeHandoff', data);
+      return true;
+    } catch (err) {
+      console.warn('[bento-shell-mount] welcome page message failed:', err);
+      return false;
+    }
+  }
+
+  // Sends a handoff phase to the welcome page; false when it cannot be reached.
+  function postWelcomeHandoff(phase, token) {
+    return postToWelcomePage({ kind: 'bento-welcome-handoff', phase, token });
+  }
+
+  function startImportHandoffTimer(handoff, onTimeout) {
+    clearTimeout(handoff.timer);
+    handoff.timer = setTimeout(onTimeout, IMPORT_HANDOFF_CEILING_MS);
+  }
+
+  // Ends the handoff in chrome and the host page: timers, motion waits, the instant-fade
+  // attribute and the card's state. Leaves the welcome page and the host's visibility alone.
+  function dropImportHandoff() {
+    const handoff = importHandoff;
+    if (!handoff) return null;
+    importHandoff = null;
+    window.removeEventListener('resize', invalidateImportMorph);
+    clearTimeout(handoff.timer);
+    for (const cancel of handoff.cancels) cancel();
+    document
+      .getElementById('bento-embedded-import-host')
+      ?.removeAttribute(IMPORT_HANDOFF_HOST_ATTR);
+    importMorphApi()?.cancel();
+    return handoff;
+  }
+  window.addEventListener('unload', dropImportHandoff, { once: true });
+
+  // Runs `done` when both the card's geometry and its content fade have ended; returns the
+  // cancel functions. The content fade can outlast the geometry (it starts partway through).
+  function waitForImportMorph(api, done) {
+    let pending = 2;
+    const finish = () => {
+      pending -= 1;
+      if (pending === 0) done();
+    };
+    return [
+      afterMotion(api.card, 'import-morph', { properties: ['width'] }, finish),
+      afterMotion(api.content, 'import-morph', { properties: ['opacity'] }, finish),
+    ];
+  }
+
+  // Gives up the choreography: the dialog comes back as it was and the host takes the plain
+  // fade (in when the open was waiting, out when the way back was).
+  function abandonImportHandoff() {
+    const handoff = importHandoff;
+    if (!handoff) return;
+    if (handoff.phase === 'closing' || handoff.phase === 'restoring') {
+      hideEmbeddedBrowserImport();
+      return;
+    }
+    dropImportHandoff();
+    postWelcomeHandoff('reset', handoff.token);
+    const host = document.getElementById('bento-embedded-import-host');
+    if (!host) return;
+    host.style.opacity = '1';
+    setTimeout(() => document.getElementById('bento-embedded-import-frame')?.focus(), 0);
+  }
+
+  // Swaps the running morph for the crossfade, from whatever phase it is in: the card's motion is
+  // dropped (it falls back to normal flow, centred in the overlay as it is now) and the dialog
+  // fades back in when the wizard closes. In 'waiting' nothing is shown but the dialog with its
+  // content faded out, so the crossfade starts here; in 'closing' the dialog is cut out and the
+  // way back is the plain crossfade at once. The rest are in the wizard already.
+  function takeImportCrossfade(handoff) {
+    handoff.mode = 'crossfade';
+    clearTimeout(handoff.timer);
+    for (const cancel of handoff.cancels) cancel();
+    handoff.cancels = [];
+    if (handoff.phase === 'closing') {
+      hideEmbeddedBrowserImport();
+      return;
+    }
+    const wasWaiting = handoff.phase === 'waiting';
+    handoff.phase = 'open';
+    importMorphApi()?.cancel();
+    const host = document.getElementById('bento-embedded-import-host');
+    host?.removeAttribute(IMPORT_HANDOFF_HOST_ATTR);
+    if (host) host.style.opacity = '1';
+    if (wasWaiting && !postWelcomeHandoff('fade-out', handoff.token)) dropImportHandoff();
+  }
+
+  // True when the overlay is no longer the size the dialog was measured in, so the rectangles the
+  // morph uses (the dialog's, and the card's centred one) are stale.
+  function importViewportChanged(handoff) {
+    const view = document.getElementById('bento-embedded-import-frame')?.contentWindow;
+    return (
+      !!view && (view.innerWidth !== handoff.viewport.w || view.innerHeight !== handoff.viewport.h)
+    );
+  }
+
+  // Takes the crossfade when the overlay was resized since the click; true when it did. Runs on
+  // every resize while a morph is running, and before each swap (a resize event can trail the
+  // layout the swap would use). Once the dialog is cut back in ('restoring') it already sits at its
+  // new rectangle and the card hides at once, so that phase carries on.
+  function invalidateImportMorph() {
+    const handoff = importHandoff;
+    if (handoff?.mode !== 'morph' || handoff.phase === 'restoring') return false;
+    if (!importViewportChanged(handoff)) return false;
+    takeImportCrossfade(handoff);
+    return true;
+  }
+
+  // Both pages are ready: the card goes over the dialog (same rectangle, same surface), then the
+  // dialog is cut out. The card's motion waits for the dialog's acknowledgement. A card that cannot
+  // take the dialog's rectangle (or a resized overlay) takes the crossfade instead.
+  function advanceImportHandoff() {
+    const handoff = importHandoff;
+    if (!handoff || handoff.phase !== 'waiting' || !handoff.hostReady || !handoff.pageReady) return;
+    const host = document.getElementById('bento-embedded-import-host');
+    const api = importMorphApi();
+    if (!host || !api) {
+      abandonImportHandoff();
+      return;
+    }
+    if (invalidateImportMorph()) return;
+    if (!api.prepare()) {
+      takeImportCrossfade(handoff);
+      return;
+    }
+    handoff.phase = 'hiding';
+    host.style.opacity = '1';
+    if (!postWelcomeHandoff('hide', handoff.token)) {
+      abandonImportHandoff();
+      return;
+    }
+    startImportHandoffTimer(handoff, abandonImportHandoff);
+  }
+
+  // The dialog is cut out: the card moves to its own rectangle. The card starts on the host's next
+  // frame, so the ceiling timer keeps running until then.
+  function openImportMorph() {
+    if (invalidateImportMorph()) return;
+    const handoff = importHandoff;
+    const api = importMorphApi();
+    const started = () => {
+      if (importHandoff !== handoff) return;
+      clearTimeout(handoff.timer);
+      handoff.phase = 'opening';
+      handoff.cancels = waitForImportMorph(api, () => {
+        api.settle();
+        document
+          .getElementById('bento-embedded-import-host')
+          ?.removeAttribute(IMPORT_HANDOFF_HOST_ATTR);
+        handoff.phase = 'open';
+      });
+    };
+    if (!handoff || !api?.open(started)) abandonImportHandoff();
+  }
+
+  // The wizard closed: the card returns to the dialog's rectangle, then the dialog is cut in.
+  function beginImportReturn(handoff, api) {
+    const host = document.getElementById('bento-embedded-import-host');
+    handoff.phase = 'closing';
+    host?.setAttribute(IMPORT_HANDOFF_HOST_ATTR, '');
+    startImportHandoffTimer(handoff, abandonImportHandoff);
+    const started = () => {
+      if (importHandoff !== handoff) return;
+      clearTimeout(handoff.timer);
+      handoff.cancels = waitForImportMorph(api, () => {
+        if (invalidateImportMorph()) return;
+        handoff.phase = 'restoring';
+        if (!postWelcomeHandoff('restore', handoff.token)) {
+          abandonImportHandoff();
+          return;
+        }
+        startImportHandoffTimer(handoff, abandonImportHandoff);
+      });
+    };
+    if (!api.close(started)) abandonImportHandoff();
+  }
+
+  // The dialog is showing again under the identical card: hide the host at once, then let the
+  // dialog's content fade in.
+  function finishImportReturn() {
+    const handoff = importHandoff;
+    if (!handoff) return;
+    hideEmbeddedBrowserImport({ restored: true });
+    postWelcomeHandoff('reveal', handoff.token);
+  }
+
+  function handleWelcomeHandoffTitle(title) {
+    const [kind, token] = title.slice(WELCOME_HANDOFF_PREFIX.length + 1).split('_');
+    const handoff = importHandoff;
+    if (!handoff || handoff.token !== token) return;
+    if (kind === 'READY' && handoff.phase === 'waiting') {
+      handoff.pageReady = true;
+      advanceImportHandoff();
+    } else if (kind === 'HIDDEN' && handoff.phase === 'hiding') {
+      openImportMorph();
+    } else if (kind === 'RESTORED' && handoff.phase === 'restoring') {
+      finishImportReturn();
+    }
+  }
+
+  function handleEmbeddedImportReadyTitle(title) {
+    const handoff = importHandoff;
+    if (!handoff || handoff.phase !== 'waiting') return;
+    if (title.slice(EMBEDDED_IMPORT_READY_PREFIX.length + 1) !== handoff.hostTs) return;
+    handoff.hostReady = true;
+    advanceImportHandoff();
+  }
+
+  // ─── Import sources ────────────────────────────────────────────────────
+  // The onboarding Import step shows a tile for each browser Firefox's migrators can import from,
+  // with its logo, and one Firefox or Zen tile when a Mozilla Firefox or Zen profile exists. This
+  // finds them: once, when onboarding opens (showWelcome), cached for the window, and sent to the
+  // welcome page through the relay above as
+  //   { kind: 'bento-import-sources', status: 'ready', browsers: [{ key, logo }], firefoxZen }
+  // or { kind: 'bento-import-sources', status: 'failed' } (an error, or no answer within
+  // IMPORT_SOURCES_CEILING_MS). `logo` is a PNG data URL, because the page cannot load chrome://
+  // images, or null. The page asks again with BENTO_IMPORT_SOURCES_REQUEST_<ts> when it reaches
+  // the step without a report (it reloaded, or was not listening yet), and its Firefox or Zen tile
+  // sends BENTO_IMPORT_FIREFOX_ZEN_<step>_<ts>, which takes the restart path the wizard's own
+  // Firefox or Zen action takes.
+  // Availability is the wizard's own test, so a tile is a browser the wizard would list.
+  // MigrationUtils.getMigrator(key) is not that test: it returns a migrator whenever the source has
+  // data or lacks permissions, but it tests canGetPermissions() without awaiting it (a Promise is
+  // always truthy), so it also returns every Chromium browser whose data folder exists without a
+  // readable 'Local State' (a native-messaging-host folder left by a password manager is enough).
+  // wizardListsMigrator applies what MigrationWizardParent adds: the migrator is enabled
+  // (browser.migrate.<key>.enabled), and either it can get permissions (Safari asks after the user
+  // picks it) or it has profiles to read. Firefox and Zen are startup-only migrators: getMigrator
+  // never returns them in a running window, and their getSourceProfiles needs the startup profile,
+  // so they are found by their profile registries (getAllProfiles) instead.
+  const IMPORT_SOURCE_BROWSER_KEYS = ['chrome', 'safari', 'chromium-edge', 'brave', 'vivaldi', 'opera'];
+  const IMPORT_SOURCES_CEILING_MS = 3000;
+  // The tile shows a logo at 20 CSS px; 48 px covers a 2x display.
+  const IMPORT_SOURCE_LOGO_PX = 48;
+  const IMPORT_SOURCES_FAILED = { kind: 'bento-import-sources', status: 'failed' };
+  let importSourcesDetection = null;
+
+  // A migrator's brand image (a chrome:// PNG) as a PNG data URL at the tile's size, or null.
+  async function readImportBrandLogo(url) {
+    if (typeof url !== 'string') return null;
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      const canvas = document.createElementNS('http://www.w3.org/1999/xhtml', 'canvas');
+      canvas.width = IMPORT_SOURCE_LOGO_PX;
+      canvas.height = IMPORT_SOURCE_LOGO_PX;
+      const context = canvas.getContext('2d');
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(image, 0, 0, IMPORT_SOURCE_LOGO_PX, IMPORT_SOURCE_LOGO_PX);
+      return canvas.toDataURL('image/png');
+    } catch (err) {
+      console.warn('[bento-shell-mount] import source logo unreadable:', url, err);
+      return null;
+    }
+  }
+
+  async function wizardListsMigrator(migrator) {
+    if (!migrator?.enabled) return false;
+    if (!(await migrator.hasPermissions())) return !!(await migrator.canGetPermissions());
+    const profiles = await migrator.getSourceProfiles();
+    // null is a source without a profile list (Safari, an Opera without profiles): it has data.
+    return Array.isArray(profiles) ? profiles.length > 0 : true;
+  }
+
+  async function detectImportBrowser(MigrationUtils, key) {
+    const migrator = await MigrationUtils.getMigrator(key);
+    if (!(await wizardListsMigrator(migrator))) return null;
+    return { key, logo: await readImportBrandLogo(migrator.constructor.brandImage) };
+  }
+
+  // True when Mozilla Firefox or Zen has a readable profile (Bento's patch adds the Zen migrator).
+  async function hasFirefoxZenProfile() {
+    const { FirefoxProfileMigrator, ZenProfileMigrator } = ChromeUtils.importESModule(
+      'resource:///modules/FirefoxProfileMigrator.sys.mjs',
+    );
+    // Each registry is checked on its own: one that throws must not hide a profile in the other.
+    for (const Migrator of [FirefoxProfileMigrator, ZenProfileMigrator]) {
+      try {
+        if (Migrator && (await new Migrator().getAllProfiles()).size > 0) return true;
+      } catch (err) {
+        console.warn('[bento-shell-mount] Firefox or Zen profile check failed:', Migrator?.name, err);
+      }
+    }
+    return false;
+  }
+
+  async function detectImportSources() {
+    const { MigrationUtils } = ChromeUtils.importESModule(
+      'resource:///modules/MigrationUtils.sys.mjs',
+    );
+    const [browsers, firefoxZen] = await Promise.all([
+      Promise.all(IMPORT_SOURCE_BROWSER_KEYS.map((key) => detectImportBrowser(MigrationUtils, key))),
+      hasFirefoxZenProfile().catch((err) => {
+        console.warn('[bento-shell-mount] Firefox or Zen profile check failed:', err);
+        return false;
+      }),
+    ]);
+    return {
+      kind: 'bento-import-sources',
+      status: 'ready',
+      browsers: browsers.filter(Boolean),
+      firefoxZen,
+    };
+  }
+
+  // The cached report, found on the first call; always resolves (to the failed report on an error
+  // or when the ceiling passes first).
+  function startImportSourceDetection() {
+    importSourcesDetection ??= Promise.race([
+      detectImportSources().catch((err) => {
+        console.warn('[bento-shell-mount] import source detection failed:', err);
+        return IMPORT_SOURCES_FAILED;
+      }),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(IMPORT_SOURCES_FAILED), IMPORT_SOURCES_CEILING_MS);
+      }),
+    ]);
+    return importSourcesDetection;
+  }
+
+  async function sendImportSourcesToWelcome() {
+    postToWelcomePage(await startImportSourceDetection());
+  }
+
+  // `request` is parseWelcomeImportHandoff's result: null (an import title without a ts) or
+  // without a rectangle means the plain fade; `request.source` is the browser to select.
+  function showEmbeddedBrowserImportFromWelcome(request = null) {
     const host = document.getElementById('bento-embedded-import-host');
     // First use creates the chrome-hosted <browser>; it has no readiness
     // handshake, so it is ready as soon as it exists.
@@ -2997,20 +3423,83 @@
       return;
     }
 
-    setBentoEmbeddedImportSrc();
+    // A handoff already owns the host: a repeated request changes nothing.
+    if (importHandoff) return;
     cancelMotion(host, 'hide');
+
+    if (request?.rect && !prefersReducedMotion()) {
+      const handoff = (importHandoff = {
+        token: request.token,
+        hostTs: String(Date.now()),
+        rect: request.rect,
+        viewport: request.viewport,
+        mode: 'morph',
+        phase: 'waiting',
+        hostReady: false,
+        pageReady: false,
+        timer: null,
+        cancels: [],
+      });
+      window.addEventListener('resize', invalidateImportMorph);
+      // Load and lay the host out invisibly; it is shown when both pages are ready.
+      setBentoEmbeddedImportSrc({ handoff, migrator: request.source });
+      host.setAttribute(IMPORT_HANDOFF_HOST_ATTR, '');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '0';
+      startImportHandoffTimer(handoff, abandonImportHandoff);
+      setTimeout(() => frame.focus(), 0);
+      return;
+    }
+
+    setBentoEmbeddedImportSrc({ migrator: request?.source });
     host.style.display = 'flex';
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
     host.style.opacity = '1';
     setTimeout(() => frame.focus(), 0);
+    // Reduced motion: the dialog crossfades with the host instead of staying under it.
+    if (request && prefersReducedMotion() && postWelcomeHandoff('fade-out', request.token)) {
+      importHandoff = {
+        token: request.token,
+        mode: 'crossfade',
+        phase: 'open',
+        timer: null,
+        cancels: [],
+      };
+    }
   }
 
-  function hideEmbeddedBrowserImport() {
+  // The wizard closed (Cancel or Done). After a morph the card returns to the dialog's rectangle;
+  // after a crossfade, or when the window was resized meanwhile (the recorded rectangle no longer
+  // fits), the dialog crossfades back; with no handoff it is the plain fade.
+  function closeEmbeddedBrowserImport() {
+    const handoff = importHandoff;
+    if (handoff?.phase === 'open' && handoff.mode === 'morph' && !invalidateImportMorph()) {
+      const api = importMorphApi();
+      if (api) {
+        beginImportReturn(handoff, api);
+        return;
+      }
+      handoff.mode = 'crossfade';
+    }
+    hideEmbeddedBrowserImport();
+  }
+
+  // Hides the host (a fade, or at once when `restored`: the dialog is showing under the identical
+  // card) and returns the dialog to the state it had before the import, unless it already did.
+  function hideEmbeddedBrowserImport({ restored = false } = {}) {
+    const handoff = dropImportHandoff();
     const host = document.getElementById('bento-embedded-import-host');
     if (!host) return;
+    if (handoff && !restored) {
+      postWelcomeHandoff(handoff.mode === 'crossfade' ? 'fade-in' : 'reset', handoff.token);
+    }
+    host.toggleAttribute(IMPORT_HANDOFF_HOST_ATTR, restored);
     host.style.opacity = '0';
     hideOverlayHostAfterFade(host, () => {
+      host.removeAttribute(IMPORT_HANDOFF_HOST_ATTR);
       const frame = document.getElementById('bento-embedded-import-frame');
       frame?.removeAttribute('src');
       const welcomeFrame = document.getElementById('bento-welcome-frame');
@@ -3180,6 +3669,16 @@
   const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
   const EMBEDDED_IMPORT_CLOSE_PREFIX = 'BENTO_CLOSE_EMBEDDED_IMPORT';
   const EMBEDDED_IMPORT_RESTART_PREFIX = 'BENTO_RESTART_EMBEDDED_IMPORT';
+  // The onboarding dialog and the import card swap at one rectangle (see the handoff section
+  // above showEmbeddedBrowserImportFromWelcome). The welcome page reports
+  // BENTO_WELCOME_HANDOFF_<READY|HIDDEN|RESTORED>_<ts>, the host page
+  // BENTO_EMBEDDED_IMPORT_READY_<ts of its URL>.
+  const WELCOME_HANDOFF_PREFIX = 'BENTO_WELCOME_HANDOFF';
+  // The Import step's sources: the page asks for the report, and its Firefox or Zen tile restarts
+  // Bento into the startup import (see "Import sources" above showEmbeddedBrowserImportFromWelcome).
+  const WELCOME_IMPORT_SOURCES_REQUEST_PREFIX = 'BENTO_IMPORT_SOURCES_REQUEST';
+  const WELCOME_IMPORT_FIREFOX_ZEN_PREFIX = 'BENTO_IMPORT_FIREFOX_ZEN';
+  const EMBEDDED_IMPORT_READY_PREFIX = 'BENTO_EMBEDDED_IMPORT_READY';
   // Workspace-switcher menu overlay. Anchor coords travel via
   // BroadcastChannel('bento-workspace-switcher-bus') — title is just the
   // visibility signal.
@@ -16604,15 +17103,26 @@
           else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
           else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
             __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
-            showEmbeddedBrowserImportFromWelcome();
+            showEmbeddedBrowserImportFromWelcome(parseWelcomeImportHandoff(title));
+          } else if (title.startsWith(WELCOME_HANDOFF_PREFIX)) handleWelcomeHandoffTitle(title);
+          else if (title.startsWith(WELCOME_IMPORT_SOURCES_REQUEST_PREFIX)) {
+            void sendImportSourcesToWelcome();
+          } else if (title.startsWith(WELCOME_IMPORT_FIREFOX_ZEN_PREFIX)) {
+            __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(
+              title,
+              WELCOME_IMPORT_FIREFOX_ZEN_PREFIX,
+            );
+            restartToBrowserImportFromWelcome(true);
           }
         },
       ],
       [
         'bento-embedded-import-frame',
         (title) => {
-          if (title.startsWith(EMBEDDED_IMPORT_CLOSE_PREFIX)) hideEmbeddedBrowserImport();
-          else if (title.startsWith(EMBEDDED_IMPORT_RESTART_PREFIX)) {
+          if (title.startsWith(EMBEDDED_IMPORT_CLOSE_PREFIX)) closeEmbeddedBrowserImport();
+          else if (title.startsWith(EMBEDDED_IMPORT_READY_PREFIX)) {
+            handleEmbeddedImportReadyTitle(title);
+          } else if (title.startsWith(EMBEDDED_IMPORT_RESTART_PREFIX)) {
             restartToBrowserImportFromWelcome(true);
           }
         },

@@ -390,6 +390,31 @@ step body. The dots' width and colour use `state`. Under
 `prefers-reduced-motion: reduce` the entry animation is opacity only, with no
 transform.
 
+The entry slide is a `translateY` of `--muxui-semantic-layout-inset-tiny`, and a
+transformed box counts toward scrollable overflow, so the content column
+(`overflow-y: auto`) reserves that same token as `padding-block-end`; without it a
+scrollbar shows for the length of each step change. Reserve room, do not clip.
+
+While the import wizard is up the dialog takes a `bento-welcome--<state>` modifier
+class (`out`, `hidden`, `restoring`, `faded`; `welcome/importHandoff.ts`). Its
+content fades out on `dismiss` and back in on `modal`, and the whole dialog
+cross-fades on `modal` under reduced motion; the rules are in the same layer as the
+rest of `welcome.css`, and the import card in `bento-migration-host.css` takes the
+dialog's surface tokens at the dialog's rectangle so the two swap invisibly
+([first-run-import.md](technical/first-run-import.md#import-handoff)).
+
+Import source tiles (`.bento-welcome__source`) are Mux `Button`s, `variant="ghost"`,
+so hover, pressed and focus-ring states stay Mux's. The border is Mux's own outline:
+the class sets `--muxui-button-border` (`border-strong`, `border-emphasis` on hover),
+which wins over the variant's value because Bento's layer sits above `muxui`. The
+body is three spans (logo or glyph, name and sub-label, chevron) laid out as a grid
+on `> .muxui-button-content`, with `padding-block: 0` and a `--bento-welcome-source-*`
+height; `Row` and `Column` are not used inside it because they render divs, which
+a button cannot contain. Logos are Mux `Image`s (`fit="contain"`), and a tile whose
+logo could not be read shows a `BentoIcon` globe. The placeholder tiles use
+`--muxui-semantic-action-neutral-background` (the neutral button fill), not
+`surface-track`, which is far lighter than the dialog in dark mode.
+
 ### Pruning Mux component CSS
 
 The package has one stylesheet for all components. `mux-css-prune.ts` removes the
