@@ -66,6 +66,10 @@ BEM styling, mirrors the resolved chrome light/dark mode through the iframe URL,
 suppresses Esc, and signals close/restart back to chrome through
 `BENTO_CLOSE_EMBEDDED_IMPORT` and `BENTO_RESTART_EMBEDDED_IMPORT` title
 sentinels.
+The host's `html` and `body` must stay transparent against Firefox's in-content
+`:root` canvas rule so the onboarding dialog and its scrim remain visible around
+the card in both color modes
+([overlay-documents.md](overlay-documents.md#chrome-overlay-transparency)).
 Regular Chrome/Chromium imports in this embedded wizard use Firefox's native
 runtime migrators and are separate from Bento's manual browser-session merge.
 Those migrators import supported browser data through Firefox's migration layer;

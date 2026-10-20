@@ -8,13 +8,18 @@ body {
   min-width: 0;
   min-height: 100%;
   margin: 0;
-  background: transparent;
+  /* In-content common.css paints ':root' with the canvas colour; a plain declaration loses to it. */
+  background: transparent !important;
 }
 
 html {
   --font-size-root: 16px;
 
   font-size: 100%;
+}
+
+/* 'html:root' outweighs common.css's ':root { color-scheme: light dark }', which follows the OS. */
+html:root {
   color-scheme: light;
 }
 
