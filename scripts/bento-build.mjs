@@ -63,6 +63,13 @@ const REGENERABLE_ENGINE_FILES = new Set([
 // builds.
 const GENERATED_ADDON_OUTPUT_DIR = 'dist';
 
+// macOS Finder metadata is never engine state. The engine's .gitignore ignores
+// `.DS_Store` but re-includes `third_party/rust/**/.*`, so Git reports one that a
+// Finder window drops under third_party/rust. `git status --porcelain` quotes a path
+// that holds a space, which leaves a closing quote after the name.
+const FINDER_METADATA = /(?:^|\/)\.DS_Store"?$/;
+const isFinderMetadata = (relative) => FINDER_METADATA.test(relative);
+
 function fail(message) {
   const error = new Error(message);
   error.code = 'BENTO_USER_ERROR';
@@ -360,7 +367,8 @@ export function engineStatus(repoRoot = DEFAULT_ROOT) {
   const ctx = createContext(repoRoot);
   if (!engineIsGit(ctx)) return { exists: fs.existsSync(ctx.engineDir), git: false, dirty: false, files: [] };
   const output = git(ctx, ['status', '--porcelain', '--untracked-files=all']);
-  const files = output.split('\n').filter(Boolean).map((line) => line.slice(3).trim()).filter(Boolean);
+  const files = output.split('\n').filter(Boolean).map((line) => line.slice(3).trim())
+    .filter((file) => file && !isFinderMetadata(file));
   const owned = new Set();
   if (fs.existsSync(ctx.overlayManifestPath)) {
     for (const entry of readJson(ctx.overlayManifestPath).entries || []) owned.add(entry.destination);
@@ -960,6 +968,14 @@ function describeEnginePaths(paths) {
   return paths.length > 8 ? `${shown}, and ${paths.length - 8} more` : shown;
 }
 
+/** `message` followed by the sorted paths, one per line, capped at 20 with an "and N more" line. */
+function withEnginePathList(message, paths) {
+  const sorted = [...paths].sort();
+  const lines = sorted.slice(0, 20).map((relative) => `  ${relative}`);
+  if (sorted.length > 20) lines.push(`  and ${sorted.length - 20} more`);
+  return [message, ...lines].join('\n');
+}
+
 function ensureCleanEngine(ctx, operation) {
   const status = engineStatus(ctx.root);
   if (!status.exists) return;
@@ -1156,7 +1172,7 @@ export function recordEngineState(repoRoot = DEFAULT_ROOT) {
   if (status.unrecognizedFiles?.length) {
     fail(`cannot record unrecognized engine changes: ${status.unrecognizedFiles.slice(0, 8).join(', ')}`);
   }
-  const paths = new Set([...status.files, ...managedEnginePaths(ctx)]);
+  const paths = new Set([...status.files, ...managedEnginePaths(ctx)].filter((relative) => !isFinderMetadata(relative)));
   const sourcePaths = new Set(sourceOverlayPaths(ctx));
   const patchPaths = managedPatchPaths(ctx);
   const stateEntryKind = (relative) => {
@@ -1222,7 +1238,8 @@ function engineStateViolations(repoRoot) {
   if (!fs.existsSync(statePath)) return verifyManagedEngine(ctx, status.files) ? [] : status.files;
   const state = readJson(statePath);
   const config = loadConfig(ctx.root);
-  const snapshot = new Map((state.entries || []).map((entry) => [entry.path, entry]));
+  // An older import may have recorded a .DS_Store; ignoring it also keeps its later deletion from failing.
+  const snapshot = new Map((state.entries || []).filter((entry) => !isFinderMetadata(entry.path)).map((entry) => [entry.path, entry]));
   const currentManaged = new Set([
     ...sourceOverlayPaths(ctx),
     ...managedEnginePaths(ctx),
@@ -2028,15 +2045,20 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
     case 'objdir': return commandObjDir(ctx, options);
     case 'updates-addons': return commandAddonUpdates(ctx);
     case 'license-check': return commandLicenseCheck(ctx);
-    case 'verify':
-      if (engineIsGit(ctx)) {
+    case 'verify': {
+      const isGit = engineIsGit(ctx);
+      if (isGit) {
         const config = loadConfig(repoRoot);
         if (!sourceVersionFromState(ctx)) adoptExistingSource(ctx, config, config.firefox.version);
         ensureSourceIdentity(ctx, config, config.firefox.version, 'verify Firefox source');
       }
-      if (!verifyRecordedEngineState(repoRoot)) fail('engine contains changes outside the recorded/generated Bento state');
+      const violations = isGit ? engineStateViolations(repoRoot) : [];
+      if (!isGit || violations.length) {
+        fail(withEnginePathList('engine contains changes outside the recorded/generated Bento state', violations));
+      }
       process.stdout.write('bento: engine state is verified\n');
       return undefined;
+    }
     case 'record':
       process.stdout.write(`bento: recorded ${recordEngineState(repoRoot)} managed engine paths\n`);
       return undefined;
