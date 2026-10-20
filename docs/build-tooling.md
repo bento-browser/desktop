@@ -146,12 +146,12 @@ pull requests, on the free `ubuntu-24.04` runner only.
 
 `ci.yml` jobs and what they wait for:
 
-| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                      |
-| -------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                  |
-| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`. |
+| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                          |
+| -------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                      |
+| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`.     |
 | `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`. |
-| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.            |
+| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.                |
 
 The check name of `source-import` keeps the label it had as a platform matrix
 entry, so a required-status-check rule on it still matches. The first three jobs
@@ -401,6 +401,30 @@ directory can be deleted by hand.
   validated once it differs from Git. The bytes recorded at import also count as
   owned, so a `displayVersion` bump does not fail the next import before the
   build rewrites the files. Every other recorded file keeps the hash comparison.
+
+### Finder metadata in engine verification
+
+Engine-state verification and `record` ignore any path named `.DS_Store`, at any
+depth, whether Git reports it, `.bento/engine-state.json` lists it, or both. Firefox's
+`.gitignore` ignores `.DS_Store` but re-includes `third_party/rust/**/.*`, so a Finder
+window opened under `engine/third_party/rust/` makes Git report an untracked one. When
+`verify` fails it keeps the first line `engine contains changes outside the
+recorded/generated Bento state` and lists the offending paths below it, sorted, up to 20
+and then `and N more`.
+
+Pitfalls:
+
+- Ignore the file where the dirty paths are gathered (`engineStatus`) and where the
+  snapshot is read, not only in the violation check. `record`, the last import step and the
+  one the failure trap runs, fails with `cannot record unrecognized engine changes` for any
+  dirty path outside the owned prefixes, so a `verify`-only exemption moves the failure to
+  the end of the import, after the engine was reset and patched.
+- Ignoring recorded entries matters as much as ignoring dirty ones: a `.DS_Store` an older
+  import recorded would otherwise fail as a recorded path that no longer exists once it is
+  deleted, or as a hash change once Finder rewrites it.
+- Match the exact name only. Other dotfiles and `._*` files are still engine changes.
+  `git status --porcelain` quotes a path that contains a space, so the match allows a
+  closing quote after the name.
 
 ## Reproducible release dependencies
 
