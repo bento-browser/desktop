@@ -688,6 +688,88 @@ test('recorded state still rejects hand edits of regenerable and other recorded 
   }
 });
 
+/**
+ * Mirrors the Firefox .gitignore pair that lets Git report a Finder .DS_Store: it ignores
+ * the file everywhere, then re-includes dotfiles under third_party/rust.
+ */
+function ignoreFinderMetadataLikeFirefox(root) {
+  fs.writeFileSync(engineFile(root, '.git', 'info', 'exclude'), '.DS_Store\n!third_party/rust/**/.*\n');
+}
+
+function writeEngineFile(root, relative, content = 'x') {
+  const target = engineFile(root, ...relative.split('/'));
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content);
+}
+
+test('a Finder .DS_Store Git reports is not an engine change, and the record never lists one', async () => {
+  const root = await fixture();
+  try {
+    ignoreFinderMetadataLikeFirefox(root);
+    await main(['verify'], root);
+    const strays = ['third_party/rust/nix/src/sys/.DS_Store', 'third_party/rust/with space/.DS_Store'];
+    for (const stray of strays) writeEngineFile(root, stray);
+    const reported = git(engineFile(root), ['status', '--porcelain', '--untracked-files=all']);
+    assert.match(reported, /\.DS_Store/, 'Git must report the files for this test to mean anything');
+
+    await main(['verify'], root);
+    await main(['record'], root);
+    const recorded = JSON.parse(fs.readFileSync(path.join(root, '.bento', 'engine-state.json'), 'utf8'));
+    assert.deepEqual(recorded.entries.filter((entry) => entry.path.endsWith('.DS_Store')), []);
+
+    // Only the exact name is exempt.
+    writeEngineFile(root, 'third_party/rust/nix/src/sys/.DS_Store.bak');
+    assert.equal(verifyRecordedEngineState(root), false);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a .DS_Store an older import recorded passes whether it changed or was deleted', async () => {
+  const root = await fixture();
+  try {
+    await main(['verify'], root);
+    const statePath = path.join(root, '.bento', 'engine-state.json');
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    state.entries.push({ path: 'third_party/rust/nix/src/sys/.DS_Store', kind: 'generated', type: 'file', sha256: '0'.repeat(64) });
+    fs.writeFileSync(statePath, JSON.stringify(state));
+
+    // Missing, as after the user deletes it.
+    assert.equal(verifyRecordedEngineState(root), true);
+    // Present with other bytes, as after Finder rewrites it.
+    writeEngineFile(root, 'third_party/rust/nix/src/sys/.DS_Store', 'rewritten');
+    assert.equal(verifyRecordedEngineState(root), true);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a failed verify lists the offending paths, sorted and capped, and never a .DS_Store', async () => {
+  const root = await fixture();
+  try {
+    ignoreFinderMetadataLikeFirefox(root);
+    await main(['verify'], root);
+    writeEngineFile(root, 'third_party/rust/nix/src/sys/.DS_Store');
+    const names = Array.from({ length: 22 }, (_, index) => `stray/file${String(index).padStart(2, '0')}.txt`);
+    for (const name of [...names].reverse()) writeEngineFile(root, name);
+
+    await assert.rejects(() => main(['verify'], root), {
+      message: [
+        'engine contains changes outside the recorded/generated Bento state',
+        ...names.slice(0, 20).map((name) => `  ${name}`),
+        '  and 2 more',
+      ].join('\n'),
+    });
+
+    for (const name of names.slice(1)) fs.rmSync(engineFile(root, ...name.split('/')));
+    await assert.rejects(() => main(['verify'], root), {
+      message: 'engine contains changes outside the recorded/generated Bento state\n  stray/file00.txt',
+    });
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('recorded state accepts the recorded mozconfig after repository config changes, until the build regenerates it', async () => {
   const root = await fixture();
   try {
