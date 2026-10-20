@@ -18,7 +18,13 @@
 //   - The import action stores the next onboarding step in extension storage,
 //     uses BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>, and lets chrome show the
 //     embedded Firefox migration host above the still-mounted onboarding flow.
-//     It does not mark welcomeSeen=true.
+//     It does not mark welcomeSeen=true. The dialog and the wizard card swap at one
+//     rectangle (welcome/importHandoff.ts). A browser tile adds the browser's migrator
+//     key to that title so the wizard opens with it selected.
+//   - The Import step asks chrome for the browsers it can import from
+//     (BENTO_IMPORT_SOURCES_REQUEST_<ts>; chrome also sends them once on its own), and
+//     its Firefox or Zen tile asks chrome to restart into the startup import
+//     (BENTO_IMPORT_FIREFOX_ZEN_<nextStep>_<ts>). welcome/importSources.ts.
 //
 // No BroadcastChannel needed — the welcome carries no payload, just a
 // visibility signal.
@@ -28,6 +34,12 @@ import { sendChromeTitle } from './chromeTitle';
 export const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
 export const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
 export const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
+/** The Import step asks chrome to send the import sources again: BENTO_IMPORT_SOURCES_REQUEST_<ts>. */
+export const WELCOME_IMPORT_SOURCES_REQUEST_PREFIX = 'BENTO_IMPORT_SOURCES_REQUEST';
+/** The Firefox or Zen tile: chrome restarts into the startup import, BENTO_IMPORT_FIREFOX_ZEN_<nextStep>_<ts>. */
+export const WELCOME_IMPORT_FIREFOX_ZEN_PREFIX = 'BENTO_IMPORT_FIREFOX_ZEN';
+/** Acknowledgements of the import handoff: BENTO_WELCOME_HANDOFF_<READY|HIDDEN|RESTORED>_<token>. */
+export const WELCOME_HANDOFF_PREFIX = 'BENTO_WELCOME_HANDOFF';
 
 /** Reveal the chrome welcome overlay. Idempotent at the chrome layer
  * (showWelcome no-ops if already visible). The timestamp suffix keeps repeat

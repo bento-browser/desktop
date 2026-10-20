@@ -22,12 +22,23 @@ earlier choices can be revisited. The steps are:
    (Auto shows a light and a dark half). The choice is applied to the dialog and
    the browser immediately, not when the user continues. Fresh profiles start on
    Light; Auto follows the operating system's appearance.
-3. Import: lists the browsers Bento can import from (Chrome, Safari, Edge,
-   Brave, Vivaldi, Opera, Firefox, and Zen), with a Skip action and an Import
-   browser data action. The list itself is informational. Choosing import opens
-   the embedded browser-data import host inside the onboarding experience, and
-   onboarding continues at the Privacy step when the import closes. Skipping goes
-   straight to Privacy.
+3. Import: one button per browser Bento found on this Mac among Chrome, Safari,
+   Edge, Brave, Vivaldi, and Opera, each with the browser's logo, its name, and
+   a chevron, in a grid of four columns. Choosing one opens the browser-data
+   importer with that browser already selected. When a Mozilla Firefox or Zen
+   profile exists, a "Firefox or Zen" button (marked "Restarts Bento", with a
+   restart icon in place of a logo) takes the extra columns left in its row. The
+   footer has Back, Skip, and Other sources, which opens the importer with its
+   own first choice selected and is the way in to importing from files. While
+   Bento is still looking the grid shows plain placeholders; with nothing found,
+   the grid gives way to "No other browsers found on this Mac." and a file
+   import line, and Other sources becomes the primary action; if the search
+   fails or takes too long, the step offers a single Import browser data action
+   instead of tiles. Opening the importer is one card: the onboarding dialog
+   reshapes into the importer, and back when it closes, where onboarding
+   continues at the Privacy step (with reduced motion, or when the window is
+   resized meanwhile, the two cross-fade instead). Skipping goes straight to
+   Privacy.
 4. Privacy: Standard, Enhanced, and Hardened protection levels, each with a
    one-line summary. Standard is marked Recommended and is the default for fresh
    profiles. The choice is applied immediately and every level can be fine-tuned
@@ -52,9 +63,9 @@ sized to the window minus a small margin.
 
 Regular browser imports stay in-window. Full Mozilla Firefox or Zen Browser
 profile imports use an explicit startup handoff because Firefox's profile-copy
-migrator runs before the new profile is initialized. The Import step notes that
-Firefox and Zen copy the whole profile, and that Bento restarts once and returns
-to onboarding. Choosing the Firefox/Zen action restarts into the startup
+migrator runs before the new profile is initialized. The Firefox or Zen button
+says Bento restarts, and Bento returns to onboarding afterwards. Choosing it (or the
+Firefox/Zen action inside the importer) restarts into the startup
 migration wizard scoped to the detected Firefox and Zen profiles and preselected
 on them, rather than a generic picker defaulted to another browser, and
 onboarding resumes at the Privacy step after the restart. Empty Firefox/Zen

@@ -25,6 +25,8 @@ import {
   WelcomeStage,
   type WelcomeOption,
 } from './WelcomeSurfaces';
+import { dialogClass, type DialogHandoff } from './importHandoff';
+import { IMPORT_BROWSERS, importCopy, type ImportBrowser, type ImportView } from './importSources';
 import './welcome.css';
 import './WelcomeSurfaces.stories.css';
 
@@ -53,6 +55,46 @@ const MANY_ENGINES = engines([
   'Mojeek',
   'Yahoo! JAPAN',
 ]);
+
+// Stand-ins for the logos chrome sends (PNG data URLs read from Firefox's brand images).
+function placeholderLogo(hue: number): string {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">' +
+    `<circle cx="24" cy="24" r="22" fill="hsl(${hue} 60% 50%)"/>` +
+    '<circle cx="24" cy="24" r="9" fill="white"/></svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+const BROWSERS: ImportBrowser[] = IMPORT_BROWSERS.map(({ key, name }, index) => ({
+  key,
+  name,
+  logo: placeholderLogo(index * 55),
+}));
+
+/** The states of the Import step, by what chrome reported. */
+const IMPORT_VIEWS = {
+  'six found': { kind: 'tiles', browsers: BROWSERS, firefoxZen: true },
+  'two found': { kind: 'tiles', browsers: BROWSERS.slice(0, 2), firefoxZen: true },
+  'three found, no Firefox or Zen': {
+    kind: 'tiles',
+    browsers: BROWSERS.slice(0, 3),
+    firefoxZen: false,
+  },
+  'only Firefox or Zen': { kind: 'tiles', browsers: [], firefoxZen: true },
+  'a logo chrome could not read': {
+    kind: 'tiles',
+    browsers: BROWSERS.slice(0, 3).map((browser, index) =>
+      index === 1 ? { ...browser, logo: null } : browser,
+    ),
+    firefoxZen: true,
+  },
+  detecting: { kind: 'detecting' },
+  'none found': { kind: 'none' },
+  'detection failed': { kind: 'fallback' },
+} satisfies Record<string, ImportView>;
+
+type ImportViewName = keyof typeof IMPORT_VIEWS;
+const IMPORT_VIEW_NAMES = Object.keys(IMPORT_VIEWS) as ImportViewName[];
 
 type FrameWidth = 240 | 320 | 600 | 720;
 
@@ -91,9 +133,13 @@ function OptionsDemo<Id extends string>({
 function WelcomeDialog({
   initialStep,
   searchEngines,
+  handoff = 'idle',
+  importView = IMPORT_VIEWS['six found'],
 }: {
   initialStep: number;
   searchEngines: readonly SearchEngineChoice[];
+  handoff?: DialogHandoff;
+  importView?: ImportView;
 }) {
   const [index, setIndex] = useState(initialStep);
   const [mode, setMode] = useState<UiColorModePref>('light');
@@ -113,7 +159,9 @@ function WelcomeDialog({
         onChange={setMode}
       />
     ),
-    import: <ImportSources />,
+    import: (
+      <ImportSources view={importView} onBrowser={() => go(index + 1)} onFirefoxZen={() => {}} />
+    ),
     privacy: (
       <WelcomeOptions
         label="Protection level"
@@ -162,7 +210,7 @@ function WelcomeDialog({
       open={true}
       dismissable={false}
       aria-labelledby="story-welcome-title"
-      className="bento-welcome"
+      className={dialogClass(handoff)}
       actionsClassName="bento-welcome__actions"
       actions={
         <WelcomeActions
@@ -170,6 +218,7 @@ function WelcomeDialog({
           onBack={() => go(index - 1)}
           onNext={() => go(index + 1)}
           onImport={() => go(index + 1)}
+          importAction={importCopy(importView).action}
         />
       }
     >
@@ -178,6 +227,7 @@ function WelcomeDialog({
         index={index}
         titleId="story-welcome-title"
         descriptionId="story-welcome-description"
+        description={step.id === 'import' ? importCopy(importView).description : step.description}
       >
         {body}
       </WelcomeStage>
@@ -196,6 +246,56 @@ DialogSteps.args = { step: 0 };
 DialogSteps.argTypes = {
   step: { options: WELCOME_STEPS.map((_, index) => index), control: { type: 'radio' } },
 };
+
+type HandoffArgs = { state: DialogHandoff };
+
+export const DialogImportHandoff: Story<HandoffArgs> = ({ state }) => (
+  // On the Import step; the state is the one the dialog takes while the import wizard is up.
+  <WelcomeDialog
+    key={state}
+    initialStep={stepIndexOf('import')}
+    searchEngines={ENGINES}
+    handoff={state}
+  />
+);
+DialogImportHandoff.storyName = 'Dialog (import handoff states)';
+DialogImportHandoff.args = { state: 'out' };
+DialogImportHandoff.argTypes = {
+  state: {
+    options: ['idle', 'out', 'hidden', 'restoring', 'faded'] satisfies DialogHandoff[],
+    control: { type: 'radio' },
+  },
+};
+
+type ImportArgs = { state: ImportViewName };
+
+export const DialogImportStates: Story<ImportArgs> = ({ state }) => (
+  // The Import step by what chrome reported: tiles, placeholders while it looks, nothing found, a failure.
+  <WelcomeDialog
+    key={state}
+    initialStep={stepIndexOf('import')}
+    searchEngines={ENGINES}
+    importView={IMPORT_VIEWS[state]}
+  />
+);
+DialogImportStates.storyName = 'Dialog (import step states)';
+DialogImportStates.args = { state: 'six found' };
+DialogImportStates.argTypes = {
+  state: { options: IMPORT_VIEW_NAMES, control: { type: 'radio' } },
+};
+
+export const DialogImportNarrow: Story<ImportArgs> = ({ state }) => (
+  <WelcomeDialog
+    key={state}
+    initialStep={stepIndexOf('import')}
+    searchEngines={ENGINES}
+    importView={IMPORT_VIEWS[state]}
+  />
+);
+DialogImportNarrow.storyName = 'Dialog (import step, narrow viewport: two columns)';
+DialogImportNarrow.args = { state: 'three found, no Firefox or Zen' };
+DialogImportNarrow.argTypes = DialogImportStates.argTypes;
+DialogImportNarrow.meta = { width: 'small' };
 
 export const DialogLongEngineList = () => (
   <WelcomeDialog initialStep={stepIndexOf('search')} searchEngines={MANY_ENGINES} />
@@ -309,19 +409,23 @@ export const SearchGridLong = () => (
 );
 SearchGridLong.storyName = 'Options: search grid (14 engines, scrolls)';
 
-export const ImportSourceList = () => (
+export const ImportSourceList: Story<ImportArgs> = ({ state }) => (
   <Frame width={600}>
-    <ImportSources />
+    <ImportSources view={IMPORT_VIEWS[state]} onBrowser={() => {}} onFirefoxZen={() => {}} />
   </Frame>
 );
-ImportSourceList.storyName = 'Import sources';
+ImportSourceList.storyName = 'Import sources (tiles)';
+ImportSourceList.args = { state: 'two found' };
+ImportSourceList.argTypes = DialogImportStates.argTypes;
 
-export const ImportSourceListNarrow = () => (
+export const ImportSourceListNarrow: Story<ImportArgs> = ({ state }) => (
   <Frame width={320}>
-    <ImportSources />
+    <ImportSources view={IMPORT_VIEWS[state]} onBrowser={() => {}} onFirefoxZen={() => {}} />
   </Frame>
 );
 ImportSourceListNarrow.storyName = 'Import sources (narrow container)';
+ImportSourceListNarrow.args = { state: 'six found' };
+ImportSourceListNarrow.argTypes = DialogImportStates.argTypes;
 
 export const Tour = () => (
   <Frame width={720}>
