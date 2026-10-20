@@ -330,3 +330,14 @@ Load-bearing details:
   component, not by the page or chrome host background. If it is a modal scrim,
   pair it with `showOverlayToolbarScrim(owner)` / `hideOverlayToolbarScrim(owner)`
   in `bento-shell-mount.js` so the native toolbar and urlbar are dimmed too.
+- The embedded import host (`bento-migration-host.html`, a non-remote chrome page in
+  `#bento-embedded-import-frame`) is an overlay document too, and it links Firefox's
+  `chrome://global/skin/in-content/common.css`. That sheet's
+  `:root { background-color: var(--background-color-canvas); color-scheme: light dark }`
+  outranks a plain `html, body { background: transparent }` and `html { color-scheme: light }`
+  (specificity 0,1,0 against 0,0,1), and overriding `--background-color-canvas` on `body`
+  alone does nothing because the root element cannot inherit it. The symptom was a solid
+  `#1c1b22` fill that hid the onboarding dialog and its scrim, and was dark even in Bento
+  light mode because `light dark` follows the OS. `bento-migration-host.css` now sets
+  `background: transparent !important` on `html, body` and puts `color-scheme: light` on
+  `html:root` (`html[data-color-mode='dark']` still selects dark).
