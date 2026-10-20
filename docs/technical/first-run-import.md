@@ -12,7 +12,7 @@ step value is the index below.
 | --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0   | `welcome`    | Introduction and Get started.                                                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 2   | `import`     | Non-interactive list of supported sources, Skip, and Import browser data.                                                                    | Skip is a plain step change to 3. Import browser data stores step 3 and signals chrome (below).                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2   | `import`     | One button per browser found (Chrome, Safari, Edge, Brave, Vivaldi, Opera), a Firefox or Zen button, Skip, and Other sources.                | Browser buttons and Other sources store step 3 and signal chrome (below); Firefox or Zen stores step 3 and asks chrome to restart; Skip is a plain step change to 3. See [Import sources](#import-sources).                                                                                                                                                                                                                                                                                                           |
 | 3   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                |
 | 4   | `search`     | Firefox's visible engines in two columns, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty. | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`; default `ddg`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | 5   | `tour`       | Workspaces, panels, and command palette tiles with shortcuts.                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -45,10 +45,12 @@ When import is selected, the welcome page stores the next onboarding step in
 `browser.storage.local` as `bento-welcome-step` without setting
 `settings.welcomeSeen=true`, waits for that write before signaling
 `BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>`, and advances its own step state so
-the user continues onboarding after import closes. The shell always sends the
-real next step in that title (`3` after Import, so
-`BENTO_IMPORT_BROWSER_DATA_3_<ts>`), and chrome carries exactly that value into
-the restart handoff below. The localStorage mirror is
+the user continues onboarding after import closes (while the dialog is cut out
+for the wizard, see [Import handoff](#import-handoff)). The shell always sends
+the real next step in that title (`3` after Import, so
+`BENTO_IMPORT_BROWSER_DATA_3_<ts>`, followed by the dialog geometry when it can
+morph and `_s-<migrator key>` when a browser tile chose one), and chrome carries
+exactly that value into the restart handoff below. The localStorage mirror is
 only a development fallback because the extension `moz-extension://` origin can
 change across the restart-to-startup-migration path. The chrome frame loader also
 carries the next step through `BENTO_WELCOME_STEP` during the native restart and
@@ -249,6 +251,310 @@ automatically at process start and do not route it through Bento's Settings
 backup/import code; that code is additive workspace JSON import and has
 different data-loss semantics.
 
+Welcome dialog pitfall: transformed entry animations count toward scrollable
+overflow. The content column (`overflow-y: auto`) showed a scrollbar for the length
+of every step change because the stage and tiles start offset by
+`--muxui-semantic-layout-inset-tiny`; reserve room (`padding-block-end` of that
+token on `.bento-welcome > .muxui-dialog-content`) instead of clipping.
+
+## Import handoff
+
+Opening the wizard (a browser tile, Other sources, or the fallback's Import browser data)
+and the wizard's Cancel or Done read as one card: the
+onboarding dialog reshapes into the wizard card and back. The wizard is
+Firefox's own `<migration-wizard>`, which must live in an in-process chrome page
+(`#bento-embedded-import-frame`, non-remote, in `#bento-embedded-import-host`);
+the dialog is an extension page in `#bento-welcome-frame` (remote). They share no
+DOM and no process, so lockstep animation of two surfaces drifts. Only the import
+card travels. The dialog is cut out (`visibility: hidden`, the scrim stays) at a
+moment when the card sits at the dialog's exact rectangle with the dialog's
+surface, and cut back in the same way on return, so the swap is invisible. Both
+hosts fill `#browser`, so a rectangle in one document is the same rectangle in
+the other.
+
+Source of truth: none (view state only; the resume step is persisted as before).
+Renderer path: `bento-migration-host.{html,css,js}` own the card
+(`html[data-bento-morph]` states `from`, `open`, `shown`, `close`, the measured
+rectangles as `--bento-morph-*` custom properties, `window.bentoImportMorph`);
+`bento-shell-mount.js` (the "Onboarding to import-wizard handoff" section) owns
+the sequence and waits with `afterMotion`; the welcome page
+(`welcome/importHandoff.ts`, `welcome/useImportHandoff.ts`, `welcome.css`) owns
+the dialog's states.
+
+Messages (every title keeps its timestamp suffix; the token is the click's ts):
+
+| From to                | Message                                                                          | Meaning                                                                                                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| welcome page to chrome | `BENTO_IMPORT_BROWSER_DATA_<step>_<token>_<x>_<y>_<w>_<h>_<r>_<vw>_<vh>_s-<key>` | Open the wizard. The dialog's rectangle, radius and viewport (px) follow when it can morph; absent or malformed means the plain fade. `_s-<key>` (last, optional) names the migrator to select, see [Import sources](#import-sources). |
+| welcome page to chrome | `BENTO_WELCOME_HANDOFF_READY_<token>`                                            | The dialog's content has faded out (sent after the import title).                                                                                                                                                                      |
+| welcome page to chrome | `BENTO_WELCOME_HANDOFF_HIDDEN_<token>`, `..._RESTORED_<token>`                   | `hide` or `restore` landed and was painted (two frames).                                                                                                                                                                               |
+| host page to chrome    | `BENTO_EMBEDDED_IMPORT_READY_<hostTs>`                                           | The wizard left its loading skeleton (`#wizard-deck` `selected-view`) and has been laid out; `hostTs` is the `ts` chrome put in the host URL.                                                                                          |
+| chrome to host page    | URL `?source=welcome&mode=<m>&ts=<hostTs>&dialog=x,y,w,h,r&migrator=<key>`       | The dialog's rectangle for the card; the migrator the wizard should select (see [Import sources](#import-sources)).                                                                                                                    |
+| chrome to host page    | `window.bentoImportMorph.prepare/open/close/settle/cancel()`                     | Card states. Chrome calls `prepare` when it shows the page, so a page it gave up on never pins itself. `open` and `close` take a `started` callback and change state on the host's next frame.                                         |
+| chrome to welcome page | frame script `BentoWelcomeHandoff`, `content.postMessage`                        | `{ kind: 'bento-welcome-handoff', phase, token }` with phase `hide`, `restore`, `reveal`, `fade-out`, `fade-in` or `reset`.                                                                                                            |
+
+Sequence. Out: the click fades the dialog's content out (Mux `dismiss`), sends the
+import title, and sends READY when the fade has ended. Chrome loads the host
+hidden (`opacity: 0`, `display: flex` so it lays out; no fade for this open), and
+when the host is ready and READY has arrived it calls `prepare()` (card pinned at
+the dialog rectangle, content hidden), shows the host, and posts `hide`. The
+dialog cuts itself out and sends HIDDEN; chrome calls `open()`: the card moves to
+its centred rectangle on the geometry role while the wizard content fades in on
+`modal`, starting at 40% of the geometry duration. When the geometry and the
+content fade have both ended (two `afterMotion` waits, because the fade outlasts
+the move) chrome calls `settle()` and the card is back in normal flow. The dialog
+shows the next step (Privacy) while it is cut out. Back (`MigrationWizard:Close`):
+chrome calls `close()` (the card pins at its current rectangle, then moves to the
+dialog rectangle while its content fades out on `dismiss`), posts `restore` when
+the waits end, the dialog cuts itself in with its content hidden and sends
+RESTORED, chrome hides the host at once and posts `reveal`, and the dialog fades
+its content in on `modal` and focuses its heading. The scrim is never touched.
+Esc and backdrop clicks stay inert throughout: chrome consumes Esc while either
+host is shown, and the host page suppresses it too.
+
+Surface match. At the dialog rectangle the card has the dialog's computed
+surface: fill `--muxui-semantic-surface-raised`, border
+`--muxui-semantic-border-subtle` (dark mode:
+`--muxui-semantic-color-neutral-default-90`, because Mux's dark scope overrides
+the dialog's border), the measured radius (16 px), and the modal elevation, which
+is the same `--shadow-l` value as the card's own, so the shadow needs no
+animation. The card's sheen (the top gradient) is a layer of its own that fades in
+with the move; the radius falls to `--radius-m` (8 px) and the border to the
+wizard's. In the morph states the card drops its resting `min-height` (21.25rem),
+because a dialog shorter than that, as in a window about 320 px tall, would otherwise
+leave the card taller than the rectangle it has to match; the resting centred card keeps
+the rule. `prepare()` reads the card's rectangle back and returns false when it differs
+from the dialog's by half a pixel or more, and chrome then takes the crossfade. The
+geometry runs on the Mux `reveal` role in one block of
+`bento-migration-host.css`. `lint:motion` forbids an indirect `var()` in a
+transition, so switching to `content-resize` means changing the duration and easing
+tokens in that block and the duration inside the 40% delay (three names).
+
+Dialog states (`bento-welcome--<state>`, `welcome.css`): `out` (content faded,
+`dismiss`), `hidden` (cut out, instant), `restoring` (cut in, content hidden; it
+fades in when the class goes), `faded` (crossfade: the whole dialog at opacity 0
+on `modal`). The dialog takes no pointer input in any of them, and
+`startBrowserDataImport` ignores a second activation.
+
+Fallbacks. Every wait has a ceiling and ends in the behaviour from before the
+handoff: the host fades in or out on `modal` over a dialog restored with `reset`.
+Chrome's ceiling is `IMPORT_HANDOFF_CEILING_MS` (1.5 s) on each of: both pages
+ready (host ready and READY), HIDDEN after `hide`, RESTORED after `restore`. A
+missing rectangle, a missing frame script manager, a missing host page API, a failed
+`open()`, or the wizard closing mid-motion also abandons the choreography
+(`abandonImportHandoff`, `hideEmbeddedBrowserImport`). A `prepare()` that reports the card
+cannot match the dialog takes the crossfade instead (see Resize). The page has its own
+one-shot recovery, `HANDOFF_STALL_MS` (3 s): a dialog still in `out` or
+`restoring` returns to idle, shows the pending step and takes focus, so a lost
+message cannot leave it invisible; `hidden` and `faded` last as long as the
+wizard is up and are ended by chrome. `restartToBrowserImportFromWelcome` calls
+`hideEmbeddedBrowserImport()` then `hideWelcome()`, and
+`hideEmbeddedBrowserImport` drops the whole handoff (timers, motion waits, the
+`data-bento-import-handoff` attribute that makes the host's opacity instant, the
+card state), so the Firefox/Zen restart path resets every piece. `unload` drops
+it too.
+
+Resize. The rectangles the morph uses are measured once (the dialog's, at the click;
+the card's centred one, when each motion starts), and a resize changes both: the
+dialog recentres by itself, so a card travelling to or from the recorded rectangle
+would show a position or size jump at the swap. `showEmbeddedBrowserImportFromWelcome`
+adds one `resize` listener on the chrome window for a morph and `dropImportHandoff`
+removes it. `invalidateImportMorph` compares the host frame's viewport with the one
+recorded at the click, on every resize and also right before each swap (the `hide`
+after the pages are ready, the `open`, the `restore` at the end of the way back, and
+Cancel), because a resize event can trail the layout the swap would use. A change
+switches the handoff to the crossfade (`takeImportCrossfade`), by phase:
+
+| Phase when the resize lands            | Result                                                                                                                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `waiting` (wizard loading)             | The card is never shown. The host fades in on `modal`, the dialog gets `fade-out` and fades out with it (the reduced-motion path).                                         |
+| `hiding`, `opening`                    | The card's motion and waits are cancelled; it falls to normal flow, centred in the new size, with the dialog already cut out. Closing is the crossfade.                    |
+| `open`                                 | Nothing moves; closing is the crossfade (no return morph).                                                                                                                 |
+| `closing` (return morph, after Cancel) | Motion and waits are cancelled, `hideEmbeddedBrowserImport` runs with the crossfade mode: the card falls to centre and the host fades out while the dialog gets `fade-in`. |
+| `restoring`                            | Not handled (accepted): the dialog recentres while the card stays on the old rectangle until RESTORED, about two frames later, then the card hides at once. Ends correct.  |
+
+The crossfade ends in the plain states: the dialog `idle` and focused on the step it
+resumes on, the host hidden. A resize that puts the window back at its recorded size
+does not undo the switch.
+
+Reduced motion (`prefers-reduced-motion: reduce`, read by both sides): no
+geometry and no slide. The host fades in on `modal` as before and chrome posts
+`fade-out`, so the whole dialog, surface included, fades out with it, and back in
+on the way back (`fade-in`). The same crossfade is used when the window is resized
+(above).
+
+Pitfalls:
+
+- The body's `min-height: 100%` needs a definite root height: with an auto-height
+  `html` the grid collapsed to its content and the card sat at the top. The host
+  sets `html { block-size: 100% }`; the card's centred rectangle depends on it.
+- The 40% delay and the geometry duration are written as Mux tokens in the
+  transition, not through a custom property (`lint:motion`).
+- `measure()` in the host page removes `data-bento-morph` to read the in-flow
+  rectangle and must flush style after restoring it, or the next change starts
+  from the in-flow style and nothing moves.
+- Chrome reads the host document through `frame.contentWindow.bentoImportMorph`
+  only after the READY title for this open's `ts`: the previous open's document is
+  still loaded until the new URL replaces it.
+- `open()` and `close()` change the card state inside a host `requestAnimationFrame`
+  callback, and chrome starts its `afterMotion` waits from `started`. The host page
+  is idle while the wizard is up, and the compositor-driven fades (opacity) of a
+  transition started from an idle page took the clock of its last frame (up to
+  about a second old) as their start, so they ran that far ahead of the card's
+  geometry: the content was already gone when the card began to move. A frame
+  callback reads a current clock.
+- The content fade outlasts the geometry (40% delay plus `modal`): wait for both
+  before `settle()`, or the fade is cut.
+- The frame script relay is loaded before every post: it installs once per frame
+  script global, and a replaced global has no listener.
+- `pointer-events: none` on the card during the morph keeps a click from reaching
+  the wizard mid-move; a close arriving mid-motion takes the abandon path.
+- The card and the dialog are both visible for about one frame around each swap
+  (the host is shown, then the dialog is cut; the reverse on return) and their
+  shadows add: measured on 2x captures, the overlap frame differs from the lone
+  dialog by up to 26 channel levels at the edge and 22 in the shadow band, while
+  the dialog against the lone card (the state either side of the swap) differs by
+  at most 3 and not at all inside. The other order leaves an empty scrim frame,
+  which is worse.
+- After a crossfade back from a morph the dialog goes `hidden`, `faded`, `idle`
+  across two frames so the fade starts from opacity 0; the heading takes focus
+  only after the commit that shows the dialog (`focus()` fails on
+  `visibility: hidden`).
+- A morph that checks the viewport only when the wizard closes (the first version)
+  missed every resize before that: during loading or the out motion the card
+  travelled from the click-time rectangle while the dialog had recentred, and a resize
+  during the return morph left it heading for a stale rectangle. Invalidate on the
+  `resize` event for every phase and re-check right before each swap (Resize above).
+- `cancel()` removes the card's state attribute, but a running transition whose end
+  value equals the in-flow value (the width and radius when the card was heading to
+  its centred rectangle, the content's opacity) is not cancelled by the style change:
+  it played on in normal flow, so the card wobbled in place after a resize. Left
+  and top (end value `auto` in flow) did snap. `cancel()` therefore ends the card's
+  animations (`getAnimations({ subtree: true })`) as well.
+- The card's `min-height: 21.25rem` is a resting rule. Left on in the morph states it
+  beat the measured `height` for any dialog shorter than 340 px, so the card could not
+  match the dialog on either swap in a window about 320 px tall.
+
+## Import sources
+
+The Import step is a set of real buttons, not a description of what the wizard
+supports. Chrome finds out which browsers the import wizard can list, the page
+renders one tile per browser, and a tile opens the wizard with that browser
+already selected. Source of truth: Firefox's migrators (nothing is persisted;
+the resume step is stored as before). Renderer path: `welcome/importSources.ts`
+(parsing, tile list, copy, grid spans), `welcome/useImportSources.ts` (the report
+and its ceiling), `ImportSources` in `WelcomeSurfaces.tsx`, `welcome.css`; chrome
+side, the "Import sources" section of `bento-shell-mount.js` and
+`preselectMigrator` in `bento-migration-host.js`.
+
+### Messages
+
+| From to                | Message                                                                                    | Meaning                                                                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| chrome to welcome page | `{ kind: 'bento-import-sources', status: 'ready', browsers: [{ key, logo }], firefoxZen }` | The report. `key` is a Firefox migrator key, `logo` a PNG data URL (48 px) or null, `firefoxZen` true when a Mozilla Firefox or Zen profile is registered. Sent when onboarding opens (`showWelcome`, from the overlay's ready signal), again on every request. |
+| chrome to welcome page | `{ kind: 'bento-import-sources', status: 'failed' }`                                       | The detection threw, or did not answer within `IMPORT_SOURCES_CEILING_MS` (3 s) in chrome.                                                                                                                                                                      |
+| welcome page to chrome | `BENTO_IMPORT_SOURCES_REQUEST_<ts>`                                                        | The page reached the Import step with no report (it reloaded, or chrome was still detecting). Chrome answers with the cached report.                                                                                                                            |
+| welcome page to chrome | `BENTO_IMPORT_FIREFOX_ZEN_<step>_<ts>`                                                     | The Firefox or Zen tile. The page stored `<step>` (3) first. Chrome sets the resume step and calls `restartToBrowserImportFromWelcome(true)`.                                                                                                                   |
+| welcome page to chrome | `BENTO_IMPORT_BROWSER_DATA_<step>_<token>[_geometry]_s-<key>`                              | A browser tile; the morph is unchanged (the tile is not its origin: the card still starts at the dialog's rectangle).                                                                                                                                           |
+
+The reports travel on the same frame-script relay as the handoff phases
+(`BentoWelcomeHandoff`, `postToWelcomePage`): the relay now forwards whatever
+object chrome sends and the page tells messages apart by `kind`. The page parses
+a report strictly (`parseImportSourcesMessage`): an unknown key is dropped, a
+logo that is not a PNG data URL becomes null (the tile shows a globe), anything
+else on `window` is ignored. The shell's CSP has no `img-src` restriction, so
+data URLs render; chrome:// URLs cannot be loaded by a moz-extension page, which
+is why chrome re-encodes each logo (`readImportBrandLogo`: decode the migrator's
+`brandImage`, draw it at 48 px on a canvas, `toDataURL`).
+
+### Availability
+
+A tile for a browser means the wizard would list it. `MigrationUtils.getMigrator(key)`
+is not that test: it returns a migrator when `isSourceAvailable()` or when
+`!hasPermissions() && migrator.canGetPermissions()`, and the second call is not
+awaited, so a Promise (always truthy) makes it return every Chromium browser whose
+data folder exists without a readable `Local State`. On a Mac with a password
+manager, `~/Library/Application Support/<Browser>/NativeMessagingHosts` is enough
+for Edge, Brave, Vivaldi and Opera to come back from `getMigrator` while
+`MigrationWizardParent.#getMigratorAndProfiles` does not list them. Detection
+therefore applies the wizard's own rule on top (`wizardListsMigrator`): the
+migrator is `enabled`, and either `hasPermissions()` is false and
+`canGetPermissions()` (awaited) is truthy, or `getSourceProfiles()` is null (a source
+without a profile list, such as Safari) or non-empty. Safari has no way to know in
+advance whether the user will grant access, so it is offered whenever `~/Library/Safari`
+exists, as the wizard does.
+
+Firefox and Zen are startup-only migrators: `getMigrator` is always null for them in
+a running window, and their `getSourceProfiles` reads
+`MigrationUtils.profileStartup.directory`, which only a startup migration has. Chrome
+code therefore instantiates `FirefoxProfileMigrator` and `ZenProfileMigrator`
+(Bento's patch core-ui/09) and asks `getAllProfiles()`, the profile registry
+(`profiles.ini`), for any readable profile. A registered profile with no
+migratable data still shows the tile; the startup wizard then lists nothing for it.
+Each registry is asked inside its own `try`: one that throws (logged as a warning in
+the Browser Console) must not hide a profile in the other, so the tile appears when
+either has one. `getResourcesInternal` is not used to check for data: it clears
+`MOZ_RESET_PROFILE_SESSION` as a side effect.
+
+The detection makes upstream log `No permissions for local state folder.` to the
+Browser Console once per Chromium browser whose folder exists without a `Local
+State` (the wizard logs the same when it opens).
+
+### Preselection
+
+`<migration-wizard>` selects `state.migratorKey` on its selection page, but its
+public `MigrationWizard:RequestState` event cannot carry one. The wizard's actor
+delivers every state with `Cu.waiveXrays(wizardEl).setState(clone)`, so
+`preselectMigrator` in the host page replaces the instance's `setState` once, adds
+`migratorKey` to the first selection state and restores the prototype method. The
+key comes from the host URL (`migrator=<key>`), which chrome takes from the
+`_s-<key>` part of the import title. It is added only when `state.migrators` lists
+it: the wizard calls `#onBrowserProfileSelectionChanged(null)` for an unlisted key,
+which throws before `selected-view` leaves `page-loading`, so the wizard would stay on its
+loading skeleton (never pass an unchecked key; an earlier note that it falls back to
+the first entry was wrong). The page imports the selection page id from
+`migration-wizard-constants.mjs` (the module the wizard already loaded) and passes
+nothing on any failure, which leaves the wizard on its own first entry. The key
+is validated as `[a-z0-9-]{1,32}` in chrome and in the host.
+
+### Firefox or Zen tile
+
+The tile has no logo (Firefox ships none for either) and the restart glyph
+(`rotate-ccw`). The page stores step 3, sends `BENTO_IMPORT_FIREFOX_ZEN_3_<ts>`, and chrome
+runs the path the wizard's own Firefox or Zen action runs:
+`BENTO_RESTART_TO_MIGRATION=1`, `BENTO_MIGRATION_SCOPE=firefox-zen`,
+`BENTO_WELCOME_STEP=3`, restart. No Firefox core patch is involved.
+
+### States and fallbacks
+
+| State     | When                                                                  | Step shows                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| detecting | No report yet                                                         | Four static placeholder tiles (`aria-busy`, no loop), the normal description; Skip and Other sources work.                                                          |
+| tiles     | A browser or Firefox or Zen was found                                 | The grid (four columns, two when compact); Firefox or Zen takes the columns left in its row (`firefoxZenSpan`: 2 on a new row when full, the whole row when alone). |
+| none      | Report ready with nothing                                             | "No other browsers found on this Mac.", the file-import description, Other sources primary.                                                                         |
+| fallback  | `failed` report, or no report after `IMPORT_SOURCES_CEILING_MS` (4 s) | No grid, today's description, one primary Import browser data action. A report arriving later still replaces it with the tiles.                                     |
+
+The page's ceiling is longer than chrome's (3 s) so a normal failure reaches the page
+as a `failed` report; the page ceiling only covers a lost message. The step is never
+dead: Skip and the opening action are always there.
+
+Pitfalls:
+
+- Do not trust `getMigrator` alone (above); the wizard's list is the contract.
+- Chrome-side images are not reachable from the page; never pass a chrome:// URL.
+- A key the wizard does not list must never reach `migratorKey` (above).
+- A throw from `FirefoxProfileMigrator.getAllProfiles()` must not skip the Zen check:
+  the loop over both migrators catches per migrator, not around the loop.
+- `Row` and `Column` render divs, which a `<button>` cannot contain; the tile body is
+  spans laid out by `welcome.css` (see [Mux customisations](../mux-ui-component-customisations.md)).
+- The frame script that relays to the page installs once per frame-script global and
+  is loaded before every post; a message sent before the page subscribed is lost, so
+  the page subscribes before it announces the overlay ready (`useImportSources` is
+  called before `useOverlayReadySignal`).
+- Under the test harness the restarted copy does not respawn (an `eRestart` of an
+  unregistered app bundle only quits). Relaunch it by hand with the three
+  environment variables above to reach the startup wizard.
+
 ## Manual verification
 
 Use a dev build with a throwaway profile, never a daily-driver profile.
@@ -265,16 +571,42 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
 4. Bento window, Appearance: click Dark, then Light, then Auto. The dialog and
    the browser chrome repaint immediately on each click, without pressing
    Continue.
-5. Bento window, Import: confirm the source list is not clickable and the
-   Firefox and Zen note is visible. Click Skip and confirm Privacy opens; click
-   Back once to return to Import.
-6. Bento window, Import: click Import browser data. The embedded import host
-   opens above the dialog. Close it and confirm the dialog is on Privacy
-   (step 3), not Import. Repeat, but choose the Firefox/Zen action (it needs a
-   Firefox or Zen profile on the machine) and let Bento restart: after the
-   startup migration finishes, onboarding must reopen on Privacy. The
-   `#bentoWelcomeStep=3` hash is the authoritative resume source on this path;
-   for Zen, imported workspaces and tabs must also be present.
+5. Bento window, Import: confirm one button per browser installed on the machine
+   (Chrome, Safari, and the others only when they have data), each with its logo,
+   name and chevron, and a Firefox or Zen button marked "Restarts Bento" when a
+   Firefox or Zen profile exists; the footer reads Back, Skip, Other sources. Press
+   Tab: focus visits each tile with a visible ring, then the footer. Compare the
+   tiles with the browsers the wizard lists (step 6, Other sources): they match.
+   Click Skip and confirm Privacy opens with no scrollbar drawn while its content
+   slides in (repeat on Search, Tour and Ready); click Back once to return to Import.
+6. Bento window, Import: click a browser tile. The wizard opens with that browser
+   selected (check the selector label), not the first entry; click Cancel. Click
+   Other sources: the wizard opens with its first entry selected. The rest of this
+   step applies to both. The dialog's content fades
+   out, then one card reshapes from the dialog's rectangle into the centred
+   wizard card and the wizard content fades in; no second dialog is ever visible
+   and the scrim does not change. Press Esc and click the scrim during the
+   wizard and during the motion: nothing happens. Click Cancel and confirm the
+   card reshapes back, the dialog's content fades in on Privacy (step 3, "Pick a
+   protection level", not Import), and its heading has focus. Repeat three times
+   in one session, in Light and Dark. Then resize the window while the wizard is
+   open and click Cancel: the dialog and the card cross-fade and the dialog is
+   centred in the new size. Repeat with the resize while the wizard is still
+   loading (right after clicking Import), during the card's move, and during the
+   return move after Cancel: each ends with the wizard card centred (or the dialog
+   showing again on Privacy), no jump between the dialog and the card, and a dialog
+   that is never left hidden. In a window about 320 px tall the card still matches
+   the dialog at both swaps, or the two cross-fade. Launch another fresh profile with
+   `user_pref("ui.prefersReducedMotion", 1);` in `user.js`: the dialog and the
+   card cross-fade with no movement. To watch the motion slowly, raise
+   `--muxui-semantic-motion-reveal-duration`, `-modal-enter-duration` and
+   `-exit-duration` on the root of the host document and of the welcome page
+   (keep the exit duration under 1.5 s: it is part of the READY wait). Repeat the
+   Import click, but choose the Firefox or Zen tile (it needs a Firefox or Zen
+   profile on the machine) and let Bento restart: after the startup migration
+   finishes, onboarding must reopen on Privacy. The `#bentoWelcomeStep=3` hash is
+   the authoritative resume source on this path; for Zen, imported workspaces and
+   tabs must also be present.
 7. Bento window, Privacy and Search: select a level and an engine, then open
    Ready and confirm both appear in the summary. Click each Change action and
    confirm it jumps to Appearance, Privacy, or Search, and that Continue walks

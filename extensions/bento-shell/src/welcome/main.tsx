@@ -15,12 +15,17 @@
 //   - Browser-data import is an onboarding state, not a final dismissal:
 //     it stores the next onboarding step in extension storage, signals
 //     chrome to open the embedded Firefox migration host, and leaves
-//     onboarding mounted.
+//     onboarding mounted. The dialog fades its content out, chrome swaps it
+//     for the import card at the same rectangle, and the way back reverses
+//     that (useImportHandoff); the next step shows while the dialog is cut out.
+//     The Import step's tiles are the browsers chrome found (useImportSources); a
+//     tile opens the wizard with that browser selected, and the Firefox or Zen tile
+//     restarts Bento into Firefox's startup import instead.
 //   - Dialog stays mounted with open=true permanently — visibility is
 //     purely a chrome concern (same pattern as the other overlays). React
 //     state inside this page never tracks open/closed.
 
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog, Text } from '@muxui/react';
 import type { SearchEngineChoice } from '@shared/protocol';
@@ -47,6 +52,7 @@ import {
   ReadySummary,
   searchEngineName,
   searchEngineOptions,
+  startFirefoxZenImport,
   startImport,
   stepAfter,
   stepIndexOf,
@@ -59,6 +65,10 @@ import {
 import './welcome.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
+import { dialogClass } from './importHandoff';
+import { importCopy, type ImportBrowserKey } from './importSources';
+import { useImportHandoff } from './useImportHandoff';
+import { useImportSources } from './useImportSources';
 
 initToolsPort();
 
@@ -209,6 +219,19 @@ function WelcomeApp() {
   const engines = privacy?.availableSearchEngines ?? [];
   const searchEngine = privacy?.defaultSearchEngine ?? storedSearchEngine ?? 'ddg';
 
+  // The step an import resumes on, shown while the dialog is cut out for the wizard.
+  const pendingStepRef = useRef<StepIndex | null>(null);
+  const releasePendingStep = useCallback(() => {
+    if (pendingStepRef.current === null) return;
+    setStepIndex(pendingStepRef.current);
+    pendingStepRef.current = null;
+  }, []);
+  const focusHeading = useCallback(() => headingRef.current?.focus(), []);
+  const handoff = useImportHandoff({ release: releasePendingStep, focusHeading });
+  // Subscribes to chrome's report before the overlay announces itself (below), so none is missed.
+  const importView = useImportSources(step.id === 'import');
+  const importStep = importCopy(importView);
+
   const setStep = (nextStep: StepIndex) => {
     const clamped = Math.max(0, Math.min(nextStep, LAST_STEP));
     void storeStep(clamped);
@@ -222,10 +245,22 @@ function WelcomeApp() {
     setStep(stepIndex + 1);
   };
 
-  const startBrowserDataImport = () => {
+  // `source` is the browser a tile chose; Other sources and the plain action pass none.
+  const startBrowserDataImport = (source?: ImportBrowserKey) => {
+    if (!handoff.isIdle()) return;
     const followingStep = stepAfter(stepIndex);
-    setStepIndex(followingStep);
-    void startImport(followingStep, storeStep, sendChromeTitle);
+    const geometry = handoff.begin((token, measured) =>
+      startImport(followingStep, storeStep, sendChromeTitle, { token, geometry: measured, source }),
+    );
+    // A dialog that morphs shows the next step once it is cut out; any other changes it at once.
+    if (geometry) pendingStepRef.current = followingStep;
+    else setStepIndex(followingStep);
+  };
+
+  // Chrome restarts Bento, so this page does not change: the step it persists is the one it reopens on.
+  const restartForFirefoxZen = () => {
+    if (!handoff.isIdle()) return;
+    void startFirefoxZenImport(stepAfter(stepIndex), storeStep, sendChromeTitle);
   };
 
   useEffect(() => {
@@ -266,6 +301,8 @@ function WelcomeApp() {
 
   if (!hasLoadedStoredStep) return null;
 
+  const description = step.id === 'import' ? importStep.description : step.description;
+
   const body = (() => {
     switch (step.id) {
       case 'appearance':
@@ -281,7 +318,13 @@ function WelcomeApp() {
           />
         );
       case 'import':
-        return <ImportSources />;
+        return (
+          <ImportSources
+            view={importView}
+            onBrowser={startBrowserDataImport}
+            onFirefoxZen={restartForFirefoxZen}
+          />
+        );
       case 'privacy':
         return (
           <WelcomeOptions
@@ -330,15 +373,16 @@ function WelcomeApp() {
       open={true}
       dismissable={false}
       aria-labelledby={WELCOME_TITLE_ID}
-      aria-describedby={step.description ? WELCOME_DESCRIPTION_ID : undefined}
-      className="bento-welcome"
+      aria-describedby={description ? WELCOME_DESCRIPTION_ID : undefined}
+      className={dialogClass(handoff.state)}
       actionsClassName="bento-welcome__actions"
       actions={
         <WelcomeActions
           index={stepIndex}
           onBack={() => setStep(stepIndex - 1)}
           onNext={step.id === 'ready' ? close : nextStep}
-          onImport={startBrowserDataImport}
+          onImport={() => startBrowserDataImport()}
+          importAction={importStep.action}
         />
       }
     >
@@ -348,6 +392,7 @@ function WelcomeApp() {
         titleId={WELCOME_TITLE_ID}
         descriptionId={WELCOME_DESCRIPTION_ID}
         headingRef={headingRef}
+        description={description}
       >
         {body}
       </WelcomeStage>

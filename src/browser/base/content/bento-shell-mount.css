@@ -385,6 +385,12 @@
 #bento-confirm-host {
   transition: opacity var(--muxui-semantic-motion-modal-transition);
 }
+/* While the onboarding handoff owns the import host, its opacity changes are instant: the
+   dialog and the import card swap at one rectangle (first-run-import.md). Removing the attribute
+   brings the plain fade back, which is also the fallback. */
+#bento-embedded-import-host[data-bento-import-handoff] {
+  transition: none !important;
+}
 #bento-shell-splitter {
   width: var(--bento-splitter-hit-size) !important;
   min-width: var(--bento-splitter-hit-size) !important;
