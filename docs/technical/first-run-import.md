@@ -293,6 +293,12 @@ Messages (every title keeps its timestamp suffix; the token is the click's ts):
 | chrome to host page    | `window.bentoImportMorph.prepare/open/close/settle/cancel()`                     | Card states. Chrome calls `prepare` when it shows the page, so a page it gave up on never pins itself. `open` and `close` take a `started` callback and change state on the host's next frame.                                         |
 | chrome to welcome page | frame script `BentoWelcomeHandoff`, `content.postMessage`                        | `{ kind: 'bento-welcome-handoff', phase, token }` with phase `hide`, `restore`, `reveal`, `fade-out`, `fade-in` or `reset`.                                                                                                            |
 
+The welcome page takes chrome's messages only with an empty `event.origin`
+(`isChromeRelayMessage` in `welcome/chromeRelay.ts`, the first guard in
+`useImportHandoff` and `useImportSources`): the frame script's system-principal
+sandbox has no window, so `postMessage` leaves the origin empty, while any page
+(this one included) posts with its own origin.
+
 Sequence. Out: the click fades the dialog's content out (Mux `dismiss`), sends the
 import title, and sends READY when the fade has ended. Chrome loads the host
 hidden (`opacity: 0`, `display: flex` so it lays out; no fade for this open), and
@@ -407,6 +413,11 @@ Pitfalls:
   before `settle()`, or the fade is cut.
 - The frame script relay is loaded before every post: it installs once per frame
   script global, and a replaced global has no listener.
+- The page drops every message whose `event.origin` is not empty (a system-principal
+  frame-script sender). A relay that later posts from a window, or any other sender,
+  carries a non-empty origin and its messages are dropped without an error: the dialog
+  stops following chrome (the stall timeout frees it) and the Import step stays on
+  placeholders until its ceiling.
 - `pointer-events: none` on the card during the morph keeps a click from reaching
   the wizard mid-move; a close arriving mid-motion takes the abandon path.
 - The card and the dialog are both visible for about one frame around each swap

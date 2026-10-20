@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { afterMotion } from '../motion/afterMotion';
+import { isChromeRelayMessage } from './chromeRelay';
 import {
   ackTitle,
   measureDialog,
@@ -141,6 +142,7 @@ export function useImportHandoff({
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      if (!isChromeRelayMessage(event)) return;
       const message = parseHandoffMessage(event.data);
       if (!message || message.token !== tokenRef.current) return;
       const before = stateRef.current;

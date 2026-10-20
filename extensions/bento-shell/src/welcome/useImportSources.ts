@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { isChromeRelayMessage } from './chromeRelay';
 import {
   IMPORT_SOURCES_CEILING_MS,
   importSourcesRequestTitle,
@@ -22,6 +23,7 @@ export function useImportSources(onImportStep: boolean): ImportView {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      if (!isChromeRelayMessage(event)) return;
       const next = parseImportSourcesMessage(event.data);
       if (next) setReport(next);
     };
