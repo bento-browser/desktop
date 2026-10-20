@@ -4,7 +4,9 @@
 
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { Button, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Globe from 'lucide-react/dist/esm/icons/globe';
+import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
 import type {
   SearchEngineChoice,
   SelectablePrivacyProtectionLevel,
@@ -12,9 +14,21 @@ import type {
 } from '@shared/protocol';
 import { PRIVACY_LEVELS } from '@shared/privacy-levels';
 
-import { WELCOME_IMPORT_BROWSER_DATA_PREFIX } from '../bridge/useWelcome';
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
+import { importTitle, type DialogGeometry } from './importHandoff';
+import {
+  firefoxZenSpan,
+  firefoxZenTitle,
+  IMPORT_DESCRIPTION,
+  IMPORT_GRID_COLUMNS,
+  IMPORT_NONE_NOTE,
+  importCopy,
+  type ImportBrowser,
+  type ImportBrowserKey,
+  type ImportCopy,
+  type ImportView,
+} from './importSources';
 
 interface WelcomeStepCopy<Id extends string> {
   id: Id;
@@ -42,8 +56,8 @@ const STEPS = [
   {
     id: 'import',
     title: 'Bring your browsing with you',
-    description: 'Bookmarks, history, passwords and open tabs. Nothing leaves this device.',
-    note: 'Firefox and Zen copy the whole profile. Bento restarts once and returns here.',
+    // The description of the state with browsers to pick from; importCopy has the others.
+    description: IMPORT_DESCRIPTION,
   },
   {
     id: 'privacy',
@@ -86,15 +100,37 @@ export function stepAfter(index: number): number {
 }
 
 /** Persists the step onboarding resumes on, then sends the title that makes chrome
- * open the migration host: BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>. The store
- * comes first so a restart during the import still resumes on nextStep. */
+ * open the migration host: BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>, with the dialog's
+ * geometry appended when it can morph into the wizard (importHandoff.ts) and the
+ * browser's key when a tile chose it. The store comes first so a restart during the
+ * import still resumes on nextStep. */
 export async function startImport(
+  nextStep: number,
+  store: (step: number) => Promise<void>,
+  send: (title: string) => void,
+  handoff?: { token: string; geometry: DialogGeometry | null; source?: ImportBrowserKey },
+): Promise<void> {
+  await store(nextStep);
+  send(
+    importTitle(
+      nextStep,
+      handoff?.token ?? String(Date.now()),
+      handoff?.geometry ?? undefined,
+      handoff?.source,
+    ),
+  );
+}
+
+/** The Firefox or Zen tile: persists the resume step, then asks chrome to restart Bento into
+ * Firefox's startup import (BENTO_IMPORT_FIREFOX_ZEN_<nextStep>_<ts>). Onboarding reopens on
+ * nextStep afterwards, as it does for a restart from inside the wizard. */
+export async function startFirefoxZenImport(
   nextStep: number,
   store: (step: number) => Promise<void>,
   send: (title: string) => void,
 ): Promise<void> {
   await store(nextStep);
-  send(`${WELCOME_IMPORT_BROWSER_DATA_PREFIX}_${nextStep}_${Date.now()}`);
+  send(firefoxZenTitle(nextStep, String(Date.now())));
 }
 
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
@@ -123,6 +159,7 @@ export function WelcomeStage({
   titleId,
   descriptionId,
   headingRef,
+  description = step.description,
   children,
 }: {
   step: WelcomeStep;
@@ -130,6 +167,8 @@ export function WelcomeStage({
   titleId: string;
   descriptionId: string;
   headingRef?: RefObject<HTMLHeadingElement | null>;
+  /** Replaces the step's description (the Import step's depends on what chrome found). */
+  description?: string;
   children?: ReactNode;
 }) {
   return (
@@ -157,9 +196,9 @@ export function WelcomeStage({
         >
           {step.title}
         </Text>
-        {step.description ? (
+        {description ? (
           <Text as="p" color="muted" id={descriptionId} className="bento-welcome__description">
-            {step.description}
+            {description}
           </Text>
         ) : null}
         {children}
@@ -185,17 +224,20 @@ export function StepDots({ current }: { current: number }) {
 }
 
 /** Dialog footer: Back, the dots, and the step's actions. On the Import step
- * onNext is Skip and onImport starts the Firefox migration wizard. */
+ * onNext is Skip and onImport opens the Firefox migration wizard with no browser
+ * selected (the tiles open it with one). */
 export function WelcomeActions({
   index,
   onBack,
   onNext,
   onImport,
+  importAction = importCopy({ kind: 'detecting' }).action,
 }: {
   index: number;
   onBack: () => void;
   onNext: () => void;
   onImport: () => void;
+  importAction?: ImportCopy['action'];
 }) {
   const id = WELCOME_STEPS[index]?.id;
   return (
@@ -214,8 +256,8 @@ export function WelcomeActions({
             <Button variant="neutral" onActivate={onNext}>
               Skip
             </Button>
-            <Button variant="primary" onActivate={onImport}>
-              Import browser data
+            <Button variant={importAction.primary ? 'primary' : 'neutral'} onActivate={onImport}>
+              {importAction.label}
             </Button>
           </>
         ) : (
@@ -363,31 +405,125 @@ export function searchEngineName(engines: readonly SearchEngineChoice[], id: str
   return engines.find((engine) => engine.id === id)?.name ?? DEFAULT_ENGINE_NAMES.get(id) ?? id;
 }
 
-const IMPORT_SOURCES = [
-  'Chrome',
-  'Safari',
-  'Edge',
-  'Brave',
-  'Vivaldi',
-  'Opera',
-  'Firefox',
-  'Zen',
-] as const;
-
-/** Supported import sources. Not interactive: the Firefox migration wizard picks the source. */
-export function ImportSources() {
+function ImportTile({
+  name,
+  sublabel,
+  leading,
+  ariaLabel,
+  onActivate,
+}: {
+  name: string;
+  sublabel?: string;
+  leading: ReactNode;
+  ariaLabel: string;
+  onActivate: () => void;
+}) {
+  // Spans, not Row and Column: those render divs, which a button cannot contain.
   return (
-    <ul className="bento-welcome__tiles bento-welcome__tiles--sources">
-      {IMPORT_SOURCES.map((name, index) => (
-        <li key={name} style={stagger(index)}>
-          <BentoIcon icon={Globe} size="sm" />
-          <Text variant="label" size="sm">
-            {name}
+    <Button
+      variant="ghost"
+      className="bento-welcome__source"
+      aria-label={ariaLabel}
+      onActivate={onActivate}
+    >
+      <span className="bento-welcome__source-leading">{leading}</span>
+      <span className="bento-welcome__source-label">
+        <Text as="span" variant="label" size="sm">
+          {name}
+        </Text>
+        {sublabel ? (
+          <Text as="span" size="xs" color="muted">
+            {sublabel}
           </Text>
-        </li>
-      ))}
-    </ul>
+        ) : null}
+      </span>
+      <BentoIcon icon={ChevronRight} size="sm" />
+    </Button>
   );
+}
+
+function BrowserLogo({ browser }: { browser: ImportBrowser }) {
+  return browser.logo ? (
+    <Image src={browser.logo} alt="" fit="contain" className="bento-welcome__source-logo" />
+  ) : (
+    <BentoIcon icon={Globe} size="md" />
+  );
+}
+
+// The tile grid is 4 columns wide, 2 when compact (welcome.css); the Firefox or Zen tile takes
+// the columns left in its row at each.
+function firefoxZenSpans(browserCount: number) {
+  return {
+    'data-span': firefoxZenSpan(browserCount, IMPORT_GRID_COLUMNS.wide),
+    'data-span-compact': firefoxZenSpan(browserCount, IMPORT_GRID_COLUMNS.compact),
+  };
+}
+
+/**
+ * The Import step's body. One real button per browser chrome found, which opens the wizard with that
+ * browser selected, and a Firefox or Zen tile (no logo ships for either) that restarts Bento into
+ * Firefox's startup import. Static placeholders while chrome is still looking; nothing but a note
+ * when there is nothing to import from; nothing at all when detection failed (the footer's
+ * Import browser data action is the way in).
+ */
+export function ImportSources({
+  view,
+  onBrowser,
+  onFirefoxZen,
+}: {
+  view: ImportView;
+  onBrowser: (key: ImportBrowserKey) => void;
+  onFirefoxZen: () => void;
+}) {
+  switch (view.kind) {
+    case 'fallback':
+      return null;
+    case 'none':
+      return (
+        <Text as="p" size="sm" color="muted" className="bento-welcome__description">
+          {IMPORT_NONE_NOTE}
+        </Text>
+      );
+    case 'detecting':
+      return (
+        <ul className="bento-welcome__sources" aria-busy="true">
+          {Array.from({ length: IMPORT_GRID_COLUMNS.wide }, (_, index) => (
+            <li
+              key={index}
+              className="bento-welcome__source-placeholder"
+              aria-hidden="true"
+              style={stagger(index)}
+            />
+          ))}
+        </ul>
+      );
+    case 'tiles':
+      return (
+        <ul className="bento-welcome__sources" aria-label="Import sources">
+          {view.browsers.map((browser, index) => (
+            <li key={browser.key} style={stagger(index)}>
+              <ImportTile
+                name={browser.name}
+                leading={<BrowserLogo browser={browser} />}
+                ariaLabel={`Import from ${browser.name}`}
+                onActivate={() => onBrowser(browser.key)}
+              />
+            </li>
+          ))}
+          {view.firefoxZen ? (
+            <li {...firefoxZenSpans(view.browsers.length)} style={stagger(view.browsers.length)}>
+              <ImportTile
+                name="Firefox or Zen"
+                sublabel="Restarts Bento"
+                leading={<BentoIcon icon={RotateCcw} size="md" />}
+                ariaLabel="Import from Firefox or Zen, restarts Bento"
+                onActivate={onFirefoxZen}
+              />
+            </li>
+          ) : null}
+        </ul>
+      );
+  }
 }
 
 function Shortcut({ children }: { children: ReactNode }) {

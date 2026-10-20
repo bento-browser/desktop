@@ -69,7 +69,7 @@
     },
     {
       "path": "src/browser/base/content/bento-shell-mount.js",
-      "pattern": "Import Firefox or Zen|Firefox/Zen|firefox-zen|scopeFirefoxZen|MIGRATION_SCOPE",
+      "pattern": "Import Firefox or Zen|Firefox/Zen|firefox-zen|scopeFirefoxZen|MIGRATION_SCOPE|Firefox or Zen|Firefox and Zen|the Zen migrator",
       "category": "import-compatibility",
       "reason": "Hands the explicit Firefox and Zen import action to startup migration."
     },
@@ -92,10 +92,22 @@
       "reason": "Preserves the legacy rollback source's stable Zen import-source protocol value."
     },
     {
-      "path": "extensions/bento-shell/src/welcome/WelcomeSurfaces.tsx",
-      "pattern": "Firefox and Zen|'Zen'",
+      "path": "extensions/bento-shell/src/welcome/*",
+      "pattern": "Firefox or Zen",
       "category": "import-compatibility",
-      "reason": "Labels the explicit onboarding import action and lists Zen among the import sources."
+      "reason": "Labels the onboarding Import step's combined Firefox or Zen startup-import tile."
+    },
+    {
+      "path": "extensions/bento-shell/src/bridge/useWelcome.ts",
+      "pattern": "Firefox or Zen|FIREFOX_ZEN",
+      "category": "import-compatibility",
+      "reason": "Names the sentinel of the onboarding Firefox or Zen startup-import tile."
+    },
+    {
+      "path": "scripts/firefox-compat-registry.mjs",
+      "pattern": "Firefox or Zen",
+      "category": "import-compatibility",
+      "reason": "Records the Firefox migrator surfaces behind the Firefox or Zen import tile."
     },
     {
       "path": "rollback/legacy-source/extensions/bento-shell/src/welcome/main.tsx",

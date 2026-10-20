@@ -21,8 +21,8 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                        | idle, 3rd                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script, with chrome's `__windowId`                                                    |
 | `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                   | first use                  | Nothing                                                                                                                                                     |
 | `merge-palette`                         | `merge-palette.html`                                 | Sidebar footer `BENTO_OPEN_MERGE_PALETTE`                                                            | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                              |
-| `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                  | first use (first run only) | Resume step hash, read from the environment at window startup                                                                                               |
-| `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open                                                                                     |
+| `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                  | first use (first run only) | Resume step hash, read from the environment at window startup; the import handoff messages through the `BentoWelcomeHandoff` frame script (see below)       |
+| `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open (its `BENTO_EMBEDDED_IMPORT_READY` title only gates the onboarding handoff)         |
 | `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                           | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script (`content.postMessage` into this frame's own window), sent again on readiness           |
 
 Source of truth: `bento-tools` and the shell mirrors are unchanged; overlay
@@ -132,6 +132,45 @@ Not-yet-created frames, by code path:
   callbacks and the queue die with the window.
 - The welcome resume step (`BENTO_WELCOME_STEP_ENV`) is read and cleared at
   window startup, not when the welcome frame is created, as before.
+
+## Onboarding import handoff
+
+The welcome overlay and the embedded import host swap at one rectangle so the
+dialog reads as reshaping into the wizard card (the full protocol, states and
+fallbacks are in [first-run-import.md](first-run-import.md#import-handoff)). Three
+overlay mechanics carry it:
+
+- **The `BentoWelcomeHandoff` frame script.** Chrome posts one object to the welcome
+  frame and the relay does `content.postMessage(object, '*')` into the welcome
+  document (`postToWelcomePage`, same `data:` frame script pattern as the tooltip,
+  loaded before every post because it installs once per frame script global). The
+  page tells the messages apart by `kind`: `bento-welcome-handoff` carries a phase
+  (`hide`, `restore`, `reveal`, `fade-out`, `fade-in`, `reset`) and the dialog's
+  token (`postWelcomeHandoff`); `bento-import-sources` carries the Import step's
+  browser report ([first-run-import.md](first-run-import.md#import-sources)), sent
+  from `showWelcome`'s reveal, which runs on the page's ready signal, so the page's
+  listener exists, and again whenever the page asks
+  (`BENTO_IMPORT_SOURCES_REQUEST_<ts>`). Handoff phases are outside the overlay
+  manager's `open` queue on purpose: they are only sent after the welcome page has
+  itself reported (READY, HIDDEN, RESTORED titles), so a lost message is bounded by
+  chrome's 1.5 s ceilings and the page's own 3 s recovery; a lost report is bounded
+  by the page's 4 s ceiling.
+- **`data-bento-import-handoff` on `#bento-embedded-import-host`.** While the
+  handoff owns the host, `bento-shell-mount.css` makes its opacity changes instant
+  (`transition: none !important`), so showing it over the identical dialog and hiding
+  it at the end do not fade; removing the attribute restores the `modal` fade, which
+  is also the fallback. `hideEmbeddedBrowserImport` always removes it and drops the
+  handoff, which is what `restartToBrowserImportFromWelcome` relies on.
+- **The host's own motion.** The card's geometry and content fades run in the host
+  document (`bento-migration-host.css`), and the mount waits on them with
+  `afterMotion` on elements of that in-process document (`api.card`, `api.content`),
+  so no duration is repeated in script.
+
+Pitfalls: never open the host visible and fade it for a handoff (the card would
+cross-fade with the dialog and a second dialog shows around it); never hide the
+welcome frame itself during the handoff (it carries the scrim); an esc or backdrop
+click while the card moves must stay inert, so the host page suppresses Esc itself
+and the card takes no pointer input until `settle()`.
 
 ## Window scoping of overlay buses
 

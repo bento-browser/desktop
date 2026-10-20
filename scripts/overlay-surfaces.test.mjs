@@ -386,6 +386,7 @@ function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
       events.scrimShown.push(owner);
     },
     hideOverlayToolbarScrim: (owner) => events.scrim.delete(owner),
+    sendImportSourcesToWelcome: async () => {},
     getChromeWindowId: () => windowId,
     computeAddrbarAnchoredPlacement: () => null,
     resolveClipboardUrlSuggestion: () => '',
