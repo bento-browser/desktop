@@ -54,84 +54,84 @@ const parseResumeStep = mountFunction<(title: string, prefix?: string) => string
   'parseWelcomeImportResumeStep',
   {
     WELCOME_IMPORT_BROWSER_DATA_PREFIX: 'BENTO_IMPORT_BROWSER_DATA',
-    BENTO_WELCOME_POST_IMPORT_STEP: '2',
+    BENTO_WELCOME_POST_IMPORT_STEP: '4',
   },
 );
 
 describe('importTitle', () => {
   it('keeps the title chrome has always read when the dialog cannot morph', () => {
-    expect(importTitle(3, '1700000000000')).toBe('BENTO_IMPORT_BROWSER_DATA_3_1700000000000');
+    expect(importTitle(4, '1700000000000')).toBe('BENTO_IMPORT_BROWSER_DATA_4_1700000000000');
   });
 
   it('appends the dialog rectangle, radius and viewport, rounded to two decimals', () => {
-    expect(importTitle(3, '1700000000000', { ...geometry, x: 280.004, radius: 15.9963 })).toBe(
-      'BENTO_IMPORT_BROWSER_DATA_3_1700000000000_280_238_720_528_16_1280_1004',
+    expect(importTitle(4, '1700000000000', { ...geometry, x: 280.004, radius: 15.9963 })).toBe(
+      'BENTO_IMPORT_BROWSER_DATA_4_1700000000000_280_238_720_528_16_1280_1004',
     );
-    expect(importTitle(3, '1', { ...geometry, x: 280.126 })).toContain('_280.13_');
+    expect(importTitle(4, '1', { ...geometry, x: 280.126 })).toContain('_280.13_');
   });
 
   it('is read back by the mount script, and leaves the resume step where it was', () => {
-    const title = importTitle(3, '1700000000000', geometry);
+    const title = importTitle(4, '1700000000000', geometry);
     expect(parseImport(title)).toEqual({
       token: '1700000000000',
       rect: { x: 280, y: 238, w: 720, h: 528, r: 16 },
       viewport: { w: 1280, h: 1004 },
       source: null,
     });
-    expect(parseResumeStep(title)).toBe('3');
-    expect(parseResumeStep(importTitle(3, '1700000000000'))).toBe('3');
+    expect(parseResumeStep(title)).toBe('4');
+    expect(parseResumeStep(importTitle(4, '1700000000000'))).toBe('4');
   });
 
   it('is read without a rectangle when it carries none or a malformed one', () => {
     const bare = { token: '1700000000000', rect: null, viewport: null, source: null };
-    expect(parseImport(importTitle(3, '1700000000000'))).toEqual(bare);
+    expect(parseImport(importTitle(4, '1700000000000'))).toEqual(bare);
     for (const suffix of [
       '_1_2_3',
       '_a_238_720_528_16_1280_1004',
       '_280_238_0_528_16_1280_1004',
       '_280_238_720_528_16_1280_',
     ]) {
-      expect(parseImport(`BENTO_IMPORT_BROWSER_DATA_3_1700000000000${suffix}`)).toEqual(bare);
+      expect(parseImport(`BENTO_IMPORT_BROWSER_DATA_4_1700000000000${suffix}`)).toEqual(bare);
     }
-    expect(parseImport('BENTO_IMPORT_BROWSER_DATA_3_x')).toBeNull();
+    expect(parseImport('BENTO_IMPORT_BROWSER_DATA_4_x')).toBeNull();
   });
 });
 
 describe('importTitle with a browser tile', () => {
   it('appends the migrator key last, with or without the geometry', () => {
-    expect(importTitle(3, '1700000000000', undefined, 'chromium-edge')).toBe(
-      'BENTO_IMPORT_BROWSER_DATA_3_1700000000000_s-chromium-edge',
+    expect(importTitle(4, '1700000000000', undefined, 'chromium-edge')).toBe(
+      'BENTO_IMPORT_BROWSER_DATA_4_1700000000000_s-chromium-edge',
     );
-    expect(importTitle(3, '1700000000000', geometry, 'chrome')).toBe(
-      'BENTO_IMPORT_BROWSER_DATA_3_1700000000000_280_238_720_528_16_1280_1004_s-chrome',
+    expect(importTitle(4, '1700000000000', geometry, 'chrome')).toBe(
+      'BENTO_IMPORT_BROWSER_DATA_4_1700000000000_280_238_720_528_16_1280_1004_s-chrome',
     );
   });
 
   it('is read back by the mount script with the key, whatever else the title carries', () => {
     const rect = { x: 280, y: 238, w: 720, h: 528, r: 16 };
     const viewport = { w: 1280, h: 1004 };
-    expect(parseImport(importTitle(3, '1700000000000', geometry, 'safari'))).toEqual({
+    expect(parseImport(importTitle(4, '1700000000000', geometry, 'safari'))).toEqual({
       token: '1700000000000',
       rect,
       viewport,
       source: 'safari',
     });
-    expect(parseImport(importTitle(3, '1700000000000', undefined, 'vivaldi'))).toEqual({
+    expect(parseImport(importTitle(4, '1700000000000', undefined, 'vivaldi'))).toEqual({
       token: '1700000000000',
       rect: null,
       viewport: null,
       source: 'vivaldi',
     });
-    expect(parseResumeStep(importTitle(3, '1700000000000', geometry, 'brave'))).toBe('3');
+    expect(parseResumeStep(importTitle(4, '1700000000000', geometry, 'brave'))).toBe('4');
   });
 
   it('drops a key that is not a plain lowercase word, and keeps the rest of the title', () => {
     for (const key of ['Chrome', 'chrome!', 'a'.repeat(33), '']) {
-      const parsed = parseImport(`BENTO_IMPORT_BROWSER_DATA_3_1700000000000_s-${key}`);
+      const parsed = parseImport(`BENTO_IMPORT_BROWSER_DATA_4_1700000000000_s-${key}`);
       expect(parsed).toEqual({ token: '1700000000000', rect: null, viewport: null, source: null });
     }
     expect(
-      parseImport('BENTO_IMPORT_BROWSER_DATA_3_1700000000000_280_238_720_528_16_1280_1004_s-Zed')
+      parseImport('BENTO_IMPORT_BROWSER_DATA_4_1700000000000_280_238_720_528_16_1280_1004_s-Zed')
         ?.rect,
     ).toEqual({ x: 280, y: 238, w: 720, h: 528, r: 16 });
   });
@@ -139,16 +139,17 @@ describe('importTitle with a browser tile', () => {
 
 describe('the Firefox or Zen sentinel', () => {
   it('carries the resume step the way the import title does', () => {
-    const title = firefoxZenTitle(3, '1700000000000');
-    expect(title).toBe('BENTO_IMPORT_FIREFOX_ZEN_3_1700000000000');
-    expect(parseResumeStep(title, 'BENTO_IMPORT_FIREFOX_ZEN')).toBe('3');
-    expect(parseResumeStep('BENTO_IMPORT_FIREFOX_ZEN_x', 'BENTO_IMPORT_FIREFOX_ZEN')).toBe('2');
+    // A step other than the mount script's fallback, so the fallback line below tells them apart.
+    const title = firefoxZenTitle(5, '1700000000000');
+    expect(title).toBe('BENTO_IMPORT_FIREFOX_ZEN_5_1700000000000');
+    expect(parseResumeStep(title, 'BENTO_IMPORT_FIREFOX_ZEN')).toBe('5');
+    expect(parseResumeStep('BENTO_IMPORT_FIREFOX_ZEN_x', 'BENTO_IMPORT_FIREFOX_ZEN')).toBe('4');
   });
 
   it('is not mistaken for another sentinel by the mount script prefix tests', () => {
     const titles = [
-      importTitle(3, '17'),
-      firefoxZenTitle(3, '17'),
+      importTitle(4, '17'),
+      firefoxZenTitle(4, '17'),
       importSourcesRequestTitle('17'),
       ackTitle('READY', '17'),
     ];

@@ -385,7 +385,7 @@ read from the computed colours, not the token names (the card's numbers are in
 ### Welcome dialog and selectable tiles
 
 The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,
-non-dismissable Mux `Dialog` that keeps its frame and footer across all seven
+non-dismissable Mux `Dialog` that keeps its frame and footer across all eight
 steps; only the step body changes. Its Bento rules sit in the `bento.components`
 layer of `welcome.css`, with one exception: the `.muxui-dialog.bento-welcome`
 override (`--bento-welcome-dialog-width` by `--bento-welcome-dialog-height`, 45rem
@@ -405,10 +405,10 @@ instead of letting Mux's entry scale animation run. Mux measures a
 scaled dialog left the fill about 3% too small for its tile. Recheck this after a
 Mux upgrade before restoring the entry scale.
 
-Appearance, Privacy, and Search share one selectable surface, `WelcomeOptions`: a
+Appearance, Theme, Privacy, and Search share one selectable surface, `WelcomeOptions`: a
 Mux `ToggleButtonGroup` with `selectionMode='single'` and `disallowEmptySelection`
-whose `ToggleButton` items Bento lays out as three tiles (Appearance), one column
-of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
+whose `ToggleButton` items Bento lays out as three tiles (Appearance), preview cards
+(Theme), one column of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
 `RadioGroup` is not used because its rc.1 options carry no description. Mux owns
 selection state, roles, and arrow-key navigation, and a selection is applied at
 once. Bento sets the grid, the item content layout (preview, icon, label, tag,
@@ -441,6 +441,34 @@ behind it; the tile's title and body carry the meaning. At the compact breakpoin
 the tile switches to a grid template (`image`, `title`, `body`, `chips` areas) and
 the illustration drops to `--bento-welcome-tour-image-compact`.
 
+Theme cards (`layout="cards"`) are the tiles layout with the card padding at
+`--muxui-semantic-layout-inset-tiny` and left-aligned labels, in five columns (four
+when the group says `columns={4}`, through `data-columns`) across the dialog's full
+width, and three columns that scroll inside `--bento-welcome-card-list` when compact.
+The cards' padding is that small on purpose: at the wide layout it is what lets
+'Mountain Meadow' keep one line; a wrapped label makes its row taller and pushes the
+second row under the footer. A card's preview is `ThemePreview`, which reuses the
+Appearance thumbnail frame, pane and lines. Its pane carries the card theme's own
+`getThemeScopeAttributes` (`data-muxui-theme` and `data-muxui-color-scheme`), so the
+mini window is coloured only from public Mux semantic tokens (`surface-canvas`,
+`surface-background`, `surface-track`, `selection-background`, `action-background`),
+and the theme's sheet must be attached: `ThemeChooser` keeps every theme's sheet
+loaded with `useThemeSheets(ALL_THEME_IDS)` while the step shows. Specificity inside the preview
+matters: the generic `.bento-welcome__preview-lines > span` and
+`.bento-welcome__preview-sidebar > span` bar rules would otherwise paint the accent
+button, the workspace dots and the active tab as plain bars, so those parts are
+selected as `> .bento-welcome__preview-button`, `> span[data-active]` and
+`:not(.bento-welcome__preview-workspaces)`.
+
+The Colourful and Monochrome switch is Mux `Tabs` with `variant="segment"`, one panel
+per collection holding that collection's `WelcomeOptions`. Mux renders the pill on an
+inner `.muxui-tabs-motion` and the panels as siblings of it, so the root is a centred
+flex column (`.muxui-tabs.bento-welcome__theme-tabs`) and the panel padding is
+cleared. React Aria mounts only the selected panel, so a collection's selected fill is
+measured when it is visible. Arrow keys moved DOM focus with the selection in a
+Chrome check; the emoji picker's focus-lag correction (see above) was not needed
+here, but recheck it in Bento's Firefox.
+
 `WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
 `WelcomeSurfaces.stories.css`; nothing in that file ships.
 
@@ -448,14 +476,14 @@ At 48rem and below the dialog goes compact: the option and tile grids lose
 columns, the tour tiles become rows (illustration left, text beside it, shortcut
 chips at the row end), and the footer reflows from three columns (Back, dots,
 actions) to a wrapping flex row. The three columns need about 42rem of dialog on the Import step,
-where Back, seven dots and the Skip and Import actions sit in two equal side
+where Back, eight dots and the Skip and Import actions sit in two equal side
 columns around the dots, so the footer uses the dialog's one existing compact
 breakpoint rather than a second one. Compact puts the dots on their own row, then
 Back and the actions on the next row, with the actions pushed to the end; when they
 do not fit together (about 360px wide) Back takes the row above the actions.
 
 The step dots are a presentational Bento element marked `aria-hidden`. The
-visible "Step N of 6" text (steps 1 to 6) is the accessible progress; do not add
+visible "Step N of 7" text (steps 1 to 7) is the accessible progress; do not add
 roles or labels to the dots.
 
 Motion uses the Mux roles only. The step body enters on `reveal`

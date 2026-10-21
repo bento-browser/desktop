@@ -21,6 +21,9 @@
 //     The Import step's tiles are the browsers chrome found (useImportSources); a
 //     tile opens the wizard with that browser selected, and the Firefox or Zen tile
 //     restarts Bento into Firefox's startup import instead.
+//   - The Theme step writes the window's active workspace themeId through the tools
+//     port (workspace/update); the dialog repaints from the snapshot like any other
+//     document (useWorkspaceTheme), and the pick shows at once until it arrives.
 //   - Dialog stays mounted with open=true permanently — visibility is
 //     purely a chrome concern (same pattern as the other overlays). React
 //     state inside this page never tracks open/closed.
@@ -39,15 +42,19 @@ import '../theme/bento-fonts.css';
 import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
-import { initToolsPort, dispatch } from '../bridge/useToolsPort';
+import { useResolvedColorScheme } from '../theme/themeScope';
+import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
 import { requestWelcome, WELCOME_CLOSE_PREFIX } from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
 import { usePrivacyStore } from '../state/privacy';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import {
   APPEARANCE_OPTIONS,
   ImportSources,
   LAST_STEP,
   parseStoredStep,
+  pendingThemeView,
+  type PendingTheme,
   PRIVACY_OPTIONS,
   ReadySummary,
   searchEngineName,
@@ -56,6 +63,8 @@ import {
   startImport,
   stepAfter,
   stepIndexOf,
+  themeSummaryRow,
+  ThemeChooser,
   TourTiles,
   WELCOME_STEPS,
   WelcomeActions,
@@ -210,6 +219,19 @@ function WelcomeApp() {
   const privacyLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel) ?? 'standard';
   const storedSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
   const privacy = usePrivacyStore((s) => s.settings);
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  const workspaceThemeId = useWorkspacesStore((s) =>
+    activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
+  );
+  const colorScheme = useResolvedColorScheme();
+  // The latest pick and the workspace it went to, shown until that workspace's snapshot reports it.
+  const [pendingTheme, setPendingTheme] = useState<PendingTheme | null>(null);
+  const { themeId, settled: pendingThemeSettled } = pendingThemeView({
+    pending: pendingTheme,
+    activeWorkspaceId,
+    storedThemeId: workspaceThemeId,
+  });
   const [stepIndex, setStepIndex] = useState<StepIndex>(0);
   const [hasLoadedStoredStep, setHasLoadedStoredStep] = useState(false);
   const hasRequestedOpenRef = useRef(false);
@@ -299,6 +321,17 @@ function WelcomeApp() {
     dispatch({ type: 'privacy/requestSnapshot' });
   }, []);
 
+  useEffect(() => {
+    if (pendingTheme && pendingThemeSettled) setPendingTheme(null);
+  }, [pendingTheme, pendingThemeSettled]);
+
+  // The theme goes to this window's active workspace; with none known yet there is nothing to write.
+  const selectTheme = (next: string) => {
+    if (!activeWorkspaceId) return;
+    setPendingTheme({ workspaceId: activeWorkspaceId, themeId: next });
+    dispatch({ type: 'workspace/update', id: activeWorkspaceId, changes: { themeId: next } });
+  };
+
   if (!hasLoadedStoredStep) return null;
 
   const description = step.id === 'import' ? importStep.description : step.description;
@@ -317,6 +350,8 @@ function WelcomeApp() {
             }
           />
         );
+      case 'theme':
+        return <ThemeChooser value={themeId} onChange={selectTheme} />;
       case 'import':
         return (
           <ImportSources
@@ -349,6 +384,7 @@ function WelcomeApp() {
                   APPEARANCE_OPTIONS.find((option) => option.id === uiColorMode)?.label ?? 'Light',
                 step: stepIndexOf('appearance'),
               },
+              themeSummaryRow(themeId, colorScheme),
               {
                 label: 'Privacy',
                 value: PRIVACY_LEVEL_DETAILS[privacyLevel].label,
