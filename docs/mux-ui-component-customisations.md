@@ -323,8 +323,8 @@ layer of `welcome.css`, with one exception: the `.muxui-dialog.bento-welcome`
 override (`--bento-welcome-dialog-width` by `--bento-welcome-dialog-height`, 45rem
 by 33rem, clamped to the viewport minus `--bento-welcome-viewport-gap`, with its
 padding) stays unlayered. Every size local to the overlay is a `--bento-welcome-*`
-token declared in `bento-tokens.css` (dialog, text measure, illustration, preview,
-diagram, option list, dots); `welcome.css` only references them, and the narrow
+token declared in `bento-tokens.css` (dialog, text measure, illustration, tour
+image, preview, option list, dots); `welcome.css` only references them, and the narrow
 window re-points `--bento-welcome-viewport-gap` at
 `--bento-welcome-viewport-gap-compact`. Mux's dialog surface sizing is unlayered, so a
 layered override would lose to it and the dialog would fall back to the default
@@ -343,7 +343,7 @@ whose `ToggleButton` items Bento lays out as three tiles (Appearance), one colum
 of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
 `RadioGroup` is not used because its rc.1 options carry no description. Mux owns
 selection state, roles, and arrow-key navigation, and a selection is applied at
-once. Bento sets the grid, the item content layout (preview, label, tag,
+once. Bento sets the grid, the item content layout (preview, icon, label, tag,
 description), and two things on Mux's sliding selected fill: the group's
 `--muxui-toggle-button-group-motion-fill` is a subtle surface
 (`--muxui-semantic-surface-hover`) so each item's own `Text` colours stay
@@ -353,13 +353,23 @@ tile also gets a strong outline (`--muxui-semantic-border-emphasis`) on
 item rules use descendant selectors rather than child selectors. Do not rebuild
 the tiles from clickable `div`s.
 
+A Search item puts its `icon` slot, the label and the tag on one line. The icon is
+the engine's favicon as a Mux `Image` with empty `alt` and `fit="contain"` (shown
+as shipped, with no chip or background, though some ship white squares), or a
+muted `BentoIcon` search glyph when Firefox has none, both in the
+`--bento-welcome-source-logo` box so names stay aligned. The item's accessible
+name stays the engine name.
+
 Appearance thumbnails are small windows built from Bento markup. Each pane sets
 `data-muxui-color-scheme` to `light` or `dark`, so the Light and Dark thumbnails
 keep their colours whatever mode the dialog is in; the Auto thumbnail shows a
 light and a dark pane side by side. The illustrations on Welcome and Ready are
 Mux `Image` with empty `alt`, loading `./welcome/welcome.webp` and
 `./welcome/ready.webp` relative to the entry document, since the welcome document
-loads from `/dist/welcome.html`.
+loads from `/dist/welcome.html`. Each tour tile does the same with
+`./welcome/workspaces.webp`, `panels.webp` or `command-palette.webp` at
+`--bento-welcome-tour-image`, standing directly on the card with no inset well
+behind it; the tile's title and body carry the meaning.
 
 `WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
 `WelcomeSurfaces.stories.css`; nothing in that file ships.
@@ -414,6 +424,32 @@ a button cannot contain. Logos are Mux `Image`s (`fit="contain"`), and a tile wh
 logo could not be read shows a `BentoIcon` globe. The placeholder tiles use
 `--muxui-semantic-action-neutral-background` (the neutral button fill), not
 `surface-track`, which is far lighter than the dialog in dark mode.
+
+### Import host: Firefox buttons and popups
+
+The embedded import host (`bento-migration-host.css`, `bento-migration-wizard-bridge.css`)
+is a chrome page around Firefox's `<migration-wizard>`, so it cannot render Mux
+components. It maps Firefox's own design tokens onto Mux's public semantic tokens
+instead, and the rules for doing it are in
+[first-run-import.md](technical/first-run-import.md#host-styling-against-firefoxs-sheets):
+
+- A host button variant (`.bento-button--primary`, `--neutral`) sets Firefox's
+  `--button-background-color`, `-hover`, `-active` and `--button-text-color`, `-hover`,
+  `-active` and reads them back, because Firefox's `html|button:enabled:hover` outranks
+  a one-class hover rule. The primary values are the `--button-*-primary*` mapping in
+  the host's `body` block (`--color-60`, `-50`, `-40` and their `-fg` pairs).
+- A Firefox popup (the wizard's XUL `<panel>`) takes the Mux popover roles through
+  Firefox's `--panel-*` tokens: surface `--muxui-semantic-surface-raised`, border
+  `border-popup`, radius `control-radius`, text `content-default`. Rows use
+  `surface-hover` with `content-strong` for hover and keyboard focus, `shape-option-radius`,
+  `control-size-md` and `layout-inset-tight`/`-small` for geometry. The selected row takes
+  `selection-background` (Mux's selected table-row and tree-item surface) with
+  `content-link` text (Mux's `selection-track` is 4.1:1 on the dark surface); hover and
+  focus on it stack a second `selection-background` and use `content-strong`. The shadow
+  stays the native window shadow.
+- Do not map Firefox tokens by guessing names: `--panel-background`, `--panel-color` and
+  `--panel-shadow` are not read by Firefox, and the `--panel-list-*` tokens paint nothing
+  inside a XUL panel. Read the computed value of the element Firefox paints.
 
 ### Pruning Mux component CSS
 

@@ -10,11 +10,31 @@ const apiPath = path.resolve(
 );
 const apiSource = fs.readFileSync(apiPath, 'utf8');
 
-function loadApi(overrides = {}) {
+const WEB_GLOBALS = { AbortController, TextDecoder, btoa };
+
+/**
+ * Loads api.js in a scope that, like an experiment's real one, has none of the web globals it
+ * uses: only `Cu.importGlobalProperties` and the Timer module provide them. A global the file
+ * forgets to request is a ReferenceError that the icon pipeline turns into "no icon".
+ */
+function loadApi({
+  fetch = async () => {
+    throw new Error('Unexpected fetch');
+  },
+  timers = { setTimeout, clearTimeout },
+} = {}) {
+  const requested = [];
   const context = {
-    AbortController,
+    Cu: {
+      importGlobalProperties(names) {
+        for (const name of names) {
+          requested.push(name);
+          context[name] = name === 'fetch' ? fetch : WEB_GLOBALS[name];
+          if (context[name] === undefined) throw new Error(`Unavailable global: ${name}`);
+        }
+      },
+    },
     ExtensionAPI: class {},
-    Response,
     Services: {
       io: {
         newURI(value) {
@@ -22,20 +42,12 @@ function loadApi(overrides = {}) {
         },
       },
     },
-    TextDecoder,
     Uint8Array,
-    atob,
-    btoa,
-    clearTimeout,
     console,
-    fetch: async () => {
-      throw new Error('Unexpected fetch');
-    },
-    setTimeout,
-    ...overrides,
   };
   context.ChromeUtils = {
     importESModule(specifier) {
+      if (specifier.includes('Timer.sys.mjs')) return timers;
       if (specifier.includes('SearchService')) return { SearchService: {} };
       if (specifier.includes('SearchUtils')) {
         return {
@@ -51,11 +63,11 @@ function loadApi(overrides = {}) {
   };
   vm.createContext(context);
   vm.runInContext(
-    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, mapWithConcurrency, consumeAddPanelGrant };`,
+    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, getEngineIconUrl, mapWithConcurrency, consumeAddPanelGrant };`,
     context,
     { filename: apiPath },
   );
-  return context.__securityTest;
+  return Object.assign(context.__securityTest, { requested });
 }
 
 test('search icons reject non-allowlisted schemes without fetching', async () => {
@@ -84,18 +96,193 @@ test('search icon fetches omit ambient credentials and referrers', async () => {
   assert.equal(options.credentials, 'omit');
   assert.equal(options.referrerPolicy, 'no-referrer');
   assert.ok(options.signal instanceof AbortSignal);
+  assert.equal(options.signal.aborted, false);
 });
 
-test('search icons reject declared and streamed bodies over 512 KiB', async () => {
-  const declaredApi = loadApi({
-    fetch: async () => new Response(new Uint8Array(1), { headers: { 'content-length': '524289' } }),
-  });
-  assert.equal(await declaredApi.iconUrlToDataUrl('https://example.invalid/large.png'), undefined);
+const ICON_CAP = 524288;
+const CHUNK = 65536;
+const PNG_HEADER = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-  const streamedApi = loadApi({
-    fetch: async () => new Response(new Uint8Array(524289)),
+/**
+ * A Response whose body is a stream of `size` bytes that start with a valid PNG signature,
+ * declared image/png, so only a size check can reject it. `state` records how far the stream was
+ * read and whether it was cancelled.
+ */
+function pngResponse({ size, status = 200, headers = {} }) {
+  const state = { readBytes: 0, cancelled: false };
+  const body = new ReadableStream({
+    pull(controller) {
+      if (state.readBytes >= size) {
+        controller.close();
+        return;
+      }
+      const chunk = new Uint8Array(Math.min(CHUNK, size - state.readBytes));
+      if (state.readBytes === 0) chunk.set(PNG_HEADER);
+      state.readBytes += chunk.length;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      state.cancelled = true;
+    },
   });
-  assert.equal(await streamedApi.iconUrlToDataUrl('https://example.invalid/large.png'), undefined);
+  const response = new Response(body, {
+    status,
+    headers: { 'content-type': 'image/png', ...headers },
+  });
+  return { response, state };
+}
+
+/** Loads the API with a fetch that answers `response` and records each call. */
+function loadApiFetching(response) {
+  const calls = [];
+  const api = loadApi({
+    fetch: async (url, options) => {
+      calls.push({ url, signal: options.signal });
+      return response;
+    },
+  });
+  return { api, calls };
+}
+
+/** An unsuccessful fetch must stop the transfer: the body is cancelled and the request aborted. */
+function assertAbandoned({ calls, state }, url) {
+  assert.equal(calls.length, 1, 'the icon was fetched');
+  assert.equal(calls[0].url, url);
+  assert.equal(state.cancelled, true, 'the unread body was cancelled');
+  assert.equal(calls[0].signal.aborted, true, 'the request was aborted');
+}
+
+test('a declared size over 512 KiB is rejected before the body is read', async () => {
+  // The body itself is a small valid PNG, so the declared size is the only thing that rejects it.
+  const { response, state } = pngResponse({
+    size: PNG_HEADER.length,
+    headers: { 'content-length': String(ICON_CAP + 1) },
+  });
+  const { api, calls } = loadApiFetching(response);
+  const url = 'https://example.invalid/declared.png';
+  assert.equal(await api.iconUrlToDataUrl(url), undefined);
+  assertAbandoned({ calls, state }, url);
+});
+
+test('a streamed body over 512 KiB stops being read at the cap', async () => {
+  // A valid PNG start, image/png, no declared length: only the streamed count can stop it, and it
+  // has to do so before the 4 MiB body is pulled through.
+  const { response, state } = pngResponse({ size: 8 * ICON_CAP });
+  const { api, calls } = loadApiFetching(response);
+  const url = 'https://example.invalid/streamed.png';
+  assert.equal(await api.iconUrlToDataUrl(url), undefined);
+  assertAbandoned({ calls, state }, url);
+  assert.ok(state.readBytes <= ICON_CAP + 3 * CHUNK, `read ${state.readBytes} bytes`);
+});
+
+test('a non-ok response is abandoned without reading its body', async () => {
+  const { response, state } = pngResponse({ size: 8 * ICON_CAP, status: 404 });
+  const { api, calls } = loadApiFetching(response);
+  const url = 'https://example.invalid/missing.png';
+  assert.equal(await api.iconUrlToDataUrl(url), undefined);
+  assertAbandoned({ calls, state }, url);
+  assert.ok(state.readBytes <= 2 * CHUNK, `read ${state.readBytes} bytes`);
+});
+
+test('the fetch timer aborts the request', { timeout: 3000 }, async () => {
+  let fire;
+  let delay;
+  let signal;
+  const api = loadApi({
+    timers: {
+      setTimeout(callback, ms) {
+        fire = callback;
+        delay = ms;
+        return 1;
+      },
+      clearTimeout() {},
+    },
+    fetch: (_url, options) =>
+      new Promise((_resolve, reject) => {
+        signal = options.signal;
+        options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+      }),
+  });
+  const pending = api.iconUrlToDataUrl('https://example.invalid/slow.png');
+  assert.equal(delay, 5000);
+  fire();
+  assert.equal(await pending, undefined);
+  assert.equal(signal.aborted, true);
+});
+
+test('search icon pipeline asks the experiment scope for every web global it uses', async () => {
+  const api = loadApi({
+    fetch: async () => new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+  });
+  // The SVG is typed by sniffing its text, which needs TextDecoder; the fetch needs
+  // AbortController, fetch and the Timer module's setTimeout.
+  assert.match(
+    await api.iconUrlToDataUrl('https://example.invalid/icon'),
+    /^data:image\/svg\+xml;/,
+  );
+  assert.deepEqual([...api.requested].sort(), ['AbortController', 'TextDecoder', 'btoa', 'fetch']);
+});
+
+const SYSTEM_BLOB = 'blob:system/592b2101-081e-4542-bb5f-49bfb2335dc5';
+test('search icons fetch the system blob URLs Firefox returns from getIconURL', async () => {
+  const urls = [];
+  const api = loadApi({
+    fetch: async (url) => {
+      urls.push(url);
+      return new Response(PNG_HEADER, { headers: { 'content-type': 'image/png' } });
+    },
+  });
+  assert.match(await api.iconUrlToDataUrl(SYSTEM_BLOB), /^data:image\/png;base64,/);
+  assert.deepEqual(urls, [SYSTEM_BLOB]);
+});
+
+test('search icons refuse every other blob URL without fetching', async () => {
+  let fetches = 0;
+  const api = loadApi({
+    fetch: async () => {
+      fetches += 1;
+      return new Response(PNG_HEADER);
+    },
+  });
+  for (const url of [
+    'blob:https://example.invalid/592b2101-081e-4542-bb5f-49bfb2335dc5',
+    'blob:null/592b2101-081e-4542-bb5f-49bfb2335dc5',
+    'blob:resource://gre/592b2101-081e-4542-bb5f-49bfb2335dc5',
+    'blob:system/not-a-uuid',
+    `${SYSTEM_BLOB}/more`,
+    `${SYSTEM_BLOB}?query`,
+    `x${SYSTEM_BLOB}`,
+  ]) {
+    assert.equal(await api.iconUrlToDataUrl(url), undefined, url);
+  }
+  assert.equal(fetches, 0);
+});
+
+test('search icon size bounds apply to blob icons too', async () => {
+  const { response, state } = pngResponse({ size: 8 * ICON_CAP });
+  const { api, calls } = loadApiFetching(response);
+  assert.equal(await api.iconUrlToDataUrl(SYSTEM_BLOB), undefined);
+  assertAbandoned({ calls, state }, SYSTEM_BLOB);
+  assert.ok(state.readBytes <= ICON_CAP + 3 * CHUNK, `read ${state.readBytes} bytes`);
+});
+
+test('an engine whose blob icon cannot be read falls back to its bundled icon', async () => {
+  const urls = [];
+  const icoHeader = Uint8Array.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+  const api = loadApi({
+    fetch: async (url) => {
+      urls.push(url);
+      if (url.startsWith('blob:')) throw new Error('blob is gone');
+      return new Response(icoHeader, { headers: { 'content-type': 'image/x-icon' } });
+    },
+  });
+  const engine = { id: 'google', name: 'Google', getIconURL: async () => SYSTEM_BLOB };
+  const base = { resolve: (path) => `moz-extension://bento/${path}` };
+  assert.match(await api.getEngineIconUrl(engine, base), /^data:image\/x-icon;base64,/);
+  assert.ok(urls[0].startsWith('blob:'));
+  assert.ok(
+    urls.at(-1).startsWith('moz-extension://bento/experiments/bento-privacy/search-icons/'),
+  );
 });
 
 test('engine icon mapping obeys the concurrency bound', async () => {

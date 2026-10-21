@@ -31,7 +31,8 @@ in all three presets; Hardened no longer trades away that protection.
 privileged surface that normal WebExtension APIs cannot provide:
 
 - allowlisted pref reads/writes/clears;
-- visible Firefox search engine discovery;
+- visible Firefox search engine discovery, each engine with an `iconUrl`
+  (below);
 - default search engine reads/writes through Firefox `SearchService`;
 - `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
   handshake (see "Add-panel grant" below). It is not a privacy operation; it
@@ -43,6 +44,38 @@ The experiment rejects prefs outside its static allowlist. Search writes use
 set the private default to the same engine when separate private search is not
 enabled. Search provider ids, ordering, availability, and display names come
 from Firefox `SearchService.getVisibleEngines()`.
+
+Engine icons reach the shell as `SearchEngineChoice.iconUrl`, a `data:image/` URL
+that the experiment builds in `getEngineIconUrl`. It asks Firefox for the icon at
+16, 32 and 64 px and unsized (`SearchEngine.getIconURL`), converts the first URL
+it can use, and otherwise reads Bento's bundled copy under
+`experiments/bento-privacy/search-icons/` (Bing, DuckDuckGo, eBay, Google,
+Perplexity, Wikipedia). `iconUrlToDataUrl` handles each form of URL as follows;
+any other scheme, including `http:` and `file:`, is refused:
+
+- `data:image/…`: passed through unchanged when the URL string is at most 699,307
+  characters (`MAX_SEARCH_ICON_DATA_URL_CHARS`, the base64 length of 512 KiB plus
+  256). Only the string length is checked; the payload is neither decoded nor
+  sniffed.
+- `https:`, `moz-extension:` and `blob:system/<uuid>`: fetched with no
+  credentials or referrer and a 5 s timer that aborts the request. The body is
+  capped at 512 KiB three ways: the declared `Content-Length`, a running count
+  while it streams (the read stops and is cancelled at the first chunk past the
+  cap), and a final length check. A request that fails, answers with a status
+  that is not ok, or breaks the cap cancels the unread body and aborts the
+  request, so the connection closes instead of Firefox buffering the rest.
+- `chrome:`, `resource:` and `moz-icon:`: read through `SearchUtils.fetchIcon`.
+  Firefox reads the whole icon first; the experiment then rejects it when it is
+  empty or over 512 KiB.
+
+Bytes from the last two forms must sniff as an image, or arrive with an
+`image/*` type, or the engine gets no icon. Firefox 158 makes the icons of its
+configured engines as `blob:system/<uuid>` object URLs
+(`IconHandler.createIconURL`), so that form carries the common case. The blob
+rule matches the system origin and a UUID and nothing else: a page's blob URL, a
+`blob:null/` one or any other suffix is refused without a fetch. The address
+bar's engine picker and onboarding's Search step draw `iconUrl` as is; an engine
+without one shows a search glyph.
 
 `SettingsStore` is version 2. Defaults include
 `privacyProtectionLevel: 'standard'`, `defaultSearchEngine: 'ddg'`,
@@ -169,15 +202,45 @@ as Settings (`privacy/setProtectionLevel` on selection and again on Continue,
 shows each `PRIVACY_LEVELS` entry's label and one-line `summary` with a
 Recommended tag on Standard; the Search step lists the visible engines and tags
 the ones that match a small built-in list of privacy-oriented providers as
-Private and preselects Firefox's live default (DuckDuckGo on a fresh profile
-because of the boot seed above). Both leave `welcomeSeen=false` until the final
-Start browsing action.
+Private, each with its engine icon before its name, and preselects Firefox's
+live default (DuckDuckGo on a fresh profile because of the boot seed above).
+Both leave `welcomeSeen=false` until the final Start browsing action.
 
 uBlock Origin is bundled as a third built-in extension under
 `extensions/ublock-origin/`. Its provenance and update notes are recorded in
 that folder's README. `.bento-runtime-entries.json` lists the extra top-level
 uBO runtime folders/files that Bento's add-on installer must copy; the default Bento extension copy
 filter is still used for extensions without that file.
+
+### Checking engine icons at runtime
+
+Use a dev build on a throwaway profile; the tools extension must be running.
+
+1. Terminal: add `user_pref("marionette.port", 2829);` to the profile's `user.js`,
+   then launch the dev build:
+
+   ```sh
+   <Bento binary> --new-instance --marionette --remote-allow-system-access --profile <dir>
+   ```
+
+2. Marionette client, chrome context (`Marionette:SetContext chrome`): run an
+   async script that reaches the tools background and calls the API directly:
+
+   ```js
+   return (async () => {
+     const { ExtensionParent } = ChromeUtils.importESModule(
+       'resource://gre/modules/ExtensionParent.sys.mjs',
+     );
+     const ext = ExtensionParent.GlobalManager.getExtension('bento-tools@bento.app');
+     const bg = [...ext.views].find((view) => view.viewType === 'background');
+     const engines = await bg.apiCan.root.bentoPrivacy.getSearchEngines();
+     return engines.map((e) => [e.id, e.iconUrl?.slice(0, 24) ?? null]);
+   })();
+   ```
+
+3. Every configured engine must report a `data:image/...` prefix. A `null` for
+   an engine that Firefox ships an icon for means the pipeline failed silently
+   (see the pitfalls below).
 
 ## Privacy Pitfalls
 
@@ -204,3 +267,20 @@ filter is still used for extensions without that file.
   user-disableable/removable.
 - Do not move experiment files under `src/`; the add-on installer copies only top-level
   `experiments/` into the built-in extension.
+- An experiment's scope is not a window: it has no `fetch`, `AbortController`,
+  `TextDecoder`, `btoa`, `URL`, `TextEncoder` or `setTimeout`/`clearTimeout`.
+  The icon pipeline's `catch` blocks turn the resulting `ReferenceError` into
+  "no icon" and nothing else, so on Firefox 158 no engine had an `iconUrl` and
+  the UI quietly showed the glyph. `api.js` requests the globals it uses with
+  `Cu.importGlobalProperties([...])` and takes the timers from
+  `resource://gre/modules/Timer.sys.mjs`. When the file starts using another web
+  global, add it to that list; `scripts/bento-privacy-security.test.mjs` loads
+  `api.js` in a scope that has only what the file imports, so a missing one fails
+  the icon tests.
+- Do not accept blob URLs other than `blob:system/<uuid>`, and do not widen the
+  other schemes to make an icon appear: the experiment runs with the system
+  principal, so what it fetches has to stay an explicit list.
+- The icon URL form is Firefox's choice (configured engines: `blob:system/<uuid>`;
+  user-added and add-on engines: `data:` or `moz-extension:`). After a Firefox
+  update, run the runtime check above; `scripts/firefox-compat-registry.mjs` lists
+  `SearchEngine.getIconURL` and `IconHandler.createIconURL` for the engine check.

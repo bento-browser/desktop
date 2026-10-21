@@ -7,6 +7,7 @@ import { Button, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/rea
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
+import Search from 'lucide-react/dist/esm/icons/search';
 import type {
   SearchEngineChoice,
   SelectablePrivacyProtectionLevel,
@@ -62,12 +63,12 @@ const STEPS = [
   {
     id: 'privacy',
     title: 'Pick a protection level',
-    note: 'Every level can be fine-tuned later in Settings.',
+    note: 'Protection levels can be fine-tuned in the Settings',
   },
   {
     id: 'search',
     title: 'Default search engine',
-    note: 'These are the engines Firefox has installed. Add more in Settings.',
+    note: 'Add more search engines in the Settings',
   },
   { id: 'tour', title: 'How Bento works' },
   { id: 'ready', title: 'You are set', illustration: 'ready' },
@@ -250,18 +251,24 @@ export function WelcomeActions({
         ) : null}
       </div>
       <StepDots current={index} />
+      {/* Keyed so React never reuses the primary next button as Skip (or back), which would
+          animate its fill between variants as the step changes. */}
       <Row gap="xs" justify="end" wrap className="bento-welcome__next">
         {id === 'import' ? (
           <>
-            <Button variant="neutral" onActivate={onNext}>
+            <Button key="skip" variant="neutral" onActivate={onNext}>
               Skip
             </Button>
-            <Button variant={importAction.primary ? 'primary' : 'neutral'} onActivate={onImport}>
+            <Button
+              key="import"
+              variant={importAction.primary ? 'primary' : 'neutral'}
+              onActivate={onImport}
+            >
               {importAction.label}
             </Button>
           </>
         ) : (
-          <Button variant="primary" onActivate={onNext}>
+          <Button key="next" variant="primary" onActivate={onNext}>
             {id === 'welcome' ? 'Get started' : id === 'ready' ? 'Start browsing' : 'Continue'}
           </Button>
         )}
@@ -276,6 +283,8 @@ export interface WelcomeOption<Id extends string> {
   description?: string;
   tag?: string;
   preview?: ReactNode;
+  /** Mark before the label, on the same line (search engines). */
+  icon?: ReactNode;
 }
 
 /** The one selectable surface for Appearance, Privacy and Search: a single-select
@@ -310,6 +319,7 @@ export function WelcomeOptions<Id extends string>({
       {options.map((option) => (
         <ToggleButton key={option.id} id={option.id} className="bento-welcome__option">
           {option.preview}
+          {option.icon}
           <Text variant="label" size="md">
             {option.label}
           </Text>
@@ -376,7 +386,19 @@ const PRIVACY_ORIENTED_SEARCH_MATCHERS = [
   'brave',
 ] as const;
 
-/** One option per Firefox engine, tagged Private when it matches a privacy-oriented provider. */
+/** The engine's icon as Firefox ships it: a data URL from the privacy experiment, used as is like
+ * the address bar does. An engine without one gets a muted search glyph in the same box, so names
+ * stay aligned. Decorative: the option's name is the engine's name. */
+function SearchEngineIcon({ iconUrl }: { iconUrl?: string }) {
+  return iconUrl ? (
+    <Image src={iconUrl} alt="" fit="contain" className="bento-welcome__option-icon" />
+  ) : (
+    <BentoIcon icon={Search} size="md" className="bento-welcome__option-icon" />
+  );
+}
+
+/** One option per Firefox engine, with its icon, tagged Private when it matches a
+ * privacy-oriented provider. */
 export function searchEngineOptions(
   engines: readonly SearchEngineChoice[],
 ): WelcomeOption<string>[] {
@@ -385,7 +407,12 @@ export function searchEngineOptions(
     const isPrivate = PRIVACY_ORIENTED_SEARCH_MATCHERS.some((matcher) =>
       haystack.includes(matcher),
     );
-    return { id: engine.id, label: engine.name, tag: isPrivate ? 'Private' : undefined };
+    return {
+      id: engine.id,
+      label: engine.name,
+      tag: isPrivate ? 'Private' : undefined,
+      icon: <SearchEngineIcon iconUrl={engine.iconUrl} />,
+    };
   });
 }
 
@@ -528,7 +555,7 @@ export function ImportSources({
 
 function Shortcut({ children }: { children: ReactNode }) {
   return (
-    <Row gap="2xs" wrap className="bento-welcome__shortcut">
+    <Row gap="2xs" justify="center" wrap className="bento-welcome__shortcut">
       {children}
     </Row>
   );
@@ -541,7 +568,7 @@ function Shortcut({ children }: { children: ReactNode }) {
 const TOUR = [
   {
     title: 'Workspaces',
-    boxes: 3,
+    illustration: 'workspaces',
     body: 'One box per task. Tabs, panels and theme stay together.',
     shortcut: (
       <>
@@ -553,7 +580,7 @@ const TOUR = [
   },
   {
     title: 'Panels',
-    boxes: 2,
+    illustration: 'panels',
     body: 'Pin a page beside the one you are reading.',
     shortcut: (
       <>
@@ -565,23 +592,25 @@ const TOUR = [
   },
   {
     title: 'Command palette',
-    boxes: 1,
+    illustration: 'command-palette',
     body: 'Find tabs, commands and sites by typing.',
     shortcut: <kbd>{keys(MOD, ALT, 'P')}</kbd>,
   },
 ] as const;
 
-/** Three tiles, each with a small box diagram laid out by CSS (data-diagram). */
+/** Three tiles, each with its free-standing illustration (public/welcome/<illustration>.webp,
+ * decorative: the title and body carry the meaning) over the title, body and shortcut. */
 export function TourTiles() {
   return (
     <ul className="bento-welcome__tiles bento-welcome__tiles--tour">
       {TOUR.map((tile, index) => (
         <li key={tile.title} style={stagger(index)}>
-          <span className="bento-welcome__diagram" data-diagram={index} aria-hidden="true">
-            {Array.from({ length: tile.boxes }, (_, box) => (
-              <span key={box} />
-            ))}
-          </span>
+          <Image
+            src={`./welcome/${tile.illustration}.webp`}
+            alt=""
+            fit="contain"
+            className="bento-welcome__tour-image"
+          />
           <Text variant="label" size="md">
             {tile.title}
           </Text>
