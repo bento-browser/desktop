@@ -8,15 +8,24 @@ welcome overlay (`welcome.html`, source under
 with one topic per step, and browser-data import is the third step. The persisted
 step value is the index below.
 
-| #   | Step id      | Behaviour                                                                                                                                    | State and messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0   | `welcome`    | Introduction and Get started.                                                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 2   | `import`     | One button per browser found (Chrome, Safari, Edge, Brave, Vivaldi, Opera), a Firefox or Zen button, Skip, and Other sources.                | Browser buttons and Other sources store step 3 and signal chrome (below); Firefox or Zen stores step 3 and asks chrome to restart; Skip is a plain step change to 3. See [Import sources](#import-sources).                                                                                                                                                                                                                                                                                                           |
-| 3   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                |
-| 4   | `search`     | Firefox's visible engines in two columns, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty. | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`. The preselected tile is Firefox's live default, which tools sets to `ddg` at boot while onboarding is unfinished and no engine is stored (`applyBootDefaultSearchEngine`; see [privacy-search.md](privacy-search.md)); without that seed the tile would show Firefox's own default, Google.                                                                                                                                      |
-| 5   | `tour`       | Workspaces, panels, and command palette tiles with shortcuts.                                                                                | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 6   | `ready`      | Summary of Appearance, Privacy, and Search with Change actions, and Start browsing.                                                          | Appearance and Privacy read `uiColorMode` and `privacyProtectionLevel` from the settings snapshot. Search reads `defaultSearchEngine` from the privacy snapshot (falling back to the settings value, then `ddg`) and shows the engine name from `availableSearchEngines`. Until that list loads it shows Firefox's name for a known default id (`ddg` as DuckDuckGo, and `google`, `bing`, `wikipedia`, `ebay`, `perplexity`), else the id itself. Change jumps to step 1, 3, or 4. Start browsing closes onboarding. |
+| #   | Step id      | Behaviour                                                                                                                                                                                               | State and messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | `welcome`    | Introduction and Get started.                                                                                                                                                                           | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                                                                           | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2   | `import`     | One button per browser found (Chrome, Safari, Edge, Brave, Vivaldi, Opera), a Firefox or Zen button, Skip, and Other sources.                                                                           | Browser buttons and Other sources store step 3 and signal chrome (below); Firefox or Zen stores step 3 and asks chrome to restart; Skip is a plain step change to 3. See [Import sources](#import-sources).                                                                                                                                                                                                                                                                                                           |
+| 3   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                                                                           | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                |
+| 4   | `search`     | Firefox's visible engines in two columns, each with its favicon (or a search glyph) before the name, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty. | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`. The preselected tile is Firefox's live default, which tools sets to `ddg` at boot while onboarding is unfinished and no engine is stored (`applyBootDefaultSearchEngine`; see [privacy-search.md](privacy-search.md)); without that seed the tile would show Firefox's own default, Google.                                                                                                                                      |
+| 5   | `tour`       | Workspaces, panels, and command palette tiles, each with its 3D illustration and shortcuts.                                                                                                             | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 6   | `ready`      | Summary of Appearance, Privacy, and Search with Change actions, and Start browsing.                                                                                                                     | Appearance and Privacy read `uiColorMode` and `privacyProtectionLevel` from the settings snapshot. Search reads `defaultSearchEngine` from the privacy snapshot (falling back to the settings value, then `ddg`) and shows the engine name from `availableSearchEngines`. Until that list loads it shows Firefox's name for a known default id (`ddg` as DuckDuckGo, and `google`, `bing`, `wikipedia`, `ebay`, `perplexity`), else the id itself. Change jumps to step 1, 3, or 4. Start browsing closes onboarding. |
+
+Illustrations are static WebP files in `extensions/bento-shell/public/welcome/`,
+copied into `dist/` by Vite and loaded through Mux `Image` as `./welcome/<name>.webp`:
+`welcome` and `ready` on their steps, and `workspaces`, `panels` and `command-palette`
+on the tour tiles (shown at `--bento-welcome-tour-image`, 7.75rem, with no well
+behind them). The tour files are 256 px squares exported from the 1254 px
+transparent-background PNG sources with
+`cwebp -q 90 -alpha_q 100 -m 6 -sharp_yuv -resize 256 256 <name>.png -o <name>.webp`;
+a lossless alpha channel keeps the edges clean on both the light and dark dialog.
 
 Steps 1 to 6 show "Step N of 6"; every step after Welcome has a Back action.
 Back, Continue, Skip, and Change are all ordinary step changes, so each one
@@ -446,6 +455,84 @@ Pitfalls:
   beat the measured `height` for any dialog shorter than 340 px, so the card could not
   match the dialog on either swap in a window about 320 px tall.
 
+### Host styling against Firefox's sheets
+
+The host links Firefox's `in-content/common.css`, so Firefox's own rules compete with
+the host's. `bento-migration-host.css` maps Firefox design tokens (`--button-*`,
+`--in-content-*`, `--text-color`, and so on) onto Bento's chrome tokens in its `body`
+block, and `bento-migration-wizard-bridge.css` styles the wizard's shadow root. Neither
+Firefox token family has a compat-registry entry; they are listed under the import entry
+in [firefox-core-touchpoints.md](../firefox-core-touchpoints.md) for upgrades to re-check.
+
+Pitfalls:
+
+- Firefox's `html|button:enabled:hover` (specificity 0,2,1) and
+  `html|button:enabled:hover:active` (0,3,1) outrank a variant's own
+  `.bento-button--primary:hover` (0,2,0). On hover the Import Firefox or Zen button
+  painted Firefox's `--button-background-color-hover` and `--button-text-color-hover`,
+  which Bento maps to the neutral surface, so the primary fill turned grey. Each
+  `.bento-button` variant now sets Firefox's `--button-background-color`,
+  `-hover`, `-active` and `--button-text-color`, `-hover`, `-active` itself, and the base
+  rules read them, so whichever rule wins paints the variant's colours (no `!important`).
+  The same sheet's `button:focus-visible` outline (0,1,1) also beat `.bento-button`'s
+  `outline: none` (0,1,0), drawing a second ring beside the box-shadow ring;
+  `.bento-button:focus-visible` sets `outline: none` itself.
+- The browser selector dropdown is not a `popover="auto"` list. The wizard builds its
+  `<panel-list>` inside a XUL `<panel>` whenever its document has `createXULElement`
+  (every chrome document, so always here), and the popup is then a native window of its
+  own. Firefox's `popup.css` paints it from `--panel-background-color`,
+  `--panel-text-color`, `--panel-border-color`, `--panel-border-radius` and
+  `--panel-padding`. On macOS it sets `--panel-background-color: none`, a transparent
+  border, `appearance: auto` with a native menu `background-color: Menu`, and
+  `color-scheme: light dark`, which follows the OS and not Bento's colour mode. The
+  bridge had set `--panel-background`, `--panel-color` and `--panel-shadow` (names
+  Firefox never reads) and `--panel-list-*` tokens (read only by a panel-list outside a
+  XUL panel: `:host(:not([inxulpanel]))` paints the surface, so they were inert here). In
+  Bento light mode on a dark macOS the popup was therefore the native dark menu (computed
+  `rgb(43, 42, 51)`), the items kept Bento's dark text on it, and only the selected item,
+  which the wizard fills with `--button-background-color-active`, had a surface of its own.
+- The bridge now sets the real `--panel-*` names on `panel` from Mux's popover roles
+  (`--muxui-semantic-surface-raised`, `content-default`, `border-popup`,
+  `control-radius`), drops the native appearance (`appearance: none`, transparent
+  background) and inherits `color-scheme`. It maps panel-item hover and press
+  (`--button-background-color-menu-hover`, `-active` and their text tokens) to
+  `surface-hover` and `content-strong`, and the item rows take Mux's option geometry.
+  Do not reintroduce `--panel-list-*` or the unprefixed `--panel-background` names.
+- The drop shadow is the native window shadow. A popup cannot paint outside its own
+  window, and `--panel-box-shadow-margin` is `0` on macOS, so Mux's `elevation-overlay`
+  shadow cannot be drawn there.
+- The wizard's own `panel-item.selected` rule fills the selected row with the active
+  button colours. The bridge resets that fill and paints Mux's selected-row surface,
+  `--muxui-semantic-selection-background` (the accent tint of `.muxui-table-row` and
+  `.muxui-tree-item` when selected), on the row's button, with accent text and the
+  selected-option weight. Mux's own selected-option colour,
+  `--muxui-semantic-selection-track`, is a fill colour and reads at 4.1:1 on the dark
+  popup surface, so the selected text is `--muxui-semantic-content-link` (7.5:1 on the
+  tinted row in Light, 5.17:1 in Dark).
+- Hover and keyboard focus on the selected row take a stronger step of the same tint and
+  Mux's item-focus text. The item (`panel-item`) is the layer under the button, so it gets
+  a second `selection-background`; the button cannot (its `background-image` holds the
+  browser's icon, so a gradient layer would replace the logo) and the hover surface
+  cannot go over a translucent tint without a raw mix. Text becomes
+  `content-strong` (7.14:1 Light, 8.24:1 Dark); the rest-to-hover step is 26 channel
+  levels in Light and 13 in Dark, where `surface-hover` over the tint was only 7.
+- The wizard sizes the list to the selector with an inline `min-width`, so anything
+  around the list widens the popup past the selector: the panel's `--panel-padding` (it
+  was 0.4375rem, 16px in all with the border) and the popup's own 1px borders. The panel
+  padding is therefore 0, the Mux popover padding sits on `panel-list`, and
+  `panel-list { margin-inline: -1px }` gives the borders back.
+- The "Firefox and Zen profiles" card (`.bento-migration-host__startup`) is also a
+  `.bento-card`, whose `flex-direction: column` the startup rule never overrode: the
+  copy and the button stacked and centred. It now sets `flex-direction: row` with the copy
+  `flex: 1` (left-aligned, taking the remaining width) and the button centred and not
+  stretched. The `max-width: 520px` rule stacks it again, left-aligned, and sets the
+  button `width: auto` because `.bento-button` is `width: fit-content`, which stops its
+  `align-items: stretch` filling the row. The shell window is at least 500px wide, so the
+  narrow rule is reachable.
+- `panel-item::part(button)` needs `align-items: center`: Firefox's button is a flex
+  row whose XUL label stretches, so with Mux's smaller block padding the label sat above
+  the row's centre.
+
 ## Import sources
 
 The Import step is a set of real buttons, not a description of what the wizard
@@ -565,6 +652,9 @@ Pitfalls:
 - Under the test harness the restarted copy does not respawn (an `eRestart` of an
   unregistered app bundle only quits). Relaunch it by hand with the three
   environment variables above to reach the startup wizard.
+- Hover and press checks on Import Firefox or Zen must release the pointer away from
+  the button: a click on it restarts Bento into the startup wizard, and the test copy
+  quits.
 
 ## Manual verification
 
@@ -618,14 +708,25 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
    finishes, onboarding must reopen on Privacy. The `#bentoWelcomeStep=3` hash is
    the authoritative resume source on this path; for Zen, imported workspaces and
    tabs must also be present.
+   Styling check in Light and Dark, with macOS set to either appearance: in the open
+   wizard, hover and press Import Firefox or Zen (release the pointer away from it): the
+   fill stays the accent colour at rest, hover and press and never turns grey. Open the
+   browser selector: the popup follows Bento's colour mode, every row is readable, the
+   hovered row and the row an arrow key reaches are highlighted (the focused one with a
+   ring), the selected browser has a tinted row with accent, semibold text that deepens
+   on hover and focus, and the popup is as wide as the selector. The Firefox and Zen
+   card is one row (copy left, button right, centred) and stacks left-aligned with a
+   full-width button in a window narrower than 520px.
 7. Bento window, Privacy and Search: select a level and an engine, then open
    Ready and confirm both appear in the summary. Click each Change action and
    confirm it jumps to Appearance, Privacy, or Search, and that Continue walks
    forward through the later steps. Confirm DuckDuckGo is preselected on a fresh
    profile (Browser Toolbox Console, parent process: `SearchService.defaultEngine.id`
-   is `ddg` and `appDefaultEngine.id` is `google` before any pick) and
-   privacy-oriented engines carry a Private tag. Pick Bing, finish, relaunch with
-   the same `--profile`, and confirm Bing persists; a profile whose onboarding
+   is `ddg` and `appDefaultEngine.id` is `google` before any pick), privacy-oriented
+   engines carry a Private tag, and every engine shows its icon before its name (a
+   muted search glyph where Firefox has none), as shipped in Light and Dark
+   (Startpage and Wikipedia keep their white squares). Pick Bing, finish, relaunch
+   with the same `--profile`, and confirm Bing persists; a profile whose onboarding
    finished on Google with no engine override must still be on Google after a
    relaunch.
 8. Terminal: quit Bento from a mid-flow step and relaunch with the same

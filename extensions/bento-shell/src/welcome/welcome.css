@@ -40,6 +40,15 @@
     text-wrap: balance;
   }
 
+  /* The step's controls (options, tiles, engines, privacy levels) sit further from the text
+   * above them (the description, or the heading when a step has none) than the description
+   * sits from the heading. */
+  .bento-welcome__stage
+    > :is(.bento-welcome__title, .bento-welcome__description)
+    + :not(.bento-welcome__description) {
+    margin-block-start: var(--muxui-semantic-layout-section-gap);
+  }
+
   .bento-welcome__illustration {
     block-size: var(--bento-welcome-illustration);
     inline-size: auto;
@@ -133,6 +142,22 @@
     grid-column: 1 / -1;
   }
 
+  /* Search engines: icon, name, then the tag on one line. The icon is the engine's own favicon,
+   * shown as shipped (no chip or background), or a muted glyph in the same box. */
+  .bento-welcome__options--grid .bento-welcome__option {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .bento-welcome__option-icon {
+    inline-size: var(--bento-welcome-source-logo);
+    block-size: var(--bento-welcome-source-logo);
+  }
+
+  .bento-welcome__option .bento-icon {
+    color: var(--muxui-semantic-content-muted);
+  }
+
   /* Descendant, not child: Mux clones the selected option into its motion layer. */
   .bento-welcome__options--tiles .bento-welcome__option {
     grid-template-columns: minmax(0, 1fr);
@@ -207,41 +232,16 @@
     max-inline-size: none;
   }
 
+  /* Tour tile: the illustration stands on the card, centred over the centred text. */
   .bento-welcome__tiles--tour > li {
     flex-direction: column;
-    align-items: stretch;
     padding: var(--muxui-semantic-layout-inset-medium);
+    text-align: center;
   }
 
-  .bento-welcome__diagram {
-    display: flex;
-    gap: var(--muxui-semantic-layout-inset-tiny);
-    block-size: var(--bento-welcome-diagram);
-    padding: var(--muxui-semantic-layout-inset-tiny);
-    border: 1px solid var(--muxui-semantic-border-default);
-    border-radius: var(--muxui-semantic-shape-option-radius);
-  }
-
-  .bento-welcome__diagram > span {
-    flex: 1;
-    border: 1px solid var(--muxui-semantic-border-strong);
-    border-radius: var(--muxui-semantic-shape-indicator-radius);
-    background-color: var(--muxui-semantic-surface-hover);
-  }
-
-  /* Workspaces: three boxes; Panels: a page and a narrower panel; Palette: one bar. */
-  .bento-welcome__diagram[data-diagram='0'] > span {
-    flex: 0 0 22%;
-  }
-
-  .bento-welcome__diagram[data-diagram='1'] > :first-child {
-    flex: 2;
-  }
-
-  .bento-welcome__diagram[data-diagram='2'] > span {
-    flex: 0 0 70%;
-    block-size: 50%;
-    margin: auto;
+  .bento-welcome__tour-image {
+    inline-size: var(--bento-welcome-tour-image);
+    block-size: var(--bento-welcome-tour-image);
   }
 
   /* Import sources (docs/technical/first-run-import.md): a real button per browser chrome found, in

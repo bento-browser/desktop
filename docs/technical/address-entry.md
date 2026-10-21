@@ -461,11 +461,14 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   icon fallback under `extensions/bento-tools/experiments/bento-privacy` for
   default engines whose native object URL cannot be converted during early
   startup.
-- Privileged search-icon conversion accepts only bounded `https:`,
-  `moz-extension:`, `chrome:`, `resource:`, and `moz-icon:` sources. Network
-  reads omit credentials and referrers, time out after five seconds, and stop at
-  512 KiB; engine conversion is limited to four concurrent tasks. Do not add
-  `http:`, `file:`, or unbounded response reads to this bridge.
+- Privileged search-icon conversion accepts only `data:image/` URLs (by string
+  length), bounded `https:`, `moz-extension:`, `chrome:`, `resource:`, and
+  `moz-icon:` sources, and Firefox's own `blob:system/<uuid>` icon URLs. Network
+  reads omit credentials and referrers, time out after five seconds, stop at
+  512 KiB and abandon the request when they fail or exceed the cap; engine
+  conversion is limited to four concurrent tasks. Do not add `http:`, `file:`,
+  other blob origins, or unbounded response reads to this bridge. Per-form
+  limits: [privacy-search.md](privacy-search.md).
 - Keep expanded-sidebar address editing in the shared address overlay. A
   sidebar-frame popover cannot reliably paint over the panel strip/main content
   because the sidebar is a chrome-hosted iframe with its own paint bounds.
