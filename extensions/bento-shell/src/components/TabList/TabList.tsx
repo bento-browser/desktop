@@ -34,6 +34,7 @@ import './TabList.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { afterMotion } from '../../motion/afterMotion';
 import { useRailViewport } from '../../sidebar/railViewport';
+import { useSidebarCardsStore } from '../../state/sidebarCards';
 
 export interface TabListProps {
   revealTabUrl?: string;
@@ -470,10 +471,16 @@ function TabListPane({
     }
     return blocks;
   }, [rows, tabsById]);
+  // The floating sidebar cards cover the end of the list (SidebarCards). The virtualizer
+  // counts that room as part of its scroll size, so the last rows can scroll clear of the
+  // cards, and keeps a row it scrolls into view above them.
+  const cardsInset = useSidebarCardsStore((s) => s.inset);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: useCallback(() => rowSlotSize, [rowSlotSize]),
+    paddingEnd: cardsInset,
+    scrollPaddingEnd: cardsInset,
     // Keep adjacent rows painted while native scrolling advances before React's range update.
     overscan: 15,
   });
@@ -1053,7 +1060,9 @@ function TabListPane({
         </span>
       </div>
       {searchQuery.trim().length > 0 && (
-        <div className="bento-tab-list-search__results">
+        // The floating cards cover the end of the pane here too, so the last result
+        // scrolls clear of them, as the last row does.
+        <div className="bento-tab-list-search__results" style={{ paddingBlockEnd: cardsInset }}>
           {searchResults.map((result) => {
             const style = {
               '--bento-search-result-accent': result.workspaceThemeColor,

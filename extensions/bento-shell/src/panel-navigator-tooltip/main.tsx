@@ -8,6 +8,7 @@ import '../theme/bento-tokens.css';
 import '../theme/presets/index.css';
 import '../theme/bento-fonts.css';
 import '../theme/document-base.css';
+import './tooltip.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
@@ -21,6 +22,10 @@ initToolsPort();
 
 interface NavigatorTooltipPayload {
   label: string;
+  /** A second, smaller line under the label (the rail merge card's progress). */
+  detail?: string;
+  /** Where the tooltip sits against the anchor: below it (the navigator buttons) or beside it. */
+  placement?: 'bottom' | 'end';
   screenX: number;
   screenY: number;
   width: number;
@@ -51,9 +56,18 @@ function PanelNavigatorTooltipApp() {
 
   return (
     <Tooltip
-      content={payload.label}
+      content={
+        payload.detail ? (
+          <span className="bento-navigator-tooltip__text">
+            <span className="bento-navigator-tooltip__label">{payload.label}</span>
+            <span className="bento-navigator-tooltip__detail">{payload.detail}</span>
+          </span>
+        ) : (
+          payload.label
+        )
+      }
       open={true}
-      placement="bottom"
+      placement={payload.placement ?? 'bottom'}
       offset={8}
       trigger={
         <Button

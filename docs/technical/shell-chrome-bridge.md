@@ -126,8 +126,10 @@ class from `tabpanels`; the no-side-panels, tabs-only main content slot reads it
 from the strip container because its shadow is applied outside `tabpanels`.
 The relevant chrome styles live in `src/browser/base/content/bento-shell-mount.css`.
 `:root` defines
-`--bento-panel-frame-outline-shadow` and `--bento-panel-frame-shadow`; the
-disabled class overrides `--bento-panel-frame-shadow` to the outline-only value.
+`--bento-panel-frame-outline-shadow` (the hairline, drawn by each frame's `::after`
+overlay above the page) and `--bento-panel-frame-shadow` (the elevation shadow on the
+frame); the disabled class sets `--bento-panel-frame-shadow` to `none`, and the hairline
+stays.
 Do not use live resize root attributes (`bento-window-resizing`,
 `bento-sidebar-resizing`, or `bento-panel-resizing`) to override the shared
 shadow token globally. Keep

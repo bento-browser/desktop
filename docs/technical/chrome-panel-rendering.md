@@ -607,3 +607,71 @@ contextTab` (or the multi-selection), and the new window adopts its first tab
   exact `aBrowser`, keep that marked slot visually unhidden, suppress focus-ring
   pseudo-elements, and clear every panel/browser wrapper radius while
   `inDOMFullscreen` is active.
+
+## Main frame origin
+
+The hairline around a main or panel frame is drawn by the frame's `::after` overlay, above
+the remote page. Source of truth: `--bento-panel-frame-outline-shadow` and the overlay
+rules in `src/browser/base/content/bento-shell-mount.css` (the split-mode
+`#tabbrowser-tabpanels.bento-split-active > [data-bento-main-panel|data-bento-panel-tab-id]::after`
+rule, and the no-panels `#bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel]::after`
+rule). Chrome bridge: none. Persistence: none. Pitfalls:
+
+- Cause. The stroke used to be a `box-shadow` ring on the frame element and the remote page
+  is clipped by a rounded `overflow` clip inside it. Gecko snaps the two with different
+  rules, so at some device-pixel phases of the frame origin the page overpaints the ring at
+  the arcs (the straight edges are not affected): a jagged corner with the stroke missing on
+  the arc. The phase depends on the display scale, the axis, the sidebar width (a dragged,
+  fractional sidebar width moves every frame origin) and the strip scroll offset.
+- Fix: the hairline sits on the overlay that already carries the focus ring (`inset: 0`,
+  transparent border, `z-index: 10`, the panel radius), as
+  `box-shadow: var(--bento-panel-frame-outline-shadow)`, outside the frame edge exactly where
+  the frame's own ring was. It paints above the page, so the page clip's snapping cannot cover it. The
+  frame keeps only the elevation shadow: `--bento-panel-frame-shadow` is `var(--shadow-l)`, and
+  `none` under `bento-panel-shadows-disabled`, which still shows the outline because the
+  overlay always draws it. With no panels the frame is `.browserSidebarContainer` inside the
+  main tabbox, and the tabbox (same box and radius, its margins are the gutter) carries the
+  overlay; in panel mode the tabbox is the whole strip, so its overlay stays unstroked and
+  each slot's own overlay carries the hairline. The fullscreen rules already remove the
+  overlay (`content: none`) and the frame shadow, so fullscreen stays square with no stroke.
+  The subdivision chooser has no page, so it keeps the hairline on its own box-shadow, as
+  `<outline>, <frame shadow>`. `<outline>, none` is an invalid list that drops the whole
+  declaration (and the hairline), so under `bento-panel-shadows-disabled` a second rule sets
+  the outline alone; `check-chrome-resize-guard.mjs` asserts it.
+- Kept as cheap alignment, not as the fix: the no-panels frame margins are
+  rounded to whole pixels (`round(<space token>, 1px)`) and the collapsed rail is a whole number of pixels wide
+  (`--bento-rail-width: round(var(--bento-tab-strip-width-collapsed), 1px)`, measured by the
+  same expression in `sidebarRailWidth()`). The generated `--bento-tab-strip-width-collapsed`
+  token (51.8px) is unchanged: it comes from the token generator and is asserted by
+  `theme-sheets.test.mjs` and the rollback sheet.
+- Snapping alone was not enough. With the margins, the rail rounding and a `scrollend`
+  handler that settled the strip on a whole `scrollLeft`, a user-resized expanded sidebar
+  still left the defect visible in the main panel plus one side panel at 2x: with the
+  sidebar at 280.4px the main panel's ring loss per corner (top-left, top-right, bottom-left,
+  bottom-right) was 25.6, 4.1, 25.6, 11.2 (10.2, 10.3, 10.2, 12.7 at 300px and at 280px).
+  The `scrollend` handler is gone: with the overlay a strip at rest on a fractional offset
+  draws a complete ring.
+- Measured at 2x, light, radius 12, main panel plus one side panel (ring loss per corner,
+  magenta on the outline token only, frame elevation shadow off): 2.3 each at sidebar
+  widths 300, 280.4 and 280, 2.3 with panel shadows disabled, 0.2 in dark at 280.4. Three
+  frames with `scrollLeft` left at 0.4 (no snap): 2.3; at 654.75 the side panel, at x=284.65,
+  measures 0.0. With no panels: 8.1 each at 300 and 280.4 (7.7 before at 300), 0.0 in dark.
+  The no-panels residual is the same on all four corners and both widths and the ring is
+  unbroken in the screenshot, so it is a difference in the ring's antialiased edge pixels
+  between the page-hidden and page-visible shots, not page overpaint. The metric cannot
+  tell the ring is on top: it only compares the ring with and without the page.
+- Not kept: shifting panel origins to whole pixels, a fractional y that tracks the
+  device-pixel phase, and a scroll-aware quarter-pixel target. The loss depends on the
+  device-pixel phase and the axis, exactly whole y is a knife edge, and the origin has too
+  many inputs (sidebar width, rail, scroll, window size) to pin.
+- Manual verification, Browser Toolbox Console on a window with `layout.css.devPixelsPerPx`
+  at `2.0`: set `document.getElementById('bento-shell-host').style.width = '280.4px'`, then
+  read `getComputedStyle(frame, '::after').boxShadow` for a panel slot
+  (`gBrowser.tabpanels.querySelector(':scope > [data-bento-main-panel]')`) and, with no
+  panels, for `#bento-side-panel-host > [data-bento-main-panel]`; both are the hairline, and
+  the frame's own `boxShadow` has no 1px ring. To measure the ring, set
+  `--bento-panel-frame-outline-shadow` to `0 0 0 1px #ff00ff` and `--bento-panel-frame-shadow`
+  to `none` on the root, screenshot the window with `.browserContainer` visible and then
+  hidden, and compare the ring pixels at the four corners.
+  `scripts/check-chrome-resize-guard.mjs` checks the overlay hairline, the frame shadow
+  tokens, the rounded no-panels margins and the rail expression.

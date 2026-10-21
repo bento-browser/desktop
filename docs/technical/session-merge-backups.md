@@ -3,9 +3,28 @@
 Part of the [technical notes index](../core-functionality-technical.md).
 
 Manual browser-session merge is a runtime additive import, separate from the
-startup Firefox/Zen profile-copy migrator. The user opens it from the sidebar
-footer, which signals `BENTO_OPEN_MERGE_PALETTE_<timestamp>` to
-`src/browser/base/content/bento-shell-mount.js`. Chrome shows the
+startup Firefox/Zen profile-copy migrator. The user opens it from one of three
+places, and all of them end in the mount script's `showMergePalette()`
+(`src/browser/base/content/bento-shell-mount.js`):
+
+- the command palette's "Merge browser session" command (Actions group), which
+  writes `BENTO_OPEN_MERGE_PALETTE_<timestamp>` into the palette overlay
+  document's title; the palette frame's title handler routes it to
+  `showMergePalette()`, which dismisses the command palette first, and the
+  palette's own close title that follows only hides an already hidden overlay;
+- the "Merge browser session" button in the "Backup and data" group of the native
+  Bento Settings page (patch 15, hidden in private windows like the neighbouring
+  backup buttons), which dispatches a `BentoOpenMergePalette` `CustomEvent` on
+  `window.browsingContext.topChromeWindow`, read at click time because a Settings
+  tab keeps its document when moved to another window. The mount script of that
+  window listens for the event, so the palette opens over the window that holds
+  the tab. No observer is registered, so there is nothing to remove on window
+  close;
+- the sidebar merge progress card (see "Sidebar progress card"), which signals the
+  same `BENTO_OPEN_MERGE_PALETTE_<timestamp>` title from the shell frame to
+  reopen the progress view. The footer has no merge button, idle or running.
+
+Chrome shows the
 `bento-merge-palette-host` overlay, creates `merge-palette.html` on the first
 open (see "Overlay documents") and keeps it mounted between opens, and sends an
 open nonce, once the document is ready, into the extension frame with
@@ -26,9 +45,17 @@ dismissal and `onOpenChange` close handling are disabled while that in-palette
 merge overlay is active.
 `externalMerge/started` is followed by `externalMerge/progress` events. The
 first progress event uses the `preparing` stage while the privileged snapshot is
-read. Once `ExternalMergeExecutor` has built its filtered import plans, progress
-events carry the real workspace and tab totals, processed counts, the current
-workspace name, and optional workspace/site activity. The shell store accepts
+read; a second `preparing` event follows once the session is read and normalized,
+and every progress event from then on carries `sourceName` (the browser, from the
+normalized session) for documents that never listed the sources. Once
+`ExternalMergeExecutor` has built its filtered import plans, progress
+events carry the real workspace and tab totals, processed counts
+(`completedTabs`, every tab the import has looked at, including ones it skipped or
+that failed), `importedTabs` (the tabs it actually opened, the executor's
+`summary.tabsOpened` at that moment; typed optional only because the archived rollback
+tools, which `pnpm run rollback:check` type-checks against the live shared protocol,
+predate it, and the shell then falls back to `completedTabs`), the current workspace
+name, and optional workspace/site activity. The shell store accepts
 only progress for its active operation, retains the latest progress snapshot,
 and keeps the latest 100 activity entries. The overlay switches its Mux UI
 `ProgressBar` to a determinate percentage, shows completed/total spaces and
@@ -213,7 +240,10 @@ single in-flight `AbortController`, reports `ExternalMergeError("cancelled",
 passes the signal into `executeExternalMerge()`. The executor checks that signal
 before creating new workspaces and between tab creations. It does not roll back
 tabs already opened and assigned to a workspace; cancellation stops remaining
-work and avoids activating/focusing the partial import as a completed merge.
+work and avoids activating/focusing the partial import as a completed merge. A tab
+being created when the cancel lands still finishes and is reported by the next
+progress event, which the handler forwards after the `cancelled` error (tested in
+`protocol-handler.test.ts`); the shell's cancelled count depends on that event.
 
 All merge protocol events carry correlation fields. Source-list replies echo
 `requestId` and `windowId`; merge lifecycle replies echo `operationId`,
@@ -337,3 +367,95 @@ browser before the import can repopulate it. If a replacement export contains an
 empty workspace with no imported tabs or panels, create an `about:blank` tab in
 that imported workspace before removing old tabs so Firefox never observes an
 empty window.
+
+## Sidebar progress card
+
+`components/MergeProgressCard` (a layer-2 component, with its Ladle stories) shows a
+running merge and its outcome in the sidebar. `components/SidebarCards` holds it:
+a bottom-aligned container laid over the end of the tab list inside
+`.bento-shell-app__list-region` (`App.tsx`), above the footer rail. The container
+measures its cards (a `ResizeObserver` in `cardsInset.ts`) and writes the reach,
+card height plus the offset above the footer and the gap below the last row, to
+`useSidebarCardsStore.inset`. `TabList` passes it to the virtualizer as `paddingEnd`
+and `scrollPaddingEnd`, so the last rows scroll clear of the card and a row scrolled
+into view stops above it; with no card the inset is 0. The card keeps one minimum
+height for every state, so the list does not move when the third line appears.
+
+Source of truth is tools, and the card reads the shell's `externalMerge` mirror. The
+mirror gains two fields only for display: `activeSourceName` (the browser name,
+from the optional `sourceName` that tools adds to every `externalMerge/progress`
+event once it has read the session, because the sidebar document never lists the
+sources) and `result`, a small snapshot of how the merge ended (`done` with the tab
+and space counts, `cancelled` with the tabs added and how far it got, `failed` with
+one sanitized line). A cancelled merge's "N tabs added" is the last event's
+`importedTabs`, never `completedTabs`: a cancel reports as an error with no summary,
+and the processed count overstates what was added whenever duplicates or unsupported
+URLs were skipped. Tools emits the cancel at once so the card responds immediately,
+but a tab already in flight still opens, and the executor reports it with a progress
+event (with the settled `importedTabs`) that tools forwards after the `cancelled`
+error. The cancelled result remembers its `operationId`, and `applyProgress` lets a
+later event for exactly that operation raise `tabsAdded`, never lower it; events for
+any other operation or window are ignored, and the in-flight tab never shows as a
+missing count or "No tabs added". `applyComplete` and `applyError` write the result
+before they clear `progress`; `startMerge` and `applyStarted` clear it, so a new merge
+replaces a lingering result and a late event for the old one finds nothing to raise;
+`dismissResult()` clears it too; closing or reopening the palette leaves it alone. It
+is transient shell state, lost on a shell reload.
+
+`mergeProgressCardModel` (pure, tested) maps the store to the card: preparing ("Preparing
+import", the source as detail, a still ring at 0), importing ("Importing from
+<browser>", "<space>, X of Y tabs", the last site's hostname), finalizing ("Finishing
+import"), done ("Imported N tabs", "From <browser>, M spaces"), cancelled ("Import
+cancelled", "N tabs added", a muted partial ring) and failed ("Import failed", the
+reason). The ring is a Mux `ProgressCircle` with a value, never the indeterminate
+spinner. The percentage sits inside it while the ring is partial. The card shows in
+the windows where the store sees the merge, which are the window that started it
+(events carry its window id; an event without one reaches every window).
+
+The whole card is one Mux `Button` (Enter and Space activate it, and a click anywhere
+opens the merge palette); the dismiss `IconButton` ("Dismiss", shown for a finished
+merge) is its sibling, not nested in it. The button is named by the title and
+described by the detail and host lines, so a screen reader reads the counts when the
+card is focused. A visually hidden `role="status"` region announces the stage or the
+outcome and carries no counts, so it speaks on a stage change and not on each tab.
+The card enters on the `reveal` role and leaves on `dismiss` (`useCardPresence` waits
+for the fade with `afterMotion`); reduced motion keeps the fade and drops the slide.
+
+In the narrow rail the card is a 36 px round ring button above the footer. The text
+and the dismiss button are hidden, and activating a finished card opens the merge
+palette and clears the card. Its title and detail show in the chrome-side panel
+navigator tooltip overlay beside the ring, on hover (after the overlay's 400 ms
+delay) and on keyboard focus (at once), through a `BENTO_RAIL_TOOLTIP` title (see
+"Tooltip document" in [overlay-documents.md](overlay-documents.md)). A Mux `Tooltip`
+cannot render in the shell instead: the rail's frame is about 52 px wide and the
+tooltip wraps to the frame, one word per line. The card carries no native `title`.
+
+The card is drawn in the opposite colour scheme to the sidebar: a dark card on a light
+sidebar, a light card on a dark one. `MergeProgressCard` spreads
+`useInvertedThemeScope()` (`theme/useInvertedThemeScope.ts`) on its root, which is
+`getThemeScopeAttributes(<active workspace theme>, <opposite of useResolvedColorScheme()>)`
+and registers the theme's sheet, so `data-muxui-theme`, `data-muxui-color-scheme` and
+`data-muxui-contrast` sit together on the card and Mux semantic tokens resolve in the
+inverted scheme for everything inside it. It flips live with the colour mode, Auto
+included (the hook watches `data-color-mode` on `<html>`). The card's stylesheet
+reads only Mux semantic tokens (`surface-raised`, `content-default`, `content-muted`
+for the detail and the hostname, `content-strong` for the finished check,
+`border-default`, `color-color-60` for the ring, `status-warning` for a failed one);
+`--bento-merge-card-ring-color` is declared on the card's own `data-kind` selector, and
+the former `--bento-merge-card-failed-color` on `:root` is gone because a `:root`
+declaration would have kept the page's colour. Shadows are the exception: they are
+resolved on the page-scope `.bento-sidebar-cards` container
+(`--bento-sidebar-card-shadow*`) so they stay the page's. Mux's elevation shadows are
+the same translucent black in both schemes, so the light card on the dark sidebar
+casts an effectively invisible shadow and the dark card on the light sidebar a soft
+one. The tooltip is a separate overlay document and stays in the page's mode. Measured
+contrast against the card surface: title 11.2:1 on the dark card and 10.3:1 on the
+light one; detail and hostname 7.1:1 and 5.8:1 (the hostname was `content-faint`, which
+is 4.3:1 on the light card, and is now `content-muted`). Graphics: the accent ring arc is
+4.1:1 on the dark card and 7.4:1 on the light one; a failed ring and icon
+(`status-warning`) is 6.2:1 on the dark card and 2.1:1 on the light card, below the 3:1
+a graphic wants. The text beside it names the state, and `feedback-invalid` (Mux's
+mode-aware red) is the available swap if that needs raising.
+
+While a card shows, the sidebar search results list is padded by the same inset (see
+[workspaces.md](workspaces.md)), so its last result scrolls clear of the card too.

@@ -31,6 +31,15 @@ Palette command records carry Mux UI `title`, `subtitle`, `keywords`, `group`,
 even though `TabSnapshot.url` exists for address autocomplete; do not add URL
 matching here unless the command-palette UX is intentionally widened.
 
+Commands that act on chrome write a `BENTO_*` sentinel through `sendChromeTitle`
+from the palette overlay document, and the mount script routes it in
+`handlePaletteFrameTitle` (`bento-palette-frame`): the Settings commands send
+`BENTO_OPEN_SETTINGS_` and `BENTO_OPEN_SETTINGS_PRIVACY_`, and the Actions-group
+"Merge browser session" command sends `BENTO_OPEN_MERGE_PALETTE_`. That handler
+accepts the merge title from the palette frame as well as from the shell frame,
+and `showMergePalette()` dismisses the command palette itself. See
+[session-merge-backups.md](session-merge-backups.md) for the other open paths.
+
 ## Sidebar Tab And Panel Search
 
 `extensions/bento-shell/src/components/TabList/TabList.tsx` owns the inline

@@ -96,6 +96,17 @@ When changing core functionality, manually verify at least the affected subset:
   panels are present, with the side-panel video visible and no Bento loading
   overlay, spinner, or neutral chrome background replacing it;
 - theme switch and sidebar footer UI light/dark/Auto switch;
+- the Firefox app menu from the sidebar footer button: "Bento Settings" sits
+  directly above "Settings", once after repeated opens and in a second window;
+  arrow keys reach it, and Enter or a click opens or refocuses
+  `about:settings#bento` and closes the menu. The footer has no Settings button
+  in the expanded or collapsed rail (details in
+  [sidebar-native-surfaces.md](sidebar-native-surfaces.md));
+- the sidebar merge progress card: while a merge runs it floats over the end of
+  the tab list, rows scroll under it and the last row scrolls clear, it opens the
+  merge palette on a click or Enter, finished merges stay until the close button
+  (or, in the rail, a click) clears them, and a new merge replaces them (details in
+  [session-merge-backups.md](session-merge-backups.md));
 - new windows with a persisted non-Default workspace theme: the sidebar shows
   that theme no later than the frame in which chrome lifts its launch veil
   (compare the `data-bento-theme` change with the veil lift over several windows;

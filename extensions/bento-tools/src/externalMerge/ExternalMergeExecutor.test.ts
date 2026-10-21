@@ -169,6 +169,7 @@ describe('executeExternalMerge', () => {
       completedWorkspaces: 0,
       totalTabs: 2,
       completedTabs: 0,
+      importedTabs: 0,
     });
     expect(onProgress).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -177,6 +178,7 @@ describe('executeExternalMerge', () => {
         completedWorkspaces: 0,
         totalTabs: 2,
         completedTabs: 1,
+        importedTabs: 1,
         currentWorkspaceName: 'Chrome: Default Window 1 (imported)',
         activity: {
           kind: 'site',
@@ -192,6 +194,7 @@ describe('executeExternalMerge', () => {
       completedWorkspaces: 1,
       totalTabs: 2,
       completedTabs: 2,
+      importedTabs: 2,
     });
   });
 
@@ -739,6 +742,72 @@ describe('executeExternalMerge', () => {
     expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(100, 'imported-workspace');
     expect(deleteWorkspace).not.toHaveBeenCalled();
     expect(ctx.workspaces.activate).not.toHaveBeenCalled();
+  });
+
+  it('reports tabs that opened apart from tabs that were only processed', async () => {
+    let nextTabId = 100;
+    vi.stubGlobal('browser', {
+      tabs: {
+        query: vi.fn(async () => []),
+        create: vi.fn(async () => ({ id: nextTabId++ })),
+        remove: vi.fn(async () => undefined),
+        update: vi.fn(async (id: number) => ({ id })),
+      },
+    });
+
+    // The first tab cannot take its workspace marker, so it is removed and counts as failed.
+    const assignWorkspaceEagerly = vi.fn(async (tabId: number) => tabId !== 100);
+    const ctx = {
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly,
+        setFolder: vi.fn(),
+        rename: vi.fn(),
+      },
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(() => ({ id: 'imported-workspace', name: 'Chrome', createdAt: 1 })),
+        delete: vi.fn(),
+        activate: vi.fn(() => 'activated'),
+      },
+      panels: { getPanels: vi.fn(() => []) },
+      tabFolders: { create: vi.fn() },
+      sourceWindowId: 7,
+    } as unknown as HandlerContext;
+    const tab = (n: number) => ({
+      id: `tab-${n}`,
+      url: `https://site${n}.example/`,
+      title: `Site ${n}`,
+      index: n,
+      active: false,
+      pinned: false,
+    });
+    const onProgress = vi.fn();
+
+    const summary = await executeExternalMerge(
+      {
+        sourceId: 'chrome-default',
+        kind: 'chrome',
+        browserName: 'Chrome',
+        profileName: 'Default',
+        capturedAt: 1,
+        lastModified: 1,
+        windows: [{ id: 'window-1', active: true, groups: [], tabs: [tab(1), tab(2), tab(3)] }],
+      },
+      ctx,
+      { onProgress },
+    );
+
+    expect(summary).toMatchObject({ tabsOpened: 2, failedTabs: 1 });
+    const counts = onProgress.mock.calls
+      .map(([progress]) => progress)
+      .filter((progress) => progress.activity?.kind === 'site')
+      .map((progress) => [progress.completedTabs, progress.importedTabs]);
+    expect(counts).toEqual([
+      [1, 0],
+      [2, 1],
+      [3, 2],
+    ]);
   });
 
   it('reports duplicate-only sessions as no-op before creating workspaces', async () => {
