@@ -466,7 +466,7 @@ theme's sheet must be attached: `ThemeChooser` keeps every theme's sheet loaded 
 tokens (`--bento-welcome-theme-preview-unit`, `-gap`, `-radius`, `-bar`) or `calc()` of
 them, with only the skeleton bars' widths in percentages, and the selected swatch's ring
 is `--bento-focus-ring-width`; the width is
-`min(100%, --bento-welcome-theme-preview-width)` (28rem, centred) and the height
+`min(100%, --bento-welcome-theme-preview-width)` (22.5rem, centred) and the height
 `--bento-welcome-theme-preview`, or `-compact` at 48rem and below, where the New row,
 toolbar squares and a skeleton bar drop out. Panel and sidebar children are
 `flex: none` so a tight preview clips instead of collapsing the bars.
