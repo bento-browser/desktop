@@ -1679,8 +1679,8 @@ rel="stylesheet">` load and error events on chrome documents, and the
   - `scripts/install-branding.mjs`
   - `scripts/firefox-patch-stack.mjs`
   - `patches/experiments/**`
-- Bento functionality: applies Bento defaults, DuckDuckGo fresh-profile search,
-  Firefox-visible search options for Bento onboarding and Settings, branding,
+- Bento functionality: applies Bento defaults, Firefox-visible search options
+  for Bento onboarding and Settings, branding,
   build configuration, and temporary Firefox-source build guards. Privacy defaults include strict
   tracking protection, tracker-cookie partitioning, Global Privacy Control,
   query stripping, speculative networking off, remote search suggestions off,
@@ -1692,20 +1692,32 @@ rel="stylesheet">` load and error events on chrome documents, and the
   standard hosted-runner memory limits; macOS retains upstream's default fat
   LTO.
 - Vanilla Firefox surface touched or depended on: Firefox profile defaults,
-  search service Remote Settings dumps, branding import paths, Firefox
+  search service Remote Settings dumps (read, not changed: `search-config-v2.json`
+  `globalDefault` is `google` and its `ddg` engine identifier is the id the boot
+  seed below applies), branding import paths, Firefox
   configure's `browser/moz.configure` environment-to-config export,
   `config/makefiles/rust.mk` release Rust flags, and patched build/runtime
   behavior covered by `patches/experiments`.
 - Why this cannot stay extension-only: prefs, branding, and build behavior are
-  consumed before or outside the privileged extension runtime. Fresh-profile
-  default search is resolved by Firefox search configuration before Bento's
-  extension UI can safely mutate it.
+  consumed before or outside the privileged extension runtime. Default search is
+  not one of them: no pref, patch, or search-config change sets it, so Firefox
+  stays on its own default (`google`) until bento-tools applies one. Fresh-profile
+  DuckDuckGo comes only from `applyBootDefaultSearchEngine`
+  (`extensions/bento-tools/src/privacy/BootSearchDefault.ts`), which calls
+  `SearchService.setDefault` through the `bento-privacy` experiment at boot while
+  onboarding is unfinished and no engine override is stored.
 - Firefox update risk: upstream pref renames, search config schema changes,
   branding layout changes, build system or Rust flag changes, or obsolete
   temporary patches can silently stop applying or block security update rebases.
+  A renamed `ddg` engine identifier makes the boot seed log a warning and leave
+  Firefox's default.
 - Regression checks for future updates: run `pnpm run build`, confirm
   `scripts/append-prefs.sh` still appends `prefs/bento.js`, inspect branding in
-  the built app, confirm fresh-profile omnibar search uses DuckDuckGo, inspect
+  the built app, confirm a fresh profile's `SearchService.defaultEngine.id` is `ddg`
+  while `SearchService.appDefaultEngine.id` is Firefox's own default (`google`),
+  that the Search onboarding step preselects DuckDuckGo, and that a profile with
+  `welcomeSeen` true and no engine override stays on its saved default after a
+  relaunch (Browser Toolbox Console, parent process), inspect
   `about:config` for the Standard privacy defaults, confirm Firefox-visible
   search engines can be selected as default search in onboarding and Settings,
   confirm an HTTP-only destination still offers Firefox's exception UI, confirm

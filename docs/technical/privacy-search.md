@@ -49,10 +49,35 @@ from Firefox `SearchService.getVisibleEngines()`.
 `sidebarHidden: false`, and `sidebarShortcutBehavior: 'collapse'`.
 Migrated v1 profiles receive those default fields in the settings snapshot but
 do not have an explicit stored override. On tools boot, `background.ts` applies
-the stored privacy preset or stored default search engine only when
-`SettingsStore.hasOverride(...)` says the user explicitly stored that setting.
-Fresh-profile browser defaults therefore come from `prefs/bento.js` and the
-search config dumps rather than from an unconditional startup rewrite.
+the stored privacy preset only when `hasOverride('privacyProtectionLevel')`
+says the user explicitly stored it, so fresh-profile privacy defaults come from
+`prefs/bento.js` rather than an unconditional startup rewrite.
+
+The default search engine does not work that way. Neither `prefs/bento.js` nor
+the search config dumps choose it: Firefox's `search-config-v2.json`
+`globalDefault` is `google`, so a profile with no explicit apply stays on Google.
+`applyBootDefaultSearchEngine` (`src/privacy/BootSearchDefault.ts`, called from
+`bootReady` in `background.ts`) is the only thing that moves a fresh profile to
+DuckDuckGo. It decides from `SettingsStore`:
+
+- a stored `defaultSearchEngine` override: apply it;
+- no override and `welcomeSeen` false (onboarding unfinished): apply the Bento
+  default, `ddg`, and log `seeding default search engine: ddg`;
+- no override and `welcomeSeen` true: apply nothing. Firefox's saved default
+  stands, so a profile that finished onboarding on Google (or any engine chosen
+  natively) is not migrated.
+
+The call goes through the same `setDefaultSearchEngine` as a pick, which waits for
+`SearchService.promiseInitialized`. It never throws: when `ddg` is missing (the
+experiment's `getEngine` throws `Search engine is not available`) it logs a warning
+and leaves Firefox's default. The seed is issued from `bootReady`, before the shell
+port is served, and a later pick waits on the same initialisation behind it, so a
+pick made during onboarding is always applied last. The onboarding Search step
+preselects Firefox's live default, so it shows DuckDuckGo because of that seed.
+Picking DuckDuckGo stores no override (it equals the default) and needs none:
+Firefox persists the choice, and once Start browsing sets `welcomeSeen` nothing is
+applied at boot. `settings/reset` applies `ddg` unconditionally and returns
+`welcomeSeen` to false, so a reset profile matches a fresh one.
 
 Native Bento Settings is registered by
 `patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
@@ -144,7 +169,9 @@ as Settings (`privacy/setProtectionLevel` on selection and again on Continue,
 shows each `PRIVACY_LEVELS` entry's label and one-line `summary` with a
 Recommended tag on Standard; the Search step lists the visible engines and tags
 the ones that match a small built-in list of privacy-oriented providers as
-Private. Both leave `welcomeSeen=false` until the final Start browsing action.
+Private and preselects Firefox's live default (DuckDuckGo on a fresh profile
+because of the boot seed above). Both leave `welcomeSeen=false` until the final
+Start browsing action.
 
 uBlock Origin is bundled as a third built-in extension under
 `extensions/ublock-origin/`. Its provenance and update notes are recorded in
@@ -154,6 +181,17 @@ filter is still used for extensions without that file.
 
 ## Privacy Pitfalls
 
+- `SettingsStore` stores only deltas from its defaults (`#persistAndPublish`
+  drops a value equal to its default), so a default never reaches Firefox unless
+  something applies it explicitly, and "no override" never means "the user has not
+  chosen". `defaultSearchEngine: 'ddg'` was once documented as the fresh-profile
+  default while nothing applied it: Firefox stayed on Google and onboarding, which
+  preselects the live default, showed Google. A new Bento default that must be
+  live needs an explicit seed like `BootSearchDefault.ts`, gated on `welcomeSeen`
+  rather than on the missing override. Check it at runtime with
+  `SearchService.defaultEngine.id` and `SearchService.appDefaultEngine.id` in the
+  Browser Toolbox Console (a seeded profile reports `ddg` and Firefox's own
+  `google`).
 - Do not add arbitrary prefs to the experiment API. Additions must be explicit
   in both `privacy-levels.ts` and `experiments/bento-privacy/api.js`.
 - Do not auto-apply Standard on every boot. That would overwrite users who
