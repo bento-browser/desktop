@@ -31,7 +31,8 @@ does not reset this setting or change the displayed preset to Custom.
 
 ## Search
 
-Fresh profiles default to DuckDuckGo. Bento Settings can switch the default
+Fresh profiles default to DuckDuckGo; a profile that already finished
+onboarding keeps its current engine. Bento Settings can switch the default
 search engine among Firefox's currently visible search engines. Bento does not
 maintain a separate provider list; ids, names, icons, ordering, and availability
 come from Firefox `SearchService.getVisibleEngines()`. Provider icons are
