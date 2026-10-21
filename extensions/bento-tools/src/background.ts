@@ -52,7 +52,8 @@ import {
   readPanelMarkerWithRetries,
 } from './panels/SessionMarker';
 import { KeyRegistry } from './keyboard/KeyRegistry';
-import { applyPrivacyLevel, setDefaultSearchEngine } from './privacy/ProtectionLevels';
+import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
+import { applyPrivacyLevel } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { NativePreferencesService } from './native-preferences/NativePreferencesService';
@@ -885,11 +886,7 @@ const bootReady = storesReady.then(async () => {
       console.warn('[bento-tools] boot privacy level apply failed:', err),
     );
   }
-  if (settings.hasOverride('defaultSearchEngine')) {
-    void setDefaultSearchEngine(settings.snapshot().defaultSearchEngine).catch((err) =>
-      console.warn('[bento-tools] boot default search apply failed:', err),
-    );
-  }
+  void applyBootDefaultSearchEngine(settings);
   await sweepStaleFolderIds();
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
