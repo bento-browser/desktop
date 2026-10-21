@@ -2,12 +2,14 @@
 // #bentoWelcomeStep hash chrome stamps after a profile migration, and the next
 // step in BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts> all carry it.
 
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import {
   LAST_STEP,
   parseStoredStep,
   searchEngineName,
+  searchEngineOptions,
   startImport,
   stepAfter,
   stepIndexOf,
@@ -70,5 +72,30 @@ describe('searchEngineName', () => {
     expect(searchEngineName([], 'ddg')).toBe('DuckDuckGo');
     expect(searchEngineName([], 'custom-engine')).toBe('custom-engine');
     expect(searchEngineName([], 'constructor')).toBe('constructor');
+  });
+});
+
+describe('searchEngineOptions', () => {
+  const engines = [
+    { id: 'ddg', name: 'DuckDuckGo', isDefault: true, iconUrl: 'data:image/png;base64,ddg' },
+    { id: 'kagi', name: 'Kagi', isDefault: false },
+  ];
+
+  it('keeps each engine in order, tagging privacy-oriented ones', () => {
+    expect(searchEngineOptions(engines).map(({ id, label, tag }) => ({ id, label, tag }))).toEqual([
+      { id: 'ddg', label: 'DuckDuckGo', tag: 'Private' },
+      { id: 'kagi', label: 'Kagi', tag: undefined },
+    ]);
+  });
+
+  it('shows the engine icon as a decorative image, else a search glyph', () => {
+    const [withIcon, withoutIcon] = searchEngineOptions(engines).map((option) =>
+      renderToStaticMarkup(option.icon),
+    );
+    expect(withIcon).toMatch(/<img[^>]* src="data:image\/png;base64,ddg"/);
+    expect(withIcon).toContain('alt=""');
+    expect(withoutIcon).not.toContain('<img');
+    expect(withoutIcon).toContain('lucide-search');
+    expect(withoutIcon).toContain('aria-hidden="true"');
   });
 });

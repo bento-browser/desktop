@@ -30,31 +30,56 @@ import { IMPORT_BROWSERS, importCopy, type ImportBrowser, type ImportView } from
 import './welcome.css';
 import './WelcomeSurfaces.stories.css';
 
-function engines(names: readonly string[]): SearchEngineChoice[] {
-  return names.map((name) => ({
+// Stand-ins for the favicons Firefox ships (data URLs, as the privacy experiment sends them): a
+// coloured square with the engine's initial, or a white square (as Startpage and Wikipedia ship
+// in dark mode) for the names in WHITE_ICON.
+const WHITE_ICON: ReadonlySet<string> = new Set(['Startpage', 'Wikipedia (en)']);
+
+function engineIcon(name: string, hue: number): string {
+  const white = WHITE_ICON.has(name);
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+    `<rect width="32" height="32" rx="6" fill="${white ? 'white' : `hsl(${hue} 60% 45%)`}"/>` +
+    `<text x="16" y="23" text-anchor="middle" font-family="sans-serif" font-size="20" font-weight="700" fill="${white ? `hsl(${hue} 60% 45%)` : 'white'}">${name[0]}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** Engines named in `names`, each with an icon except those named in `withoutIcon`. */
+function engines(
+  names: readonly string[],
+  withoutIcon: readonly string[] = [],
+): SearchEngineChoice[] {
+  return names.map((name, index) => ({
     id: name.toLowerCase().replace(/\W+/g, '-'),
     name,
     isDefault: name === 'DuckDuckGo',
+    ...(withoutIcon.includes(name) ? {} : { iconUrl: engineIcon(name, index * 47) }),
   }));
 }
 
-const ENGINES = engines(['DuckDuckGo', 'Google', 'Startpage', 'Bing', 'Ecosia', 'Wikipedia (en)']);
-const MANY_ENGINES = engines([
-  'DuckDuckGo',
-  'Google',
-  'Startpage',
-  'Bing',
-  'Ecosia',
-  'Qwant',
-  'Brave Search',
-  'Wikipedia (en)',
-  'Amazon.com',
-  'eBay',
-  'Perplexity',
-  'Kagi',
-  'Mojeek',
-  'Yahoo! JAPAN',
-]);
+const ENGINES = engines(
+  ['DuckDuckGo', 'Google', 'Startpage', 'Bing', 'Ecosia', 'Wikipedia (en)', 'Kagi'],
+  ['Kagi'],
+);
+const MANY_ENGINES = engines(
+  [
+    'DuckDuckGo',
+    'Google',
+    'Startpage',
+    'Bing',
+    'Ecosia',
+    'Qwant',
+    'Brave Search',
+    'Wikipedia (en)',
+    'Amazon.com',
+    'eBay',
+    'Perplexity',
+    'Kagi',
+    'Mojeek',
+    'Yahoo! JAPAN',
+  ],
+  ['Kagi'],
+);
 
 // Stand-ins for the logos chrome sends (PNG data URLs read from Firefox's brand images).
 function placeholderLogo(hue: number): string {
@@ -340,7 +365,7 @@ function LoadingSearchDialog() {
 export const DialogNarrow: Story<DialogArgs> = ({ step }) => (
   <WelcomeDialog key={step} initialStep={step} searchEngines={ENGINES} />
 );
-DialogNarrow.storyName = 'Dialog (narrow viewport, grids collapse)';
+DialogNarrow.storyName = 'Dialog (narrow viewport, grids collapse, tour tiles as rows)';
 DialogNarrow.args = { step: stepIndexOf('tour') };
 DialogNarrow.argTypes = DialogSteps.argTypes;
 DialogNarrow.meta = { width: 'small' };
@@ -395,7 +420,7 @@ export const SearchGrid = () => (
     />
   </Frame>
 );
-SearchGrid.storyName = 'Options: search grid (Private tags)';
+SearchGrid.storyName = 'Options: search grid (icons, Private tags, one without an icon)';
 
 export const SearchGridLong = () => (
   <Frame width={600}>

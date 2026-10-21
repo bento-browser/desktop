@@ -214,35 +214,48 @@ body {
   box-shadow:
     0 0 0 0.125rem var(--neutral-100),
     0 0 0 0.25rem var(--focus-ring-color);
+  /* Firefox's 'button:focus-visible' (0,1,1) outranks the base 'outline: none' (0,1,0) and would
+   * draw its own outline beside this ring. */
+  outline: none;
+}
+
+/* Firefox's in-content 'html|button:enabled:hover' (0,2,1) and 'html|button:enabled:hover:active'
+ * (0,3,1) outrank '.bento-button:hover' (0,2,0) and paint its --button-* tokens, which are the
+ * neutral surface. Each variant therefore sets those tokens, and the rules here read them, so
+ * whichever rule wins paints the variant's colours. */
+.bento-button {
+  background-color: var(--button-background-color);
+  color: var(--button-text-color);
+}
+
+.bento-button:enabled:hover {
+  background-color: var(--button-background-color-hover);
+  color: var(--button-text-color-hover);
+}
+
+.bento-button:enabled:active {
+  background-color: var(--button-background-color-active);
+  color: var(--button-text-color-active);
 }
 
 .bento-button--primary {
+  --button-background-color: var(--button-background-color-primary);
+  --button-background-color-hover: var(--button-background-color-primary-hover);
+  --button-background-color-active: var(--button-background-color-primary-active);
+  --button-text-color: var(--button-text-color-primary);
+  --button-text-color-hover: var(--button-text-color-primary-hover);
+  --button-text-color-active: var(--button-text-color-primary-active);
+
   border-color: transparent;
-  background-color: var(--color-60);
-  color: var(--color-60-fg);
-}
-
-.bento-button--primary:hover {
-  background-color: var(--color-50);
-  color: var(--color-50-fg);
-}
-
-.bento-button--primary:active {
-  background-color: var(--color-40);
-  color: var(--color-40-fg);
 }
 
 .bento-button--neutral {
-  background-color: var(--neutral-14);
-  color: var(--neutral-90);
-}
-
-.bento-button--neutral:hover {
-  background-color: var(--neutral-18);
-}
-
-.bento-button--neutral:active {
-  background-color: var(--neutral-22);
+  --button-background-color: var(--bento-migration-surface-control);
+  --button-background-color-hover: var(--bento-migration-surface-hover);
+  --button-background-color-active: var(--bento-migration-surface-active);
+  --button-text-color: var(--bento-migration-text);
+  --button-text-color-hover: var(--bento-migration-text);
+  --button-text-color-active: var(--bento-migration-text);
 }
 
 .bento-migration-host {
@@ -389,8 +402,11 @@ html[data-bento-morph='close'] .bento-migration-host > * {
   font-weight: 650;
 }
 
+/* A row of copy and button. '.bento-card' sets 'flex-direction: column', which this rule has to
+ * override; the narrow rule at the end of the sheet stacks it again. */
 .bento-migration-host__startup {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-xs);
@@ -406,6 +422,7 @@ html[data-bento-morph='close'] .bento-migration-host > * {
 
 .bento-migration-host__startup-copy {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 0.1875rem;
   min-width: 0;
@@ -471,5 +488,10 @@ button {
   .bento-migration-host__startup {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  /* '.bento-button' is 'width: fit-content', which stops 'align-items: stretch' filling the row. */
+  #restart-profile-import {
+    width: auto;
   }
 }

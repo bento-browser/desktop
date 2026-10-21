@@ -298,59 +298,80 @@ input[type='checkbox'] {
   color: var(--color-60);
 }
 
+/* The browser selector is a XUL <panel> wrapping a <panel-list>: the wizard builds one whenever
+ * its document can create XUL elements, so the popup is a native window of its own. Firefox's
+ * popup.css paints it from the --panel-* tokens below (not the --panel-list-* ones, which only
+ * paint a panel-list outside a XUL panel) and, on macOS, as a native menu in the OS colour scheme
+ * until the panel drops its native appearance. The tokens carry Mux's popover roles, so the popup
+ * follows Bento's colour mode. Its drop shadow stays the native window shadow: the popup cannot
+ * paint outside its own window. */
 panel {
-  --panel-background: var(--neutral-10);
-  --panel-color: var(--neutral-90);
-  --panel-border-color: var(--neutral-20);
-  --panel-border-radius: var(--radius-s);
-  --panel-padding: var(--space-3xs);
-  --panel-shadow: var(--shadow-l);
+  --panel-background-color: var(--muxui-semantic-surface-raised);
+  --panel-text-color: var(--muxui-semantic-content-default);
+  --panel-border-color: var(--muxui-semantic-border-popup);
+  --panel-border-radius: var(--muxui-semantic-control-radius);
+  --panel-padding: 0;
+  --button-background-color-menu-hover: var(--muxui-semantic-surface-hover);
+  --button-text-color-menu-hover: var(--muxui-semantic-content-strong);
+  --button-background-color-menu-active: var(--muxui-semantic-surface-hover);
+  --button-text-color-menu-active: var(--muxui-semantic-content-strong);
+
+  appearance: none;
+  background-color: transparent;
+  color-scheme: inherit;
 }
 
+/* The wizard sizes the list to the selector's width, so the popup is as wide as the selector
+ * only when the list also gives back the popup's 1px border on each side. */
 panel-list {
-  --panel-list-background-color: var(--neutral-10);
-  --panel-list-color: var(--neutral-90);
-  --panel-list-border-color: var(--neutral-20);
-  --panel-list-border-radius: var(--radius-s);
-  --panel-list-box-shadow: var(--shadow-l);
-}
-
-panel-item {
-  color: var(--neutral-90);
+  margin-inline: -1px;
+  padding: var(--muxui-semantic-layout-inset-tight);
 }
 
 panel-item::part(button) {
-  min-height: 2.25rem;
-  padding-block: var(--space-3xs);
-  padding-inline-end: var(--space-2xs);
-  border-radius: var(--radius-s);
-  color: var(--neutral-90);
-  font-size: var(--text-m-font-size);
-}
-
-panel-item::part(button):hover {
-  background-color: var(--item-focus-bg);
-  color: var(--item-focus-color);
-}
-
-panel-item::part(button):active {
-  background-color: var(--neutral-18);
-  color: var(--neutral-90);
+  align-items: center;
+  min-height: var(--muxui-semantic-control-size-md);
+  padding-block: var(--muxui-semantic-layout-inset-tight);
+  padding-inline-end: var(--muxui-semantic-layout-inset-small);
+  border-radius: var(--muxui-semantic-shape-option-radius);
+  font-family: var(--text-font-family);
+  font-size: var(--muxui-semantic-typography-text-s-font-size);
 }
 
 panel-item::part(button):focus-visible {
+  background-color: var(--muxui-semantic-surface-hover);
+  color: var(--muxui-semantic-content-strong);
   box-shadow:
     inset 0 0 0 0.125rem var(--neutral-100),
     inset 0 0 0 0.25rem var(--focus-ring-color);
   outline: none;
 }
 
+/* The wizard fills the selected item with its active button colours. The host card resets that
+ * and paints Mux's selected-row surface (--muxui-semantic-selection-background, the accent tint of
+ * '.muxui-table-row[data-selected]' and '.muxui-tree-item[data-selected]') on the button, with
+ * accent text and Mux's selected-option weight. Mux's own selected-option colour,
+ * --muxui-semantic-selection-track, is a fill colour and reads at 4.1:1 on the dark popup surface,
+ * so the accent text role stands in for it.
+ * Hover and keyboard focus put a second layer of the same tint under the button (on the item, whose
+ * own background is the wizard's selected fill) and take Mux's item-focus text: a stronger step of
+ * the selected surface that stays 4.5:1 or better in both modes. */
 panel-item.selected {
+  border-radius: var(--muxui-semantic-shape-option-radius);
   background-color: transparent;
-  color: var(--neutral-90);
+  color: inherit;
+}
+
+panel-item.selected:is(:hover, :focus-within) {
+  background-color: var(--muxui-semantic-selection-background);
 }
 
 panel-item.selected::part(button) {
-  background-color: var(--item-focus-bg);
-  color: var(--item-focus-color);
+  background-color: var(--muxui-semantic-selection-background);
+  color: var(--muxui-semantic-content-link);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+panel-item.selected:is(:hover, :focus-within)::part(button) {
+  color: var(--muxui-semantic-content-strong);
 }
