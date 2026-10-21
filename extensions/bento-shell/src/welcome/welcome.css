@@ -116,19 +116,6 @@
     overflow-y: auto;
   }
 
-  /* Theme cards: tiles in five columns over the dialog's full width. The inset keeps focus rings
-   * unclipped once the compact layout makes the list scroll. */
-  .bento-welcome__options--cards {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    box-sizing: border-box;
-    max-inline-size: none;
-    padding: var(--muxui-semantic-layout-utility-inset);
-  }
-
-  .bento-welcome__options--cards[data-columns='4'] {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .bento-welcome__options > .muxui-toggle-button-group-motion-indicator {
     border-radius: var(--muxui-semantic-control-radius);
   }
@@ -172,16 +159,10 @@
   }
 
   /* Descendant, not child: Mux clones the selected option into its motion layer. */
-  :is(.bento-welcome__options--tiles, .bento-welcome__options--cards) .bento-welcome__option {
+  .bento-welcome__options--tiles .bento-welcome__option {
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     padding: var(--muxui-semantic-layout-inset-small);
-  }
-
-  /* Cards sit close to their preview so a long name ('Mountain Meadow') keeps one line. */
-  .bento-welcome__options--cards .bento-welcome__option {
-    justify-items: start;
-    padding: var(--muxui-semantic-layout-inset-tiny);
   }
 
   /* Appearance mini window; each pane carries its own data-muxui-color-scheme. */
@@ -224,93 +205,254 @@
     inline-size: 60%;
   }
 
-  /* Theme card preview: the pane takes the theme's canvas, the content panel its background
-   * surface, the active tab its selection fill and the accents its action colour. Each pane
-   * carries the theme's scope (data-muxui-theme), so these are that theme's tokens. */
-  .bento-welcome__preview-pane--theme {
-    gap: var(--bento-welcome-line);
-    padding: var(--bento-welcome-line);
+  /* Theme step (docs/technical/first-run-import.md#theme-step): a live preview of one theme over
+   * two rows of swatches and the theme's name. The preview is a low-fidelity Bento window of
+   * shapes, no text. Its root carries the theme's own scope (data-muxui-theme), so every colour
+   * below is that theme's public Mux token. Every size is one of the --bento-welcome-theme-preview-*
+   * tokens (unit, gap, radius, bar) or a calc() of them; the skeleton widths are percentages. */
+  .bento-welcome__theme-chooser {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-group-gap);
+    inline-size: 100%;
+  }
+
+  .bento-welcome__theme-preview {
+    display: grid;
+    grid-template-columns: var(--bento-welcome-theme-preview-sidebar) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: var(--bento-welcome-theme-preview-gap);
+    box-sizing: border-box;
+    inline-size: min(100%, var(--bento-welcome-theme-preview-width));
+    block-size: var(--bento-welcome-theme-preview);
+    padding: var(--bento-welcome-theme-preview-gap);
+    overflow: hidden;
+    border: 1px solid var(--muxui-semantic-border-default);
+    border-radius: var(--muxui-semantic-shape-option-radius);
     background-color: var(--muxui-semantic-surface-canvas);
   }
 
-  .bento-welcome__preview-pane > .bento-welcome__preview-sidebar:first-child {
+  .bento-welcome__theme-titlebar {
     display: flex;
-    flex: 0 0 30%;
-    flex-direction: column;
-    gap: var(--bento-welcome-line);
-    padding-block: var(--bento-welcome-line);
-    padding-inline: calc(var(--bento-welcome-line) / 2);
-    border: 0;
-    background-color: transparent;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    margin-block-end: var(--bento-welcome-theme-preview-gap);
   }
 
-  .bento-welcome__preview-sidebar > span:not(.bento-welcome__preview-workspaces) {
-    block-size: var(--bento-welcome-line);
+  .bento-welcome__theme-titlebar > span {
+    inline-size: var(--bento-welcome-theme-preview-bar);
+    block-size: var(--bento-welcome-theme-preview-bar);
     border-radius: var(--muxui-semantic-shape-pill-radius);
     background-color: var(--muxui-semantic-surface-track);
   }
 
-  .bento-welcome__preview-sidebar > span:nth-child(2) {
-    inline-size: 80%;
-  }
-
-  .bento-welcome__preview-sidebar > span:nth-child(4) {
-    inline-size: 65%;
-  }
-
-  .bento-welcome__preview-sidebar > span[data-active] {
-    block-size: calc(var(--bento-welcome-line) * 1.6);
-    border-radius: calc(var(--bento-welcome-line) / 2);
-    background-color: var(--muxui-semantic-selection-background);
-    box-shadow: inset calc(var(--bento-welcome-line) / 2) 0 0
-      var(--muxui-semantic-action-background);
-  }
-
-  .bento-welcome__preview-workspaces {
+  .bento-welcome__theme-sidebar {
     display: flex;
-    gap: calc(var(--bento-welcome-line) / 2);
+    flex-direction: column;
+    gap: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    min-inline-size: 0;
   }
 
-  .bento-welcome__preview-workspaces > span {
-    inline-size: var(--bento-welcome-line);
-    block-size: var(--bento-welcome-line);
-    border-radius: calc(var(--bento-welcome-line) / 3);
+  .bento-welcome__theme-sidebar > * {
+    flex: none;
+  }
+
+  /* Every neutral bar is the theme's track colour; its width is set by the row it sits in. */
+  .bento-welcome__theme-bar {
+    flex: none;
+    block-size: var(--bento-welcome-theme-preview-bar);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
     background-color: var(--muxui-semantic-surface-track);
   }
 
-  .bento-welcome__preview-workspaces > [data-active] {
-    background-color: var(--muxui-semantic-action-background);
+  .bento-welcome__theme-workspace,
+  .bento-welcome__theme-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--bento-welcome-theme-preview-gap);
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+    border-radius: var(--bento-welcome-theme-preview-radius);
   }
 
-  .bento-welcome__preview-pane--theme > .bento-welcome__preview-lines {
-    border-radius: var(--muxui-semantic-shape-indicator-radius);
+  .bento-welcome__theme-workspace {
+    background-color: var(--muxui-semantic-surface-hover);
+  }
+
+  .bento-welcome__theme-workspace > .bento-welcome__theme-bar {
+    inline-size: 55%;
+  }
+
+  /* The real avatar and active tab use color-60, which Mux names color-color-60. */
+  .bento-welcome__theme-avatar {
+    flex: none;
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-color-color-60);
+  }
+
+  /* Spans, so these rows are flex: a bar inside an inline span has no width or height. */
+  .bento-welcome__theme-address,
+  .bento-welcome__theme-new {
+    display: flex;
+    align-items: center;
+  }
+
+  .bento-welcome__theme-address {
+    padding: var(--bento-welcome-theme-preview-gap);
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: var(--bento-welcome-theme-preview-radius);
+  }
+
+  .bento-welcome__theme-address > .bento-welcome__theme-bar {
+    inline-size: 50%;
+  }
+
+  .bento-welcome__theme-new {
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+  }
+
+  .bento-welcome__theme-new > .bento-welcome__theme-bar {
+    inline-size: 30%;
+  }
+
+  .bento-welcome__theme-icon {
+    flex: none;
+    inline-size: var(--bento-welcome-theme-preview-unit);
+    block-size: var(--bento-welcome-theme-preview-unit);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) / 2);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-tab > .bento-welcome__theme-bar {
+    inline-size: 50%;
+  }
+
+  .bento-welcome__theme-sidebar > :nth-child(5) > .bento-welcome__theme-bar {
+    inline-size: 38%;
+  }
+
+  .bento-welcome__theme-sidebar > :nth-child(6) > .bento-welcome__theme-bar {
+    inline-size: 44%;
+  }
+
+  /* The active tab: color-60 fill, its icon and bar in the paired foreground (currentcolor). */
+  .bento-welcome__theme-tab[data-active] {
+    background-color: var(--muxui-semantic-color-color-60);
+    color: var(--muxui-semantic-color-color-60-fg);
+  }
+
+  .bento-welcome__theme-tab[data-active] > span {
+    background-color: currentcolor;
+  }
+
+  .bento-welcome__theme-tools {
+    display: flex;
+    gap: var(--bento-welcome-theme-preview-gap);
+    margin-block-start: auto;
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+  }
+
+  .bento-welcome__theme-tools > span {
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 0.75);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 0.75);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) / 2);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--bento-welcome-theme-preview-gap);
+    padding-block-start: calc(var(--bento-welcome-theme-preview-gap) * 4);
+    padding-inline: calc(var(--bento-welcome-theme-preview-gap) * 5);
+    overflow: hidden;
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) * 1.5);
     background-color: var(--muxui-semantic-surface-background);
   }
 
-  .bento-welcome__preview-lines > .bento-welcome__preview-button {
-    align-self: flex-end;
-    inline-size: 30%;
-    margin-block-start: auto;
-    block-size: calc(var(--bento-welcome-line) * 1.6);
-    border-radius: calc(var(--bento-welcome-line) / 2);
+  .bento-welcome__theme-panel > * {
+    flex: none;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-heading {
+    inline-size: 40%;
+    block-size: calc(var(--bento-welcome-theme-preview-bar) * 2);
+    background-color: var(--muxui-semantic-content-muted);
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(2) {
+    inline-size: 80%;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(3) {
+    inline-size: 92%;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(4) {
+    inline-size: 64%;
+  }
+
+  .bento-welcome__theme-button {
+    align-self: flex-start;
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 4.5);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    margin-block-start: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    border-radius: var(--bento-welcome-theme-preview-radius);
     background-color: var(--muxui-semantic-action-background);
   }
 
-  /* Theme step: Mux's segmented Tabs hold the collection switch and, in its panel, the cards. */
-  .muxui-tabs.bento-welcome__theme-tabs {
+  /* Two rows of swatches (Colourful, then Monochrome). Each row is a single-select Mux group that
+   * wraps when compact; the group's own border, fill and clipping are off, and the selected
+   * swatch gets a ring (its outline), so the sliding fill stays transparent. */
+  .bento-welcome__theme-swatches {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--muxui-semantic-layout-control-content-gap);
+    gap: var(--muxui-semantic-layout-utility-inset);
     inline-size: 100%;
   }
 
-  .bento-welcome__theme-tabs .muxui-tab-panels {
-    inline-size: 100%;
+  .bento-welcome__swatch-row {
+    --muxui-toggle-button-group-motion-fill: transparent;
+
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--muxui-semantic-layout-utility-inset);
+    max-inline-size: 100%;
+    border: 0;
+    overflow: visible;
   }
 
-  .bento-welcome__theme-tabs .muxui-tab-panel {
-    padding: 0;
+  .bento-welcome__swatch {
+    padding: var(--muxui-semantic-layout-utility-inset);
+    min-block-size: 0;
+    border: 0;
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    outline: var(--bento-focus-ring-width) solid transparent;
+    outline-offset: 0;
+    background-color: transparent;
+  }
+
+  .bento-welcome__swatch:hover:not([data-disabled], [data-selected]) {
+    background-color: transparent;
+    outline-color: var(--muxui-semantic-border-strong);
+  }
+
+  .bento-welcome__swatch[data-selected] {
+    outline-color: var(--muxui-semantic-content-default);
+  }
+
+  .bento-welcome__swatch-color {
+    inline-size: var(--bento-welcome-swatch);
+    block-size: var(--bento-welcome-swatch);
+  }
+
+  .bento-welcome__theme-name {
+    min-block-size: 1lh;
   }
 
   /* Tour tiles: a static list. */
@@ -596,12 +738,19 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
-    /* Theme cards: three columns, scrolling inside the stage like the engine grid. */
-    .bento-welcome__options--cards,
-    .bento-welcome__options--cards[data-columns] {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      max-block-size: var(--bento-welcome-card-list);
-      overflow-y: auto;
+    /* Theme step: a shorter preview without the New row and the toolbar icons. */
+    .bento-welcome__theme-preview {
+      block-size: var(--bento-welcome-theme-preview-compact);
+    }
+
+    .bento-welcome__theme-new,
+    .bento-welcome__theme-tools,
+    .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(4) {
+      display: none;
+    }
+
+    .bento-welcome__theme-panel {
+      padding-block-start: calc(var(--bento-welcome-theme-preview-gap) * 2.5);
     }
 
     /* Tour tiles stack as rows: the smaller illustration on the left, the title and body to its
@@ -659,6 +808,18 @@
 
     .bento-welcome__actions > .bento-welcome__next {
       margin-inline-start: auto;
+    }
+  }
+
+  /* Phone widths: smaller swatches, so both rows fit on one line each, and the theme name and
+   * description take two lines, so hovering a swatch does not move the rows above. */
+  @media (max-width: 30rem) {
+    .bento-welcome {
+      --bento-welcome-swatch: var(--bento-welcome-swatch-compact);
+    }
+
+    .bento-welcome__theme-name {
+      min-block-size: 2lh;
     }
   }
 }

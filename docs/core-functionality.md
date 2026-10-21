@@ -22,16 +22,21 @@ earlier choices can be revisited. The steps are:
    (Auto shows a light and a dark half). The choice is applied to the dialog and
    the browser immediately, not when the user continues. Fresh profiles start on
    Light; Auto follows the operating system's appearance.
-3. Theme: "Pick a colour theme", with a Colourful and a Monochrome switch above a
-   grid of preview cards. Each card is a small Bento window drawn in that theme (a
-   sidebar of workspace dots and tabs with the active one marked, a content panel,
-   and an accent button) over the theme's name, in the dialog's current Light or
-   Dark. Colourful holds Default and the eight standard themes in two rows of five;
-   Monochrome holds the seven monochrome themes. The switch opens on the collection
-   that holds the current theme. Choosing a card sets the theme of the window's
-   current workspace right away, and the dialog repaints in it; every workspace can
-   have its own theme later. On narrow windows the cards drop to three columns and
-   scroll inside the dialog.
+3. Theme: "Pick a colour theme", with one compact, low-fidelity preview of a Bento
+   window drawn in a theme's own colours, from shapes only and no text: a
+   titlebar of dots, a sidebar (a workspace circle, an address field, a short
+   row and three tabs with the first active, then toolbar squares) and a content
+   panel (a heading bar, a few lines and an accent button), in the dialog's
+   current Light or Dark. The theme shows through the workspace circle, the
+   active tab and the button; the rest is neutral. Below it are two rows
+   of round colour swatches: Default and the eight standard themes, then the
+   seven monochrome themes. Hovering or keyboard-focusing a swatch shows that
+   theme in the preview and, under the swatches, its name and a one-line
+   description, without changing anything; moving away shows the selected theme
+   again. Clicking a swatch (or Space or Enter on it) sets the theme of the
+   window's current workspace right away, and the dialog repaints in it; every
+   workspace can have its own theme later. On narrow windows the preview gets
+   shorter and the swatches wrap.
 4. Import: one button per browser Bento found on this Mac among Chrome, Safari,
    Edge, Brave, Vivaldi, and Opera, each with the browser's logo, its name, and
    a chevron, in a grid of four columns. Choosing one opens the browser-data

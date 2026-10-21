@@ -405,10 +405,10 @@ instead of letting Mux's entry scale animation run. Mux measures a
 scaled dialog left the fill about 3% too small for its tile. Recheck this after a
 Mux upgrade before restoring the entry scale.
 
-Appearance, Theme, Privacy, and Search share one selectable surface, `WelcomeOptions`: a
+Appearance, Privacy, and Search share one selectable surface, `WelcomeOptions`: a
 Mux `ToggleButtonGroup` with `selectionMode='single'` and `disallowEmptySelection`
-whose `ToggleButton` items Bento lays out as three tiles (Appearance), preview cards
-(Theme), one column of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
+whose `ToggleButton` items Bento lays out as three tiles (Appearance), one column
+of rows (Privacy), or a two-column grid in a capped-height list that scrolls when it is long (Search).
 `RadioGroup` is not used because its rc.1 options carry no description. Mux owns
 selection state, roles, and arrow-key navigation, and a selection is applied at
 once. Bento sets the grid, the item content layout (preview, icon, label, tag,
@@ -441,33 +441,35 @@ behind it; the tile's title and body carry the meaning. At the compact breakpoin
 the tile switches to a grid template (`image`, `title`, `body`, `chips` areas) and
 the illustration drops to `--bento-welcome-tour-image-compact`.
 
-Theme cards (`layout="cards"`) are the tiles layout with the card padding at
-`--muxui-semantic-layout-inset-tiny` and left-aligned labels, in five columns (four
-when the group says `columns={4}`, through `data-columns`) across the dialog's full
-width, and three columns that scroll inside `--bento-welcome-card-list` when compact.
-The cards' padding is that small on purpose: at the wide layout it is what lets
-'Mountain Meadow' keep one line; a wrapped label makes its row taller and pushes the
-second row under the footer. A card's preview is `ThemePreview`, which reuses the
-Appearance thumbnail frame, pane and lines. Its pane carries the card theme's own
-`getThemeScopeAttributes` (`data-muxui-theme` and `data-muxui-color-scheme`), so the
-mini window is coloured only from public Mux semantic tokens (`surface-canvas`,
-`surface-background`, `surface-track`, `selection-background`, `action-background`),
-and the theme's sheet must be attached: `ThemeChooser` keeps every theme's sheet
-loaded with `useThemeSheets(ALL_THEME_IDS)` while the step shows. Specificity inside the preview
-matters: the generic `.bento-welcome__preview-lines > span` and
-`.bento-welcome__preview-sidebar > span` bar rules would otherwise paint the accent
-button, the workspace dots and the active tab as plain bars, so those parts are
-selected as `> .bento-welcome__preview-button`, `> span[data-active]` and
-`:not(.bento-welcome__preview-workspaces)`.
+The Theme step does not use `WelcomeOptions`. Its swatches are two single-select
+`ToggleButtonGroup`s (one per row, `ThemeChooser`), each `ToggleButton` holding the Mux
+`ColorSwatch` the workspace theme picker draws (circle, `brand60` and `neutral20`, the
+swatch's own theme scope attributes) at `--bento-welcome-swatch`. Keying is by theme id
+rather than a colour picker's colour value, because Default and Harbour share their
+colours. Bento declares the group's `--muxui-toggle-button-group-motion-fill` as
+transparent and clears the group border and clipping and the button fill, border and
+hover background (the Bento layer outranks the Mux layer), so a swatch is just its
+colour; the selected one gets a 2px outline ring in `--muxui-semantic-content-default`
+and a hovered one `--muxui-semantic-border-strong`. A swatch carries `data-theme-swatch`, and
+the wrapper reads that from hover and focus to preview a theme without selecting it.
 
-The Colourful and Monochrome switch is Mux `Tabs` with `variant="segment"`, one panel
-per collection holding that collection's `WelcomeOptions`. Mux renders the pill on an
-inner `.muxui-tabs-motion` and the panels as siblings of it, so the root is a centred
-flex column (`.muxui-tabs.bento-welcome__theme-tabs`) and the panel padding is
-cleared. React Aria mounts only the selected panel, so a collection's selected fill is
-measured when it is visible. Arrow keys moved DOM focus with the selection in a
-Chrome check; the emoji picker's focus-lag correction (see above) was not needed
-here, but recheck it in Bento's Firefox.
+The preview above the swatches (`ThemePreview`) is one low-fidelity themed window made
+of shapes with no text: its root carries the previewed theme's own
+`getThemeScopeAttributes` (`data-muxui-theme` and `data-muxui-color-scheme`), so it is
+coloured only from public Mux semantic tokens (`surface-canvas`, `surface-background`,
+`surface-hover`, `surface-track` for the neutral bars, `border-default`,
+`border-subtle`, `content-muted` for the heading bar and toolbar squares,
+`action-background` for the button, and `color-color-60` with its `-fg` for the
+workspace circle and active tab, as the real tab row uses `--color-60`), and its
+theme's sheet must be attached: `ThemeChooser` keeps every theme's sheet loaded with
+`useThemeSheets(ALL_THEME_IDS)` while the step shows. Its sizes are four small
+tokens (`--bento-welcome-theme-preview-unit`, `-gap`, `-radius`, `-bar`) or `calc()` of
+them, with only the skeleton bars' widths in percentages, and the selected swatch's ring
+is `--bento-focus-ring-width`; the width is
+`min(100%, --bento-welcome-theme-preview-width)` (28rem, centred) and the height
+`--bento-welcome-theme-preview`, or `-compact` at 48rem and below, where the New row,
+toolbar squares and a skeleton bar drop out. Panel and sidebar children are
+`flex: none` so a tight preview clips instead of collapsing the bars.
 
 `WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
 `WelcomeSurfaces.stories.css`; nothing in that file ships.

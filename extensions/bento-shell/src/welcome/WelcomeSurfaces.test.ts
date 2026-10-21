@@ -3,6 +3,7 @@
 // step in BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts> all carry it.
 
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -15,11 +16,11 @@ import {
   startImport,
   stepAfter,
   stepIndexOf,
+  ThemeChooser,
   THEME_GROUPS,
-  themeGroupOf,
-  themeOptions,
   WELCOME_STEPS,
 } from './WelcomeSurfaces';
+import { nextPreview, requestedTheme, swatchThemeId } from './themeChooser';
 
 describe('welcome steps', () => {
   it('keeps the persisted step order', () => {
@@ -76,7 +77,7 @@ describe('welcome steps', () => {
   });
 });
 
-describe('theme step options', () => {
+describe('theme step swatch rows', () => {
   const themesOf = (id: 'colourful' | 'monochrome') =>
     THEME_GROUPS.find((group) => group.id === id)?.themes ?? [];
 
@@ -94,22 +95,20 @@ describe('theme step options', () => {
     expect(themes.every((theme) => theme.collection === 'monochrome')).toBe(true);
   });
 
-  it('opens on the collection holding the selected theme, resolving aliases', () => {
-    expect(themeGroupOf(undefined)).toBe('colourful');
-    expect(themeGroupOf('standard-harbour')).toBe('colourful');
-    expect(themeGroupOf('monochrome-teal')).toBe('monochrome');
-    // A legacy id resolves to its monochrome theme; an unknown one to Default.
-    expect(themeGroupOf('teal')).toBe('monochrome');
-    expect(themeGroupOf('deleted-theme')).toBe('colourful');
-  });
-
-  it('previews each card in its own theme scope and the dialog scheme', () => {
-    const [first, second] = themeOptions(THEME_GROUPS[0].themes.slice(0, 2), 'dark');
-    expect([first?.id, second?.id]).toEqual(['default', 'standard-harbour']);
-    const markup = renderToStaticMarkup(second?.preview);
-    expect(markup).toContain('data-muxui-theme="standard-harbour"');
-    expect(markup).toContain('data-muxui-color-scheme="dark"');
-    expect(markup).toContain('aria-hidden="true"');
+  it('selects the theme in the row that holds it and previews it in its own scope', () => {
+    // The two rows are separate groups: only one of them gets the selected id.
+    const markup = renderToStaticMarkup(
+      createElement(ThemeChooser, { value: 'standard-harbour', onChange() {} }),
+    );
+    const checked = [
+      ...markup.matchAll(/<button[^>]*aria-label="([^"]+)"[^>]*aria-checked="true"/g),
+    ];
+    expect(checked.map((match) => match[1])).toEqual(['Harbour']);
+    // Every swatch (and nothing else) carries data-theme-swatch, which the hover lookup reads.
+    expect([...markup.matchAll(/data-theme-swatch="/g)]).toHaveLength(16);
+    expect(markup).toContain('aria-label="Colourful themes"');
+    expect(markup).toContain('aria-label="Monochrome themes"');
+    expect(markup).toMatch(/aria-hidden="true"[^>]*data-muxui-theme="standard-harbour"/);
   });
 });
 
@@ -150,6 +149,50 @@ describe('a theme pick in flight', () => {
     expect(view('default', undefined)).toEqual({ themeId: 'default', settled: true });
     expect(view('default', 'deleted-theme')).toEqual({ themeId: 'default', settled: true });
     expect(view('monochrome-teal', 'teal')).toEqual({ themeId: 'monochrome-teal', settled: true });
+  });
+});
+
+describe('theme chooser pointer, focus and selection rules', () => {
+  // A tiny element tree whose closest() matches a bare [attribute] selector, like the DOM's.
+  interface FakeNode {
+    closest(selector: string): FakeNode | null;
+    getAttribute(name: string): string | null;
+  }
+  const node = (attributes: Record<string, string>, parent?: FakeNode): FakeNode => {
+    const self: FakeNode = {
+      getAttribute: (name) => attributes[name] ?? null,
+      closest(selector) {
+        const name = /^\[([^\]=]+)\]$/.exec(selector)?.[1] ?? '';
+        return name in attributes ? self : (parent?.closest(selector) ?? null);
+      },
+    };
+    return self;
+  };
+  const html = node({ 'data-theme': 'light' });
+  const row = node({}, node({}, html));
+
+  it('reads a swatch, or a shape inside it, but not whitespace under the html data-theme', () => {
+    const swatch = node({ 'data-theme-swatch': 'standard-fern' }, row);
+    expect(swatchThemeId(swatch)).toBe('standard-fern');
+    expect(swatchThemeId(node({}, swatch))).toBe('standard-fern');
+    expect(swatchThemeId(row)).toBeNull();
+  });
+
+  it('ends the override when the pointer moves from a swatch to whitespace', () => {
+    let preview = nextPreview('monochrome-teal', { type: 'point', swatch: 'standard-fern' });
+    expect(preview).toBe('standard-fern');
+    preview = nextPreview(preview, { type: 'point', swatch: null });
+    expect(preview).toBeNull();
+  });
+
+  it('shows the selected theme after a swatch is activated, not the last hovered one', () => {
+    expect(nextPreview('standard-fern', { type: 'select' })).toBeNull();
+  });
+
+  it('writes a theme only when the event names a different one', () => {
+    expect(requestedTheme('standard-harbour', 'default')).toBe('standard-harbour');
+    expect(requestedTheme('standard-harbour', 'standard-harbour')).toBeNull();
+    expect(requestedTheme(undefined, 'default')).toBeNull();
   });
 });
 

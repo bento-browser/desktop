@@ -175,8 +175,10 @@
 
     /* Welcome overlay (src/welcome). Dialog: the frame, then the gap kept to the
        viewport edge (-compact is the narrow-window gap). Inside: the text
-       measure, option and diagram blocks (-list is the scrolling engine grid, -card-list the
-       compact theme cards: two whole rows), the import source tiles, and the step dots. */
+       measure, option and diagram blocks, the Theme step's preview (its width and height, shorter when
+       compact; -unit is an icon square, -gap every gap and padding, -radius a row's corner, -bar a
+       skeleton bar's height, and the shapes are calc() of these) and swatches, the import
+       source tiles, and the step dots. */
     --bento-welcome-dialog-width: 45rem;
     --bento-welcome-dialog-height: 33rem;
     --bento-welcome-viewport-gap: 2rem;
@@ -187,7 +189,16 @@
     --bento-welcome-tour-image: 7.75rem;
     --bento-welcome-tour-image-compact: 4.5rem;
     --bento-welcome-list: 13.5rem;
-    --bento-welcome-card-list: 14.5rem;
+    --bento-welcome-theme-preview: 10.5rem;
+    --bento-welcome-theme-preview-compact: 8.25rem;
+    --bento-welcome-theme-preview-width: 28rem;
+    --bento-welcome-theme-preview-sidebar: 30%;
+    --bento-welcome-theme-preview-unit: 0.625rem;
+    --bento-welcome-theme-preview-gap: 0.375rem;
+    --bento-welcome-theme-preview-radius: 0.3125rem;
+    --bento-welcome-theme-preview-bar: 0.375rem;
+    --bento-welcome-swatch: 1.875rem;
+    --bento-welcome-swatch-compact: 1.5rem;
     --bento-welcome-dot: 0.375rem;
     --bento-welcome-dot-active: calc(var(--bento-welcome-dot) * 2.5);
     --bento-welcome-line: 0.3125rem;
