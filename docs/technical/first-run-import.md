@@ -319,10 +319,11 @@ hidden (`opacity: 0`, `display: flex` so it lays out; no fade for this open), an
 when the host is ready and READY has arrived it calls `prepare()` (card pinned at
 the dialog rectangle, content hidden), shows the host, and posts `hide`. The
 dialog cuts itself out and sends HIDDEN; chrome calls `open()`: the card moves to
-its centred rectangle on the geometry role while the wizard content fades in on
-`modal`, starting at 40% of the geometry duration. When the geometry and the
-content fade have both ended (two `afterMotion` waits, because the fade outlasts
-the move) chrome calls `settle()` and the card is back in normal flow. The dialog
+its centred rectangle on the geometry role (the `reveal` spring, 400 ms) while the
+wizard content fades in on `modal`, starting 160 ms in (40% of the spring duration).
+When the geometry and the content fade have both ended (two `afterMotion` waits,
+because either can end last) chrome calls `settle()` and the card is back in normal
+flow. The dialog
 shows the next step (Privacy) while it is cut out. Back (`MigrationWizard:Close`):
 chrome calls `close()` (the card pins at its current rectangle, then moves to the
 dialog rectangle while its content fades out on `dismiss`), posts `restore` when
@@ -345,10 +346,21 @@ because a dialog shorter than that, as in a window about 320 px tall, would othe
 leave the card taller than the rectangle it has to match; the resting centred card keeps
 the rule. `prepare()` reads the card's rectangle back and returns false when it differs
 from the dialog's by half a pixel or more, and chrome then takes the crossfade. The
-geometry runs on the Mux `reveal` role in one block of
-`bento-migration-host.css`. `lint:motion` forbids an indirect `var()` in a
-transition, so switching to `content-resize` means changing the duration and easing
-tokens in that block and the duration inside the 40% delay (three names).
+geometry runs on the Mux `reveal` role's spring pair
+(`--muxui-semantic-motion-reveal-transition-spring-duration`, 400 ms, with
+`-spring-easing`, a sampled `linear()` curve with bounce 0, so the card settles
+without overshoot) in one block of `bento-migration-host.css`. The content fade-in
+starts at `calc(spring-duration * 0.4)`, 160 ms. That is later than the Mux guide's
+advice to time accompanying fades from the spring's 200 ms visual duration
+([the roles table](../mux-ui-component-customisations.md#motion)); it was chosen
+from a side-by-side prototype and is kept on purpose. The way back fades the content
+out on `dismiss` (120 ms) while the card travels. The waits read only the computed
+transition duration and delay (`measureMotion` ignores the timing function), so the
+`linear()` value changes nothing in chrome. `lint:motion` forbids an indirect `var()`
+in a transition, so switching to another role means changing the duration and easing
+tokens in that block and the duration inside the 40% delay (three names): the plain
+`reveal` pair (200 ms, `ease-out`) is the previous behaviour, and `content-resize`
+(600 ms) is the other candidate.
 
 Dialog states (`bento-welcome--<state>`, `welcome.css`): `out` (content faded,
 `dismiss`), `hidden` (cut out, instant), `restoring` (cut in, content hidden; it
@@ -409,7 +421,9 @@ Pitfalls:
   `html` the grid collapsed to its content and the card sat at the top. The host
   sets `html { block-size: 100% }`; the card's centred rectangle depends on it.
 - The 40% delay and the geometry duration are written as Mux tokens in the
-  transition, not through a custom property (`lint:motion`).
+  transition, not through a custom property (`lint:motion`). The delay is a
+  fraction of the spring's full 400 ms, not its 200 ms visual duration, on purpose
+  (see the geometry paragraph above).
 - `measure()` in the host page removes `data-bento-morph` to read the in-flow
   rectangle and must flush style after restoring it, or the next change starts
   from the in-flow style and nothing moves.
@@ -423,8 +437,11 @@ Pitfalls:
   about a second old) as their start, so they ran that far ahead of the card's
   geometry: the content was already gone when the card began to move. A frame
   callback reads a current clock.
-- The content fade outlasts the geometry (40% delay plus `modal`): wait for both
-  before `settle()`, or the fade is cut.
+- The geometry and the content fade end separately, and either can end last: at the
+  default tokens the geometry's 400 ms outlasts the fade-in (160 ms delay plus the
+  180 ms `modal`) and the fade-out (120 ms `dismiss`), but raised `modal` or exit
+  durations (the slow-motion check) reverse that. Wait for both before `settle()`,
+  or the fade is cut.
 - The frame script relay is loaded before every post: it installs once per frame
   script global, and a replaced global has no listener.
 - The page drops every message whose `event.origin` is not empty (a system-principal
@@ -705,9 +722,14 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
    the dialog at both swaps, or the two cross-fade. Launch another fresh profile with
    `user_pref("ui.prefersReducedMotion", 1);` in `user.js`: the dialog and the
    card cross-fade with no movement. To watch the motion slowly, raise
-   `--muxui-semantic-motion-reveal-duration`, `-modal-enter-duration` and
+   `--muxui-semantic-motion-reveal-transition-spring-duration` (the card geometry and
+   the 40% content delay, 400 ms by default), `-modal-enter-duration` and
    `-exit-duration` on the root of the host document and of the welcome page
-   (keep the exit duration under 1.5 s: it is part of the READY wait). Repeat the
+   (keep the exit duration under 1.5 s: it is part of the READY wait). Raising only
+   the plain `-reveal-duration` changes nothing here. The spring easing is a sampled
+   `linear()` curve (13 points, bounce 0), so the card's progress is steepest at the
+   start and flattens without overshoot; slowing the duration stretches that curve
+   and does not change its shape. Repeat the
    Import click, but choose the Firefox or Zen tile (it needs a Firefox or Zen
    profile on the machine) and let Bento restart: after the startup migration
    finishes, onboarding must reopen on Privacy. The `#bentoWelcomeStep=3` hash is
