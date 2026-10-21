@@ -218,6 +218,12 @@
     inline-size: 100%;
   }
 
+  /* Part of the section gap above the controls moves below the preview, so the preview sits
+   * evenly between the description and the swatches and the step keeps its height. */
+  .bento-welcome__stage > .bento-welcome__description + .bento-welcome__theme-chooser {
+    margin-block-start: var(--muxui-semantic-layout-group-gap);
+  }
+
   .bento-welcome__theme-preview {
     display: grid;
     grid-template-columns: var(--bento-welcome-theme-preview-sidebar) minmax(0, 1fr);
@@ -229,6 +235,7 @@
     padding: var(--bento-welcome-theme-preview-gap);
     overflow: hidden;
     border: 1px solid var(--muxui-semantic-border-default);
+    margin-block-end: var(--muxui-semantic-layout-group-gap);
     border-radius: var(--muxui-semantic-shape-option-radius);
     background-color: var(--muxui-semantic-surface-canvas);
   }
