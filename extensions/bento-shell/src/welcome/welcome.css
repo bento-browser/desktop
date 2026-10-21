@@ -205,6 +205,263 @@
     inline-size: 60%;
   }
 
+  /* Theme step (docs/technical/first-run-import.md#theme-step): a live preview of one theme over
+   * two rows of swatches and the theme's name. The preview is a low-fidelity Bento window of
+   * shapes, no text. Its root carries the theme's own scope (data-muxui-theme), so every colour
+   * below is that theme's public Mux token. Every size is one of the --bento-welcome-theme-preview-*
+   * tokens (unit, gap, radius, bar) or a calc() of them; the skeleton widths are percentages. */
+  .bento-welcome__theme-chooser {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-group-gap);
+    inline-size: 100%;
+  }
+
+  /* Part of the section gap above the controls moves below the preview, so the preview sits
+   * evenly between the description and the swatches and the step keeps its height. */
+  .bento-welcome__stage > .bento-welcome__description + .bento-welcome__theme-chooser {
+    margin-block-start: var(--muxui-semantic-layout-group-gap);
+  }
+
+  .bento-welcome__theme-preview {
+    display: grid;
+    grid-template-columns: var(--bento-welcome-theme-preview-sidebar) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: var(--bento-welcome-theme-preview-gap);
+    box-sizing: border-box;
+    inline-size: min(100%, var(--bento-welcome-theme-preview-width));
+    block-size: var(--bento-welcome-theme-preview);
+    padding: var(--bento-welcome-theme-preview-gap);
+    overflow: hidden;
+    border: 1px solid var(--muxui-semantic-border-default);
+    margin-block-end: var(--muxui-semantic-layout-group-gap);
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    background-color: var(--muxui-semantic-surface-canvas);
+  }
+
+  .bento-welcome__theme-titlebar {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    gap: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    margin-block-end: var(--bento-welcome-theme-preview-gap);
+  }
+
+  .bento-welcome__theme-titlebar > span {
+    inline-size: var(--bento-welcome-theme-preview-bar);
+    block-size: var(--bento-welcome-theme-preview-bar);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    min-inline-size: 0;
+  }
+
+  .bento-welcome__theme-sidebar > * {
+    flex: none;
+  }
+
+  /* Every neutral bar is the theme's track colour; its width is set by the row it sits in. */
+  .bento-welcome__theme-bar {
+    flex: none;
+    block-size: var(--bento-welcome-theme-preview-bar);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-workspace,
+  .bento-welcome__theme-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--bento-welcome-theme-preview-gap);
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+    border-radius: var(--bento-welcome-theme-preview-radius);
+  }
+
+  .bento-welcome__theme-workspace {
+    background-color: var(--muxui-semantic-surface-hover);
+  }
+
+  .bento-welcome__theme-workspace > .bento-welcome__theme-bar {
+    inline-size: 55%;
+  }
+
+  /* The real avatar and active tab use color-60, which Mux names color-color-60. */
+  .bento-welcome__theme-avatar {
+    flex: none;
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-color-color-60);
+  }
+
+  /* Spans, so these rows are flex: a bar inside an inline span has no width or height. */
+  .bento-welcome__theme-address,
+  .bento-welcome__theme-new {
+    display: flex;
+    align-items: center;
+  }
+
+  .bento-welcome__theme-address {
+    padding: var(--bento-welcome-theme-preview-gap);
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: var(--bento-welcome-theme-preview-radius);
+  }
+
+  .bento-welcome__theme-address > .bento-welcome__theme-bar {
+    inline-size: 50%;
+  }
+
+  .bento-welcome__theme-new {
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+  }
+
+  .bento-welcome__theme-new > .bento-welcome__theme-bar {
+    inline-size: 30%;
+  }
+
+  .bento-welcome__theme-icon {
+    flex: none;
+    inline-size: var(--bento-welcome-theme-preview-unit);
+    block-size: var(--bento-welcome-theme-preview-unit);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) / 2);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-tab > .bento-welcome__theme-bar {
+    inline-size: 50%;
+  }
+
+  .bento-welcome__theme-sidebar > :nth-child(5) > .bento-welcome__theme-bar {
+    inline-size: 38%;
+  }
+
+  .bento-welcome__theme-sidebar > :nth-child(6) > .bento-welcome__theme-bar {
+    inline-size: 44%;
+  }
+
+  /* The active tab: color-60 fill, its icon and bar in the paired foreground (currentcolor). */
+  .bento-welcome__theme-tab[data-active] {
+    background-color: var(--muxui-semantic-color-color-60);
+    color: var(--muxui-semantic-color-color-60-fg);
+  }
+
+  .bento-welcome__theme-tab[data-active] > span {
+    background-color: currentcolor;
+  }
+
+  .bento-welcome__theme-tools {
+    display: flex;
+    gap: var(--bento-welcome-theme-preview-gap);
+    margin-block-start: auto;
+    padding: calc(var(--bento-welcome-theme-preview-gap) / 2) var(--bento-welcome-theme-preview-gap);
+  }
+
+  .bento-welcome__theme-tools > span {
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 0.75);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 0.75);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) / 2);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__theme-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--bento-welcome-theme-preview-gap);
+    padding-block-start: calc(var(--bento-welcome-theme-preview-gap) * 4);
+    padding-inline: calc(var(--bento-welcome-theme-preview-gap) * 5);
+    overflow: hidden;
+    border: 1px solid var(--muxui-semantic-border-subtle);
+    border-radius: calc(var(--bento-welcome-theme-preview-radius) * 1.5);
+    background-color: var(--muxui-semantic-surface-background);
+  }
+
+  .bento-welcome__theme-panel > * {
+    flex: none;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-heading {
+    inline-size: 40%;
+    block-size: calc(var(--bento-welcome-theme-preview-bar) * 2);
+    background-color: var(--muxui-semantic-content-muted);
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(2) {
+    inline-size: 80%;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(3) {
+    inline-size: 92%;
+  }
+
+  .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(4) {
+    inline-size: 64%;
+  }
+
+  .bento-welcome__theme-button {
+    align-self: flex-start;
+    inline-size: calc(var(--bento-welcome-theme-preview-unit) * 4.5);
+    block-size: calc(var(--bento-welcome-theme-preview-unit) * 1.5);
+    margin-block-start: calc(var(--bento-welcome-theme-preview-gap) / 2);
+    border-radius: var(--bento-welcome-theme-preview-radius);
+    background-color: var(--muxui-semantic-action-background);
+  }
+
+  /* Two rows of swatches (Colourful, then Monochrome). Each row is a single-select Mux group that
+   * wraps when compact; the group's own border, fill and clipping are off, and the selected
+   * swatch gets a ring (its outline), so the sliding fill stays transparent. */
+  .bento-welcome__theme-swatches {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-utility-inset);
+    inline-size: 100%;
+  }
+
+  .bento-welcome__swatch-row {
+    --muxui-toggle-button-group-motion-fill: transparent;
+
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--muxui-semantic-layout-utility-inset);
+    max-inline-size: 100%;
+    border: 0;
+    overflow: visible;
+  }
+
+  .bento-welcome__swatch {
+    padding: var(--muxui-semantic-layout-utility-inset);
+    min-block-size: 0;
+    border: 0;
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    outline: var(--bento-focus-ring-width) solid transparent;
+    outline-offset: 0;
+    background-color: transparent;
+  }
+
+  .bento-welcome__swatch:hover:not([data-disabled], [data-selected]) {
+    background-color: transparent;
+    outline-color: var(--muxui-semantic-border-strong);
+  }
+
+  .bento-welcome__swatch[data-selected] {
+    outline-color: var(--muxui-semantic-content-default);
+  }
+
+  .bento-welcome__swatch-color {
+    inline-size: var(--bento-welcome-swatch);
+    block-size: var(--bento-welcome-swatch);
+  }
+
+  .bento-welcome__theme-name {
+    min-block-size: 1lh;
+  }
+
   /* Tour tiles: a static list. */
   .bento-welcome__tiles {
     display: grid;
@@ -343,37 +600,12 @@
     white-space: nowrap;
   }
 
-  .bento-welcome__summary {
-    inline-size: 100%;
-    max-inline-size: var(--bento-welcome-measure);
-    border: 1px solid var(--muxui-semantic-border-subtle);
-    border-radius: var(--muxui-semantic-control-radius);
-    text-align: start;
-  }
-
-  .bento-welcome__summary > div {
-    display: grid;
-    grid-template-columns: 1fr 2fr auto;
-    align-items: center;
-    gap: var(--muxui-semantic-layout-group-gap);
-    padding: var(--muxui-semantic-layout-tight-gap) var(--muxui-semantic-layout-inset-small);
-  }
-
-  .bento-welcome__summary > div + div {
-    border-block-start: 1px solid var(--muxui-semantic-border-subtle);
-  }
-
-  .bento-welcome__summary dd {
-    margin: 0;
-  }
-
   /* Entry motion: the stage on each step change, then its list tiles staggered
    * (animation-delay from WelcomeSurfaces). Option tiles move with the stage:
    * Mux's selection layer measures them, so they do not animate on their own. */
   .bento-welcome__stage,
   .bento-welcome__tiles > li,
-  .bento-welcome__sources > li,
-  .bento-welcome__summary > div {
+  .bento-welcome__sources > li {
     animation: bento-welcome-enter var(--muxui-semantic-motion-reveal-transition) both;
   }
 
@@ -393,8 +625,7 @@
   @media (prefers-reduced-motion: reduce) {
     .bento-welcome__stage,
     .bento-welcome__tiles > li,
-    .bento-welcome__sources > li,
-    .bento-welcome__summary > div {
+    .bento-welcome__sources > li {
       animation-name: bento-welcome-fade;
     }
   }
@@ -476,6 +707,21 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
+    /* Theme step: a shorter preview without the New row and the toolbar icons. */
+    .bento-welcome__theme-preview {
+      block-size: var(--bento-welcome-theme-preview-compact);
+    }
+
+    .bento-welcome__theme-new,
+    .bento-welcome__theme-tools,
+    .bento-welcome__theme-panel > .bento-welcome__theme-bar:nth-child(4) {
+      display: none;
+    }
+
+    .bento-welcome__theme-panel {
+      padding-block-start: calc(var(--bento-welcome-theme-preview-gap) * 2.5);
+    }
+
     /* Tour tiles stack as rows: the smaller illustration on the left, the title and body to its
      * right (left-aligned), and the shortcut chips at the row end. The spacer rows centre the text
      * against the illustration, so a body that wraps to two lines still sits centred. The block
@@ -531,6 +777,18 @@
 
     .bento-welcome__actions > .bento-welcome__next {
       margin-inline-start: auto;
+    }
+  }
+
+  /* Phone widths: smaller swatches, so both rows fit on one line each, and the theme name and
+   * description take two lines, so hovering a swatch does not move the rows above. */
+  @media (max-width: 30rem) {
+    .bento-welcome {
+      --bento-welcome-swatch: var(--bento-welcome-swatch-compact);
+    }
+
+    .bento-welcome__theme-name {
+      min-block-size: 2lh;
     }
   }
 }

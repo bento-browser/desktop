@@ -2,8 +2,8 @@
 // runs the tools port and mounts React at import time, so a story or test cannot
 // import it; everything here is side-effect free.
 
-import type { CSSProperties, ReactNode, RefObject } from 'react';
-import { Button, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
+import { useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { Button, ColorSwatch, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
@@ -17,6 +17,14 @@ import { PRIVACY_LEVELS } from '@shared/privacy-levels';
 
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
+import { BENTO_THEMES, getThemeMeta, resolveThemeId } from '../theme/presets';
+import {
+  getThemeScopeAttributes,
+  useResolvedColorScheme,
+  type ThemeColorScheme,
+} from '../theme/themeScope';
+import { ALL_THEME_IDS, useThemeSheets } from '../theme/themeSheets';
+import { nextPreview, requestedTheme, swatchThemeId } from './themeChooser';
 import { importTitle, type DialogGeometry } from './importHandoff';
 import {
   firefoxZenSpan,
@@ -55,6 +63,11 @@ const STEPS = [
     description: 'Applies right away. Change it any time in Settings.',
   },
   {
+    id: 'theme',
+    title: 'Pick a colour theme',
+    description: 'Colours your first workspace. Every workspace can have its own.',
+  },
+  {
     id: 'import',
     title: 'Bring your browsing with you',
     // The description of the state with browsers to pick from; importCopy has the others.
@@ -71,7 +84,12 @@ const STEPS = [
     note: 'Add more search engines in the Settings',
   },
   { id: 'tour', title: 'How Bento works' },
-  { id: 'ready', title: 'You are set', illustration: 'ready' },
+  {
+    id: 'ready',
+    title: 'You are set',
+    description: 'Customise Bento Browser any time in Settings.',
+    illustration: 'ready',
+  },
 ] as const satisfies readonly WelcomeStepCopy<string>[];
 
 export type WelcomeStepId = (typeof STEPS)[number]['id'];
@@ -213,7 +231,7 @@ export function WelcomeStage({
   );
 }
 
-/** Presentational progress; "Step N of 6" is the accessible progress text. */
+/** Presentational progress; "Step N of LAST_STEP" is the accessible progress text. */
 export function StepDots({ current }: { current: number }) {
   return (
     <span className="bento-welcome__dots" aria-hidden="true">
@@ -369,6 +387,211 @@ export const APPEARANCE_OPTIONS = [
   { id: 'system', label: 'Auto', preview: <AppearancePreview mode="system" /> },
 ] as const satisfies readonly WelcomeOption<UiColorModePref>[];
 
+/** The Theme step's two swatch rows: Default and the standard themes, then the monochrome ones. */
+export const THEME_GROUPS = [
+  {
+    id: 'colourful',
+    label: 'Colourful',
+    themes: BENTO_THEMES.filter((theme) => theme.collection !== 'monochrome'),
+  },
+  {
+    id: 'monochrome',
+    label: 'Monochrome',
+    themes: BENTO_THEMES.filter((theme) => theme.collection === 'monochrome'),
+  },
+] as const;
+
+/** A theme pick written to a workspace and not yet reported back by the workspace snapshot. */
+export interface PendingTheme {
+  workspaceId: string;
+  themeId: string;
+}
+
+/** What the Theme step shows while a pick is in flight, and whether the pick is done with.
+ * The pick counts only while its workspace is the active one: another workspace shows its own
+ * stored theme, and the pick is done with. It is settled once that workspace's stored theme (as
+ * the dialog resolves it, so an unset or unknown id is Default) equals the latest pick, so an
+ * acknowledgement of an older pick leaves the newest one showing. */
+export function pendingThemeView({
+  pending,
+  activeWorkspaceId,
+  storedThemeId,
+}: {
+  pending: PendingTheme | null;
+  activeWorkspaceId: string | null;
+  storedThemeId: string | undefined;
+}): { themeId: string; settled: boolean } {
+  const stored = resolveThemeId(storedThemeId);
+  if (!pending || pending.workspaceId !== activeWorkspaceId) {
+    return { themeId: stored, settled: true };
+  }
+  const picked = resolveThemeId(pending.themeId);
+  return picked === stored
+    ? { themeId: stored, settled: true }
+    : { themeId: picked, settled: false };
+}
+
+/** A low-fidelity Bento window drawn in a theme's own scope, from shapes only (no text): a titlebar
+ * of dots, a sidebar (workspace switcher, address field, a New row, three tabs with the first active,
+ * toolbar squares) and a content panel (a heading bar, skeleton lines, an accent button). The root
+ * carries `getThemeScopeAttributes`, so only public Mux tokens colour it: the avatar and the active
+ * tab take the theme's colour-60 and the button its action colour, which is how the theme reads
+ * through; the bars are neutral. The sheet for that scope must be loaded (ThemeChooser).
+ * Decorative: the swatches and the name line carry the meaning. */
+export function ThemePreview({
+  themeId,
+  colorScheme,
+}: {
+  themeId: string;
+  colorScheme: ThemeColorScheme;
+}) {
+  return (
+    <span
+      className="bento-welcome__theme-preview"
+      aria-hidden="true"
+      {...getThemeScopeAttributes(themeId, colorScheme)}
+    >
+      <span className="bento-welcome__theme-titlebar">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="bento-welcome__theme-sidebar">
+        <span className="bento-welcome__theme-workspace">
+          <span className="bento-welcome__theme-avatar" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-address">
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-new">
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab" data-active="true">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tools">
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      </span>
+      <span className="bento-welcome__theme-panel">
+        <span className="bento-welcome__theme-bar bento-welcome__theme-heading" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-button" />
+      </span>
+    </span>
+  );
+}
+
+/** The swatch an event came from, if any (see swatchThemeId). */
+function swatchAt(target: EventTarget): string | null {
+  return target instanceof Element ? swatchThemeId(target) : null;
+}
+
+/** The Theme step's body: a live preview of a theme over two rows of swatches (Colourful, then
+ * Monochrome) and the theme's name and description. One selection spans both rows: each row is
+ * a single-select Mux `ToggleButtonGroup` that gets `value` only when it holds that theme (Default
+ * and Harbour share their colours, so the swatches are keyed by theme, not by colour). Hovering or
+ * focusing a swatch shows that theme in the preview and the name line only (themeChooser.ts has
+ * the rules): the pointer moving to whitespace or leaving the rows, focus leaving them, or
+ * activating a swatch shows the selected theme again. Choosing a different theme calls
+ * `onChange`. Every theme's sheet is kept loaded while the step shows (as the workspace theme
+ * picker does), so the preview and swatches never paint in the dialog's own tokens. */
+export function ThemeChooser({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (themeId: string) => void;
+}) {
+  const colorScheme = useResolvedColorScheme();
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  useThemeSheets(ALL_THEME_IDS);
+  const shown = getThemeMeta(previewId ?? value);
+
+  return (
+    <div className="bento-welcome__theme-chooser">
+      <ThemePreview themeId={shown.id} colorScheme={colorScheme} />
+      <div
+        className="bento-welcome__theme-swatches"
+        onMouseOver={(event) => {
+          const swatch = swatchAt(event.target);
+          setPreviewId((current) => nextPreview(current, { type: 'point', swatch }));
+        }}
+        onMouseLeave={() => setPreviewId((current) => nextPreview(current, { type: 'leave' }))}
+        onFocus={(event) => {
+          const swatch = swatchAt(event.target);
+          setPreviewId((current) => nextPreview(current, { type: 'focus', swatch }));
+        }}
+        onBlur={(event) => {
+          if (!(
+            event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)
+          )) {
+            setPreviewId((current) => nextPreview(current, { type: 'leave' }));
+          }
+        }}
+      >
+        {THEME_GROUPS.map((group) => (
+          <ToggleButtonGroup
+            key={group.id}
+            aria-label={`${group.label} themes`}
+            selectionMode="single"
+            disallowEmptySelection
+            selectedIds={group.themes.some((theme) => theme.id === value) ? [value] : []}
+            onSelectionChange={(ids) => {
+              setPreviewId((current) => nextPreview(current, { type: 'select' }));
+              const next = requestedTheme(
+                group.themes.find((theme) => theme.id === ids[0])?.id,
+                value,
+              );
+              if (next) onChange(next);
+            }}
+            className="bento-welcome__swatch-row"
+          >
+            {group.themes.map((theme) => (
+              <ToggleButton
+                key={theme.id}
+                id={theme.id}
+                aria-label={theme.name}
+                data-theme-swatch={theme.id}
+                className="bento-welcome__swatch"
+              >
+                <ColorSwatch
+                  {...getThemeScopeAttributes(theme.id, colorScheme)}
+                  color={theme.brand60}
+                  secondaryColor={theme.neutral20}
+                  shape="circle"
+                  className="bento-welcome__swatch-color"
+                />
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ))}
+      </div>
+      <Text as="p" size="sm" color="muted" className="bento-welcome__theme-name">
+        <Text as="span" variant="label" size="sm" color="default">
+          {shown.name}
+        </Text>{' '}
+        {shown.description}
+      </Text>
+    </div>
+  );
+}
+
 export const PRIVACY_OPTIONS: readonly WelcomeOption<SelectablePrivacyProtectionLevel>[] =
   PRIVACY_LEVELS.map((level) => ({
     id: level.id,
@@ -414,22 +637,6 @@ export function searchEngineOptions(
       icon: <SearchEngineIcon iconUrl={engine.iconUrl} />,
     };
   });
-}
-
-// Firefox's default engine ids, for the Ready summary before the engine list loads.
-const DEFAULT_ENGINE_NAMES: ReadonlyMap<string, string> = new Map([
-  ['ddg', 'DuckDuckGo'],
-  ['google', 'Google'],
-  ['bing', 'Bing'],
-  ['wikipedia', 'Wikipedia'],
-  ['ebay', 'eBay'],
-  ['perplexity', 'Perplexity'],
-]);
-
-/** Display name of the chosen engine: from the loaded list, else a known default's
- * name, else the id itself. */
-export function searchEngineName(engines: readonly SearchEngineChoice[], id: string): string {
-  return engines.find((engine) => engine.id === id)?.name ?? DEFAULT_ENGINE_NAMES.get(id) ?? id;
 }
 
 function ImportTile({
@@ -624,46 +831,35 @@ export function TourTiles() {
   );
 }
 
-export interface SummaryRow {
-  label: string;
-  value: string;
-  step: number;
+/** True when onboarding starts over: welcomeSeen goes from true back to false while this
+ * document stays mounted (Reset Bento settings, then the sidebar reopens it). A fresh document
+ * going from nothing to false is not a restart: it resumes its stored step. */
+export function restartsOnboarding(previous: boolean | undefined, next: boolean | undefined) {
+  return previous === true && next === false;
 }
 
-/** Ready-step summary; each Change action jumps back to the step that owns the value. */
-export function ReadySummary({
-  rows,
-  onChange,
-}: {
-  rows: readonly SummaryRow[];
-  onChange: (step: number) => void;
-}) {
+/** Ends onboarding with the one title chrome acts on: `chromeTitlePrefix` is the close title
+ * (Start browsing) or the open-Settings title (Open Settings), never both, because title IPC is
+ * last-write-wins. It marks the dismissal (clears the stored step, sets welcomeSeen) and sends the
+ * title without waiting for persistence: SettingsStore writes storage.local before it publishes
+ * the new snapshot, and the page fires and forgets. It holds no state, because this document
+ * stays mounted and onboarding can show again (after Reset Bento settings); chrome ignores a
+ * repeat Open Settings while the dialog fades out. */
+export function finishOnboarding(
+  chromeTitlePrefix: string,
+  effects: { clearStep: () => void; markSeen: () => void; send: (title: string) => void },
+): void {
+  effects.clearStep();
+  effects.markSeen();
+  effects.send(`${chromeTitlePrefix}_${Date.now()}`);
+}
+
+/** The Ready step's control: finishes onboarding into Settings. Neutral, so the footer's Start
+ * browsing stays the primary action. */
+export function OpenSettingsButton({ onOpen }: { onOpen: () => void }) {
   return (
-    <dl className="bento-welcome__summary">
-      {rows.map((row, index) => (
-        <div key={row.label} style={stagger(index)}>
-          <dt>
-            <Text size="sm" color="muted">
-              {row.label}
-            </Text>
-          </dt>
-          <dd>
-            <Text variant="label" size="md">
-              {row.value}
-            </Text>
-          </dd>
-          <dd>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Change ${row.label.toLowerCase()}`}
-              onActivate={() => onChange(row.step)}
-            >
-              Change
-            </Button>
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <Button variant="neutral" onActivate={onOpen}>
+      Open Settings
+    </Button>
   );
 }

@@ -1448,7 +1448,7 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### First-Run Browser Profile Import
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-22
 - Firefox 158.0 review (2026-10-14): `FirefoxProfileMigrator.key` now returns
   `AppConstants.MOZ_APP_NAME`, its display-name string is
   `migration-wizard-migrator-display-name-self`, and `MigrationUtils` keys
@@ -1533,7 +1533,18 @@ rel="stylesheet">` load and error events on chrome documents, and the
   runtime wizard unavailable) sets the scope empty so the startup wizard still
   offers every browser. Zen session conversion excludes tabs and selected
   history entries marked private, incognito, or private-window state so those
-  URLs are not copied into Bento's normal profile.
+  URLs are not copied into Bento's normal profile. The Ready step's Open Settings
+  button ends onboarding and sends `BENTO_OPEN_SETTINGS_<ts>` from the welcome
+  frame; the mount script's `bento-welcome-frame` title handler answers with
+  `hideWelcome()` and then `openBentoSettings(false)`, the same helper the app
+  menu's Bento Settings item and the command palette use, so it adds no Firefox
+  member and no compat-registry entry (Start browsing sends the close title and
+  only hides the overlay). The handler acts only while the welcome host is showing
+  (`isWelcomeShowing`: visible and opacity not `0`), because `hideWelcome()` fades the
+  host out and a second `openBentoSettings` call made before the first Settings
+  navigation commits still sees `about:blank` and adds a second tab. The guard reads
+  the host's style, not page state, so onboarding shown again in the same window
+  (after Reset Bento settings) finishes normally.
 - Vanilla Firefox surface touched or depended on:
   `toolkit/xre/nsAppRunner.cpp`,
   `browser/components/migration/FirefoxProfileMigrator.sys.mjs`,
@@ -1619,7 +1630,13 @@ rel="stylesheet">` load and error events on chrome documents, and the
   matching workspaces, the Zen pinned tab appears as a pinned Bento tab, and the
   Zen essential tab appears as a pinned Bento panel. Also confirm copied
   bookmarks/history/password resources are present in the new
-  Bento profile.
+  Bento profile. On the Ready step click Open Settings (and, in a second pass,
+  double-click it): the overlay and its toolbar scrim are gone once the fade ends
+  and exactly one Settings tab opens on `about:settings#bento`, selected with focus
+  in the page; with a Settings tab already open in the window, Open Settings
+  selects it and sets the `#bento` hash instead of opening another; Start browsing
+  still only closes the overlay. Then use Reset Bento settings in the same window
+  and confirm onboarding shows again and both Ready buttons work.
 - Rollback or migration notes: removing the patch reverts Bento to vanilla
   Firefox behavior for this migration surface, where the Bento chrome host
   cannot drive the migration actor and startup migration cannot be entered from

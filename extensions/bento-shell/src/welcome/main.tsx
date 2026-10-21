@@ -8,10 +8,15 @@
 //     when SettingsStore reports welcomeSeen=false. The duplicate signal
 //     makes first-run opening resilient to startup title-IPC races with
 //     panel/theme sync, and chrome showWelcome() is idempotent.
-//   - The final finish button flips settings.welcomeSeen=true via the
-//     existing tools port, then signals chrome to hide via
-//     document.title = BENTO_CLOSE_WELCOME_<ts>. Esc and backdrop clicks
+//   - The two buttons of the Ready step finish onboarding (finishOnboarding): each flips
+//     settings.welcomeSeen=true via the existing tools port and clears the stored step, then
+//     sends ONE title (title IPC is last-write-wins): Start browsing
+//     BENTO_CLOSE_WELCOME_<ts>, which hides the overlay, Open Settings
+//     BENTO_OPEN_SETTINGS_<ts>, which hides it and opens Settings. Esc and backdrop clicks
 //     are intentionally disabled so first-run onboarding must be completed.
+//   - Reset Bento settings puts welcomeSeen back to false while this document stays mounted
+//     (restartsOnboarding): onboarding restarts from Welcome, stores step 0 and drops the
+//     pending theme pick.
 //   - Browser-data import is an onboarding state, not a final dismissal:
 //     it stores the next onboarding step in extension storage, signals
 //     chrome to open the embedded Firefox migration host, and leaves
@@ -21,6 +26,9 @@
 //     The Import step's tiles are the browsers chrome found (useImportSources); a
 //     tile opens the wizard with that browser selected, and the Firefox or Zen tile
 //     restarts Bento into Firefox's startup import instead.
+//   - The Theme step writes the window's active workspace themeId through the tools
+//     port (workspace/update); the dialog repaints from the snapshot like any other
+//     document (useWorkspaceTheme), and the pick shows at once until it arrives.
 //   - Dialog stays mounted with open=true permanently — visibility is
 //     purely a chrome concern (same pattern as the other overlays). React
 //     state inside this page never tracks open/closed.
@@ -29,7 +37,6 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog, Text } from '@muxui/react';
 import type { SearchEngineChoice } from '@shared/protocol';
-import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
 import '../theme/muxui.css';
 
@@ -39,23 +46,31 @@ import '../theme/bento-fonts.css';
 import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
-import { initToolsPort, dispatch } from '../bridge/useToolsPort';
-import { requestWelcome, WELCOME_CLOSE_PREFIX } from '../bridge/useWelcome';
+import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
+import {
+  requestWelcome,
+  WELCOME_CLOSE_PREFIX,
+  WELCOME_OPEN_SETTINGS_PREFIX,
+} from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
 import { usePrivacyStore } from '../state/privacy';
+import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import {
   APPEARANCE_OPTIONS,
   ImportSources,
   LAST_STEP,
+  finishOnboarding,
   parseStoredStep,
+  pendingThemeView,
+  restartsOnboarding,
+  type PendingTheme,
   PRIVACY_OPTIONS,
-  ReadySummary,
-  searchEngineName,
+  OpenSettingsButton,
   searchEngineOptions,
   startFirefoxZenImport,
   startImport,
   stepAfter,
-  stepIndexOf,
+  ThemeChooser,
   TourTiles,
   WELCOME_STEPS,
   WelcomeActions,
@@ -139,6 +154,19 @@ async function storeStep(step: StepIndex): Promise<void> {
   }
 }
 
+// The hash chrome stamps on a post-import reload is read before every other resume store, so a
+// restart rewrites it too (only when present) or a reload would resume the old step.
+function mirrorHashStep(step: StepIndex): void {
+  try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (!params.has(WELCOME_STEP_HASH_KEY)) return;
+    params.set(WELCOME_STEP_HASH_KEY, String(step));
+    history.replaceState(null, '', `#${params}`);
+  } catch {
+    // Non-critical mirror.
+  }
+}
+
 async function clearStoredStep(): Promise<void> {
   try {
     if (typeof browser !== 'undefined' && browser.storage?.local) {
@@ -155,15 +183,21 @@ async function clearStoredStep(): Promise<void> {
   }
 }
 
+// The effects finishOnboarding runs; both Ready buttons share them.
+const FINISH_EFFECTS = {
+  clearStep: () => void clearStoredStep(),
+  markSeen: () => dispatch({ type: 'settings/update', changes: { welcomeSeen: true } }),
+  send: sendChromeTitle,
+};
+
+/** Start browsing: chrome hides the overlay. */
 function close() {
-  // Persist the dismissal first so the overlay never reopens. Chrome
-  // hide is the visual signal; the settings/update is the durable state.
-  // Tools-side persistence is debounced 250ms but the in-memory snapshot
-  // updates synchronously, so a fresh shell connection picks up
-  // welcomeSeen=true immediately.
-  void clearStoredStep();
-  dispatch({ type: 'settings/update', changes: { welcomeSeen: true } });
-  sendChromeTitle(`${WELCOME_CLOSE_PREFIX}_${Date.now()}`);
+  finishOnboarding(WELCOME_CLOSE_PREFIX, FINISH_EFFECTS);
+}
+
+/** Open Settings: chrome hides the overlay and opens Settings (once, while it is showing). */
+function openSettings() {
+  finishOnboarding(WELCOME_OPEN_SETTINGS_PREFIX, FINISH_EFFECTS);
 }
 
 function SearchEnginePicker({
@@ -210,9 +244,22 @@ function WelcomeApp() {
   const privacyLevel = useSettingsStore((s) => s.current?.privacyProtectionLevel) ?? 'standard';
   const storedSearchEngine = useSettingsStore((s) => s.current?.defaultSearchEngine);
   const privacy = usePrivacyStore((s) => s.settings);
+  const windowId = useCurrentWindowId();
+  const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  const workspaceThemeId = useWorkspacesStore((s) =>
+    activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
+  );
+  // The latest pick and the workspace it went to, shown until that workspace's snapshot reports it.
+  const [pendingTheme, setPendingTheme] = useState<PendingTheme | null>(null);
+  const { themeId, settled: pendingThemeSettled } = pendingThemeView({
+    pending: pendingTheme,
+    activeWorkspaceId,
+    storedThemeId: workspaceThemeId,
+  });
   const [stepIndex, setStepIndex] = useState<StepIndex>(0);
   const [hasLoadedStoredStep, setHasLoadedStoredStep] = useState(false);
   const hasRequestedOpenRef = useRef(false);
+  const lastWelcomeSeenRef = useRef<boolean | undefined>(undefined);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStepRef = useRef<StepIndex | null>(null);
   const step = WELCOME_STEPS[stepIndex] ?? WELCOME_STEPS[0]!;
@@ -295,9 +342,35 @@ function WelcomeApp() {
     requestWelcome();
   }, [welcomeSeen]);
 
+  // Reset Bento settings puts welcomeSeen back to false while this document stays mounted, and the
+  // sidebar reopens it: start over from Welcome rather than on the step it ended on. A fresh
+  // document (nothing, then false) is not a restart, so the resume path above is untouched.
+  useEffect(() => {
+    if (welcomeSeen === undefined) return;
+    const restart = restartsOnboarding(lastWelcomeSeenRef.current, welcomeSeen);
+    lastWelcomeSeenRef.current = welcomeSeen;
+    if (!restart) return;
+    pendingStepRef.current = null; // a late handoff release must not jump back to the old step
+    setPendingTheme(null);
+    mirrorHashStep(0);
+    void storeStep(0);
+    setStepIndex(0);
+  }, [welcomeSeen]);
+
   useEffect(() => {
     dispatch({ type: 'privacy/requestSnapshot' });
   }, []);
+
+  useEffect(() => {
+    if (pendingTheme && pendingThemeSettled) setPendingTheme(null);
+  }, [pendingTheme, pendingThemeSettled]);
+
+  // The theme goes to this window's active workspace; with none known yet there is nothing to write.
+  const selectTheme = (next: string) => {
+    if (!activeWorkspaceId) return;
+    setPendingTheme({ workspaceId: activeWorkspaceId, themeId: next });
+    dispatch({ type: 'workspace/update', id: activeWorkspaceId, changes: { themeId: next } });
+  };
 
   if (!hasLoadedStoredStep) return null;
 
@@ -317,6 +390,8 @@ function WelcomeApp() {
             }
           />
         );
+      case 'theme':
+        return <ThemeChooser value={themeId} onChange={selectTheme} />;
       case 'import':
         return (
           <ImportSources
@@ -340,29 +415,7 @@ function WelcomeApp() {
       case 'tour':
         return <TourTiles />;
       case 'ready':
-        return (
-          <ReadySummary
-            rows={[
-              {
-                label: 'Appearance',
-                value:
-                  APPEARANCE_OPTIONS.find((option) => option.id === uiColorMode)?.label ?? 'Light',
-                step: stepIndexOf('appearance'),
-              },
-              {
-                label: 'Privacy',
-                value: PRIVACY_LEVEL_DETAILS[privacyLevel].label,
-                step: stepIndexOf('privacy'),
-              },
-              {
-                label: 'Search',
-                value: searchEngineName(engines, searchEngine),
-                step: stepIndexOf('search'),
-              },
-            ]}
-            onChange={setStep}
-          />
-        );
+        return <OpenSettingsButton onOpen={openSettings} />;
       default:
         return null;
     }
