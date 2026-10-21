@@ -119,8 +119,8 @@
  * compound .bento-icon.bento-* / .muxui-text.bento-* selectors also win
  * on specificity over Mux UI's single-class rules.
  *
- * The chevron and the trigger name both snap via display:none; the host
- * is faded through the switch, so nothing needs a transition of its own. */
+ * The chevron and the trigger name both snap via display:none; the collapse
+ * choreography (sidebar/railTransition.css) has faded them out by then. */
 html[data-bento-collapsed='true'] .bento-icon.bento-workspace-switcher__chevron {
   display: none;
 }
@@ -182,7 +182,11 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   max-width: 100%;
   box-sizing: border-box;
   justify-content: flex-start;
-  background-color: color-mix(in srgb, var(--color-60) 8%, transparent);
+  /* The expanded and rail fills, also drawn by the collapse choreography
+     (sidebar/railTransition.css), which cross-fades them. */
+  --bento-workspace-switcher-fill: color-mix(in srgb, var(--color-60) 8%, transparent);
+  --bento-workspace-switcher-rail-fill: color-mix(in srgb, var(--color-60) 12%, var(--neutral-5));
+  background-color: var(--bento-workspace-switcher-fill);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
   transition:
@@ -218,7 +222,7 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
   margin-inline: auto;
   padding: 0;
   border-radius: var(--radius-s);
-  background-color: color-mix(in srgb, var(--color-60) 12%, var(--neutral-5));
+  background-color: var(--bento-workspace-switcher-rail-fill);
   border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
 }
 

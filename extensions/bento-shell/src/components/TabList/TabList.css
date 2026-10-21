@@ -141,6 +141,12 @@
     width: 100%;
   }
 
+  /* The fill is a property so the collapse choreography's rail band
+     (sidebar/railTransition.css) paints the same colour. */
+  .bento-tab-list__viewport--top-surface {
+    --bento-tab-list-top-surface-fill: var(--neutral-12);
+  }
+
   .bento-tab-list__viewport--top-surface::before {
     content: '';
     position: absolute;
@@ -148,7 +154,7 @@
     inset-inline: 0;
     height: var(--bento-tab-list-top-surface-height, 0px);
     border-radius: var(--radius-s);
-    background-color: var(--neutral-12);
+    background-color: var(--bento-tab-list-top-surface-fill);
     pointer-events: none;
     transition: height var(--muxui-semantic-motion-reveal-transition);
   }
