@@ -22,7 +22,12 @@ Illustrations are static WebP files in `extensions/bento-shell/public/welcome/`,
 copied into `dist/` by Vite and loaded through Mux `Image` as `./welcome/<name>.webp`:
 `welcome` and `ready` on their steps, and `workspaces`, `panels` and `command-palette`
 on the tour tiles (shown at `--bento-welcome-tour-image`, 7.75rem, with no well
-behind them). The tour files are 256 px squares exported from the 1254 px
+behind them). At the dialog's compact breakpoint (48rem and below) each tour tile
+becomes a row, as a CSS grid template switch with no script: the illustration
+shrinks to `--bento-welcome-tour-image-compact` (4.5rem) on the left, the title and
+body sit left-aligned beside it, and the shortcut chips end the row. The three rows
+fit the dialog without scrolling at 640 and 500 px wide (stacked cards did not); the
+wide layout is unchanged. The tour files are 256 px squares exported from the 1254 px
 transparent-background PNG sources with
 `cwebp -q 90 -alpha_q 100 -m 6 -sharp_yuv -resize 256 256 <name>.png -o <name>.webp`;
 a lossless alpha channel keeps the edges clean on both the light and dark dialog.
@@ -729,6 +734,10 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
    with the same `--profile`, and confirm Bing persists; a profile whose onboarding
    finished on Google with no engine override must still be on Google after a
    relaunch.
+   On Tour, narrow the window to 640 px, then 500 px: the tiles become three rows
+   (illustration at the left, title and body beside it, shortcut chips at the row
+   end) and the content column does not scroll; at the default width they are
+   centred cards again.
 8. Terminal: quit Bento from a mid-flow step and relaunch with the same
    `--profile` path. Confirm onboarding reopens on that step, not on Welcome.
 9. Bento window: click Start browsing. Confirm the dialog closes and does not
