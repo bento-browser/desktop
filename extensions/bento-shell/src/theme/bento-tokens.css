@@ -163,6 +163,9 @@
     --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.125rem;
     --bento-sidebar-address-row-height: 2rem;
+    /* How far the address bar folds up while the list rises over it in a collapse
+       or expand (sidebar/railTransition.css). */
+    --bento-sidebar-rail-fold: 0.75rem;
     --bento-sidebar-address-icon-size: 1rem;
     --bento-sidebar-address-chevron-size: 0.75rem;
     --bento-sidebar-address-button-size: 1.5rem;

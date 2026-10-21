@@ -1,0 +1,82 @@
+/* The chrome push the CollapseChoreography story reproduces around the App
+ * (bento-shell-mount.css "Sidebar push"): the host slides on the reveal spring pair
+ * with its frame counter-translated, so the document stays put and the strip's edge
+ * wipes; the page group slides with the edge. */
+.bento-rail-story {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bento-brand-bg);
+}
+
+.bento-rail-story__host {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.bento-rail-story__frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.bento-rail-story__page {
+  position: absolute;
+  inset-block: 0 var(--muxui-reference-dimension-space-3xs);
+  inset-inline-end: var(--muxui-reference-dimension-space-3xs);
+  border: 1px solid var(--bento-sidebar-divider-color);
+  border-radius: var(--muxui-semantic-shape-container-radius);
+  background-color: var(--muxui-semantic-surface-canvas);
+}
+
+.bento-rail-story[data-push='collapse'] .bento-rail-story__host {
+  animation: bento-rail-story-out var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='collapse'] .bento-rail-story__frame {
+  animation: bento-rail-story-frame-out
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='collapse'] .bento-rail-story__page {
+  animation: bento-rail-story-frame-in
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='expand'] .bento-rail-story__host {
+  animation: bento-rail-story-in var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='expand'] .bento-rail-story__frame {
+  animation: bento-rail-story-frame-in
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='expand'] .bento-rail-story__page {
+  animation: bento-rail-story-frame-out
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+
+@keyframes bento-rail-story-out {
+  to {
+    translate: calc(-1 * var(--bento-rail-story-delta, 0px)) 0;
+  }
+}
+@keyframes bento-rail-story-in {
+  from {
+    translate: calc(-1 * var(--bento-rail-story-delta, 0px)) 0;
+  }
+}
+@keyframes bento-rail-story-frame-out {
+  to {
+    translate: var(--bento-rail-story-delta, 0px) 0;
+  }
+}
+@keyframes bento-rail-story-frame-in {
+  from {
+    translate: var(--bento-rail-story-delta, 0px) 0;
+  }
+}

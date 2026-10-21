@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { measureFooterButtonEdges, observeFooterButtonEdges } from './footerAnchor';
+import { RAIL_TRANSITION_ATTRIBUTE } from './railTransition';
 
 const button = (rect: { right: number; bottom: number; width: number; height: number }) =>
   ({ getBoundingClientRect: () => rect }) as unknown as Element;
@@ -66,13 +67,38 @@ class FakeResizeObserver {
   }
 }
 
+/** Stands in for MutationObserver on <html>: `fire` delivers an attribute change. */
+class FakeMutationObserver {
+  static instances: FakeMutationObserver[] = [];
+  disconnected = false;
+
+  constructor(private callback: () => void) {
+    FakeMutationObserver.instances.push(this);
+  }
+
+  observe() {}
+
+  disconnect() {
+    this.disconnected = true;
+  }
+
+  fire() {
+    this.callback();
+  }
+}
+
 describe('observeFooterButtonEdges', () => {
   let rect = { right: 289, bottom: 994, width: 32, height: 32 };
+  let phase: string | null = null;
+  const html = { hasAttribute: (name: string) => name === RAIL_TRANSITION_ATTRIBUTE && !!phase };
 
   beforeEach(() => {
     FakeResizeObserver.instances = [];
+    FakeMutationObserver.instances = [];
     rect = { right: 289, bottom: 994, width: 32, height: 32 };
+    phase = null;
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    vi.stubGlobal('MutationObserver', FakeMutationObserver);
     vi.stubGlobal('window', { innerWidth: 300, innerHeight: 1004 });
   });
 
@@ -84,14 +110,39 @@ describe('observeFooterButtonEdges', () => {
     const onChange = vi.fn();
     const live = { getBoundingClientRect: () => rect } as unknown as Element;
     let current: Element | null = live;
-    const stop = observeFooterButtonEdges({} as Element, () => current, onChange);
+    const stop = observeFooterButtonEdges(
+      {} as Element,
+      () => current,
+      onChange,
+      html as unknown as Element,
+    );
     return {
       onChange,
       stop,
       observer: FakeResizeObserver.instances[0]!,
+      phaseObserver: FakeMutationObserver.instances[0]!,
       remount: (next: Element | null) => (current = next),
     };
   };
+
+  it('skips readings during a rail transition and measures when it settles', () => {
+    const { onChange, observer, phaseObserver } = start();
+    observer.fire();
+    // An expand starts: the footer resizes while Downloads is still translated at
+    // its rail place.
+    phase = 'expand';
+    phaseObserver.fire();
+    rect = { right: 42, bottom: 808, width: 32, height: 32 };
+    observer.fire();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // The translation ends at the expanded place with no further resize; the settle
+    // (the phase attribute going) measures it.
+    rect = { right: 250, bottom: 994, width: 32, height: 32 };
+    phase = null;
+    phaseObserver.fire();
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ right: 50, bottom: 10, width: 32, height: 32 });
+  });
 
   it('reports the first measurement, then only changes', () => {
     const { onChange, observer } = start();
@@ -144,8 +195,9 @@ describe('observeFooterButtonEdges', () => {
   });
 
   it('disconnects', () => {
-    const { stop, observer } = start();
+    const { stop, observer, phaseObserver } = start();
     stop();
     expect(observer.disconnected).toBe(true);
+    expect(phaseObserver.disconnected).toBe(true);
   });
 });
