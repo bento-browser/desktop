@@ -9,19 +9,19 @@ Subject: [PATCH] Add native Bento preferences
  .../components/preferences/bento/bento.css    |   39 +
  .../BentoNativePreferencesProtocol.sys.mjs    |  406 +++++
  .../native-preferences-protocol-fixtures.json |  114 ++
- .../components/preferences/config/bento.mjs   | 1301 +++++++++++++++++
+ .../components/preferences/config/bento.mjs   | 1317 +++++++++++++++++
  browser/components/preferences/jar.mn         |    4 +
  browser/components/preferences/preferences.js |   28 +
  .../components/preferences/preferences.xhtml  |    9 +
  .../components/preferences/tests/browser.toml |    8 +
  .../tests/browser_bento_backup_preferences.js |   37 +
  .../tests/browser_bento_native_bridge.js      |   31 +
- .../tests/browser_bento_preferences.js        |  185 +++
- .../browser_bento_private_preferences.js      |   27 +
- .../en-US/browser/preferences/bento.ftl       |  202 +++
+ .../tests/browser_bento_preferences.js        |  214 +++
+ .../browser_bento_private_preferences.js      |   31 +
+ .../en-US/browser/preferences/bento.ftl       |  204 +++
  .../tests/widgets/test_moz_select_panel.html  |   31 +
  .../content/widgets/moz-select/moz-select.mjs |   10 +-
- 17 files changed, 2666 insertions(+), 1 deletion(-)
+ 17 files changed, 2717 insertions(+), 1 deletion(-)
  create mode 100644 browser/actors/BentoShellDocumentRegistry.sys.mjs
  create mode 100644 browser/components/preferences/bento/bento.css
  create mode 100644 browser/components/preferences/bento/generated/BentoNativePreferencesProtocol.sys.mjs
@@ -864,10 +864,10 @@ index 0000000000000000000000000000000000000000..0c699e8244ed939a8f9f0a52aaf5c3d3
 +}
 diff --git a/browser/components/preferences/config/bento.mjs b/browser/components/preferences/config/bento.mjs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a71a14c666e503fe8f739b3486fc88e19797367
+index 0000000000000000000000000000000000000000..74b0bd1ed6fc0be82dcd2e87fc7bd345bac90501
 --- /dev/null
 +++ b/browser/components/preferences/config/bento.mjs
-@@ -0,0 +1,1301 @@
+@@ -0,0 +1,1317 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -917,7 +917,7 @@ index 0000000000000000000000000000000000000000..3a71a14c666e503fe8f739b3486fc88e
 +  customPanelSizes: { defaultValue: [320, 480, 768, 1280] },
 +  panelCycleWraparound: { defaultValue: false },
 +  panelShadowsEnabled: { defaultValue: true },
-+  panelCornerRadiusPx: { defaultValue: 8 },
++  panelCornerRadiusPx: { defaultValue: 12 },
 +  panelSplitterSizePx: { defaultValue: 14 },
 +  autoBackupEnabled: { defaultValue: true },
 +  autoBackupIntervalMinutes: { defaultValue: 30 },
@@ -1535,6 +1535,17 @@ index 0000000000000000000000000000000000000000..3a71a14c666e503fe8f739b3486fc88e
 +  },
 +});
 +Preferences.addSetting({
++  id: "bento-merge-session",
++  visible: () => !IS_PRIVATE,
++  onUserClick() {
++    // The mount script of the window that holds this tab opens the merge palette.
++    let chromeWindow = window.browsingContext.topChromeWindow;
++    chromeWindow?.dispatchEvent(
++      new chromeWindow.CustomEvent("BentoOpenMergePalette")
++    );
++  },
++});
++Preferences.addSetting({
 +  id: "bento-shortcuts-open",
 +  onUserClick() {
 +    window.gotoPref("paneBentoShortcuts");
@@ -2097,6 +2108,11 @@ index 0000000000000000000000000000000000000000..3a71a14c666e503fe8f739b3486fc88e
 +        control: "moz-button",
 +      },
 +      {
++        id: "bento-merge-session",
++        l10nId: "bento-merge-session",
++        control: "moz-button",
++      },
++      {
 +        id: "bento-backup-manage",
 +        l10nId: "bento-backup-manage",
 +        control: "moz-button",
@@ -2365,10 +2381,10 @@ index 0000000000000000000000000000000000000000..b800e4cbfdafb3aa2a13e16c51b9fda4
 +});
 diff --git a/browser/components/preferences/tests/browser_bento_preferences.js b/browser/components/preferences/tests/browser_bento_preferences.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..daa33fcb84c8c7d863fb63b2fcd2150bc2d99dc0
+index 0000000000000000000000000000000000000000..6605e373a8e5486f2555fd9209ed708b90b2c6b4
 --- /dev/null
 +++ b/browser/components/preferences/tests/browser_bento_preferences.js
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,214 @@
 +/* Any copyright is dedicated to the Public Domain.
 + * http://creativecommons.org/publicdomain/zero/1.0/ */
 +
@@ -2396,6 +2412,7 @@ index 0000000000000000000000000000000000000000..daa33fcb84c8c7d863fb63b2fcd2150b
 +    "bento-defaultPanelWidthPx",
 +    "bento-privacy-protectionLevel",
 +    "bento-autoBackupEnabled",
++    "bento-merge-session",
 +    "bento-shortcuts-open",
 +    "bento-reset",
 +  ]) {
@@ -2554,12 +2571,40 @@ index 0000000000000000000000000000000000000000..daa33fcb84c8c7d863fb63b2fcd2150b
 +  );
 +  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 +});
++
++add_task(async function test_bento_merge_session_asks_the_host_window() {
++  // A dedicated window: the click opens that window's merge overlay and toolbar
++  // scrim (or queues the open until the overlay document is ready), and neither
++  // goes away when the tab is removed. Closing the window is the cleanup, and
++  // it needs no wait on the overlay's open or hide state.
++  let win = await BrowserTestUtils.openNewBrowserWindow();
++  try {
++    let tab = await BrowserTestUtils.openNewForegroundTab(
++      win.gBrowser,
++      "about:settings#bento"
++    );
++    let doc = tab.linkedBrowser.contentDocument;
++    let control = await TestUtils.waitForCondition(
++      () => doc.getElementById("setting-control-bento-merge-session"),
++      "Merge browser session control rendered"
++    );
++    let requested = BrowserTestUtils.waitForEvent(
++      win,
++      "BentoOpenMergePalette"
++    );
++    control.controlEl.click();
++    await requested;
++    ok(true, "The button asks the window that holds the Settings tab");
++  } finally {
++    await BrowserTestUtils.closeWindow(win);
++  }
++});
 diff --git a/browser/components/preferences/tests/browser_bento_private_preferences.js b/browser/components/preferences/tests/browser_bento_private_preferences.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..9132d91750bc63dedddd432436633f0e92456da9
+index 0000000000000000000000000000000000000000..0a82cd961644b212377978afeb3ff2e5e148ec81
 --- /dev/null
 +++ b/browser/components/preferences/tests/browser_bento_private_preferences.js
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,31 @@
 +/* Any copyright is dedicated to the Public Domain.
 + * http://creativecommons.org/publicdomain/zero/1.0/ */
 +
@@ -2584,15 +2629,19 @@ index 0000000000000000000000000000000000000000..9132d91750bc63dedddd432436633f0e
 +    !BrowserTestUtils.isVisible(doc.getElementById("setting-control-bento-backups-export")),
 +    "Backup export is unavailable in private Settings"
 +  );
++  ok(
++    !BrowserTestUtils.isVisible(doc.getElementById("setting-control-bento-merge-session")),
++    "Session merge is unavailable in private Settings"
++  );
 +  BrowserTestUtils.removeTab(tab);
 +  await BrowserTestUtils.closeWindow(privateWindow);
 +});
 diff --git a/browser/locales/en-US/browser/preferences/bento.ftl b/browser/locales/en-US/browser/preferences/bento.ftl
 new file mode 100644
-index 0000000000000000000000000000000000000000..889f95f9fd7421573c4e95606b8b6c72ba5fb678
+index 0000000000000000000000000000000000000000..7144c92c932b16ae9eb2485d3a7c7fe5fcb1de4b
 --- /dev/null
 +++ b/browser/locales/en-US/browser/preferences/bento.ftl
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,204 @@
 +bento-settings-title = Bento
 +    .heading = Bento
 +bento-backups-title = Bento backups
@@ -2728,6 +2777,8 @@ index 0000000000000000000000000000000000000000..889f95f9fd7421573c4e95606b8b6c72
 +    .label = Import Bento data…
 +bento-backup-manage =
 +    .label = Manage stored backups
++bento-merge-session =
++    .label = Merge browser session
 +bento-backup-save-title = Export Bento data
 +bento-backup-import-title = Import Bento data
 +bento-backup-import-confirm-title = Import Bento data?

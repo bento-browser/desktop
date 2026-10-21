@@ -20,7 +20,7 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `palette`                               | `palette.html`                                       | `Cmd/Ctrl+Alt+P`, sidebar `BENTO_OPEN_PALETTE`                                                       | idle, 2nd                  | Nothing: the dialog stays open inside the document, chrome only toggles the host                                                                            |
 | `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                        | idle, 3rd                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script, with chrome's `__windowId`                                                    |
 | `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                   | first use                  | Nothing                                                                                                                                                     |
-| `merge-palette`                         | `merge-palette.html`                                 | Sidebar footer `BENTO_OPEN_MERGE_PALETTE`                                                            | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                              |
+| `merge-palette`                         | `merge-palette.html`                                 | Command palette, Settings button, sidebar merge card (`BENTO_OPEN_MERGE_PALETTE`)                    | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                              |
 | `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                  | first use (first run only) | Resume step hash, read from the environment at window startup; the import handoff messages through the `BentoWelcomeHandoff` frame script (see below)       |
 | `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open (its `BENTO_EMBEDDED_IMPORT_READY` title only gates the onboarding handoff)         |
 | `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                           | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script (`content.postMessage` into this frame's own window), sent again on readiness           |
@@ -263,6 +263,36 @@ for any entry that applies the workspace theme without joining the bus. Chrome
 creates the document when a panel navigator button is hovered or focused (the
 load overlaps the 400 ms hover delay) and sends the label payload again when the
 document announces readiness.
+
+The payload is `{ label, detail?, placement?, screenX, screenY, width, height }`:
+the anchor in screen coordinates, an optional second line, and which side of the
+anchor the Mux tooltip opens on (`bottom` by default, `end` for the rail). The rail
+merge card is the second user. The shell frame is the 52 px rail there, so a Mux
+`Tooltip` drawn in it wraps to the frame and clips; the overlay is a window-wide
+document and does not. `components/MergeProgressCard/railTooltip.ts` writes
+`BENTO_RAIL_TOOLTIP:<timestamp>:<base64-json>` (`{ action: 'hover' | 'focus' | 'hide',
+label, detail, anchor }`, the anchor being the ring's rect in shell-frame
+coordinates) through the serialized `sendChromeTitle` queue. A title branch of
+`handleShellFrameTitle` calls `handleRailTooltipTitle`, which adds the shell
+frame's rect and `mozInnerScreenX`/`Y` to the anchor, sets `placement: 'end'`, and
+then takes the navigator tooltip's own path: `hover` goes through
+`armPanelNavigatorTooltip` (the 400 ms delay), `focus` through
+`showPanelNavigatorTooltipPayload` at once, `hide` through
+`hidePanelNavigatorTooltip`. No new overlay, document or surface kind, and no new
+Firefox dependency (it reads the `mozInnerScreen*` values the navigator tooltip
+already did). The card sends `hover` on pointer enter and `focus` only when the
+focus is `:focus-visible` (a click's focus does not raise it), and `hide` on pointer
+leave, blur, the rail expanding, the card starting its exit and unmounting; the
+mount script also hides it in `showMergePalette()`. The tooltip is a separate
+document in the page's colour mode, so it does not follow the card's inverted scope.
+A changing count is not sent again, because each send is a title write; the title
+text is, when it changes while the tooltip is up.
+
+Manual verification (expanded and rail, light and dark): in the rail with a merge
+running, hover the ring for 400 ms (tooltip beside it, outside the rail, title then
+detail); move away (gone); Tab to the ring (shows at once) and Tab away (gone);
+hover, then expand the rail (gone); hover, then click the ring (the merge palette
+opens, tooltip gone).
 
 ## Measuring
 

@@ -1,0 +1,17 @@
+/* The panel navigator tooltip document. A label with a detail (the rail merge card)
+ * stacks the two lines; the colours stay the tooltip's own, so the label leads by
+ * weight and the detail follows in the smallest Mux text size. */
+@layer bento.components {
+  .bento-navigator-tooltip__text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bento-navigator-tooltip__label {
+    font-weight: var(--muxui-semantic-typography-control-weight);
+  }
+
+  .bento-navigator-tooltip__detail {
+    font-size: var(--muxui-semantic-typography-badge-size);
+  }
+}

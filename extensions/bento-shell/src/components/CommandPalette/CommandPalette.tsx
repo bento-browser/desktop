@@ -24,6 +24,7 @@ import { useShallow } from 'zustand/shallow';
 // Per-icon imports — barrel forbidden by eslint (bundle, §6.2).
 import SettingsIcon from 'lucide-react/dist/esm/icons/settings';
 import ShieldIcon from 'lucide-react/dist/esm/icons/shield';
+import MergeIcon from 'lucide-react/dist/esm/icons/merge';
 import PlusIcon from 'lucide-react/dist/esm/icons/plus';
 import LayersIcon from 'lucide-react/dist/esm/icons/layers';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
@@ -66,6 +67,11 @@ function signalOpenSettings(privacy = false): void {
   sendChromeTitle(
     `${privacy ? 'BENTO_OPEN_SETTINGS_PRIVACY' : 'BENTO_OPEN_SETTINGS'}_${Date.now()}`,
   );
+}
+
+function signalOpenMergePalette(): void {
+  // Chrome closes this palette when it opens the merge palette.
+  sendChromeTitle(`BENTO_OPEN_MERGE_PALETTE_${Date.now()}`);
 }
 
 function commandIcon(icon: typeof SettingsIcon): ReactNode {
@@ -280,6 +286,15 @@ function useCommands(): BentoCommand[] {
         },
       });
     }
+    cmds.push({
+      id: 'action:merge-session',
+      title: 'Merge browser session',
+      subtitle: 'Import open tabs from another browser profile.',
+      group: 'Actions',
+      icon: commandIcon(MergeIcon),
+      keywords: ['import', 'merge', 'session', 'browser', 'profile', 'Chrome', 'Firefox'],
+      action: () => signalOpenMergePalette(),
+    });
     cmds.push({
       id: 'action:close-side-panels',
       title: 'Close all side panels',
