@@ -122,7 +122,7 @@ describe('titles', () => {
     expect(importSourcesRequestTitle('1700000000000')).toBe(
       'BENTO_IMPORT_SOURCES_REQUEST_1700000000000',
     );
-    expect(firefoxZenTitle(3, '1700000000000')).toBe('BENTO_IMPORT_FIREFOX_ZEN_3_1700000000000');
+    expect(firefoxZenTitle(4, '1700000000000')).toBe('BENTO_IMPORT_FIREFOX_ZEN_4_1700000000000');
   });
 });
 

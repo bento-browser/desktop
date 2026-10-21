@@ -116,6 +116,19 @@
     overflow-y: auto;
   }
 
+  /* Theme cards: tiles in five columns over the dialog's full width. The inset keeps focus rings
+   * unclipped once the compact layout makes the list scroll. */
+  .bento-welcome__options--cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    box-sizing: border-box;
+    max-inline-size: none;
+    padding: var(--muxui-semantic-layout-utility-inset);
+  }
+
+  .bento-welcome__options--cards[data-columns='4'] {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .bento-welcome__options > .muxui-toggle-button-group-motion-indicator {
     border-radius: var(--muxui-semantic-control-radius);
   }
@@ -159,10 +172,16 @@
   }
 
   /* Descendant, not child: Mux clones the selected option into its motion layer. */
-  .bento-welcome__options--tiles .bento-welcome__option {
+  :is(.bento-welcome__options--tiles, .bento-welcome__options--cards) .bento-welcome__option {
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     padding: var(--muxui-semantic-layout-inset-small);
+  }
+
+  /* Cards sit close to their preview so a long name ('Mountain Meadow') keeps one line. */
+  .bento-welcome__options--cards .bento-welcome__option {
+    justify-items: start;
+    padding: var(--muxui-semantic-layout-inset-tiny);
   }
 
   /* Appearance mini window; each pane carries its own data-muxui-color-scheme. */
@@ -203,6 +222,95 @@
 
   .bento-welcome__preview-lines > :first-child {
     inline-size: 60%;
+  }
+
+  /* Theme card preview: the pane takes the theme's canvas, the content panel its background
+   * surface, the active tab its selection fill and the accents its action colour. Each pane
+   * carries the theme's scope (data-muxui-theme), so these are that theme's tokens. */
+  .bento-welcome__preview-pane--theme {
+    gap: var(--bento-welcome-line);
+    padding: var(--bento-welcome-line);
+    background-color: var(--muxui-semantic-surface-canvas);
+  }
+
+  .bento-welcome__preview-pane > .bento-welcome__preview-sidebar:first-child {
+    display: flex;
+    flex: 0 0 30%;
+    flex-direction: column;
+    gap: var(--bento-welcome-line);
+    padding-block: var(--bento-welcome-line);
+    padding-inline: calc(var(--bento-welcome-line) / 2);
+    border: 0;
+    background-color: transparent;
+  }
+
+  .bento-welcome__preview-sidebar > span:not(.bento-welcome__preview-workspaces) {
+    block-size: var(--bento-welcome-line);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__preview-sidebar > span:nth-child(2) {
+    inline-size: 80%;
+  }
+
+  .bento-welcome__preview-sidebar > span:nth-child(4) {
+    inline-size: 65%;
+  }
+
+  .bento-welcome__preview-sidebar > span[data-active] {
+    block-size: calc(var(--bento-welcome-line) * 1.6);
+    border-radius: calc(var(--bento-welcome-line) / 2);
+    background-color: var(--muxui-semantic-selection-background);
+    box-shadow: inset calc(var(--bento-welcome-line) / 2) 0 0
+      var(--muxui-semantic-action-background);
+  }
+
+  .bento-welcome__preview-workspaces {
+    display: flex;
+    gap: calc(var(--bento-welcome-line) / 2);
+  }
+
+  .bento-welcome__preview-workspaces > span {
+    inline-size: var(--bento-welcome-line);
+    block-size: var(--bento-welcome-line);
+    border-radius: calc(var(--bento-welcome-line) / 3);
+    background-color: var(--muxui-semantic-surface-track);
+  }
+
+  .bento-welcome__preview-workspaces > [data-active] {
+    background-color: var(--muxui-semantic-action-background);
+  }
+
+  .bento-welcome__preview-pane--theme > .bento-welcome__preview-lines {
+    border-radius: var(--muxui-semantic-shape-indicator-radius);
+    background-color: var(--muxui-semantic-surface-background);
+  }
+
+  .bento-welcome__preview-lines > .bento-welcome__preview-button {
+    align-self: flex-end;
+    inline-size: 30%;
+    margin-block-start: auto;
+    block-size: calc(var(--bento-welcome-line) * 1.6);
+    border-radius: calc(var(--bento-welcome-line) / 2);
+    background-color: var(--muxui-semantic-action-background);
+  }
+
+  /* Theme step: Mux's segmented Tabs hold the collection switch and, in its panel, the cards. */
+  .muxui-tabs.bento-welcome__theme-tabs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    inline-size: 100%;
+  }
+
+  .bento-welcome__theme-tabs .muxui-tab-panels {
+    inline-size: 100%;
+  }
+
+  .bento-welcome__theme-tabs .muxui-tab-panel {
+    padding: 0;
   }
 
   /* Tour tiles: a static list. */
@@ -367,6 +475,18 @@
     margin: 0;
   }
 
+  /* The Theme row's swatch leads its name. */
+  .bento-welcome__summary-value {
+    display: flex;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-group-gap);
+  }
+
+  .bento-welcome__summary-swatch {
+    inline-size: var(--bento-welcome-source-logo);
+    block-size: var(--bento-welcome-source-logo);
+  }
+
   /* Entry motion: the stage on each step change, then its list tiles staggered
    * (animation-delay from WelcomeSurfaces). Option tiles move with the stage:
    * Mux's selection layer measures them, so they do not animate on their own. */
@@ -474,6 +594,14 @@
     .bento-welcome__tiles--tour,
     .bento-welcome__options--grid {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Theme cards: three columns, scrolling inside the stage like the engine grid. */
+    .bento-welcome__options--cards,
+    .bento-welcome__options--cards[data-columns] {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      max-block-size: var(--bento-welcome-card-list);
+      overflow-y: auto;
     }
 
     /* Tour tiles stack as rows: the smaller illustration on the left, the title and body to its

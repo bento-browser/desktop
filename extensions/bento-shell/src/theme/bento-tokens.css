@@ -175,7 +175,8 @@
 
     /* Welcome overlay (src/welcome). Dialog: the frame, then the gap kept to the
        viewport edge (-compact is the narrow-window gap). Inside: the text
-       measure, option and diagram blocks, the import source tiles, and the step dots. */
+       measure, option and diagram blocks (-list is the scrolling engine grid, -card-list the
+       compact theme cards: two whole rows), the import source tiles, and the step dots. */
     --bento-welcome-dialog-width: 45rem;
     --bento-welcome-dialog-height: 33rem;
     --bento-welcome-viewport-gap: 2rem;
@@ -186,6 +187,7 @@
     --bento-welcome-tour-image: 7.75rem;
     --bento-welcome-tour-image-compact: 4.5rem;
     --bento-welcome-list: 13.5rem;
+    --bento-welcome-card-list: 14.5rem;
     --bento-welcome-dot: 0.375rem;
     --bento-welcome-dot-active: calc(var(--bento-welcome-dot) * 2.5);
     --bento-welcome-line: 0.3125rem;

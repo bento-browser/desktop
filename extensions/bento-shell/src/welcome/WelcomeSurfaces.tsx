@@ -2,8 +2,16 @@
 // runs the tools port and mounts React at import time, so a story or test cannot
 // import it; everything here is side-effect free.
 
-import type { CSSProperties, ReactNode, RefObject } from 'react';
-import { Button, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
+import { useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import {
+  Button,
+  ColorSwatch,
+  Image,
+  Tabs,
+  Text,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@muxui/react';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
@@ -17,6 +25,13 @@ import { PRIVACY_LEVELS } from '@shared/privacy-levels';
 
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
+import { BENTO_THEMES, getThemeMeta, resolveThemeId, type BentoThemeMeta } from '../theme/presets';
+import {
+  getThemeScopeAttributes,
+  useResolvedColorScheme,
+  type ThemeColorScheme,
+} from '../theme/themeScope';
+import { ALL_THEME_IDS, useThemeSheets } from '../theme/themeSheets';
 import { importTitle, type DialogGeometry } from './importHandoff';
 import {
   firefoxZenSpan,
@@ -53,6 +68,11 @@ const STEPS = [
     id: 'appearance',
     title: 'Choose your appearance',
     description: 'Applies right away. Change it any time in Settings.',
+  },
+  {
+    id: 'theme',
+    title: 'Pick a colour theme',
+    description: 'Colours your first workspace. Every workspace can have its own.',
   },
   {
     id: 'import',
@@ -213,7 +233,7 @@ export function WelcomeStage({
   );
 }
 
-/** Presentational progress; "Step N of 6" is the accessible progress text. */
+/** Presentational progress; "Step N of LAST_STEP" is the accessible progress text. */
 export function StepDots({ current }: { current: number }) {
   return (
     <span className="bento-welcome__dots" aria-hidden="true">
@@ -287,18 +307,22 @@ export interface WelcomeOption<Id extends string> {
   icon?: ReactNode;
 }
 
-/** The one selectable surface for Appearance, Privacy and Search: a single-select
- * Mux group whose items Bento lays out as tiles (preview above the label), rows
- * (one column), or a two-column grid that scrolls past eight items. */
+/** The one selectable surface for Appearance, Theme, Privacy and Search: a single-select
+ * Mux group whose items Bento lays out as tiles (preview above the label), cards (tiles
+ * in five columns that scroll when compact), rows (one column), or a two-column grid
+ * that scrolls past eight items. */
 export function WelcomeOptions<Id extends string>({
   label,
   layout,
+  columns,
   options,
   value,
   onChange,
 }: {
   label: string;
-  layout: 'tiles' | 'rows' | 'grid';
+  layout: 'tiles' | 'cards' | 'rows' | 'grid';
+  /** Cards only: the column count of the wide layout (the compact layout always has three). */
+  columns?: number;
   options: readonly WelcomeOption<Id>[];
   value: Id;
   onChange: (next: Id) => void;
@@ -315,6 +339,7 @@ export function WelcomeOptions<Id extends string>({
         if (next) onChange(next.id);
       }}
       className={`bento-welcome__options bento-welcome__options--${layout}`}
+      data-columns={columns}
     >
       {options.map((option) => (
         <ToggleButton key={option.id} id={option.id} className="bento-welcome__option">
@@ -368,6 +393,154 @@ export const APPEARANCE_OPTIONS = [
   { id: 'dark', label: 'Dark', preview: <AppearancePreview mode="dark" /> },
   { id: 'system', label: 'Auto', preview: <AppearancePreview mode="system" /> },
 ] as const satisfies readonly WelcomeOption<UiColorModePref>[];
+
+/** The Theme step's two collections: Default and the standard themes, then the monochrome ones. */
+export const THEME_GROUPS = [
+  {
+    id: 'colourful',
+    label: 'Colourful',
+    // Nine cards in two rows of five.
+    columns: 5,
+    themes: BENTO_THEMES.filter((theme) => theme.collection !== 'monochrome'),
+  },
+  {
+    id: 'monochrome',
+    label: 'Monochrome',
+    // Seven cards in two rows of four: wide enough for 'Mountain Meadow' on one line.
+    columns: 4,
+    themes: BENTO_THEMES.filter((theme) => theme.collection === 'monochrome'),
+  },
+] as const;
+
+export type ThemeGroupId = (typeof THEME_GROUPS)[number]['id'];
+
+/** The collection holding `themeId` (an alias or unknown id resolves first). */
+export function themeGroupOf(themeId: string | undefined | null): ThemeGroupId {
+  return getThemeMeta(themeId).collection === 'monochrome' ? 'monochrome' : 'colourful';
+}
+
+/** A theme pick written to a workspace and not yet reported back by the workspace snapshot. */
+export interface PendingTheme {
+  workspaceId: string;
+  themeId: string;
+}
+
+/** What the Theme step shows while a pick is in flight, and whether the pick is done with.
+ * The pick counts only while its workspace is the active one: another workspace shows its own
+ * stored theme, and the pick is done with. It is settled once that workspace's stored theme (as
+ * the dialog resolves it, so an unset or unknown id is Default) equals the latest pick, so an
+ * acknowledgement of an older pick leaves the newest one showing. */
+export function pendingThemeView({
+  pending,
+  activeWorkspaceId,
+  storedThemeId,
+}: {
+  pending: PendingTheme | null;
+  activeWorkspaceId: string | null;
+  storedThemeId: string | undefined;
+}): { themeId: string; settled: boolean } {
+  const stored = resolveThemeId(storedThemeId);
+  if (!pending || pending.workspaceId !== activeWorkspaceId) {
+    return { themeId: stored, settled: true };
+  }
+  const picked = resolveThemeId(pending.themeId);
+  return picked === stored
+    ? { themeId: stored, settled: true }
+    : { themeId: picked, settled: false };
+}
+
+/** Mini Bento window for a theme card: workspace dots and tab bars (the active tab marked) in a
+ * sidebar beside a content panel with an accent button. The pane carries the theme's own scope, so
+ * only public Mux tokens colour it; the sheet for that scope must be loaded (ThemeChooser). */
+export function ThemePreview({
+  themeId,
+  colorScheme,
+}: {
+  themeId: string;
+  colorScheme: ThemeColorScheme;
+}) {
+  return (
+    <span className="bento-welcome__preview" aria-hidden="true">
+      <span
+        className="bento-welcome__preview-pane bento-welcome__preview-pane--theme"
+        {...getThemeScopeAttributes(themeId, colorScheme)}
+      >
+        <span className="bento-welcome__preview-sidebar">
+          <span className="bento-welcome__preview-workspaces">
+            <span data-active="true" />
+            <span />
+            <span />
+          </span>
+          <span />
+          <span data-active="true" />
+          <span />
+        </span>
+        <span className="bento-welcome__preview-lines">
+          <span />
+          <span />
+          <span />
+          <span className="bento-welcome__preview-button" />
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** One card per theme, each previewing the theme in `colorScheme`. */
+export function themeOptions(
+  themes: readonly BentoThemeMeta[],
+  colorScheme: ThemeColorScheme,
+): WelcomeOption<string>[] {
+  return themes.map((theme) => ({
+    id: theme.id,
+    label: theme.name,
+    preview: <ThemePreview themeId={theme.id} colorScheme={colorScheme} />,
+  }));
+}
+
+/** The Theme step's body: a Colourful or Monochrome switch over that collection's preview cards.
+ * It shows the collection holding `value` until the user picks the other one (so a workspace that
+ * reaches this document after it mounted still lands on its theme). Every card renders its own
+ * theme scope, so every theme's sheet is kept loaded while the step shows (as the workspace theme
+ * picker does): a collection switch never paints a card in the dialog's own tokens. */
+export function ThemeChooser({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (themeId: string) => void;
+}) {
+  const colorScheme = useResolvedColorScheme();
+  const [pickedGroup, setPickedGroup] = useState<ThemeGroupId>();
+  const groupId = pickedGroup ?? themeGroupOf(value);
+  useThemeSheets(ALL_THEME_IDS);
+
+  return (
+    <Tabs
+      aria-label="Theme collection"
+      variant="segment"
+      size="sm"
+      className="bento-welcome__theme-tabs"
+      value={groupId}
+      onChange={(next) => setPickedGroup(THEME_GROUPS.find((group) => group.id === next)?.id)}
+      // Mux mounts only the selected panel, so a collection's cards measure once visible.
+      items={THEME_GROUPS.map((group) => ({
+        id: group.id,
+        label: group.label,
+        panel: (
+          <WelcomeOptions
+            label={`${group.label} themes`}
+            layout="cards"
+            columns={group.columns}
+            options={themeOptions(group.themes, colorScheme)}
+            value={value}
+            onChange={onChange}
+          />
+        ),
+      }))}
+    />
+  );
+}
 
 export const PRIVACY_OPTIONS: readonly WelcomeOption<SelectablePrivacyProtectionLevel>[] =
   PRIVACY_LEVELS.map((level) => ({
@@ -628,6 +801,27 @@ export interface SummaryRow {
   label: string;
   value: string;
   step: number;
+  /** Mark before the value (the theme's swatch). */
+  leading?: ReactNode;
+}
+
+/** The Ready summary's Theme row: the theme's name led by its swatch, as the theme picker draws it. */
+export function themeSummaryRow(themeId: string, colorScheme: ThemeColorScheme): SummaryRow {
+  const theme = getThemeMeta(themeId);
+  return {
+    label: 'Theme',
+    value: theme.name,
+    step: stepIndexOf('theme'),
+    leading: (
+      <ColorSwatch
+        {...getThemeScopeAttributes(theme.id, colorScheme)}
+        color={theme.brand60}
+        secondaryColor={theme.neutral20}
+        shape="circle"
+        className="bento-welcome__summary-swatch"
+      />
+    ),
+  };
 }
 
 /** Ready-step summary; each Change action jumps back to the step that owns the value. */
@@ -647,7 +841,8 @@ export function ReadySummary({
               {row.label}
             </Text>
           </dt>
-          <dd>
+          <dd className="bento-welcome__summary-value">
+            {row.leading}
             <Text variant="label" size="md">
               {row.value}
             </Text>

@@ -34,9 +34,10 @@
   let bentoShellRegistryRecord = null;
   const BENTO_PANEL_NEWTAB_PATH = '/dist/panel-newtab.html';
   const BENTO_WELCOME_STEP_ENV = 'BENTO_WELCOME_STEP';
-  // Current post-import onboarding step. The welcome page also includes the
-  // exact next step in its title signal; this is only a compatibility fallback.
-  const BENTO_WELCOME_POST_IMPORT_STEP = '2';
+  // Current post-import onboarding step (the Privacy step, index 4 in
+  // WELCOME_STEPS). The welcome page also includes the exact next step in its
+  // title signal; this is only a compatibility fallback.
+  const BENTO_WELCOME_POST_IMPORT_STEP = '4';
   const BENTO_WELCOME_RESUME_HASH_KEY = 'bentoWelcomeStep';
   const BENTO_DEFAULT_UI_COLOR_MODE = 'light';
   const CHROME_DARK_QUERY = '(prefers-color-scheme: dark)';
