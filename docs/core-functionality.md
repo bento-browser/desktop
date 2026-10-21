@@ -44,10 +44,11 @@ earlier choices can be revisited. The steps are:
    profiles. The choice is applied immediately and every level can be fine-tuned
    later in Settings.
 5. Search: Firefox's currently visible search engines, listed in two columns and
-   scrolling inside the list when there are many. DuckDuckGo is the default for
-   fresh profiles, and engines Bento recognises as privacy-oriented carry a
-   Private tag. The choice is applied immediately; more engines can be added in
-   Settings.
+   scrolling inside the list when there are many. DuckDuckGo is already the
+   default, and so preselected, on a fresh profile; a profile that has finished
+   onboarding keeps whatever engine it has. Engines Bento recognises as
+   privacy-oriented carry a Private tag. The choice is applied immediately; more
+   engines can be added in Settings.
 6. Tour: a short introduction to workspaces, panels, and the command palette,
    each with a small diagram, one line of explanation, and its keyboard
    shortcut: switching workspaces, cycling between panels, and opening the
@@ -649,7 +650,8 @@ behind `about:config`. The selectable protection levels are:
   protection, tracker-cookie partitioning, Global Privacy Control, query
   stripping, remote search suggestions off, speculative networking off, local
   Safe Browsing checks on, HTTPS-only mode, uBlock Origin enabled, and
-  DuckDuckGo as the fresh-profile search default.
+  DuckDuckGo as the fresh-profile search default (a profile that already
+  finished onboarding keeps its current engine).
 - Enhanced: Standard plus resist fingerprinting and tighter WebRTC IP handling.
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
@@ -676,9 +678,10 @@ and caveats for Standard, Enhanced, and Hardened so users can compare
 compatibility impact before switching. The first-run onboarding privacy step
 lists each level with a one-line summary and marks Standard as recommended. The
 search choices shown in onboarding and Settings are Firefox's currently visible
-search engines, with DuckDuckGo as Bento's fresh-profile default. The onboarding
-search step tags visible privacy-oriented search engines as Private when
-Firefox exposes them. Settings also includes a searchable keyboard
+search engines, with DuckDuckGo as Bento's default for a fresh profile; a
+profile that already finished onboarding keeps its current engine. The
+onboarding search step tags visible privacy-oriented search engines as Private
+when Firefox exposes them. Settings also includes a searchable keyboard
 shortcuts command palette whose results are grouped by category and show command
 titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
 also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or
