@@ -328,13 +328,10 @@ export interface DevtoolsPanelLinkSync {
 export type PanelLayoutSyncRootNode = PanelLayoutSyncPanelNode | PanelLayoutSyncVerticalGroupNode;
 
 export type PanelLayoutSyncVerticalTopNode =
-  | PanelLayoutSyncPanelNode
-  | PanelLayoutSyncHorizontalGroupNode;
+  PanelLayoutSyncPanelNode | PanelLayoutSyncHorizontalGroupNode;
 
 export type PanelLayoutSyncVerticalBottomNode =
-  | PanelLayoutSyncPanelNode
-  | PanelLayoutSyncChooserNode
-  | PanelLayoutSyncHorizontalGroupNode;
+  PanelLayoutSyncPanelNode | PanelLayoutSyncChooserNode | PanelLayoutSyncHorizontalGroupNode;
 
 export interface PanelLayoutSyncPanelNode {
   kind: 'panel';
@@ -368,17 +365,13 @@ export interface PanelLayoutExport {
 }
 
 export type PanelLayoutExportRootNode =
-  | PanelLayoutExportPanelNode
-  | PanelLayoutExportVerticalGroupNode;
+  PanelLayoutExportPanelNode | PanelLayoutExportVerticalGroupNode;
 
 export type PanelLayoutExportVerticalTopNode =
-  | PanelLayoutExportPanelNode
-  | PanelLayoutExportHorizontalGroupNode;
+  PanelLayoutExportPanelNode | PanelLayoutExportHorizontalGroupNode;
 
 export type PanelLayoutExportVerticalBottomNode =
-  | PanelLayoutExportPanelNode
-  | PanelLayoutExportChooserNode
-  | PanelLayoutExportHorizontalGroupNode;
+  PanelLayoutExportPanelNode | PanelLayoutExportChooserNode | PanelLayoutExportHorizontalGroupNode;
 
 export interface PanelLayoutExportPanelNode {
   kind: 'panel';
@@ -716,14 +709,7 @@ export interface AddrbarNavigatePayload {
 }
 
 export type ExternalMergeSourceKind =
-  | 'firefox'
-  | 'zen'
-  | 'chrome'
-  | 'chromium'
-  | 'brave'
-  | 'edge'
-  | 'opera'
-  | 'vivaldi';
+  'firefox' | 'zen' | 'chrome' | 'chromium' | 'brave' | 'edge' | 'opera' | 'vivaldi';
 
 export interface ExternalMergeTabPreview {
   title: string;
@@ -784,9 +770,20 @@ export interface ExternalMergeProgress {
   totalWorkspaces: number;
   completedWorkspaces: number;
   totalTabs: number;
+  /** Tabs processed so far, opened or not (a failed or skipped tab counts). */
   completedTabs: number;
+  /**
+   * Tabs that actually opened in Bento so far; what a cancelled import left behind.
+   * Every emit site sets it. It is optional only because the archived rollback tools
+   * (rollback/legacy-source), type-checked against this file, predate it.
+   */
+  importedTabs?: number;
   currentWorkspaceName?: string;
   activity?: ExternalMergeProgressActivity;
+  /** Name of the browser being imported, e.g. "Firefox". Set once the session
+   * is read, so a shell document that never listed the sources (the sidebar)
+   * can still say where the tabs come from. */
+  sourceName?: string;
 }
 
 export type ExternalMergeErrorCode =

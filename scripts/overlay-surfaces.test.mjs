@@ -381,6 +381,8 @@ function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
     setBentoMenuSrc: navigate('menu'),
     setBentoPanelNavigatorTooltipSrc: navigate('panel-navigator-tooltip'),
     replayPanelNavigatorTooltipPayload: () => {},
+    // showMergePalette hides the rail merge card's tooltip; the tooltip is not under test here.
+    hidePanelNavigatorTooltip: () => {},
     showOverlayToolbarScrim: (owner) => {
       events.scrim.add(owner);
       events.scrimShown.push(owner);

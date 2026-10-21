@@ -10,6 +10,7 @@ import type {
   Action,
   Event,
   ExternalMergeErrorCode,
+  ExternalMergeProgress,
   PinnedPanelEntry,
   WireAction,
 } from '@shared/protocol';
@@ -1916,6 +1917,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           completedWorkspaces: 0,
           totalTabs: 0,
           completedTabs: 0,
+          importedTabs: 0,
         },
       });
       void (async () => {
@@ -1927,17 +1929,28 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           throwIfExternalMergeCancelled(abortController.signal);
           const session = normalizeExternalSession(snapshot);
           throwIfExternalMergeCancelled(abortController.signal);
+          const sourceName = session.browserName;
+          const emitProgress = (progress: ExternalMergeProgress) => {
+            emitToShellDocuments(ctx, {
+              type: 'externalMerge/progress',
+              operationId: action.operationId,
+              windowId: ctx.sourceWindowId,
+              progress: { ...progress, sourceName },
+            });
+          };
+          // The first event had no source yet; this one names it while the plan is built.
+          emitProgress({
+            stage: 'preparing',
+            totalWorkspaces: 0,
+            completedWorkspaces: 0,
+            totalTabs: 0,
+            completedTabs: 0,
+            importedTabs: 0,
+          });
           const summary = await executeExternalMerge(session, ctx, {
             signal: abortController.signal,
             targetIds: action.targetIds,
-            onProgress: (progress) => {
-              emitToShellDocuments(ctx, {
-                type: 'externalMerge/progress',
-                operationId: action.operationId,
-                windowId: ctx.sourceWindowId,
-                progress,
-              });
-            },
+            onProgress: emitProgress,
           });
           throwIfExternalMergeCancelled(abortController.signal);
           emitToShellDocuments(ctx, {

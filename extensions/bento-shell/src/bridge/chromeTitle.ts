@@ -60,3 +60,12 @@ export function sendChromeTitle(title: string): void {
   writing = true;
   writeNext();
 }
+
+/**
+ * base64 of the UTF-8 JSON of `payload`, the tail of a payload title
+ * (`BENTO_<NAME>:<timestamp>:<this>`). Chrome decodes it with the matching
+ * `decodeURIComponent(escape(atob(...)))`, so non-ASCII text survives.
+ */
+export function encodeTitlePayload(payload: object): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}

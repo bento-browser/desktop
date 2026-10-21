@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useExternalMergeStore } from './externalMerge';
+import { mergeProgressPercent, useExternalMergeStore } from './externalMerge';
 
 function resetStore() {
   useExternalMergeStore.getState().setForStory({
@@ -10,8 +10,10 @@ function resetStore() {
     activeOperationId: null,
     progress: null,
     progressLog: [],
+    activeSourceName: null,
     summary: null,
     error: null,
+    result: null,
     lastOpenNonce: null,
   });
 }
@@ -159,6 +161,7 @@ describe('external merge shell store', () => {
           completedWorkspaces: 0,
           totalTabs: 1,
           completedTabs: 1,
+          importedTabs: 1,
         },
       },
       1,
@@ -175,6 +178,7 @@ describe('external merge shell store', () => {
           completedWorkspaces: 0,
           totalTabs: 4,
           completedTabs: 1,
+          importedTabs: 1,
           currentWorkspaceName: 'Firefox: Research',
           activity: {
             kind: 'site',
@@ -268,5 +272,256 @@ describe('external merge shell store', () => {
     );
     expect(useExternalMergeStore.getState().activeOperationId).toBeNull();
     expect(useExternalMergeStore.getState().summary?.tabsOpened).toBe(1);
+  });
+
+  describe('result snapshot for the sidebar card', () => {
+    const summary = {
+      sourceId: 'source-1',
+      workspacesCreated: 6,
+      foldersCreated: 0,
+      tabsOpened: 608,
+      pinnedTabsOpened: 2,
+      skippedDuplicates: 0,
+      skippedUnsupportedUrls: 0,
+      failedTabs: 0,
+    };
+    const importing = {
+      stage: 'importing' as const,
+      totalWorkspaces: 6,
+      completedWorkspaces: 1,
+      totalTabs: 608,
+      completedTabs: 120,
+      importedTabs: 100,
+      sourceName: 'Firefox',
+    };
+
+    function startAndProgress() {
+      useExternalMergeStore.getState().startMerge('source-1', vi.fn());
+      const operationId = useExternalMergeStore.getState().activeOperationId!;
+      useExternalMergeStore
+        .getState()
+        .applyProgress({ operationId, windowId: 1, progress: importing }, 1);
+      return operationId;
+    }
+
+    it('keeps the browser name from progress and a done result after completion', () => {
+      const operationId = startAndProgress();
+      expect(useExternalMergeStore.getState().activeSourceName).toBe('Firefox');
+
+      useExternalMergeStore.getState().applyComplete({ operationId, windowId: 1, summary }, 1);
+
+      const state = useExternalMergeStore.getState();
+      expect(state.activeOperationId).toBeNull();
+      expect(state.activeSourceName).toBeNull();
+      expect(state.result).toEqual({
+        kind: 'done',
+        sourceName: 'Firefox',
+        tabsOpened: 608,
+        workspacesCreated: 6,
+      });
+    });
+
+    it('turns a cancellation into a partial result', () => {
+      const operationId = startAndProgress();
+      useExternalMergeStore.getState().applyError(
+        {
+          operationId,
+          windowId: 1,
+          code: 'cancelled',
+          message: 'Browser session merge was cancelled.',
+        },
+        1,
+      );
+
+      expect(useExternalMergeStore.getState().result).toEqual({
+        kind: 'cancelled',
+        operationId,
+        sourceName: 'Firefox',
+        // 120 tabs processed, 100 of them opened: the card counts the opened ones.
+        tabsAdded: 100,
+        percent: 20,
+      });
+    });
+
+    describe('a tab in flight when the merge is cancelled', () => {
+      function cancelAfterProgress() {
+        const operationId = startAndProgress();
+        useExternalMergeStore
+          .getState()
+          .applyError({ operationId, windowId: 1, code: 'cancelled', message: 'x' }, 1);
+        return operationId;
+      }
+      const lateProgress = (importedTabs: number | undefined) => ({
+        ...importing,
+        completedTabs: 121,
+        importedTabs,
+      });
+      const tabsAdded = () => {
+        const result = useExternalMergeStore.getState().result;
+        return result?.kind === 'cancelled' ? result.tabsAdded : null;
+      };
+
+      it('raises the cancelled count when tools reports it afterwards, and never lowers it', () => {
+        const operationId = cancelAfterProgress();
+        expect(tabsAdded()).toBe(100);
+
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(101) }, 1);
+        expect(tabsAdded()).toBe(101);
+        // The card is still a cancelled result; nothing else about it moves.
+        expect(useExternalMergeStore.getState().activeOperationId).toBeNull();
+        expect(useExternalMergeStore.getState().progress).toBeNull();
+
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(100) }, 1);
+        expect(tabsAdded()).toBe(101);
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(undefined) }, 1);
+        expect(tabsAdded()).toBe(101);
+      });
+
+      it('ignores late progress for another operation or another window', () => {
+        const operationId = cancelAfterProgress();
+
+        useExternalMergeStore.getState().applyProgress(
+          {
+            operationId: 'another-operation',
+            windowId: 1,
+            progress: lateProgress(150),
+          },
+          1,
+        );
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 2, progress: lateProgress(150) }, 1);
+        expect(tabsAdded()).toBe(100);
+      });
+
+      it('ignores late progress once the card is dismissed or the next merge has started', () => {
+        const dismissed = cancelAfterProgress();
+        useExternalMergeStore.getState().dismissResult();
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId: dismissed, windowId: 1, progress: lateProgress(150) }, 1);
+        expect(useExternalMergeStore.getState().result).toBeNull();
+
+        const replaced = cancelAfterProgress();
+        useExternalMergeStore.getState().startMerge('source-2', vi.fn());
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId: replaced, windowId: 1, progress: lateProgress(150) }, 1);
+        const state = useExternalMergeStore.getState();
+        expect(state.result).toBeNull();
+        expect(state.progress).toBeNull();
+      });
+    });
+
+    it('turns any other operation error into a failed result with one short line', () => {
+      const operationId = startAndProgress();
+      useExternalMergeStore.getState().applyError(
+        {
+          operationId,
+          windowId: 1,
+          code: 'unreadable',
+          message: `  The session\n could not be read.  ${'x'.repeat(200)}`,
+        },
+        1,
+      );
+
+      const result = useExternalMergeStore.getState().result;
+      expect(result?.kind).toBe('failed');
+      if (result?.kind !== 'failed') return;
+      expect(result.message.startsWith('The session could not be read.')).toBe(true);
+      expect(result.message.length).toBeLessThanOrEqual(120);
+      expect(result.message.endsWith('…')).toBe(true);
+      expect(result.percent).toBe(20);
+    });
+
+    it('names a failure that has no message', () => {
+      useExternalMergeStore.getState().startMerge('source-1', vi.fn());
+      const operationId = useExternalMergeStore.getState().activeOperationId!;
+      useExternalMergeStore.getState().applyError({ operationId, windowId: 1, message: '  ' }, 1);
+
+      expect(useExternalMergeStore.getState().result).toEqual({
+        kind: 'failed',
+        sourceName: null,
+        message: 'The import could not finish.',
+        percent: 0,
+      });
+    });
+
+    it('ignores source-list errors and errors for another operation', () => {
+      const dispatch = vi.fn();
+      useExternalMergeStore.getState().requestSourcesForOpen('open-1', dispatch);
+      const requestId = useExternalMergeStore.getState().currentRequestId!;
+      useExternalMergeStore
+        .getState()
+        .applyError({ requestId, windowId: 1, message: 'Discovery failed.' }, 1);
+      expect(useExternalMergeStore.getState().result).toBeNull();
+
+      startAndProgress();
+      useExternalMergeStore
+        .getState()
+        .applyError({ operationId: 'stale', windowId: 1, message: 'Nope.' }, 1);
+      expect(useExternalMergeStore.getState().result).toBeNull();
+    });
+
+    it('dismisses the result, and a palette open or close leaves it alone', () => {
+      const operationId = startAndProgress();
+      useExternalMergeStore.getState().applyComplete({ operationId, windowId: 1, summary }, 1);
+
+      useExternalMergeStore.getState().requestSourcesForOpen('open-1', vi.fn());
+      useExternalMergeStore.getState().handleClose();
+      expect(useExternalMergeStore.getState().result?.kind).toBe('done');
+      expect(useExternalMergeStore.getState().summary).toBeNull();
+
+      useExternalMergeStore.getState().dismissResult();
+      expect(useExternalMergeStore.getState().result).toBeNull();
+    });
+
+    it('replaces a lingering result when the next merge starts, here or in another document', () => {
+      const first = startAndProgress();
+      useExternalMergeStore
+        .getState()
+        .applyComplete({ operationId: first, windowId: 1, summary }, 1);
+      expect(useExternalMergeStore.getState().result).not.toBeNull();
+
+      useExternalMergeStore.getState().startMerge('source-2', vi.fn());
+      expect(useExternalMergeStore.getState().result).toBeNull();
+
+      const second = useExternalMergeStore.getState().activeOperationId!;
+      useExternalMergeStore
+        .getState()
+        .applyError({ operationId: second, windowId: 1, code: 'cancelled', message: 'x' }, 1);
+      expect(useExternalMergeStore.getState().result?.kind).toBe('cancelled');
+
+      useExternalMergeStore
+        .getState()
+        .applyStarted({ operationId: 'remote-3', windowId: 1, sourceId: 'source-3' }, 1);
+      expect(useExternalMergeStore.getState().result).toBeNull();
+      expect(useExternalMergeStore.getState().activeSourceName).toBeNull();
+    });
+  });
+
+  describe('mergeProgressPercent', () => {
+    const progress = (completedTabs: number, totalTabs: number) => ({
+      stage: 'importing' as const,
+      totalWorkspaces: 1,
+      completedWorkspaces: 0,
+      totalTabs,
+      completedTabs,
+      importedTabs: completedTabs,
+    });
+
+    it('is 0 without totals and a rounded share with them', () => {
+      expect(mergeProgressPercent(null)).toBe(0);
+      expect(mergeProgressPercent(progress(0, 0))).toBe(0);
+      expect(mergeProgressPercent(progress(120, 608))).toBe(20);
+      expect(mergeProgressPercent(progress(608, 608))).toBe(100);
+      expect(mergeProgressPercent(progress(9, 4))).toBe(100);
+    });
   });
 });

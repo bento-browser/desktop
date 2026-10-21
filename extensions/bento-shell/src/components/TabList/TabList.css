@@ -33,6 +33,9 @@
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
+    /* Its size never depends on its content (inset: 0), so it can be the size container
+       the search results measure the room below the search field against (cqh). */
+    container-type: size;
   }
 
   .bento-tab-list-pane__sticky-actions {
@@ -249,10 +252,12 @@
     opacity: 1;
   }
 
+  /* The slide shares the fade's state role (120 ms): a quick follow between rows,
+     chosen over reveal and interaction from a side-by-side prototype. */
   .bento-tab-list__hover-highlight[data-visible] {
     transition:
       opacity var(--muxui-semantic-motion-state-transition),
-      transform var(--muxui-semantic-motion-reveal-transition);
+      transform var(--muxui-semantic-motion-state-transition);
   }
 
   /* Same reveal spring pair as the trigger's width and the closed field row, so
@@ -653,10 +658,16 @@
 }
 
 .bento-tab-list-search__results {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--bento-tab-list-row-gap);
-  max-height: calc(100vh - var(--bento-tab-row-height) - var(--space-l));
+  /* The room from below the search field to the pane's bottom edge (the pane clips
+     anything past it). The pane's top padding, the field row and the gap are what sits
+     above the results. The end padding that clears the floating cards is set inline. */
+  max-height: calc(
+    100cqh - var(--space-3xs) - var(--bento-tab-row-height) - var(--bento-tab-list-row-gap)
+  );
   overflow-y: auto;
 }
 

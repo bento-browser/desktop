@@ -1,10 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { IconButton, ProgressCircle, Text, Tooltip } from '@muxui/react';
-import Settings from 'lucide-react/dist/esm/icons/settings';
+import { IconButton, Text, Tooltip } from '@muxui/react';
 import Command from 'lucide-react/dist/esm/icons/command';
 import Download from 'lucide-react/dist/esm/icons/download';
-import Merge from 'lucide-react/dist/esm/icons/merge';
 import Menu from 'lucide-react/dist/esm/icons/menu';
 import PanelLeftClose from 'lucide-react/dist/esm/icons/panel-left-close';
 import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
@@ -23,15 +21,17 @@ import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from './state/works
 import { getPanelIdsForWorkspace, usePanelsStore } from './state/panels';
 import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
-import { useExternalMergeStore } from './state/externalMerge';
 import type { UiColorModePref } from '@shared/protocol';
 import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
 import { applyGraphProjection } from './state/graph';
 import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
-import { sendChromeTitle } from './bridge/chromeTitle';
+import { MergeProgressCard } from './components/MergeProgressCard/MergeProgressCard';
+import { SidebarCards } from './components/SidebarCards/SidebarCards';
+import { encodeTitlePayload, sendChromeTitle } from './bridge/chromeTitle';
 import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
 import { observeRailViewport, setRailAttribute } from './sidebar/railViewport';
+import { observeFooterButtonEdges, type FooterButtonEdges } from './sidebar/footerAnchor';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -51,10 +51,6 @@ function FooterTooltip({
 }) {
   if (disabled) return <>{children}</>;
   return <Tooltip content={label} delay={400} placement="top" offset={8} trigger={children} />;
-}
-
-function openSettings() {
-  sendChromeTitle(`BENTO_OPEN_SETTINGS_${Date.now()}`);
 }
 
 function signalScrollToMain() {
@@ -92,13 +88,19 @@ function sidebarAnchorPayload(anchorRect: DOMRect | null) {
 
 function openFirefoxAppMenu(anchorRect: DOMRect | null) {
   sendChromeTitle(
-    `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeSidebarMenuPayload(sidebarAnchorPayload(anchorRect))}`,
+    `BENTO_OPEN_APP_MENU:${Date.now()}:${encodeTitlePayload(sidebarAnchorPayload(anchorRect))}`,
   );
+}
+
+// Where the Downloads button is, for Firefox's own downloads opens. A click on the
+// button sends its rect with the open instead.
+function reportDownloadsAnchor(edges: FooterButtonEdges) {
+  sendChromeTitle(`BENTO_DOWNLOADS_ANCHOR:${Date.now()}:${encodeTitlePayload({ anchor: edges })}`);
 }
 
 function openFirefoxDownloads(anchorRect: DOMRect | null) {
   sendChromeTitle(
-    `BENTO_OPEN_DOWNLOADS:${Date.now()}:${encodeSidebarMenuPayload(sidebarAnchorPayload(anchorRect))}`,
+    `BENTO_OPEN_DOWNLOADS:${Date.now()}:${encodeTitlePayload(sidebarAnchorPayload(anchorRect))}`,
   );
 }
 
@@ -110,12 +112,8 @@ interface SidebarMenuItem {
   isDisabled?: boolean;
 }
 
-function encodeSidebarMenuPayload(payload: object): string {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-}
-
 function openSidebarContextMenuInChrome(payload: object) {
-  sendChromeTitle(`BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeSidebarMenuPayload(payload)}`);
+  sendChromeTitle(`BENTO_SIDEBAR_CONTEXT_MENU:${Date.now()}:${encodeTitlePayload(payload)}`);
 }
 
 export function App() {
@@ -132,7 +130,6 @@ export function App() {
     activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,
   );
   const hasNoSidePanels = activePanelsHydrated && activePanelIds.size === 0;
-  const importInProgress = useExternalMergeStore((s) => Boolean(s.activeOperationId));
   // Per-workspace theme. Mirrors the active workspace's themeId onto
   // <html data-bento-theme="..."> so the scoped theme rules in
   // theme/presets/<id>.css apply to the shell. Chrome receives the active
@@ -243,11 +240,17 @@ export function App() {
     });
   };
   const onOpenInSidePanel = (id: number) => dispatch({ type: 'panel/add', id });
-  const onOpenSettings = () => {
-    openSettings();
-  };
   const downloadsButtonRef = useRef<HTMLButtonElement>(null);
   const appMenuButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const footer = downloadsButtonRef.current?.closest('.bento-shell-app__footer');
+    if (!footer) return;
+    return observeFooterButtonEdges(
+      footer,
+      () => downloadsButtonRef.current,
+      reportDownloadsAnchor,
+    );
+  }, []);
   const onOpenFirefoxDownloads = () => {
     openFirefoxDownloads(downloadsButtonRef.current?.getBoundingClientRect() ?? null);
   };
@@ -513,16 +516,21 @@ export function App() {
           <WorkspaceSwitcher />
         </div>
         <SidebarAddressBar />
-        <TabList
-          onActivate={onActivate}
-          onClose={onClose}
-          onCloseSelected={onCloseSelected}
-          onOpenNewMenu={onOpenNewMenu}
-          onOpenInSidePanel={onOpenInSidePanel}
-          onTabContextMenu={onTabContextMenu}
-          onFolderContextMenu={onFolderContextMenu}
-          onReorder={onReorder}
-        />
+        <div className="bento-shell-app__list-region">
+          <TabList
+            onActivate={onActivate}
+            onClose={onClose}
+            onCloseSelected={onCloseSelected}
+            onOpenNewMenu={onOpenNewMenu}
+            onOpenInSidePanel={onOpenInSidePanel}
+            onTabContextMenu={onTabContextMenu}
+            onFolderContextMenu={onFolderContextMenu}
+            onReorder={onReorder}
+          />
+          <SidebarCards>
+            <MergeProgressCard rail={sidebarCollapsed} onOpen={openMergePalette} />
+          </SidebarCards>
+        </div>
         <Row gap="4xs" align="center" className="bento-shell-app__footer">
           {/* Collapse/expand toggle. DOM order matters: this is the FIRST
               child so flex-direction:column-reverse in collapsed mode pins
@@ -553,31 +561,6 @@ export function App() {
               <BentoIcon icon={Command} />
             </IconButton>
           </FooterTooltip>
-          <FooterTooltip
-            label={importInProgress ? 'Importing browser session' : 'Merge browser session'}
-            disabled={sidebarCollapsed}
-          >
-            <IconButton
-              variant="ghost"
-              size="sm"
-              aria-label={
-                importInProgress ? 'View session import progress' : 'Merge browser session'
-              }
-              onActivate={openMergePalette}
-            >
-              {importInProgress ? (
-                <ProgressCircle.Root
-                  size="sm"
-                  label="Importing browser session"
-                  className="bento-shell-app__merge-progress"
-                >
-                  <ProgressCircle.Track />
-                </ProgressCircle.Root>
-              ) : (
-                <BentoIcon icon={Merge} />
-              )}
-            </IconButton>
-          </FooterTooltip>
           <FooterTooltip label="Color mode" disabled={sidebarCollapsed}>
             <ColorModeCycle
               value={uiColorMode}
@@ -606,11 +589,6 @@ export function App() {
               onActivate={onOpenFirefoxDownloads}
             >
               <BentoIcon icon={Download} />
-            </IconButton>
-          </FooterTooltip>
-          <FooterTooltip label="Settings" disabled={sidebarCollapsed}>
-            <IconButton variant="ghost" size="sm" aria-label="Settings" onActivate={onOpenSettings}>
-              <BentoIcon icon={Settings} />
             </IconButton>
           </FooterTooltip>
         </Row>

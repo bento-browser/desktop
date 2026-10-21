@@ -78,13 +78,34 @@ pinned Bento tabs. Zen essential tabs become pinned Bento panels. Chrome and
 other regular browser imports in this flow use Firefox's native migration wizard
 and are separate from the additive Bento backup import flow.
 
-The sidebar footer exposes Firefox's native app menu, Firefox's native downloads
-panel, and a manual "Merge browser session" action. Native footer panels are
-left-edge anchored to their trigger buttons so they grow rightward when screen
-space permits, and they open without Firefox's arrow-panel slide animation. The
+The sidebar footer exposes Firefox's native app menu and Firefox's native
+downloads panel; it has no separate Settings or merge button. The app menu lists
+"Bento Settings" directly above Firefox's own Settings item, and the command
+palette has an Open Settings command. Native footer panels are left-edge
+anchored to their trigger buttons so they grow rightward when screen space
+permits, and they open without Firefox's arrow-panel slide animation. The
 native Bookmarks sidebar uses Bento-scaled title styling, matches the Bento
 sidebar address field for bookmark search, and has its own resizable edge
-separate from the main Bento sidebar. The
+separate from the main Bento sidebar. The manual "Merge browser session" action
+opens from the command palette's "Merge browser session" command or from the
+"Merge browser session" button in the Backup and data group of Bento Settings
+(not shown in private windows); from Settings it opens over the window that
+holds the Settings tab. While a merge is running, a progress card floats over the
+bottom of the sidebar's tab list, above the footer: a progress ring (with the
+percentage inside once the tab totals are known), "Importing from" the source
+browser, the space being imported with how many tabs are done, and the site last
+opened. The card is drawn in the opposite colour scheme to the sidebar, a dark card
+on a light sidebar and a light card on a dark one, and follows light, dark and Auto
+as they change. The rows, and the search results while searching, keep scrolling
+underneath it and the list leaves room so the last row or result can scroll clear.
+Clicking the card reopens the merge progress view. When the merge ends the card
+stays, as "Imported N tabs", "Import cancelled" ("N tabs added", counting only tabs
+that were actually added) or "Import failed" with a short reason, until it is
+dismissed with its close button or the next merge replaces it. In the narrow rail
+the card is a round ring button above the footer; hovering or keyboard-focusing it
+shows its title and detail in a tooltip beside it, and clicking it opens the merge
+view and, once the merge has ended, also clears it. The card appears in the window
+the merge was started from. The
 merge action is a runtime, additive, one-way merge from another browser
 profile's latest persisted session snapshot. Bento does not sync with or write
 to the external profile. It
@@ -467,8 +488,9 @@ Panels support the core Bento workflow:
   regular tab, using the configured default new-panel width.
 - manage labelled custom panel width presets in Settings, reorder them by drag
   or keyboard, and remove individual sizes with a native destructive action;
-- adjust Bento panel corner roundedness with a labelled slider in Settings,
-  using the current panel radius as the default;
+- adjust Bento corner roundedness with a labelled slider in Settings (0 to 36 px,
+  default 12 px); it rounds the main content, with or without side panels, and
+  every panel the same amount;
 - adjust Bento splitter size with a labelled slider in Settings, which also
   changes the visual gap between panels.
 
@@ -588,7 +610,7 @@ The intended behavior is:
   header colour;
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
 - Firefox's native app menu and downloads panel remain reachable from the
-  sidebar footer;
+  sidebar footer, and the app menu's "Bento Settings" item opens Bento Settings;
 - Firefox's persistent native sidebar launcher and its generic toolbar toggle
   stay hidden because Bento owns that surface; explicit native panels such as
   Bookmarks and History remain available through their dedicated commands;
@@ -692,8 +714,9 @@ enabled by default and leaves it removable/disableable by the user.
 Settings is available at both `about:preferences#bento` and
 `about:settings#bento`, including when Firefox's settings-redesign preference is
 disabled. Its native page header displays the Bento heading beside the Settings
-icon. Sidebar and command-palette launches reuse the Settings tab in the source
-browser window. Backups and keyboard shortcuts use native Bento subpanes. Panel
+icon. The app menu's "Bento Settings" item and the command palette's Open
+Settings command reuse the Settings tab in the source browser window. Backups
+and keyboard shortcuts use native Bento subpanes. Panel
 sliders, numeric fields, list rows, reorder handles, search, and actions use
 Firefox's native Settings components. Custom panel-size rows show the numeric
 value and Remove action without position-based labels because the rows are

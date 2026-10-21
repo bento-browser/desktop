@@ -114,6 +114,28 @@
     --bento-command-palette-max-block: 80vh;
     --bento-merge-progress-log-min-height: 8rem;
     --bento-merge-progress-log-max-height: 14rem;
+    /* Floating sidebar cards (components/SidebarCards), laid over the bottom of the tab
+       list. Offset: the distance kept above the footer rail. Gap: the clear space kept
+       between the last row and the first card, so the list's end padding is the cards'
+       height plus both. Card: its padding, least height (the same for every state, so
+       the list does not move when a third line appears) and the slide it makes on
+       enter and exit. */
+    --bento-sidebar-cards-offset: 0.75rem;
+    --bento-sidebar-cards-gap: 0.5rem;
+    --bento-sidebar-card-padding: 0.75rem;
+    --bento-sidebar-card-min-height: 5.125rem;
+    --bento-sidebar-card-travel: 0.5rem;
+    /* Merge progress card: the ring's size, the gap to the text, and the room the text
+       leaves for the dismiss button. In the rail the card is a round button of the
+       rail-size token around a smaller ring. No colour is declared here: the cards render
+       in their own theme scope (inverted colour scheme), and a colour declared on :root
+       would keep the page's mode inside it, so the card stylesheet reads Mux semantic
+       tokens directly. */
+    --bento-merge-card-ring-size: 2.25rem;
+    --bento-merge-card-gap: 0.75rem;
+    --bento-merge-card-dismiss-room: var(--muxui-control-size-sm);
+    --bento-merge-card-rail-size: 2.25rem;
+    --bento-merge-card-rail-ring-size: 1.375rem;
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;

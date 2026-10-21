@@ -66,13 +66,20 @@ Top-level panel resizing:
   immediate `panels/sync`; if chrome skips the live refresh, neighbouring panel
   rects, root splitters, and the strip scroll extent remain aligned to the old
   width until a later reconcile.
-- Panel corner radius path: `BentoSettings.panelCornerRadiusPx` defaults to 8,
-  matching the current Mux UI `--radius-m` panel frame radius. Settings writes
+- Panel corner radius path: `BentoSettings.panelCornerRadiusPx` defaults to 12
+  (the stylesheet's `--bento-panel-corner-radius` starts at the same 12px, so there is
+  no jump before the setting arrives; keep the two in step with `DEFAULT_SETTINGS`
+  and the `defaultValue` in `patches/core-ui/15-bento-native-preferences.patch`).
+  Stored values survive: the settings store keeps only overrides from the default,
+  so a profile that never changed the slider follows the new default and one that
+  did keeps its value. Settings writes
   it through `settings/update`; `background.ts` treats it as chrome-bound and
   re-emits `panels/sync`; `useToolsPort.ts` includes it in the `BENTO_PANELS`
   title payload; `bento-shell-mount.js` clamps it to `0-36px` and writes
   `--bento-panel-corner-radius` for panel frames, content clips, focus rings,
-  subdivision frames, and the add-panel trailer.
+  subdivision frames, the add-panel trailer, and the no-panels main frame
+  (`.browserSidebarContainer`, which owns both its stroke and its clip). The
+  fullscreen rules still set the radius to 0.
 - Panel splitter size path: `BentoSettings.panelSplitterSizePx` defaults to 14,
   matching the previous hard-coded `--bento-splitter-hit-size`. Settings writes
   it through `settings/update`; `background.ts` treats it as chrome-bound and
@@ -405,6 +412,11 @@ Top-row splits and 2x2 groups:
 
 ## Flat layout pitfalls
 
+- The frame hairline is drawn by each frame's `::after` overlay above the remote page, not
+  by the frame's own box-shadow; a stroke on the frame is overpainted at the arcs by the
+  page's clip at some device-pixel phases (a fractional sidebar width or scroll offset is
+  enough). Keep the frame shadow token to the elevation shadow only. See
+  [Main frame origin](chrome-panel-rendering.md#main-frame-origin).
 - Keep live panel browser containers as direct `tabpanels` children unless the
   browser reparenting risks have been revalidated.
 - Splitter drags should update local flat geometry live, then dispatch

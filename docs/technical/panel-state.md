@@ -333,8 +333,9 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   gutter with margins on the direct `[data-bento-main-panel]`, and put the
   rounded clip plus frame paint on the native
   `#tabbrowser-tabpanels > .browserSidebarContainer`. The current no-panel
-  frame uses `border-radius: var(--radius-xl)`,
-  `box-shadow: var(--bento-panel-frame-shadow)`, and `overflow: clip` on that
+  frame uses `border-radius: var(--bento-panel-corner-radius)`,
+  `box-shadow: var(--bento-panel-frame-shadow)` (the elevation shadow only; the hairline is
+  the tabbox's `::after` overlay, above the page), and `overflow: clip` on that
   native container. The moved `#tabbrowser-tabbox` and its child
   `#tabbrowser-tabpanels` must paint `--bento-panel-strip-bg` in the
   `bento.chrome-theme` layer in no-panel mode; that token deliberately resolves

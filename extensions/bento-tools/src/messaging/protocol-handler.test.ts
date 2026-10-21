@@ -1714,6 +1714,7 @@ describe('protocol handler external merge', () => {
         completedWorkspaces: 0,
         totalTabs: 0,
         completedTabs: 0,
+        importedTabs: 0,
       },
     });
 
@@ -1737,6 +1738,22 @@ describe('protocol handler external merge', () => {
         code: 'no-importable-tabs',
         message: 'Firefox did not contain any importable tabs.',
       });
+    });
+    // Once the session is read, progress names the browser for documents that never
+    // listed the sources.
+    expect(broadcast).toHaveBeenCalledWith({
+      type: 'externalMerge/progress',
+      operationId: 'op-1',
+      windowId: 5,
+      progress: {
+        stage: 'preparing',
+        totalWorkspaces: 0,
+        completedWorkspaces: 0,
+        totalTabs: 0,
+        completedTabs: 0,
+        importedTabs: 0,
+        sourceName: 'Firefox',
+      },
     });
   });
 
@@ -1855,5 +1872,84 @@ describe('protocol handler external merge', () => {
 
     await Promise.resolve();
     await Promise.resolve();
+  });
+
+  it('still reports the tab that was in flight at a cancel, after the cancelled error', async () => {
+    let finishCreate!: (tab: { id: number }) => void;
+    const create = vi.fn(
+      () =>
+        new Promise<{ id: number }>((resolve) => {
+          finishCreate = resolve;
+        }),
+    );
+    vi.stubGlobal('browser', {
+      bentoExternalSessions: {
+        readSnapshot: vi.fn(async () => ({
+          sourceId: 'source-1',
+          kind: 'firefox',
+          browserName: 'Firefox',
+          profileName: 'Default',
+          lastModified: 1,
+          capturedAt: 1,
+          format: 'firefox-json',
+          json: JSON.stringify({
+            windows: [
+              {
+                tabs: [
+                  { entries: [{ url: 'https://first.example/', title: 'First' }], index: 1 },
+                  { entries: [{ url: 'https://second.example/', title: 'Second' }], index: 1 },
+                ],
+              },
+            ],
+          }),
+        })),
+      },
+      tabs: { query: vi.fn(async () => []), create, update: vi.fn(async (id: number) => ({ id })) },
+    });
+
+    const broadcast = vi.fn();
+    const ctx = createCloseContext({
+      tabs: {
+        snapshot: vi.fn(() => []),
+        assignWorkspaceEagerly: vi.fn(async () => true),
+      } as unknown as HandlerContext['tabs'],
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [] })),
+        create: vi.fn(() => ({ id: 'ws-new', name: 'Firefox: Default Window 1', createdAt: 1 })),
+        delete: vi.fn(),
+      } as unknown as HandlerContext['workspaces'],
+      panels: { getPanels: vi.fn(() => []) } as unknown as HandlerContext['panels'],
+      tabFolders: { create: vi.fn() } as unknown as HandlerContext['tabFolders'],
+      broadcast,
+      sourceWindowId: 5,
+    });
+
+    handle({ type: 'externalMerge/merge', sourceId: 'source-1', operationId: 'op-late' }, ctx);
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    // The cancel lands while the first tab is still being created.
+    handle({ type: 'externalMerge/cancel', operationId: 'op-late' }, ctx);
+    finishCreate({ id: 100 });
+
+    // The shell raises its cancelled count from the progress that carries the settled total.
+    const events = () => broadcast.mock.calls.map(([event]) => event);
+    await vi.waitFor(() => {
+      expect(events()).toContainEqual(
+        expect.objectContaining({
+          type: 'externalMerge/progress',
+          operationId: 'op-late',
+          progress: expect.objectContaining({ importedTabs: 1 }),
+        }),
+      );
+    });
+    const cancelledAt = events().findIndex(
+      (event) => event.type === 'externalMerge/error' && event.code === 'cancelled',
+    );
+    const openedAt = events().findIndex(
+      (event) => event.type === 'externalMerge/progress' && event.progress.importedTabs === 1,
+    );
+    expect(cancelledAt).toBeGreaterThan(-1);
+    expect(openedAt).toBeGreaterThan(cancelledAt);
+    expect(events().filter((event) => event.type === 'externalMerge/error')).toHaveLength(1);
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

@@ -33,8 +33,10 @@ Shell theme flow:
   renders it (`useThemeSheet` / `useThemeSheets`): `PinnedPanels` (each pin uses its
   own workspace's theme), `WorkspaceSwitcher` (the avatar), `WorkspaceThemePicker`
   (the trigger and all 16 swatches) and the `workspace-switcher` overlay (one avatar
-  per workspace). `themeScopeSheets.test.ts` fails when a file calls
-  `getThemeScopeAttributes` without registering.
+  per workspace), and `useInvertedThemeScope` (the floating sidebar cards, which
+  render the sidebar's own theme in the opposite colour scheme).
+  `themeScopeSheets.test.ts` fails when a file calls `getThemeScopeAttributes`
+  without registering.
 - Early sheet request (new windows). The workspace snapshot reaches a new
   window after its theme sheet could already have loaded, so the request starts
   before React mounts:
@@ -274,6 +276,13 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   another workspace's theme needs the same, in the component and not only in the
   document entry. Registering only the active workspace's theme leaves a pin from
   another workspace unthemed and lets a workspace switch prune its sheet.
+- A nested scope in the opposite colour scheme (the floating sidebar cards) keeps the
+  page's colour for any token declared on `:root` that reads a colour, because the value
+  is computed at the root and inherited. Mux semantic tokens and the tokens in the
+  `[data-bento-theme]` re-link rule follow the scope. Read a Mux token, or declare the
+  component's colour on its scoped selector, and resolve anything that must stay the
+  page's (shadows) on a page-scope ancestor. The recipe and a check are in
+  [mux-ui-component-customisations.md](../mux-ui-component-customisations.md#inverted-scope-for-floating-cards).
 - Waiting for the theme sheet without requesting it early delays the first
   themed paint in new windows. Measured at cold start with a persisted
   non-Default theme, requesting the sheet only after the workspace snapshot
