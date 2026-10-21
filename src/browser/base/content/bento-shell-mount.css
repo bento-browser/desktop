@@ -20,9 +20,14 @@
    reserve --bento-splitter-hit-size; the visible indicator is a
    centered half-length capsule inside that hit target. */
 :root {
+  /* The frame's hairline is drawn by each frame's ::after overlay, above the remote page,
+     so how Gecko snaps the page's rounded clip cannot paint over it (see "Main frame
+     origin" in docs/technical/chrome-panel-rendering.md). The frame itself only carries
+     the elevation shadow. */
   --bento-panel-frame-outline-shadow: 0 0 0 var(--bento-border-hairline) var(--neutral-20);
-  --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow), var(--shadow-l);
-  --bento-panel-corner-radius: var(--radius-m);
+  --bento-panel-frame-shadow: var(--shadow-l);
+  /* Same as the BentoSettings.panelCornerRadiusPx default, until the mount script writes the setting. */
+  --bento-panel-corner-radius: 12px;
   --bento-splitter-hit-size: 14px;
   --bento-splitter-hit-half: calc(var(--bento-splitter-hit-size) / 2);
   --bento-splitter-indicator-radius: 3px;
@@ -58,7 +63,7 @@
 }
 #tabbrowser-tabpanels.bento-panel-shadows-disabled,
 #bento-strip-container.bento-panel-shadows-disabled {
-  --bento-panel-frame-shadow: var(--bento-panel-frame-outline-shadow);
+  --bento-panel-frame-shadow: none;
 }
 
 /* Inline sidebar: no padding around the frame, no rounded
@@ -516,18 +521,26 @@
 #bento-shell-host.bento-shell-sidebar-resizing > #bento-shell-frame {
   pointer-events: none;
 }
+/* The rail is a whole number of pixels wide. Its token is rem based (51.8px), and the
+   strip, and the main frame inside it, start where the rail ends: a fractional start
+   leaves the remote page clipped about 1px out of line with the frame's stroke on the
+   rounded corners (see "Main frame origin" in docs/technical/chrome-panel-rendering.md).
+   The push measures the same length (sidebarRailWidth in the mount script). */
+#bento-shell-host {
+  --bento-rail-width: round(var(--bento-tab-strip-width-collapsed), 1px);
+}
 #bento-shell-host.bento-sidebar-collapsed {
-  min-width: var(--bento-tab-strip-width-collapsed) !important;
-  max-width: var(--bento-tab-strip-width-collapsed) !important;
-  width: var(--bento-tab-strip-width-collapsed) !important;
+  min-width: var(--bento-rail-width) !important;
+  max-width: var(--bento-rail-width) !important;
+  width: var(--bento-rail-width) !important;
 }
 #bento-shell-host.bento-sidebar-hidden {
   position: relative;
   z-index: 5;
-  min-width: var(--bento-tab-strip-width-collapsed) !important;
-  max-width: var(--bento-tab-strip-width-collapsed) !important;
-  width: var(--bento-tab-strip-width-collapsed) !important;
-  margin-right: calc(-1 * var(--bento-tab-strip-width-collapsed)) !important;
+  min-width: var(--bento-rail-width) !important;
+  max-width: var(--bento-rail-width) !important;
+  width: var(--bento-rail-width) !important;
+  margin-right: calc(-1 * var(--bento-rail-width)) !important;
   overflow: hidden;
   pointer-events: none;
   transform: translateX(-100%);
@@ -918,10 +931,14 @@
   padding: 0;
 }
 #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] {
-  margin-block-start: var(--space-3xs);
-  margin-block-end: var(--space-2xs);
-  margin-inline-start: var(--space-2xs);
-  margin-inline-end: var(--space-2xs);
+  /* Whole pixels: the frame (stroked by box-shadow) and the page clip share the
+     .browserSidebarContainer below, and at a fractional origin the remote page is clipped
+     about 1px out of line with the stroke, so it paints over the stroke on the rounded
+     corners. The gutters are rem tokens (fractional at the chrome's 11px rem), so round
+     them. */
+  margin-block-start: round(var(--space-3xs), 1px);
+  margin-block-end: round(var(--space-2xs), 1px);
+  margin-inline: round(var(--space-2xs), 1px);
   border-radius: 0;
   background-color: var(--bento-panel-strip-bg) !important;
   background-image: none !important;
@@ -938,7 +955,7 @@
    owns the rounded clip and frame paint. This keeps macOS live
    window resize smooth. */
 #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
-  border-radius: var(--radius-xl);
+  border-radius: var(--bento-panel-corner-radius);
   background-color: var(--neutral-5);
   box-shadow: var(--bento-panel-frame-shadow);
   overflow: clip;
@@ -946,9 +963,6 @@
 #bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer > .browserContainer {
   border-radius: 0;
   overflow: visible;
-}
-#bento-strip-container.bento-no-side-panels.bento-panel-shadows-disabled > #bento-side-panel-host > [data-bento-main-panel] > #tabbrowser-tabpanels > .browserSidebarContainer {
-  box-shadow: var(--bento-panel-frame-outline-shadow);
 }
 
 /* Custom always-visible horizontal scrollbar. Stays in the
@@ -1448,6 +1462,12 @@
 #bento-side-panel-host > .bento-panel--cycle-focused::after {
   border-color: var(--color-60);
 }
+/* With no panels the main tabbox is exactly the rounded frame (its margins are the
+   gutter), so its overlay carries the hairline. In panel mode the tabbox is the whole
+   strip and its overlay must stay unstroked. */
+#bento-strip-container.bento-no-side-panels > #bento-side-panel-host > [data-bento-main-panel]::after {
+  box-shadow: var(--bento-panel-frame-outline-shadow);
+}
 .bento-panel--focused > .bento-panel-header,
 .bento-panel--cycle-focused > .bento-panel-header {
   background-color: var(--neutral-5);
@@ -1838,10 +1858,6 @@
   overflow: visible;
   position: relative;
 }
-#tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-main-panel],
-#tabbrowser-tabpanels.bento-split-active.bento-panel-shadows-disabled > [data-bento-panel-tab-id] {
-  box-shadow: var(--bento-panel-frame-outline-shadow);
-}
 /* The browser fills whatever vertical space the header doesn't. */
 #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > browser,
 #tabbrowser-tabpanels.bento-split-active > .split-view-panel-active > .browserContainer,
@@ -2213,6 +2229,8 @@
   inset: 0;
   border: var(--bento-focus-ring-width) solid transparent;
   border-radius: var(--bento-panel-corner-radius);
+  /* The frame's hairline, outside the edge, above the remote page. */
+  box-shadow: var(--bento-panel-frame-outline-shadow);
   pointer-events: none;
   z-index: 10;
   box-sizing: border-box;
@@ -2476,7 +2494,8 @@
   z-index: 6 !important;
   box-sizing: border-box;
   border-radius: var(--bento-panel-corner-radius) !important;
-  box-shadow: var(--bento-panel-frame-shadow);
+  /* No remote page inside, so the hairline stays on the frame. */
+  box-shadow: var(--bento-panel-frame-outline-shadow), var(--bento-panel-frame-shadow);
 }
 .bento-subdivision-chooser::after {
   content: '';

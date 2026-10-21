@@ -2292,6 +2292,8 @@
       return;
     }
     dismissPalette();
+    // The rail merge card's tooltip is up when its click opens this; the overlay covers it.
+    hidePanelNavigatorTooltip();
     const nonce = nextMergePaletteNonce('open');
     openOverlay('merge-palette', () => {
       showOverlayToolbarScrim('merge-palette');
@@ -2335,6 +2337,11 @@
       showMergePalette();
     }
   }
+
+  // The native Bento Settings page (patch 15) asks for the merge palette by
+  // dispatching this event on its top chrome window, so it opens over the window
+  // that holds the Settings tab, wherever the tab has been moved.
+  window.addEventListener('BentoOpenMergePalette', () => showMergePalette());
 
   // ─── Floating address/search bar overlay ──────────────────────────────
 
@@ -3639,6 +3646,8 @@
   const SETTINGS_PRIVACY_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_PRIVACY_';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
+  const DOWNLOADS_ANCHOR_PREFIX = 'BENTO_DOWNLOADS_ANCHOR:';
+  const RAIL_TOOLTIP_PREFIX = 'BENTO_RAIL_TOOLTIP:';
   const SIDEBAR_FOOTER_PANEL_POSITION = 'topleft bottomleft';
   const ADDRBAR_OPEN_PREFIX = 'BENTO_OPEN_ADDRBAR:';
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
@@ -3915,32 +3924,91 @@
     return ensureSidebarFooterAnchor(anchorRect, 'bento-sidebar-downloads-anchor');
   }
 
+  // Where the shell last said its Downloads button is, as distances from the shell
+  // viewport's right and bottom edges plus its size (BENTO_DOWNLOADS_ANCHOR, sent
+  // when the footer layout changes: rail, merge progress ring). Edges rather than a
+  // position, so a window or sidebar resize needs no new report. Firefox's own
+  // downloads opens anchor here (DownloadsButton.getAnchor); a click on the button
+  // sends its rect with the open instead. Until the first report this is the
+  // expanded footer's position.
+  const DOWNLOADS_BUTTON_EDGES_DEFAULT = { right: 11, bottom: 10, width: 32, height: 32 };
+  let downloadsButtonEdges = DOWNLOADS_BUTTON_EDGES_DEFAULT;
+
+  function handleDownloadsAnchorTitle(rawTitle) {
+    // Format: BENTO_DOWNLOADS_ANCHOR:<ts>:<base64-json>
+    const edges = parseSidebarAnchorPayload(rawTitle, DOWNLOADS_ANCHOR_PREFIX, 'downloads anchor');
+    if (!edges) return;
+    const { right, bottom, width, height } = edges;
+    if ([right, bottom, width, height].every(Number.isFinite) && width > 0 && height > 0) {
+      downloadsButtonEdges = { right, bottom, width, height };
+    }
+  }
+
+  // The shell's rail merge card asks for a tooltip beside it (BENTO_RAIL_TOOLTIP): the
+  // shell frame is the rail wide, so a tooltip drawn inside it would be clipped. The
+  // panel navigator tooltip overlay draws it instead, through the same show, hide and
+  // delay path as the navigator buttons. 'hover' waits the hover delay, 'focus' shows at
+  // once (keyboard focus, and a label that changed while the tooltip is up), 'hide' hides.
+  function handleRailTooltipTitle(rawTitle) {
+    // Format: BENTO_RAIL_TOOLTIP:<ts>:<base64-json>
+    const payload = parseSidebarTitlePayload(rawTitle, RAIL_TOOLTIP_PREFIX, 'rail tooltip');
+    if (!payload) return;
+    if (payload.action === 'hide') {
+      hidePanelNavigatorTooltip();
+      return;
+    }
+    const { label, detail, anchor } = payload;
+    const shellRect = document.getElementById('bento-shell-frame')?.getBoundingClientRect();
+    if (!shellRect || typeof label !== 'string' || !label || !anchor) return;
+    const { left, top, width, height } = anchor;
+    if (![left, top, width, height].every(Number.isFinite)) return;
+    const tooltip = {
+      label,
+      detail: typeof detail === 'string' && detail ? detail : undefined,
+      placement: 'end',
+      screenX: (window.mozInnerScreenX || window.screenX || 0) + shellRect.left + left,
+      screenY: (window.mozInnerScreenY || window.screenY || 0) + shellRect.top + top,
+      width,
+      height,
+    };
+    if (payload.action === 'hover') {
+      armPanelNavigatorTooltip(() => showPanelNavigatorTooltipPayload(tooltip));
+    } else if (payload.action === 'focus') {
+      showPanelNavigatorTooltipPayload(tooltip);
+    }
+  }
+
   function ensureSidebarDownloadsFallbackAnchor() {
     const shellFrame = document.getElementById('bento-shell-frame');
     const shellRect = shellFrame?.getBoundingClientRect();
     if (!shellRect) return null;
+    const { right, bottom, width, height } = downloadsButtonEdges;
     return ensureSidebarFooterAnchor(
       {
-        left: Math.max(0, shellRect.width - 76),
-        top: Math.max(0, shellRect.height - 44),
-        width: 32,
-        height: 32,
+        left: Math.max(0, shellRect.width - right - width),
+        top: Math.max(0, shellRect.height - bottom - height),
+        width,
+        height,
       },
       'bento-sidebar-downloads-anchor',
     );
   }
 
-  function parseSidebarAnchorPayload(rawTitle, prefix, label) {
+  // Title-IPC payloads are <prefix><timestamp>:<base64 of UTF-8 JSON>.
+  function parseSidebarTitlePayload(rawTitle, prefix, label) {
     const tail = rawTitle.slice(prefix.length);
     const colon = tail.indexOf(':');
     if (colon < 0) return null;
     try {
-      const payload = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
-      return payload?.anchor || null;
+      return JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1))))) || null;
     } catch (err) {
       console.warn(`[bento-shell-mount] ${label} payload parse failed:`, err);
       return null;
     }
+  }
+
+  function parseSidebarAnchorPayload(rawTitle, prefix, label) {
+    return parseSidebarTitlePayload(rawTitle, prefix, label)?.anchor || null;
   }
 
   function suppressSidebarFooterPanelAnimation(panel) {
@@ -4009,6 +4077,47 @@
       parseSidebarAnchorPayload(rawTitle, APP_MENU_OPEN_PREFIX, 'app menu'),
     );
   }
+
+  // ─── "Bento Settings" item in Firefox's app menu ───────────────────────
+  // Firefox builds the app menu's main view lazily: it waits in the
+  // appMenu-viewCache template until the first open, and PanelMultiView then
+  // moves it into #appMenu-popup. Every way of opening the menu (the sidebar
+  // footer button, PanelUI.show, any other PanelMultiView.openPopup of the panel)
+  // shows that view and fires ViewShowing, which bubbles to the panel once the
+  // view is in the live DOM. One listener on the panel therefore adds the item on
+  // whichever open comes first, before the view is measured, and finds it already
+  // there afterwards.
+  // The item is a plain subviewbutton, so it takes the menu's look, hover and
+  // arrow-key navigation, and Firefox's panel close listeners hide the menu on
+  // activation as they do for the Settings item. The label is a fixed string
+  // like the other Bento-added menu items.
+  const BENTO_APPMENU_SETTINGS_ID = 'bento-appmenu-settings-button';
+  function installBentoSettingsAppMenuItem() {
+    const panel = document.getElementById('appMenu-popup');
+    if (!panel) {
+      console.warn('[bento-shell-mount] appMenu-popup missing; Bento Settings menu item skipped');
+      return;
+    }
+    panel.addEventListener('ViewShowing', (event) => {
+      const view = event.target;
+      if (view.id !== 'appMenu-mainView') return;
+      if (view.querySelector('#' + BENTO_APPMENU_SETTINGS_ID)) return;
+      const firefoxSettings = view.querySelector('#appMenu-settings-button');
+      if (!firefoxSettings) {
+        console.warn('[bento-shell-mount] appMenu-settings-button missing; Bento Settings item skipped');
+        return;
+      }
+      const item = document.createXULElement('toolbarbutton');
+      item.id = BENTO_APPMENU_SETTINGS_ID;
+      item.className = 'subviewbutton';
+      item.setAttribute('label', 'Bento Settings');
+      item.addEventListener('command', () => {
+        void openBentoSettings(false);
+      });
+      firefoxSettings.before(item);
+    });
+  }
+  installBentoSettingsAppMenuItem();
 
   function waitForDownloadsViewReady(timeoutMs = 10000) {
     return new Promise((resolve) => {
@@ -8786,13 +8895,19 @@
     const rect = btn.getBoundingClientRect();
     const screenX = (window.mozInnerScreenX || window.screenX || 0) + rect.left;
     const screenY = (window.mozInnerScreenY || window.screenY || 0) + rect.top;
-    panelNavigatorTooltipPayload = {
+    showPanelNavigatorTooltipPayload({
       label,
       screenX,
       screenY,
       width: rect.width,
       height: rect.height,
-    };
+    });
+  }
+
+  // payload: { label, detail?, placement?, screenX, screenY, width, height }, the anchor
+  // in screen coordinates; the tooltip document places a Mux tooltip beside it.
+  function showPanelNavigatorTooltipPayload(payload) {
+    panelNavigatorTooltipPayload = payload;
     // First use creates the tooltip document. Until it announces readiness the
     // payload above waits in panelNavigatorTooltipPayload; the manager's
     // onReady (and the STATE_STOP listener) send it.
@@ -8802,12 +8917,17 @@
     replayPanelNavigatorTooltipPayload(frame);
   }
 
+  // Hover starts loading the document now, so the load overlaps the hover delay, and
+  // runs `show` after it.
+  function armPanelNavigatorTooltip(show) {
+    hidePanelNavigatorTooltip();
+    overlays.ensure('panel-navigator-tooltip', 'hover');
+    panelNavigatorTooltipTimer = setTimeout(show, 400);
+  }
+
   function attachPanelNavigatorTooltip(btn) {
     btn.addEventListener('mouseenter', () => {
-      hidePanelNavigatorTooltip();
-      // Start loading the document now so it overlaps the hover delay.
-      overlays.ensure('panel-navigator-tooltip', 'hover');
-      panelNavigatorTooltipTimer = setTimeout(() => showPanelNavigatorTooltip(btn), 400);
+      armPanelNavigatorTooltip(() => showPanelNavigatorTooltip(btn));
     });
     btn.addEventListener('mouseleave', hidePanelNavigatorTooltip);
     btn.addEventListener('focus', () => showPanelNavigatorTooltip(btn));
@@ -16536,7 +16656,8 @@
   // The running push, { host, collapsed, hidden, direction, ... }, or null. hidden is
   // whether the push ends in the hidden state.
   let sidebarPush = null;
-  // Width of the collapsed rail in px, measured once from its token.
+  // Width of the collapsed rail in px, measured once from its token (a whole number of
+  // pixels, like #bento-shell-host's width: --bento-rail-width in the mount stylesheet).
   let sidebarRailWidthPx = 0;
 
   function sidebarRailWidth() {
@@ -16544,7 +16665,7 @@
     const probe = document.createElementNS(HTML_NS, 'div');
     probe.style.cssText =
       'position:absolute;visibility:hidden;pointer-events:none;height:0;' +
-      'width:var(--bento-tab-strip-width-collapsed)';
+      'width:round(var(--bento-tab-strip-width-collapsed), 1px)';
     document.documentElement.appendChild(probe);
     const width = probe.getBoundingClientRect().width;
     probe.remove();
@@ -16977,9 +17098,10 @@
     registerBentoShellDocument();
 
     // Palette: CLOSE hides it; the two SETTINGS prefixes hide it and open
-    // Settings.
+    // Settings; OPEN_MERGE_PALETTE opens the merge palette, which dismisses it.
     const handlePaletteFrameTitle = (title) => {
       if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
+      else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
       else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
         hidePalette();
         void openBentoSettings(true);
@@ -17025,13 +17147,10 @@
       if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
       else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
-      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
-        void openBentoSettings(true);
-      } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
-        void openBentoSettings(false);
-      }
       else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
       else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
+      else if (title.startsWith(DOWNLOADS_ANCHOR_PREFIX)) handleDownloadsAnchorTitle(title);
+      else if (title.startsWith(RAIL_TOOLTIP_PREFIX)) handleRailTooltipTitle(title);
       else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
       else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
         handleSidebarAddressSubmitTitle(title);

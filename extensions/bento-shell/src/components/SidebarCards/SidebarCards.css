@@ -1,0 +1,111 @@
+/* Layer-2 component: SidebarCards.
+ *
+ * A bottom-aligned stack of opaque cards laid over the end of the tab list, just above
+ * the footer rail. The container sits in the list's wrapper (.bento-shell-app__list-region,
+ * position: relative). Its padding is the clear gap above the cards and the offset below
+ * them, so its measured height is what the list pads its end by (SidebarCards.tsx). It
+ * ignores the pointer except on the cards themselves, so the list stays live under the
+ * gaps. Every card is a .bento-sidebar-card; a container with none takes no space.
+ *
+ * A card renders in its own theme scope with the opposite colour scheme to the sidebar
+ * (useInvertedThemeScope), so Mux semantic tokens read on the card resolve in the inverted
+ * scheme. This container is in the page's scope, so the card's shadows are resolved here
+ * and inherited as values: they stay the page's, not the card's. */
+@layer bento.components {
+  .bento-sidebar-cards {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    /* Above the pane's sticky bar (z-index 3), which holds the search results, so a card
+       stays visible and clickable over them. */
+    z-index: 4;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--bento-sidebar-cards-gap);
+    padding-block: var(--bento-sidebar-cards-gap) var(--bento-sidebar-cards-offset);
+    padding-inline: var(--bento-sidebar-inline-padding);
+    pointer-events: none;
+    --bento-sidebar-card-shadow: var(--muxui-semantic-elevation-overlay);
+    --bento-sidebar-card-shadow-hover: var(--muxui-semantic-elevation-modal);
+  }
+
+  .bento-sidebar-cards:not(:has(.bento-sidebar-card)) {
+    display: none;
+  }
+
+  /* The rail centres its cards; the host width is the shell's own width, so this switches
+     in the same frame as the rest of the rail layout. */
+  html[data-bento-collapsed='true'] .bento-sidebar-cards {
+    align-items: center;
+    padding-inline: 0;
+  }
+
+  /* Raised, opaque surface. Hover deepens the border and the shadow on the state role. A
+     card enters on the reveal role and leaves on dismiss (data-exiting, set by
+     useCardPresence, which unmounts it when the fade ends). */
+  .bento-sidebar-card {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--bento-sidebar-card-min-height);
+    display: flex;
+    border: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+    border-radius: var(--muxui-semantic-shape-container-radius);
+    background-color: var(--muxui-semantic-surface-raised);
+    box-shadow: var(--bento-sidebar-card-shadow);
+    color: var(--muxui-semantic-content-default);
+    pointer-events: auto;
+    transition:
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      transform var(--muxui-semantic-motion-reveal-transition),
+      border-color var(--muxui-semantic-motion-state-transition),
+      box-shadow var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-sidebar-card:hover {
+    border-color: var(--muxui-semantic-border-indicator);
+    box-shadow: var(--bento-sidebar-card-shadow-hover);
+  }
+
+  @starting-style {
+    .bento-sidebar-card {
+      opacity: 0;
+      transform: translateY(var(--bento-sidebar-card-travel));
+    }
+  }
+
+  .bento-sidebar-card[data-exiting] {
+    opacity: 0;
+    transform: translateY(var(--bento-sidebar-card-travel));
+    pointer-events: none;
+    transition:
+      opacity var(--muxui-semantic-motion-dismiss-transition),
+      transform var(--muxui-semantic-motion-dismiss-transition);
+  }
+
+  /* Reduced motion: the fade stays (state role); the slide goes. */
+  @media (prefers-reduced-motion: reduce) {
+    .bento-sidebar-card,
+    .bento-sidebar-card[data-exiting] {
+      transform: none;
+    }
+
+    .bento-sidebar-card {
+      transition:
+        opacity var(--muxui-semantic-motion-state-transition),
+        border-color var(--muxui-semantic-motion-state-transition),
+        box-shadow var(--muxui-semantic-motion-state-transition);
+    }
+
+    .bento-sidebar-card[data-exiting] {
+      transition: opacity var(--muxui-semantic-motion-dismiss-transition);
+    }
+
+    @starting-style {
+      .bento-sidebar-card {
+        transform: none;
+      }
+    }
+  }
+}

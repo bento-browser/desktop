@@ -1714,6 +1714,7 @@ describe('protocol handler external merge', () => {
         completedWorkspaces: 0,
         totalTabs: 0,
         completedTabs: 0,
+        importedTabs: 0,
       },
     });
 
@@ -1737,6 +1738,22 @@ describe('protocol handler external merge', () => {
         code: 'no-importable-tabs',
         message: 'Firefox did not contain any importable tabs.',
       });
+    });
+    // Once the session is read, progress names the browser for documents that never
+    // listed the sources.
+    expect(broadcast).toHaveBeenCalledWith({
+      type: 'externalMerge/progress',
+      operationId: 'op-1',
+      windowId: 5,
+      progress: {
+        stage: 'preparing',
+        totalWorkspaces: 0,
+        completedWorkspaces: 0,
+        totalTabs: 0,
+        completedTabs: 0,
+        importedTabs: 0,
+        sourceName: 'Firefox',
+      },
     });
   });
 

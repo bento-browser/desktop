@@ -324,6 +324,7 @@ export async function executeExternalMerge(
     completedWorkspaces,
     totalTabs,
     completedTabs,
+    importedTabs: summary.tabsOpened,
   });
   let cancelRequested = false;
 
@@ -340,6 +341,7 @@ export async function executeExternalMerge(
       completedWorkspaces,
       totalTabs,
       completedTabs,
+      importedTabs: summary.tabsOpened,
       currentWorkspaceName: plan.workspaceName,
       activity: { kind: 'workspace', name: plan.workspaceName, status: 'started' },
     });
@@ -379,6 +381,7 @@ export async function executeExternalMerge(
         completedWorkspaces,
         totalTabs,
         completedTabs,
+        importedTabs: summary.tabsOpened,
         currentWorkspaceName: plan.workspaceName,
         activity: {
           kind: 'site',
@@ -403,6 +406,7 @@ export async function executeExternalMerge(
         completedWorkspaces,
         totalTabs,
         completedTabs,
+        importedTabs: summary.tabsOpened,
         currentWorkspaceName: plan.workspaceName,
         activity: { kind: 'workspace', name: plan.workspaceName, status: 'failed' },
       });
@@ -442,6 +446,7 @@ export async function executeExternalMerge(
       completedWorkspaces,
       totalTabs,
       completedTabs,
+      importedTabs: summary.tabsOpened,
       currentWorkspaceName: plan.workspaceName,
       activity: { kind: 'workspace', name: plan.workspaceName, status: 'completed' },
     });
@@ -467,6 +472,7 @@ export async function executeExternalMerge(
     completedWorkspaces,
     totalTabs,
     completedTabs,
+    importedTabs: summary.tabsOpened,
   });
 
   return summary;

@@ -78,6 +78,15 @@
     gap: var(--space-4xs) !important;
   }
 
+  /* The tab list and the floating sidebar cards laid over its end (SidebarCards). */
+  .bento-shell-app__list-region {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+  }
+
   .bento-shell-app__workspace-switcher {
     display: flex;
     flex: 0 0 auto;
@@ -135,16 +144,4 @@ html[data-bento-collapsed='true'] .bento-row.bento-shell-app__footer {
   align-items: center !important;
   justify-content: flex-start !important;
   gap: var(--space-4xs) !important;
-}
-
-/* Mux's sm ProgressCircle track is 2rem by default. Keep the footer import
- * indicator at the same 1rem footprint as the other small icon affordances. */
-.muxui-progress-circle.bento-shell-app__merge-progress {
-  width: var(--bento-icon-size-sm);
-  height: var(--bento-icon-size-sm);
-}
-
-.muxui-progress-circle.bento-shell-app__merge-progress .muxui-progress-circle__track {
-  width: 100%;
-  height: 100%;
 }

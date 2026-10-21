@@ -1,0 +1,168 @@
+/* Layer-2 component: MergeProgressCard.
+ *
+ * The card surface, hover and motion are .bento-sidebar-card (SidebarCards.css). This
+ * file lays out the content: a ring at the start, up to three text lines, and a dismiss
+ * button (or, while the import runs, an open arrow shown on hover) at the top end. The
+ * card is one Mux Button filling the surface, with the dismiss IconButton laid over its
+ * corner as a sibling. In the rail the card is a round ring button and the text is
+ * hidden (its title carries it); the rail switch is the shell's own width, in CSS. */
+@layer bento.components {
+  .bento-merge-card[data-kind='active'] {
+    --bento-merge-card-ring-color: var(--muxui-semantic-color-color-60);
+  }
+  .bento-merge-card[data-kind='done'] {
+    --bento-merge-card-ring-color: var(--muxui-semantic-color-color-60);
+  }
+  .bento-merge-card[data-kind='cancelled'] {
+    --bento-merge-card-ring-color: var(--muxui-semantic-content-faint);
+  }
+  .bento-merge-card[data-kind='failed'] {
+    --bento-merge-card-ring-color: var(--muxui-semantic-status-warning);
+  }
+
+  /* The Mux Button supplies the focus ring, press state and keyboard activation; its own
+     box, fill and padding give way to the card's. */
+  .muxui-button.bento-merge-card__main {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: inherit;
+    padding: var(--bento-sidebar-card-padding);
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+
+  .bento-merge-card__main .muxui-button-content {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--bento-merge-card-gap);
+    min-width: 0;
+    width: 100%;
+  }
+
+  .bento-merge-card__ring {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    color: var(--bento-merge-card-ring-color);
+  }
+
+  .bento-merge-card__ring > * {
+    grid-area: 1 / 1;
+  }
+
+  .bento-merge-card__ring .muxui-progress-circle__track {
+    width: var(--bento-merge-card-ring-size);
+    height: var(--bento-merge-card-ring-size);
+  }
+
+  .bento-merge-card__ring .muxui-progress-circle__indicator {
+    stroke: var(--bento-merge-card-ring-color);
+  }
+
+  /* Percentage inside the ring: the smallest Mux text size, so four characters fit. */
+  .bento-merge-card__ring .bento-merge-card__ring-value {
+    color: var(--muxui-semantic-content-default);
+    font-size: var(--muxui-semantic-typography-badge-size);
+    font-weight: var(--muxui-semantic-typography-control-weight);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  /* The finished check reads against the accent ring and the raised surface in both
+     schemes; the ring colour alone left it faint in dark mode. */
+  .bento-merge-card[data-kind='done'] .bento-merge-card__ring-icon {
+    color: var(--muxui-semantic-content-strong);
+  }
+
+  .bento-merge-card__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    padding-inline-end: var(--bento-merge-card-dismiss-room);
+  }
+
+  .bento-merge-card__title,
+  .bento-merge-card__detail,
+  .bento-merge-card__host {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .bento-merge-card__host {
+    font-size: var(--muxui-semantic-typography-badge-size);
+  }
+
+  /* Top end of the card: the dismiss button, or the open arrow while the import runs. */
+  .bento-merge-card__dismiss,
+  .bento-merge-card__go {
+    position: absolute;
+    inset-block-start: var(--muxui-semantic-layout-inset-tiny);
+    inset-inline-end: var(--muxui-semantic-layout-inset-tiny);
+  }
+
+  .bento-merge-card__go {
+    padding: var(--muxui-semantic-layout-inset-tight);
+    color: var(--muxui-semantic-content-muted);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-merge-card:hover .bento-merge-card__go,
+  .bento-merge-card:focus-within .bento-merge-card__go {
+    opacity: 1;
+  }
+
+  /* Visually hidden, still read: the polite status region. */
+  .bento-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* Rail: a round ring button. */
+  html[data-bento-collapsed='true'] .bento-sidebar-card.bento-merge-card {
+    width: var(--bento-merge-card-rail-size);
+    height: var(--bento-merge-card-rail-size);
+    min-height: 0;
+    border-radius: 50%;
+  }
+
+  html[data-bento-collapsed='true'] .muxui-button.bento-merge-card__main {
+    padding: 0;
+    justify-content: center;
+  }
+
+  html[data-bento-collapsed='true'] .bento-merge-card__main .muxui-button-content {
+    justify-content: center;
+  }
+
+  html[data-bento-collapsed='true'] .bento-merge-card__ring .muxui-progress-circle__track {
+    width: var(--bento-merge-card-rail-ring-size);
+    height: var(--bento-merge-card-rail-ring-size);
+  }
+
+  html[data-bento-collapsed='true'] .bento-merge-card__text,
+  html[data-bento-collapsed='true'] .bento-merge-card__go,
+  html[data-bento-collapsed='true'] .bento-merge-card__dismiss,
+  html[data-bento-collapsed='true'] .bento-merge-card__ring-value {
+    display: none;
+  }
+}

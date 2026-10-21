@@ -314,6 +314,74 @@ build if a `.ttf` reference survives. The six files go from 2.74 MB to 1.22 MB a
 stay local files in `assets/`. Fonts were checked by decoding each file with
 fontTools and Google's reference decoder, and by rendering in Firefox.
 
+The floating sidebar cards (`SidebarCards`, and the merge progress card in them) are
+one raised surface per card, styled only with public Mux semantic tokens:
+`--muxui-semantic-surface-raised`, `border-default` (hover `border-indicator`),
+`elevation-overlay` (hover `elevation-modal`) and `shape-container-radius`, plus
+`--bento-sidebar-card-*` and `--bento-merge-card-*` tokens for the sizes. Hover
+moves the border and shadow on the `state` role; a card enters on `reveal` and leaves
+on `dismiss`. Each card is drawn in the opposite colour scheme to the sidebar, in its
+own theme scope (see "Inverted scope for floating cards" below), so the raised surface
+is dark on a light sidebar and light on a dark one. The merge card's primary control is
+a Mux `Button` filling
+the surface, with its content part (`.muxui-button-content`) as the flex row; the
+dismiss `IconButton` is its sibling. Text lines are Mux `Text`: the title is the
+default role, the detail and the hostname `color="muted"` (the faint role is 4.3:1 on
+the light card). The ring is `ProgressCircle` with a
+value: the track is sized by token (Mux's `sm` track is 2rem), the percentage is
+`ProgressCircle.Value` stacked over the track in a one-cell grid and shown only while
+the ring is partial (four characters do not fit it), and the indicator stroke follows
+the card's `data-kind`. Mux paints a complete ring in its success color; the card
+keeps the accent for a finished import (its check in `content-strong`, which the
+accent ring alone left faint in dark mode), mutes a cancelled one and tints a failed one
+with `--muxui-semantic-status-warning` (Mux has no danger status). A Mux `Tooltip`
+cannot show in the 52 px rail frame, and Mux `Button` does not forward `title`, so the
+rail card's title and detail show in the chrome-side tooltip overlay beside it (see
+"Tooltip document" in [technical/overlay-documents.md](technical/overlay-documents.md)),
+which stays in the page's colour mode.
+
+### Inverted scope for floating cards
+
+An element can show a theme in the opposite colour scheme to its page by carrying its
+own scope attributes. `useInvertedThemeScope()` (`theme/useInvertedThemeScope.ts`)
+returns `getThemeScopeAttributes(<active workspace theme>, <opposite of
+useResolvedColorScheme()>)` and registers the theme's sheet; spread the result on the
+element (workspace avatars and pins use the same pattern with their own theme). The
+three attributes `data-muxui-theme`, `data-muxui-color-scheme` and
+`data-muxui-contrast` stay together on that one element, and the scheme follows the
+document's resolved mode, so it flips live, Auto included. A component that is not
+connected to the store (a Ladle story of the pure view) takes the attributes as a prop.
+
+What follows the scope and what does not:
+
+- Mux semantic tokens (`--muxui-semantic-*`) and the component tokens Mux re-declares
+  per scheme resolve on the scoped element, so Mux components and any rule reading a
+  semantic token render in the inverted scheme. Mux's scoped focus-ring variables
+  follow too.
+- The `[data-bento-theme]` re-link rule in `bento-tokens.css` re-declares the legacy
+  aliases (`--neutral-*`, `--color-*`) and `--bento-workspace-accent(-fg)` and
+  `--bento-brand-bg` on every element that carries `data-bento-theme`, which the scope
+  attributes include, so those follow as well.
+- A token declared on `:root` that reads a colour is computed at the root and inherits
+  as that value, so it keeps the page's mode inside the scope (measured: a
+  `:root { --x: var(--muxui-semantic-surface-raised) }` read inside the inverted card
+  returns the page's surface). Do not declare a colour for a scoped component on
+  `:root`: read the Mux semantic token in the component rule, or declare the
+  component's own `--bento-*` colour on its scoped selector (`.bento-merge-card[data-kind]`
+  does, for `--bento-merge-card-ring-color`). Lengths and durations are not affected.
+- Values that must stay the page's are resolved on an ancestor that is in the page
+  scope and inherited. The cards' shadows are: `--bento-sidebar-card-shadow` and
+  `--bento-sidebar-card-shadow-hover` are declared on `.bento-sidebar-cards`, not on the
+  card.
+
+Rules live in `bento.components` with the component, as for any layer-2 component; the
+scope attributes need no layer. To check an inversion, flip `<html>`'s mode with the
+element's own attributes fixed and compare every computed colour inside it (rest,
+hover, focus): a difference is a leak. Measured for the merge card in Ladle: 138
+elements, five states, no difference between a light and a dark page. Contrast is
+read from the computed colours, not the token names (the card's numbers are in
+[technical/session-merge-backups.md](technical/session-merge-backups.md)).
+
 ### Welcome dialog and selectable tiles
 
 The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,
@@ -641,16 +709,16 @@ Rules:
 
 Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
 
-| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                | Default                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade)                                                                                                                                                                                                                                                                               | 120 ms, `ease`                                                   |
-| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                                                                                                                                                             | 150 ms, `ease`                                                   |
-| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
-| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil                                                                                                                                                                                                                                                                                                                          | 120 ms, `ease-in`                                                |
-| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                           | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
-| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                               | 120 ms, modal easing                                             |
-| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                      | 600 ms, `ease`                                                   |
-| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                         | per token                                                        |
+| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                    | Default                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); one stated exception, the sidebar row hover highlight's slide between rows                                                                                                                                                                                                   | 120 ms, `ease`                                                   |
+| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                                                                                                                                                                                 | 150 ms, `ease`                                                   |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                           | 120 ms, `ease-in`                                                |
+| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                                               | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
+| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                   | 120 ms, modal easing                                             |
+| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                          | 600 ms, `ease`                                                   |
+| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                             | per token                                                        |
 
 Loops: the panel loading spinner (`spin` with `constant-easing`, dash arc with
 `sweep` and `progress-easing`), the startup veil pulse and the tab list shimmer

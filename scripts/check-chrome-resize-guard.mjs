@@ -25,8 +25,14 @@ const chromeMountCss = readRepoFile(chromeMountCssPath);
 const chromeTokens = readRepoFile(chromeTokensPath);
 const chromeTheme = readRepoFile(chromeThemePath);
 
-const normalPanelShadow =
-  /--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\),\s*var\(--shadow-l\);/;
+const normalPanelShadow = /--bento-panel-frame-shadow:\s*var\(--shadow-l\);/;
+// The hairline is drawn above the remote page by each frame's ::after overlay, not by the frame's own box-shadow.
+const splitOverlayHairline =
+  /#tabbrowser-tabpanels\.bento-split-active\s*>\s*\[data-bento-main-panel\]::after,\s*#tabbrowser-tabpanels\.bento-split-active\s*>\s*\[data-bento-panel-tab-id\]::after\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
+const noPanelOverlayHairline =
+  /#bento-strip-container\.bento-no-side-panels\s*>\s*#bento-side-panel-host\s*>\s*\[data-bento-main-panel\]::after\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
+const frameRingOnPageFrame =
+  /(?:\.browserSidebarContainer|\[data-bento-main-panel\]|\[data-bento-panel-tab-id\])\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\)[^}]*\}/s;
 const globalLiveResizeShadowOverride =
   /:root\[(?:bento-window-resizing|bento-sidebar-resizing|bento-panel-resizing)='true'\][^{]*\{[^}]*--bento-panel-frame-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const noPanelFrameFullShadow =
@@ -51,6 +57,12 @@ const settingsAboutSidebarResizeLifecycle =
   /function attachSidebarSplitterFeedback\(\)[\s\S]*beginBentoSettingsAboutLiveResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
 const settingsAboutWindowResizeLifecycle =
   /function attachWindowResizePerfMode\(\)[\s\S]*beginBentoSettingsAboutLiveResize\(\)[\s\S]*endBentoSettingsAboutLiveResize\(\)/;
+// Whole-pixel frame origins (docs/technical/chrome-panel-rendering.md, "Main frame origin").
+const noPanelFrameWholePixelMargins =
+  /#bento-strip-container\.bento-no-side-panels\s*>\s*#bento-side-panel-host\s*>\s*\[data-bento-main-panel\]\s*\{[^}]*margin-block-start:\s*round\([^;]*,\s*1px\);[^}]*margin-block-end:\s*round\([^;]*,\s*1px\);[^}]*margin-inline:\s*round\([^;]*,\s*1px\);/s;
+const wholePixelRailWidth =
+  /#bento-shell-host\s*\{\s*--bento-rail-width:\s*round\(var\(--bento-tab-strip-width-collapsed\),\s*1px\);/;
+const wholePixelRailProbe = /width:round\(var\(--bento-tab-strip-width-collapsed\), 1px\)/;
 const generatedShadowToken = /--shadow-l:\s*[^;]+;/;
 const nativeSidebarLauncherSuppression =
   /:root\[bento-sidebar-addressbar='true'\]\s+:is\(\s*#sidebar-container,\s*#sidebar-launcher-splitter,\s*#sidebar-button,\s*#wrapper-sidebar-button\s*\)\s*\{[^}]*display:\s*none\s*!important;[^}]*visibility:\s*collapse\s*!important;/s;
@@ -59,8 +71,19 @@ const failures = [];
 
 if (!normalPanelShadow.test(chromeMountCss)) {
   failures.push(
-    `${chromeMountCssPath} must define normal panel frames with ` +
-      '`--bento-panel-frame-outline-shadow, var(--shadow-l)`.',
+    `${chromeMountCssPath} must define the panel frame shadow as ` + '`var(--shadow-l)` only.',
+  );
+}
+
+if (!splitOverlayHairline.test(chromeMountCss) || !noPanelOverlayHairline.test(chromeMountCss)) {
+  failures.push(
+    `${chromeMountCssPath} must draw the frame hairline on the panel and no-panels ::after overlays so the remote page cannot overpaint it.`,
+  );
+}
+
+if (frameRingOnPageFrame.test(chromeMountCss)) {
+  failures.push(
+    `${chromeMountCssPath} must not draw --bento-panel-frame-outline-shadow on a frame that holds a remote page; the page's rounded clip overpaints it at the arcs.`,
   );
 }
 
@@ -92,6 +115,18 @@ if (
 ) {
   failures.push(
     `${chromeMountPath} must keep panel, sidebar, and window resize smooth when about:preferences/about:settings is open in any tab by freezing every settings browser's viewport geometry and docshell during live resize, then restoring both when all resize gestures settle.`,
+  );
+}
+
+if (!noPanelFrameWholePixelMargins.test(chromeMountCss)) {
+  failures.push(
+    `${chromeMountCssPath} must round the no-side-panels main frame margins to whole pixels; a fractional origin lets the remote page overpaint the stroke on the rounded corners.`,
+  );
+}
+
+if (!wholePixelRailWidth.test(chromeMountCss) || !wholePixelRailProbe.test(chromeMount)) {
+  failures.push(
+    `${chromeMountCssPath} and sidebarRailWidth in ${chromeMountPath} must both measure the collapsed rail as round(var(--bento-tab-strip-width-collapsed), 1px).`,
   );
 }
 

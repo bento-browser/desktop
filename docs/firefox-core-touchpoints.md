@@ -317,12 +317,20 @@ Use this shape for new or changed touchpoints:
   chrome-hosted overlay frame, delivers open/close lifecycle nonces into that
   extension frame, opens Firefox's native app menu from a sidebar footer button
   by anchoring `PanelUI.panel` to a temporary chrome-side element with left-edge
-  footer alignment and temporary native panel animation suppression, opens
+  footer alignment and temporary native panel animation suppression, adds a
+  "Bento Settings" `toolbarbutton.subviewbutton` directly above Firefox's
+  Settings item in the app menu main view (inserted on the panel's bubbling
+  `ViewShowing` for `#appMenu-mainView`, so any way of opening the menu gets it
+  exactly once; its command calls `openBentoSettings` and Firefox's panel close
+  listeners hide the menu), opens the manual merge palette from the command
+  palette overlay's title signal and from a `BentoOpenMergePalette` event that
+  the native Bento Settings page dispatches on its top chrome window, opens
   Firefox's native downloads panel from a sidebar footer button by anchoring
   `DownloadsPanel.panel` to a temporary chrome-side element with the same
   left-edge footer alignment and animation suppression, patches
   `DownloadsButton.getAnchor()`/`releaseAnchor()` so automatic native downloads
-  panel opens use a sidebar fallback anchor, hides the stock toolbar
+  panel opens use a sidebar fallback anchor placed from the Downloads button's
+  edges that the shell reports (`BENTO_DOWNLOADS_ANCHOR`), hides the stock toolbar
   `#PanelUI-button`, `#downloads-button`, and `#fxa-toolbar-menu-button`,
   collapses native nav-bar `toolbarspring` gaps while Bento's sidebar
   addressbar mode is active, and right-aligns the browser extension toolbar
@@ -367,7 +375,9 @@ Use this shape for new or changed touchpoints:
   native identity
   chrome (`gIdentityHandler`, `#identity-box`, `#identity-icon-box`,
   `#identity-popup`, `PanelMultiView.openPopup`), Firefox app-menu chrome
-  (`PanelUI`, `#appMenu-popup`, `#PanelUI-button`), Places bookmark APIs and
+  (`PanelUI`, `#appMenu-popup`, the template-created `#appMenu-mainView` and
+  its `#appMenu-settings-button`, the bubbling `ViewShowing` event,
+  `CustomizableUI.maybeAutoHidePanel`, `#PanelUI-button`), Places bookmark APIs and
   Places observer events, `gURLBar.view.close()`, the `browser.urlbar.suggest.clipboard`
   pref (default true in `browser/app/profile/firefox.js`), frame focus, title/actor messaging paths,
   process-wide listener registries that outlive a chrome window and must be
@@ -458,7 +468,13 @@ Use this shape for new or changed touchpoints:
   BrowsingContext on every window open and, with no re-attach since Firefox 157,
   the first tab loses its progress events for good while `Tabbrowser.destroy()`
   throws on window close. If a future Tabbrowser exposes its filters again, a
-  re-attach safety net can return. Hooks guarded by `typeof` skip silently when a private member is renamed; the
+  re-attach safety net can return. If `PanelMultiView` stops bubbling
+  `ViewShowing` from `#appMenu-mainView` to `#appMenu-popup`, or renames
+  `#appMenu-mainView` or `#appMenu-settings-button`, the Bento Settings item
+  silently disappears (a missing Settings button logs
+  `appMenu-settings-button missing` in the Browser Console); if
+  `CustomizableUI.maybeAutoHidePanel` stops hiding the panel after a
+  `subviewbutton` command, the item opens Settings but leaves the menu open. Hooks guarded by `typeof` skip silently when a private member is renamed; the
   firefox-compat registry lists those members and reports the missing ones
   (below).
 - Regression checks for future updates: run `pnpm run firefox:compat:engine`
@@ -495,10 +511,24 @@ Use this shape for new or changed touchpoints:
   the sidebar footer Firefox-menu button opens the native app menu with
   submenus, Settings, More Tools, Help, update/sign-in banners, and keyboard
   shortcuts intact and grows rightward from the trigger when space allows,
-  without sliding in from the top or bottom, verify the sidebar footer Downloads
+  without sliding in from the top or bottom, verify the app menu lists
+  "Bento Settings" directly above Settings with the same styling, hover and
+  focus ring in light and dark modes, only once after repeated opens and in a
+  second window, that arrow keys reach it, and that Enter or a click opens
+  `about:settings#bento` (or switches an existing Settings tab to `#bento`) and
+  closes the menu, verify the sidebar footer is the same five buttons (no
+  Settings, merge or progress button) in the expanded and collapsed rail while a
+  merge runs, and that a running merge shows as a card over the bottom of the tab
+  list, verify the command palette's Merge browser session
+  command and the Bento Settings Merge browser session button open the merge
+  palette (the latter over the window holding the Settings tab), verify the
+  sidebar footer Downloads
   button opens Firefox's native downloads panel with recent download actions and
   download history intact while using the same footer-side alignment and no
-  top/bottom slide, verify the native top toolbar matches the sidebar
+  top/bottom slide, verify that when Firefox opens its own downloads panel (a
+  started download, or `DownloadsPanel.showPanel()`) it attaches to the Downloads
+  button in the expanded footer and the collapsed rail, with and without a merge
+  card showing, verify the native top toolbar matches the sidebar
   background with no divider in no-panel view, matches the sidebar background
   on the sidebar side of the divider in panel view, switches to the panel-strip
   neutral-14 backdrop on the main-content side across `#navigator-toolbox`,
@@ -601,9 +631,12 @@ Use this shape for new or changed touchpoints:
   colors in light and dark modes,
   verify command palette, manual browser-session merge, edit-workspace, confirm,
   and first-run welcome scrims cover the full chrome window including the address
-  bar, verify the sidebar footer merge action opens the merge palette, refreshes
+  bar, verify the sidebar merge card opens the merge palette, refreshes
   sources on every open, closes on Esc or close action, and never leaves the
-  command palette and merge palette visible at the same time, verify the floating
+  command palette and merge palette visible at the same time, verify the rail
+  merge card's tooltip (`BENTO_RAIL_TOOLTIP`, shown in the panel navigator tooltip
+  overlay beside the ring on hover and keyboard focus, hidden on leave, blur,
+  rail expand and merge palette open), verify the floating
   address bar does not dim the native toolbar/address bar, sidebar, or page
   content and opens as an opaque neutral CommandPalette surface without waiting
   for a frost snapshot, verify copying `https://example.com/` and pressing
@@ -1260,7 +1293,17 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Native Bento Preferences
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-21
+- Merge browser session button (2026-10-21): the "Backup and data" group has a
+  `bento-merge-session` `moz-button` (hidden in private windows like the other
+  backup buttons) whose click reads `window.browsingContext.topChromeWindow` and
+  dispatches a `BentoOpenMergePalette` `CustomEvent` on it; the mount script of
+  that window listens and calls its existing `showMergePalette()`. It is a
+  window event, not an observer, so nothing process-wide needs releasing on window
+  close, and a Settings tab moved to another window reaches its new host because
+  the window is read at click time. The change adds one setting, one group item,
+  one Fluent message (`bento-merge-session`) and three mochitest edits to the
+  patch.
 - Firefox 158.0 review (2026-10-14): the patch applies with offsets;
   `settings-redesign` is on. Runtime on 158.0: `about:preferences` lists
   `category-bento` and the `paneBento` pane, with the `paneBentoBackups` and
@@ -1286,7 +1329,9 @@ rel="stylesheet">` load and error events on chrome documents, and the
   A generated, hash-pinned observer contract connects native controls to the
   durable tools stores. The parent-process document registry preserves logical
   shell identities across add-on reloads, while source-window title signals
-  route Settings launches without accepting arbitrary URLs.
+  route Settings launches without accepting arbitrary URLs. The Backup and data
+  group's Merge browser session button asks the hosting chrome window to open
+  Bento's merge palette through a `BentoOpenMergePalette` window event.
 - Vanilla Firefox surface touched or depended on: config-backed preferences
   panes; `moz-page-header`, `moz-select` and its `panel-list` path,
   `moz-slider`, `moz-input-number`, `moz-button`, `moz-input-search`,
@@ -1295,7 +1340,9 @@ rel="stylesheet">` load and error events on chrome documents, and the
   built-in WebExtension experiment loading. The experiment also calls
   `extension.windowManager.getWrapper(chromeWindow)` (WebExtension parent
   framework, `ext-tabs-base.js`) and reads `wrapper.id` to bind a Settings
-  request to a live browser window.
+  request to a live browser window. The merge button reads
+  `window.browsingContext.topChromeWindow` and dispatches a `CustomEvent` created
+  from that window.
 - Why this cannot stay extension-only: the category and its controls must be a
   native Settings surface, and only parent chrome can authenticate the document,
   derive its browser window/private audience, and retain shell mount identity.
@@ -1319,7 +1366,11 @@ rel="stylesheet">` load and error events on chrome documents, and the
   components. Open every Bento dropdown with both mouse and keyboard, select a
   value, and confirm the Firefox panel closes and the Bento setting persists.
   Confirm the native page header shows its localized Bento heading beside the
-  icon. Test both redesign pref values and regular/private windows. Move the
+  icon. Confirm the Backup and data group lists Merge browser session between
+  Import and Manage stored backups, that clicking it opens the merge palette over
+  the window holding the Settings tab (also after moving the tab to another
+  window), and that it is absent in a private window. Test both redesign pref
+  values and regular/private windows. Move the
   Settings tab to another window (`gBrowser.replaceTabWithWindow`, or "Move to New
   Window") and change a setting there: the model re-hellos for the new window
   (`hostChromeWindowId`) and no `invalid_session` is logged, including when the
@@ -2300,7 +2351,7 @@ below is generated; edit the registry, then run
 | `PanelUI._ensureShortcutsShown` | method (runtime) | Refreshes keyboard-shortcut labels before the app menu opens (optional call). | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:1403` |
 | `PanelMultiView.openPopup` | method (runtime) | Opens native panels (app menu, downloads, identity) at a sidebar anchor. | `openNativeAppMenuFromSidebar`, `openNativeDownloadsPanelFromSidebar`, `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:393` |
 | `PanelMultiView.hidePopup` | method (runtime) | Closes other open panels before the identity popup opens. | `openNativeIdentityPopupForSidebar` | `browser/components/customizableui/PanelMultiView.sys.mjs:417` |
-| `DownloadsButton.getAnchor` | method (runtime) | Automatic downloads panel opens anchor to a sidebar fallback element. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:100` |
+| `DownloadsButton.getAnchor` | method (runtime) | Automatic downloads panel opens anchor to a sidebar fallback element placed over the Downloads footer button from the edges the shell reports. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:100` |
 | `DownloadsButton.releaseAnchor` | method (runtime) | Removes the sidebar fallback anchor when Firefox releases the downloads anchor. | `patchDownloadsButtonAnchorForSidebar` | `browser/components/downloads/content/indicator.js:113` |
 | `DownloadsPanel.initialize` | method (runtime) | Initializes the downloads panel before Bento opens it from the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:79` |
 | `DownloadsPanel.panel` | member (runtime) | The downloads popup element Bento anchors to the sidebar. | `openNativeDownloadsPanelFromSidebar` | `browser/components/downloads/content/downloads.js:174` |
@@ -2351,6 +2402,10 @@ below is generated; edit the registry, then run
 | `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:679` |
 | `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |
+| `appMenu-popup` | source (engine only) | App menu panel, looked up by id at load. Bento listens on it for ViewShowing, so the Bento Settings item is added whichever way the menu opens. PanelUI.panel is the same element and is probed at runtime. | `installBentoSettingsAppMenuItem` | `browser/components/customizableui/content/panelUI.inc.xhtml:274` |
+| `appMenu-mainView` | source (engine only) | The app menu main view, created lazily from the appMenu-viewCache template. Bento adds its Settings item when this view reports ViewShowing, matching the view by id. | `installBentoSettingsAppMenuItem` | `browser/base/content/appmenu-viewcache.inc.xhtml:6` |
+| `appMenu-settings-button` | source (engine only) | Firefox's Settings item in the app menu main view. Bento inserts Bento Settings directly above it, as a toolbarbutton with the same subviewbutton class so it takes the menu's look, hover and arrow-key navigation. | `installBentoSettingsAppMenuItem` | `browser/base/content/appmenu-viewcache.inc.xhtml:205` |
+| `CustomizableUI.maybeAutoHidePanel` | source (engine only) | Hides the app menu after a click or Enter on any subviewbutton without closemenu="none". Bento Settings relies on it to close the menu and does not hide the panel itself. | `installBentoSettingsAppMenuItem` | `browser/components/customizableui/CustomizableUI.sys.mjs:3275` |
 | `context-openlink` | source (engine only) | Anchor item after which Open in New Panel is inserted. | `installOpenInNewPanelMenuItem` | `browser/base/content/browser-context.inc.xhtml:99` |
 | `context-openlinkincurrent` | source (engine only) | Fallback anchor item for Open in New Panel. | `installOpenInNewPanelMenuItem` | `browser/base/content/browser-context.inc.xhtml:70` |
 | `context-inspect` | source (engine only) | Native Inspect item that Bento clones as Inspect in Panel. | `installInspectInPanelMenuItems` | `browser/base/content/browser-context.inc.xhtml:456` |
@@ -2407,6 +2462,7 @@ below is generated; edit the registry, then run
 | `inspectorFront.getNodeActorFromContentDomReference` | source (engine only) | Turns the context-menu DOM reference into a node front (same call Firefox makes). | `selectNodeInToolbox` | `devtools/client/framework/devtools.js:902` |
 | `Selection.setNodeFront` | source (engine only) | Selects the inspected node in the inspector. | `selectNodeInToolbox` | `devtools/client/framework/selection.js:190` |
 | `AccessibilityPanel.selectAccessibleForNode` | source (engine only) | Selects the inspected node in the accessibility panel. | `selectNodeInToolbox` | `devtools/client/accessibility/panel.js:255` |
+| `ViewShowing` | source (engine only) | Bubbling event PanelMultiView dispatches on a panelview once it is in the panel and before it is measured. Bento listens on the app menu panel and adds its Settings item when the main view shows, which covers every way the menu can open. | `installBentoSettingsAppMenuItem` | `browser/components/customizableui/PanelMultiView.sys.mjs:1057` |
 | `TabSelect` | source (engine only) | Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes. | `attachTabSelectListener`, `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2009` |
 | `TabOpen` | source (engine only) | Reconciles panels when a tab opens (new-tab flows where TabSelect does not reach the listener). | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:5529` |
 | `TabAttrModified` | source (engine only) | Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes. | `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2314` |
@@ -2474,7 +2530,7 @@ below is generated; edit the registry, then run
 | `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:50` |
 | `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
 | `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:242` |
-| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
+| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. The Bento Settings page (patch 15) also reads it on each click of Merge browser session and dispatches BentoOpenMergePalette on that window, which the mount script answers by opening the merge palette there. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `patches/core-ui/15-bento-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:728` |
 | `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:115` |
 | `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:121` |

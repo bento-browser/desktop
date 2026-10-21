@@ -124,6 +124,7 @@ export const Merging = () => {
         completedWorkspaces: 1,
         totalTabs: 38,
         completedTabs: 17,
+        importedTabs: 16,
         currentWorkspaceName: 'Chrome: Planning',
       },
       progressLog: [

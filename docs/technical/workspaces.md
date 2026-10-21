@@ -203,6 +203,28 @@ active-tab reveal and folder anchoring independent of that pixel-only state.
 Verify fine and large up/down direction changes, collapse at a nonzero scroll
 position, thumb alignment/dragging, and return to expanded mode without a jump.
 
+The end of the list can be covered by a floating sidebar card (the merge progress
+card). `.bento-shell-app__list-region` holds `TabList` and the `SidebarCards`
+container laid over its end; the container reports its reach (card height plus the
+offset above the footer and the gap below the last row) to `useSidebarCardsStore`,
+and `TabListPane` gives it to the virtualizer as `paddingEnd` and `scrollPaddingEnd`.
+The padding is part of the virtualizer's total size, not CSS on the scroller, so
+`getTotalSize()`, the viewport height, `scrollHeight` and the collapsed custom
+scrollbar's metrics all include it; `scrollToIndex` for the active or revealed row
+stops above the card. With no card the padding is 0. The search results list takes the
+same inset as its end padding (`padding-block-end` on `.bento-tab-list-search__results`,
+set inline from `useSidebarCardsStore`), and the cards sit above the pane's sticky bar
+(`z-index` 4 against its 3), so a card stays visible and clickable over the results.
+The results' `max-height` is the room from below the search field to the pane's bottom
+edge: the pane is a size container (`container-type: size`, safe because `inset: 0`
+fixes its size) and the rule reads `100cqh` minus what sits above the list. It was
+`100vh` minus a row, which let the list run past the pane, whose `overflow: hidden`
+clipped the last results (about 120 px at a 1004 px window) with or without a card.
+Verify with a long list scrolled to its end, in the expanded sidebar and the
+rail, that the last row clears the card, with the search open and a query matching
+many tabs that the last result scrolls fully above it, and that the card appearing and
+leaving moves no row it does not have to.
+
 Tab rows remain fully paintable while mounted. Do not add
 `content-visibility: auto` or intrinsic-size placeholders to these already
 virtualized rows: Gecko can translate an existing row background into view
@@ -294,9 +316,13 @@ and DOM attributes only, so neither `TabListPane` nor the rows re-render.
 `TabList.css` does the rest: the fill is `--bento-surface-hover`, the height and
 radius match a row, `data-indented` applies `--bento-tab-folder-indent`, and
 `html[data-bento-collapsed='true']` makes it the centered square of the
-collapsed rail. The slide (`transform`, the Mux `reveal` motion role), width and
-margin transitions apply only under `[data-visible]`; opacity fades in and out
-on the `state` role.
+collapsed rail. The slide (`transform`) and the opacity fade both run on the Mux
+`state` role (120 ms, `ease`), chosen over `reveal` (200 ms) and `interaction`
+(150 ms) from a side-by-side prototype, so the slide between rows is a stated
+exception to `state` being a colour and opacity role. The slide exists only
+under `[data-visible]`, so a fresh show appears in place and only fades in.
+Width and margin do not transition: they follow the rail and the folder indent
+at once. The action highlight stays on the `reveal` spring pair.
 `prefers-reduced-motion: reduce` keeps only the fade.
 Tab and folder rows no longer have a plain `:hover` background. Active rows are
 opaque and cover the highlight, and selected rows are translucent and composite
