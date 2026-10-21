@@ -365,7 +365,7 @@ function LoadingSearchDialog() {
 export const DialogNarrow: Story<DialogArgs> = ({ step }) => (
   <WelcomeDialog key={step} initialStep={step} searchEngines={ENGINES} />
 );
-DialogNarrow.storyName = 'Dialog (narrow viewport, grids collapse)';
+DialogNarrow.storyName = 'Dialog (narrow viewport, grids collapse, tour tiles as rows)';
 DialogNarrow.args = { step: stepIndexOf('tour') };
 DialogNarrow.argTypes = DialogSteps.argTypes;
 DialogNarrow.meta = { width: 'small' };

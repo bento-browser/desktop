@@ -369,14 +369,17 @@ Mux `Image` with empty `alt`, loading `./welcome/welcome.webp` and
 loads from `/dist/welcome.html`. Each tour tile does the same with
 `./welcome/workspaces.webp`, `panels.webp` or `command-palette.webp` at
 `--bento-welcome-tour-image`, standing directly on the card with no inset well
-behind it; the tile's title and body carry the meaning.
+behind it; the tile's title and body carry the meaning. At the compact breakpoint
+the tile switches to a grid template (`image`, `title`, `body`, `chips` areas) and
+the illustration drops to `--bento-welcome-tour-image-compact`.
 
 `WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
 `WelcomeSurfaces.stories.css`; nothing in that file ships.
 
 At 48rem and below the dialog goes compact: the option and tile grids lose
-columns, and the footer reflows from three columns (Back, dots, actions) to a
-wrapping flex row. The three columns need about 42rem of dialog on the Import step,
+columns, the tour tiles become rows (illustration left, text beside it, shortcut
+chips at the row end), and the footer reflows from three columns (Back, dots,
+actions) to a wrapping flex row. The three columns need about 42rem of dialog on the Import step,
 where Back, seven dots and the Skip and Import actions sit in two equal side
 columns around the dots, so the footer uses the dialog's one existing compact
 breakpoint rather than a second one. Compact puts the dots on their own row, then

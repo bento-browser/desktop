@@ -611,10 +611,10 @@ export function TourTiles() {
             fit="contain"
             className="bento-welcome__tour-image"
           />
-          <Text variant="label" size="md">
+          <Text variant="label" size="md" className="bento-welcome__tour-title">
             {tile.title}
           </Text>
-          <Text size="sm" color="muted">
+          <Text size="sm" color="muted" className="bento-welcome__tour-body">
             {tile.body}
           </Text>
           <Shortcut>{tile.shortcut}</Shortcut>

@@ -162,6 +162,7 @@
     --bento-welcome-illustration: 8.75rem;
     --bento-welcome-preview: 4rem;
     --bento-welcome-tour-image: 7.75rem;
+    --bento-welcome-tour-image-compact: 4.5rem;
     --bento-welcome-list: 13.5rem;
     --bento-welcome-dot: 0.375rem;
     --bento-welcome-dot-active: calc(var(--bento-welcome-dot) * 2.5);
