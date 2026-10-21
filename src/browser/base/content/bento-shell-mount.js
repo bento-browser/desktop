@@ -8907,6 +8907,12 @@
   // payload: { label, detail?, placement?, screenX, screenY, width, height }, the anchor
   // in screen coordinates; the tooltip document places a Mux tooltip beside it.
   function showPanelNavigatorTooltipPayload(payload) {
+    // An immediate show (focus, a changed rail label) supersedes a pending hover timer, which
+    // would otherwise run later and put its older text back.
+    if (panelNavigatorTooltipTimer) {
+      clearTimeout(panelNavigatorTooltipTimer);
+      panelNavigatorTooltipTimer = null;
+    }
     panelNavigatorTooltipPayload = payload;
     // First use creates the tooltip document. Until it announces readiness the
     // payload above waits in panelNavigatorTooltipPayload; the manager's

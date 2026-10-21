@@ -125,3 +125,76 @@ test('ignores a message with no label, no anchor, a non-numeric anchor or no she
   noFrame.send({ action: 'focus', label: 'x', anchor });
   assert.deepEqual(noFrame.seen(), []);
 });
+
+// The same handler over the real hide, arm and show functions and a fake timer, to cover how a
+// pending hover timer and an immediate show interact.
+function setupWithTimer() {
+  const shownLabels = [];
+  const timers = new Map();
+  let nextTimer = 1;
+  const api = vm.runInNewContext(
+    `"use strict";
+    ${mountConst('RAIL_TOOLTIP_PREFIX')}
+    let panelNavigatorTooltipTimer = null;
+    let panelNavigatorTooltipPayload = null;
+    function replayPanelNavigatorTooltipPayload() {
+      recordShown(panelNavigatorTooltipPayload.label);
+    }
+    ${mountFunction('parseSidebarTitlePayload')}
+    ${mountFunction('handleRailTooltipTitle')}
+    ${mountFunction('hidePanelNavigatorTooltip')}
+    ${mountFunction('showPanelNavigatorTooltipPayload')}
+    ${mountFunction('armPanelNavigatorTooltip')}
+    ({ handleRailTooltipTitle, RAIL_TOOLTIP_PREFIX });`,
+    {
+      document: {
+        getElementById: (id) =>
+          id === 'bento-shell-frame'
+            ? { getBoundingClientRect: () => ({ left: 0, top: 0 }) }
+            : null,
+      },
+      window: { mozInnerScreenX: 0, mozInnerScreenY: 0 },
+      atob,
+      escape,
+      JSON,
+      Number,
+      console: { warn() {} },
+      setTimeout: (fn) => {
+        timers.set(nextTimer, fn);
+        return nextTimer++;
+      },
+      clearTimeout: (id) => timers.delete(id),
+      overlays: { ensure: () => ({}) },
+      ensurePanelNavigatorTooltipFrameScript() {},
+      recordShown: (label) => shownLabels.push(label),
+    },
+    { filename: 'bento-shell-mount.js#rail-tooltip-timer' },
+  );
+  const send = (message) => {
+    const b64 = Buffer.from(JSON.stringify(message), 'utf8').toString('base64');
+    api.handleRailTooltipTitle(`${api.RAIL_TOOLTIP_PREFIX}1:${b64}`);
+  };
+  const runTimers = () => {
+    for (const fn of [...timers.values()]) fn();
+    timers.clear();
+  };
+  return { send, shownLabels, timers, runTimers };
+}
+
+test('a label change sent as focus while a hover timer is pending is not overwritten by it', () => {
+  const { send, shownLabels, timers, runTimers } = setupWithTimer();
+  send({ action: 'hover', label: 'Importing, 120 of 608 tabs', anchor });
+  assert.equal(timers.size, 1);
+  // The stage changes before the hover delay runs out: the shell re-sends the new label as focus.
+  send({ action: 'focus', label: 'Importing, 121 of 608 tabs', anchor });
+  assert.equal(timers.size, 0);
+  runTimers();
+  assert.deepEqual(shownLabels, ['Importing, 121 of 608 tabs']);
+});
+
+test('a hover timer with no focus in between still shows its text', () => {
+  const { send, shownLabels, runTimers } = setupWithTimer();
+  send({ action: 'hover', label: 'Imported 608 tabs', anchor });
+  runTimers();
+  assert.deepEqual(shownLabels, ['Imported 608 tabs']);
+});

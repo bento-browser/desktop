@@ -240,7 +240,10 @@ single in-flight `AbortController`, reports `ExternalMergeError("cancelled",
 passes the signal into `executeExternalMerge()`. The executor checks that signal
 before creating new workspaces and between tab creations. It does not roll back
 tabs already opened and assigned to a workspace; cancellation stops remaining
-work and avoids activating/focusing the partial import as a completed merge.
+work and avoids activating/focusing the partial import as a completed merge. A tab
+being created when the cancel lands still finishes and is reported by the next
+progress event, which the handler forwards after the `cancelled` error (tested in
+`protocol-handler.test.ts`); the shell's cancelled count depends on that event.
 
 All merge protocol events carry correlation fields. Source-list replies echo
 `requestId` and `windowId`; merge lifecycle replies echo `operationId`,
@@ -387,11 +390,17 @@ and space counts, `cancelled` with the tabs added and how far it got, `failed` w
 one sanitized line). A cancelled merge's "N tabs added" is the last event's
 `importedTabs`, never `completedTabs`: a cancel reports as an error with no summary,
 and the processed count overstates what was added whenever duplicates or unsupported
-URLs were skipped. Tools emits the cancel at once, so one tab already in flight may
-still open afterwards; the count is the last the shell was told. `applyComplete` and `applyError` write it before they clear
-`progress`; `startMerge` and `applyStarted` clear it, so a new merge replaces a
-lingering result; `dismissResult()` clears it; closing or reopening the palette
-leaves it alone. It is transient shell state, lost on a shell reload.
+URLs were skipped. Tools emits the cancel at once so the card responds immediately,
+but a tab already in flight still opens, and the executor reports it with a progress
+event (with the settled `importedTabs`) that tools forwards after the `cancelled`
+error. The cancelled result remembers its `operationId`, and `applyProgress` lets a
+later event for exactly that operation raise `tabsAdded`, never lower it; events for
+any other operation or window are ignored, and the in-flight tab never shows as a
+missing count or "No tabs added". `applyComplete` and `applyError` write the result
+before they clear `progress`; `startMerge` and `applyStarted` clear it, so a new merge
+replaces a lingering result and a late event for the old one finds nothing to raise;
+`dismissResult()` clears it too; closing or reopening the palette leaves it alone. It
+is transient shell state, lost on a shell reload.
 
 `mergeProgressCardModel` (pure, tested) maps the store to the card: preparing ("Preparing
 import", the source as detail, a still ring at 0), importing ("Importing from

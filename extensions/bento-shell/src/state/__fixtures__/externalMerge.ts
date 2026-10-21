@@ -25,7 +25,13 @@ const IMPORTING: ExternalMergeProgress = {
 
 const RESULTS: Record<'done' | 'cancelled' | 'failed', ExternalMergeResult> = {
   done: { kind: 'done', sourceName: SOURCE, tabsOpened: 608, workspacesCreated: 6 },
-  cancelled: { kind: 'cancelled', sourceName: SOURCE, tabsAdded: 118, percent: 20 },
+  cancelled: {
+    kind: 'cancelled',
+    operationId: 'story-operation',
+    sourceName: SOURCE,
+    tabsAdded: 118,
+    percent: 20,
+  },
   failed: {
     kind: 'failed',
     sourceName: SOURCE,

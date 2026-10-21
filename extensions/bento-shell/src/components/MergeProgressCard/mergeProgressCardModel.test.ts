@@ -172,7 +172,13 @@ describe('mergeProgressCardModel', () => {
     expect(
       mergeProgressCardModel({
         ...idle,
-        result: { kind: 'cancelled', sourceName: 'Chrome', tabsAdded: 120, percent: 20 },
+        result: {
+          kind: 'cancelled',
+          operationId: 'op-1',
+          sourceName: 'Chrome',
+          tabsAdded: 120,
+          percent: 20,
+        },
       }),
     ).toEqual({
       kind: 'cancelled',
@@ -186,7 +192,13 @@ describe('mergeProgressCardModel', () => {
     expect(
       mergeProgressCardModel({
         ...idle,
-        result: { kind: 'cancelled', sourceName: null, tabsAdded: 0, percent: 0 },
+        result: {
+          kind: 'cancelled',
+          operationId: 'op-1',
+          sourceName: null,
+          tabsAdded: 0,
+          percent: 0,
+        },
       })?.detail,
     ).toBe('No tabs added');
   });
