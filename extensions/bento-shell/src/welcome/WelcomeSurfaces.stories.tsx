@@ -3,21 +3,24 @@
 // tools port (selections apply to the story only). The other stories frame one
 // surface on the dialog's raised surface so fills and borders read as they do there.
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Story } from '@ladle/react';
 import { Dialog, Text } from '@muxui/react';
 import type { SearchEngineChoice, UiColorModePref } from '@shared/protocol';
 
+import { applyRootTheme } from '../theme/applyRootTheme';
+import { getThemeMeta } from '../theme/presets';
+import { useResolvedColorScheme } from '../theme/themeScope';
 import {
   APPEARANCE_OPTIONS,
   ImportSources,
   LAST_STEP,
   PRIVACY_OPTIONS,
-  ReadySummary,
-  searchEngineName,
+  OpenSettingsButton,
   searchEngineOptions,
   StepDots,
   stepIndexOf,
+  ThemeChooser,
   TourTiles,
   WELCOME_STEPS,
   WelcomeActions,
@@ -131,6 +134,23 @@ function Frame({ width, children }: { width: FrameWidth; children: ReactNode }) 
   );
 }
 
+/** Shows `themeId` on the story's <html>, as the welcome page does for the active workspace's theme
+ * (useWorkspaceTheme), so the dialog's accents and controls follow the swatch chosen. */
+function useStoryRootTheme(themeId: string) {
+  const colorScheme = useResolvedColorScheme();
+  useEffect(() => {
+    void applyRootTheme(themeId, colorScheme, true);
+    return () => {
+      void applyRootTheme('default', colorScheme, true);
+    };
+  }, [themeId, colorScheme]);
+}
+
+function ThemeDemo({ initial }: { initial: string }) {
+  const [themeId, setThemeId] = useState(initial);
+  return <ThemeChooser value={themeId} onChange={setThemeId} />;
+}
+
 function OptionsDemo<Id extends string>({
   layout,
   label,
@@ -160,14 +180,18 @@ function WelcomeDialog({
   searchEngines,
   handoff = 'idle',
   importView = IMPORT_VIEWS['six found'],
+  initialTheme = 'default',
 }: {
   initialStep: number;
   searchEngines: readonly SearchEngineChoice[];
   handoff?: DialogHandoff;
   importView?: ImportView;
+  initialTheme?: string;
 }) {
   const [index, setIndex] = useState(initialStep);
   const [mode, setMode] = useState<UiColorModePref>('light');
+  const [themeId, setThemeId] = useState(initialTheme);
+  useStoryRootTheme(themeId);
   const [level, setLevel] = useState(PRIVACY_OPTIONS[0]!.id);
   const [engine, setEngine] = useState(searchEngines[0]?.id ?? 'ddg');
   const step = WELCOME_STEPS[index] ?? WELCOME_STEPS[0]!;
@@ -184,6 +208,7 @@ function WelcomeDialog({
         onChange={setMode}
       />
     ),
+    theme: <ThemeChooser value={getThemeMeta(themeId).id} onChange={setThemeId} />,
     import: (
       <ImportSources view={importView} onBrowser={() => go(index + 1)} onFirefoxZen={() => {}} />
     ),
@@ -206,28 +231,7 @@ function WelcomeDialog({
       />
     ),
     tour: <TourTiles />,
-    ready: (
-      <ReadySummary
-        rows={[
-          {
-            label: 'Appearance',
-            value: APPEARANCE_OPTIONS.find((o) => o.id === mode)?.label ?? '',
-            step: stepIndexOf('appearance'),
-          },
-          {
-            label: 'Privacy',
-            value: PRIVACY_OPTIONS.find((o) => o.id === level)?.label ?? '',
-            step: stepIndexOf('privacy'),
-          },
-          {
-            label: 'Search',
-            value: searchEngineName(searchEngines, engine),
-            step: stepIndexOf('search'),
-          },
-        ]}
-        onChange={go}
-      />
-    ),
+    ready: <OpenSettingsButton onOpen={() => {}} />,
   }[step.id];
 
   return (
@@ -370,6 +374,50 @@ DialogNarrow.args = { step: stepIndexOf('tour') };
 DialogNarrow.argTypes = DialogSteps.argTypes;
 DialogNarrow.meta = { width: 'small' };
 
+export const DialogTheme: Story<{ theme: string }> = ({ theme }) => (
+  // The Theme step. Choosing a swatch repaints the dialog in that theme, as the workspace's theme does
+  // in the welcome page; light and dark follow the toolbar toggle.
+  <WelcomeDialog
+    key={theme}
+    initialStep={stepIndexOf('theme')}
+    searchEngines={ENGINES}
+    initialTheme={theme}
+  />
+);
+DialogTheme.storyName = 'Dialog (theme step)';
+DialogTheme.args = { theme: 'default' };
+DialogTheme.argTypes = {
+  theme: {
+    options: ['default', 'standard-blueprint', 'standard-wildflower', 'monochrome-teal'],
+    control: { type: 'radio' },
+  },
+};
+
+export const DialogThemeNarrow: Story<{ theme: string }> = ({ theme }) => (
+  <WelcomeDialog
+    key={theme}
+    initialStep={stepIndexOf('theme')}
+    searchEngines={ENGINES}
+    initialTheme={theme}
+  />
+);
+DialogThemeNarrow.args = DialogTheme.args;
+DialogThemeNarrow.argTypes = DialogTheme.argTypes;
+DialogThemeNarrow.storyName =
+  'Dialog (theme step, narrow viewport, shorter preview and wrapped rows)';
+DialogThemeNarrow.meta = { width: 'small' };
+
+export const DialogReady = () => (
+  <WelcomeDialog initialStep={stepIndexOf('ready')} searchEngines={ENGINES} />
+);
+DialogReady.storyName = 'Dialog (ready step, Open Settings)';
+
+export const DialogReadyNarrow = () => (
+  <WelcomeDialog initialStep={stepIndexOf('ready')} searchEngines={ENGINES} />
+);
+DialogReadyNarrow.storyName = 'Dialog (ready step, narrow viewport)';
+DialogReadyNarrow.meta = { width: 'small' };
+
 export const Dots = () => (
   <Frame width={240}>
     {WELCOME_STEPS.map((step, index) => (
@@ -385,6 +433,21 @@ export const AppearanceTiles = () => (
   </Frame>
 );
 AppearanceTiles.storyName = 'Options: appearance tiles (Dark selected)';
+
+export const ThemeChooserDefault = () => (
+  <Frame width={720}>
+    <ThemeDemo initial="default" />
+  </Frame>
+);
+ThemeChooserDefault.storyName =
+  'Theme chooser (Default selected; hover or focus a swatch to preview)';
+
+export const ThemeChooserMonochrome = () => (
+  <Frame width={720}>
+    <ThemeDemo initial="monochrome-teal" />
+  </Frame>
+);
+ThemeChooserMonochrome.storyName = 'Theme chooser (a monochrome theme selected)';
 
 export const PrivacyRows = () => (
   <Frame width={600}>
@@ -458,17 +521,3 @@ export const Tour = () => (
   </Frame>
 );
 Tour.storyName = 'Tour tiles';
-
-export const Summary = () => (
-  <Frame width={600}>
-    <ReadySummary
-      rows={[
-        { label: 'Appearance', value: 'Auto', step: 1 },
-        { label: 'Privacy', value: 'Enhanced', step: 3 },
-        { label: 'Search', value: 'A search engine with a very long display name', step: 4 },
-      ]}
-      onChange={() => {}}
-    />
-  </Frame>
-);
-Summary.storyName = 'Ready summary (long value)';

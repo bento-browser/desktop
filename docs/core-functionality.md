@@ -10,9 +10,9 @@ windows and manually arranging them with the operating system, a user can keep a
 task-specific "bento box" inside one browser window and switch to another box
 when their context changes.
 
-On first run with a fresh Bento profile, Bento shows a seven-step onboarding
+On first run with a fresh Bento profile, Bento shows an eight-step onboarding
 dialog centered over the browser window, one topic per step. Every step shows a
-row of progress dots, and every step after Welcome shows a "Step N of 6" count at
+row of progress dots, and every step after Welcome shows a "Step N of 7" count at
 the top left of the dialog. Every step after Welcome has a Back action, so
 earlier choices can be revisited. The steps are:
 
@@ -22,7 +22,22 @@ earlier choices can be revisited. The steps are:
    (Auto shows a light and a dark half). The choice is applied to the dialog and
    the browser immediately, not when the user continues. Fresh profiles start on
    Light; Auto follows the operating system's appearance.
-3. Import: one button per browser Bento found on this Mac among Chrome, Safari,
+3. Theme: "Pick a colour theme", with one compact, low-fidelity preview of a Bento
+   window drawn in a theme's own colours, from shapes only and no text: a
+   titlebar of dots, a sidebar (a workspace circle, an address field, a short
+   row and three tabs with the first active, then toolbar squares) and a content
+   panel (a heading bar, a few lines and an accent button), in the dialog's
+   current Light or Dark. The theme shows through the workspace circle, the
+   active tab and the button; the rest is neutral. Below it are two rows
+   of round colour swatches: Default and the eight standard themes, then the
+   seven monochrome themes. Hovering or keyboard-focusing a swatch shows that
+   theme in the preview and, under the swatches, its name and a one-line
+   description, without changing anything; moving away shows the selected theme
+   again. Clicking a swatch (or Space or Enter on it) sets the theme of the
+   window's current workspace right away, and the dialog repaints in it; every
+   workspace can have its own theme later. On narrow windows the preview gets
+   shorter and the swatches wrap.
+4. Import: one button per browser Bento found on this Mac among Chrome, Safari,
    Edge, Brave, Vivaldi, and Opera, each with the browser's logo, its name, and
    a chevron, in a grid of four columns. Choosing one opens the browser-data
    importer with that browser already selected. When a Mozilla Firefox or Zen
@@ -39,27 +54,28 @@ earlier choices can be revisited. The steps are:
    continues at the Privacy step (with reduced motion, or when the window is
    resized meanwhile, the two cross-fade instead). Skipping goes straight to
    Privacy.
-4. Privacy: Standard, Enhanced, and Hardened protection levels, each with a
+5. Privacy: Standard, Enhanced, and Hardened protection levels, each with a
    one-line summary. Standard is marked Recommended and is the default for fresh
    profiles. The choice is applied immediately, and a note under the levels
    says "Protection levels can be fine-tuned in the Settings".
-5. Search: Firefox's currently visible search engines, listed in two columns and
+6. Search: Firefox's currently visible search engines, listed in two columns and
    scrolling inside the list when there are many. Each engine shows its icon
    (a search glyph when it has none). DuckDuckGo is already the default, and so
    preselected, on a fresh profile; a profile that has finished onboarding keeps
    whatever engine it has. Engines Bento recognises as privacy-oriented carry a
    Private tag. The choice is applied immediately, and a note under the list says
    "Add more search engines in the Settings".
-6. Tour: a short introduction to workspaces, panels, and the command palette,
+7. Tour: a short introduction to workspaces, panels, and the command palette,
    each with a free-standing 3D illustration, one line of explanation, and its
    keyboard shortcut: switching workspaces, cycling between panels, and opening
    the command palette.
-7. Ready: a summary of the chosen Appearance, Privacy, and Search values. Each
-   row has a Change action that jumps back to that step. Start browsing closes
-   the dialog.
+8. Ready: "You are set", a line saying Bento Browser can be customised any time
+   in Settings, and an Open Settings button that closes the dialog and opens
+   Settings. Start browsing closes the dialog.
 
 The onboarding dialog is not dismissed by clicking the scrim or pressing Esc.
-Only Start browsing ends onboarding; until then it reopens on the next launch.
+Only Start browsing and Open Settings end onboarding; until then it reopens on the next launch.
+If Bento's settings are reset afterwards, onboarding opens again from Welcome.
 On narrow windows the tile grids collapse to fewer columns and the dialog is
 sized to the window minus a small margin.
 

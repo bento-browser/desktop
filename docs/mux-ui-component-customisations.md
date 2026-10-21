@@ -385,7 +385,7 @@ read from the computed colours, not the token names (the card's numbers are in
 ### Welcome dialog and selectable tiles
 
 The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,
-non-dismissable Mux `Dialog` that keeps its frame and footer across all seven
+non-dismissable Mux `Dialog` that keeps its frame and footer across all eight
 steps; only the step body changes. Its Bento rules sit in the `bento.components`
 layer of `welcome.css`, with one exception: the `.muxui-dialog.bento-welcome`
 override (`--bento-welcome-dialog-width` by `--bento-welcome-dialog-height`, 45rem
@@ -441,6 +441,36 @@ behind it; the tile's title and body carry the meaning. At the compact breakpoin
 the tile switches to a grid template (`image`, `title`, `body`, `chips` areas) and
 the illustration drops to `--bento-welcome-tour-image-compact`.
 
+The Theme step does not use `WelcomeOptions`. Its swatches are two single-select
+`ToggleButtonGroup`s (one per row, `ThemeChooser`), each `ToggleButton` holding the Mux
+`ColorSwatch` the workspace theme picker draws (circle, `brand60` and `neutral20`, the
+swatch's own theme scope attributes) at `--bento-welcome-swatch`. Keying is by theme id
+rather than a colour picker's colour value, because Default and Harbour share their
+colours. Bento declares the group's `--muxui-toggle-button-group-motion-fill` as
+transparent and clears the group border and clipping and the button fill, border and
+hover background (the Bento layer outranks the Mux layer), so a swatch is just its
+colour; the selected one gets a 2px outline ring in `--muxui-semantic-content-default`
+and a hovered one `--muxui-semantic-border-strong`. A swatch carries `data-theme-swatch`, and
+the wrapper reads that from hover and focus to preview a theme without selecting it.
+
+The preview above the swatches (`ThemePreview`) is one low-fidelity themed window made
+of shapes with no text: its root carries the previewed theme's own
+`getThemeScopeAttributes` (`data-muxui-theme` and `data-muxui-color-scheme`), so it is
+coloured only from public Mux semantic tokens (`surface-canvas`, `surface-background`,
+`surface-hover`, `surface-track` for the neutral bars, `border-default`,
+`border-subtle`, `content-muted` for the heading bar and toolbar squares,
+`action-background` for the button, and `color-color-60` with its `-fg` for the
+workspace circle and active tab, as the real tab row uses `--color-60`), and its
+theme's sheet must be attached: `ThemeChooser` keeps every theme's sheet loaded with
+`useThemeSheets(ALL_THEME_IDS)` while the step shows. Its sizes are four small
+tokens (`--bento-welcome-theme-preview-unit`, `-gap`, `-radius`, `-bar`) or `calc()` of
+them, with only the skeleton bars' widths in percentages, and the selected swatch's ring
+is `--bento-focus-ring-width`; the width is
+`min(100%, --bento-welcome-theme-preview-width)` (22.5rem, centred) and the height
+`--bento-welcome-theme-preview`, or `-compact` at 48rem and below, where the New row,
+toolbar squares and a skeleton bar drop out. Panel and sidebar children are
+`flex: none` so a tight preview clips instead of collapsing the bars.
+
 `WelcomeSurfaces.stories.tsx` lays its fixed-width story frames out in the story-only
 `WelcomeSurfaces.stories.css`; nothing in that file ships.
 
@@ -448,19 +478,19 @@ At 48rem and below the dialog goes compact: the option and tile grids lose
 columns, the tour tiles become rows (illustration left, text beside it, shortcut
 chips at the row end), and the footer reflows from three columns (Back, dots,
 actions) to a wrapping flex row. The three columns need about 42rem of dialog on the Import step,
-where Back, seven dots and the Skip and Import actions sit in two equal side
+where Back, eight dots and the Skip and Import actions sit in two equal side
 columns around the dots, so the footer uses the dialog's one existing compact
 breakpoint rather than a second one. Compact puts the dots on their own row, then
 Back and the actions on the next row, with the actions pushed to the end; when they
 do not fit together (about 360px wide) Back takes the row above the actions.
 
 The step dots are a presentational Bento element marked `aria-hidden`. The
-visible "Step N of 6" text (steps 1 to 6) is the accessible progress; do not add
+visible "Step N of 7" text (steps 1 to 7) is the accessible progress; do not add
 roles or labels to the dots.
 
 Motion uses the Mux roles only. The step body enters on `reveal`
 (`--muxui-semantic-motion-reveal-transition`) and replays on every step because it
-remounts per step. The import source tiles, tour tiles, and summary rows also
+remounts per step. The import source tiles and tour tiles also
 stagger: each sets an inline `animationDelay` computed in JS as a
 `calc()` of `--muxui-semantic-motion-reveal-transition-duration`, the index, and
 a fixed fraction, so no script holds a duration. The delay is inline because a

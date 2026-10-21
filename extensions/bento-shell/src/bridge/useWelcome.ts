@@ -14,7 +14,9 @@
 //     races and showWelcome() is idempotent.
 //   - Welcome content dispatches settings/update {welcomeSeen: true} only
 //     from final dismiss paths, then sends BENTO_CLOSE_WELCOME_<ts> for
-//     chrome to hide.
+//     chrome to hide. The Ready step's Open Settings button finishes the same way
+//     but sends BENTO_OPEN_SETTINGS_<ts> instead, which chrome answers by hiding the
+//     overlay and opening Settings (one title: title IPC is last-write-wins).
 //   - The import action stores the next onboarding step in extension storage,
 //     uses BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts>, and lets chrome show the
 //     embedded Firefox migration host above the still-mounted onboarding flow.
@@ -33,6 +35,9 @@ import { sendChromeTitle } from './chromeTitle';
 
 export const WELCOME_OPEN_PREFIX = 'BENTO_OPEN_WELCOME';
 export const WELCOME_CLOSE_PREFIX = 'BENTO_CLOSE_WELCOME';
+/** Open Settings on the Ready step: chrome hides the overlay and opens Settings (the mount
+ * script's SETTINGS_OPEN_PREFIX, which the palette's Settings command also sends). */
+export const WELCOME_OPEN_SETTINGS_PREFIX = 'BENTO_OPEN_SETTINGS';
 export const WELCOME_IMPORT_BROWSER_DATA_PREFIX = 'BENTO_IMPORT_BROWSER_DATA';
 /** The Import step asks chrome to send the import sources again: BENTO_IMPORT_SOURCES_REQUEST_<ts>. */
 export const WELCOME_IMPORT_SOURCES_REQUEST_PREFIX = 'BENTO_IMPORT_SOURCES_REQUEST';
