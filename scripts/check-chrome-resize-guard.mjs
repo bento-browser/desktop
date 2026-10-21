@@ -31,6 +31,10 @@ const splitOverlayHairline =
   /#tabbrowser-tabpanels\.bento-split-active\s*>\s*\[data-bento-main-panel\]::after,\s*#tabbrowser-tabpanels\.bento-split-active\s*>\s*\[data-bento-panel-tab-id\]::after\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const noPanelOverlayHairline =
   /#bento-strip-container\.bento-no-side-panels\s*>\s*#bento-side-panel-host\s*>\s*\[data-bento-main-panel\]::after\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
+// '<outline>, none' is an invalid box-shadow list, so the chooser (which has no remote page and
+// keeps its own hairline) needs an outline-only rule once --bento-panel-frame-shadow is none.
+const chooserShadowsDisabledHairline =
+  /#bento-strip-container\.bento-panel-shadows-disabled\s*>\s*#bento-side-panel-host\s*>\s*\.bento-layout-chooser\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\);/s;
 const frameRingOnPageFrame =
   /(?:\.browserSidebarContainer|\[data-bento-main-panel\]|\[data-bento-panel-tab-id\])\s*\{[^}]*box-shadow:\s*var\(--bento-panel-frame-outline-shadow\)[^}]*\}/s;
 const globalLiveResizeShadowOverride =
@@ -78,6 +82,12 @@ if (!normalPanelShadow.test(chromeMountCss)) {
 if (!splitOverlayHairline.test(chromeMountCss) || !noPanelOverlayHairline.test(chromeMountCss)) {
   failures.push(
     `${chromeMountCssPath} must draw the frame hairline on the panel and no-panels ::after overlays so the remote page cannot overpaint it.`,
+  );
+}
+
+if (!chooserShadowsDisabledHairline.test(chromeMountCss)) {
+  failures.push(
+    `${chromeMountCssPath} must give the subdivision chooser an outline-only box-shadow when panel shadows are disabled; '<outline>, none' is invalid and drops its hairline.`,
   );
 }
 

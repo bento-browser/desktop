@@ -278,7 +278,9 @@ frame's rect and `mozInnerScreenX`/`Y` to the anchor, sets `placement: 'end'`, a
 then takes the navigator tooltip's own path: `hover` goes through
 `armPanelNavigatorTooltip` (the 400 ms delay), `focus` through
 `showPanelNavigatorTooltipPayload` at once, `hide` through
-`hidePanelNavigatorTooltip`. No new overlay, document or surface kind, and no new
+`hidePanelNavigatorTooltip`. An immediate show clears a pending hover timer first, so a
+label that changes inside the 400 ms hover delay is not overwritten by the older text.
+No new overlay, document or surface kind, and no new
 Firefox dependency (it reads the `mozInnerScreen*` values the navigator tooltip
 already did). The card sends `hover` on pointer enter and `focus` only when the
 focus is `:focus-visible` (a click's focus does not raise it), and `hide` on pointer

@@ -335,10 +335,87 @@ describe('external merge shell store', () => {
 
       expect(useExternalMergeStore.getState().result).toEqual({
         kind: 'cancelled',
+        operationId,
         sourceName: 'Firefox',
         // 120 tabs processed, 100 of them opened: the card counts the opened ones.
         tabsAdded: 100,
         percent: 20,
+      });
+    });
+
+    describe('a tab in flight when the merge is cancelled', () => {
+      function cancelAfterProgress() {
+        const operationId = startAndProgress();
+        useExternalMergeStore
+          .getState()
+          .applyError({ operationId, windowId: 1, code: 'cancelled', message: 'x' }, 1);
+        return operationId;
+      }
+      const lateProgress = (importedTabs: number | undefined) => ({
+        ...importing,
+        completedTabs: 121,
+        importedTabs,
+      });
+      const tabsAdded = () => {
+        const result = useExternalMergeStore.getState().result;
+        return result?.kind === 'cancelled' ? result.tabsAdded : null;
+      };
+
+      it('raises the cancelled count when tools reports it afterwards, and never lowers it', () => {
+        const operationId = cancelAfterProgress();
+        expect(tabsAdded()).toBe(100);
+
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(101) }, 1);
+        expect(tabsAdded()).toBe(101);
+        // The card is still a cancelled result; nothing else about it moves.
+        expect(useExternalMergeStore.getState().activeOperationId).toBeNull();
+        expect(useExternalMergeStore.getState().progress).toBeNull();
+
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(100) }, 1);
+        expect(tabsAdded()).toBe(101);
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 1, progress: lateProgress(undefined) }, 1);
+        expect(tabsAdded()).toBe(101);
+      });
+
+      it('ignores late progress for another operation or another window', () => {
+        const operationId = cancelAfterProgress();
+
+        useExternalMergeStore.getState().applyProgress(
+          {
+            operationId: 'another-operation',
+            windowId: 1,
+            progress: lateProgress(150),
+          },
+          1,
+        );
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId, windowId: 2, progress: lateProgress(150) }, 1);
+        expect(tabsAdded()).toBe(100);
+      });
+
+      it('ignores late progress once the card is dismissed or the next merge has started', () => {
+        const dismissed = cancelAfterProgress();
+        useExternalMergeStore.getState().dismissResult();
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId: dismissed, windowId: 1, progress: lateProgress(150) }, 1);
+        expect(useExternalMergeStore.getState().result).toBeNull();
+
+        const replaced = cancelAfterProgress();
+        useExternalMergeStore.getState().startMerge('source-2', vi.fn());
+        useExternalMergeStore
+          .getState()
+          .applyProgress({ operationId: replaced, windowId: 1, progress: lateProgress(150) }, 1);
+        const state = useExternalMergeStore.getState();
+        expect(state.result).toBeNull();
+        expect(state.progress).toBeNull();
       });
     });
 

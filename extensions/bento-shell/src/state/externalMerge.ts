@@ -28,7 +28,14 @@ export type ExternalMergeResult =
       workspacesCreated: number;
     }
   // tabsAdded counts tabs that opened, not tabs processed; percent is how far the import got.
-  | { kind: 'cancelled'; sourceName: string | null; tabsAdded: number; percent: number }
+  // operationId lets a tab that was in flight at the cancel raise tabsAdded when tools reports it.
+  | {
+      kind: 'cancelled';
+      operationId: string;
+      sourceName: string | null;
+      tabsAdded: number;
+      percent: number;
+    }
   | { kind: 'failed'; sourceName: string | null; message: string; percent: number };
 
 type DispatchAction = (action: Action) => void;
@@ -232,7 +239,18 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
 
   applyProgress: (event, currentWindowId) => {
     if (!isForCurrentWindow(event.windowId, currentWindowId)) return;
-    if (event.operationId !== get().activeOperationId) return;
+    const { activeOperationId, result } = get();
+    if (event.operationId !== activeOperationId) {
+      // The cancel is shown at once, but a tab in flight still opens and tools reports it
+      // afterwards. Only that operation can raise the cancelled count, and never lower it.
+      if (result?.kind === 'cancelled' && result.operationId === event.operationId) {
+        const opened = event.progress.importedTabs;
+        if (opened !== undefined && opened > result.tabsAdded) {
+          set({ result: { ...result, tabsAdded: opened } });
+        }
+      }
+      return;
+    }
     const activity = event.progress.activity;
     set((state) => ({
       progress: event.progress,
@@ -271,8 +289,9 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
       });
       return;
     }
-    if (event.operationId) {
-      if (event.operationId !== get().activeOperationId) return;
+    const { operationId } = event;
+    if (operationId) {
+      if (operationId !== get().activeOperationId) return;
       set((state) => ({
         activeOperationId: null,
         activeSourceId: null,
@@ -284,6 +303,7 @@ export const useExternalMergeStore = create<ExternalMergeState>((set, get) => ({
           event.code === 'cancelled'
             ? {
                 kind: 'cancelled',
+                operationId,
                 sourceName: state.activeSourceName,
                 tabsAdded: state.progress?.importedTabs ?? state.progress?.completedTabs ?? 0,
                 percent: mergeProgressPercent(state.progress),

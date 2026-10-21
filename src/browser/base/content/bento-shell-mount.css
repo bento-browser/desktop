@@ -2497,6 +2497,11 @@
   /* No remote page inside, so the hairline stays on the frame. */
   box-shadow: var(--bento-panel-frame-outline-shadow), var(--bento-panel-frame-shadow);
 }
+/* '<outline>, none' is an invalid shadow list that drops the whole declaration, so with
+   panel shadows off the chooser keeps just the hairline. */
+#bento-strip-container.bento-panel-shadows-disabled > #bento-side-panel-host > .bento-layout-chooser {
+  box-shadow: var(--bento-panel-frame-outline-shadow);
+}
 .bento-subdivision-chooser::after {
   content: '';
   position: absolute;

@@ -634,7 +634,10 @@ rule). Chrome bridge: none. Persistence: none. Pitfalls:
   overlay; in panel mode the tabbox is the whole strip, so its overlay stays unstroked and
   each slot's own overlay carries the hairline. The fullscreen rules already remove the
   overlay (`content: none`) and the frame shadow, so fullscreen stays square with no stroke.
-  The subdivision chooser has no page, so it keeps the hairline on its own box-shadow.
+  The subdivision chooser has no page, so it keeps the hairline on its own box-shadow, as
+  `<outline>, <frame shadow>`. `<outline>, none` is an invalid list that drops the whole
+  declaration (and the hairline), so under `bento-panel-shadows-disabled` a second rule sets
+  the outline alone; `check-chrome-resize-guard.mjs` asserts it.
 - Kept as cheap alignment, not as the fix: the no-panels frame margins are
   rounded to whole pixels (`round(<space token>, 1px)`) and the collapsed rail is a whole number of pixels wide
   (`--bento-rail-width: round(var(--bento-tab-strip-width-collapsed), 1px)`, measured by the
