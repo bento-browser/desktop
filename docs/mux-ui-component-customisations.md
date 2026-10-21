@@ -724,8 +724,8 @@ Rules:
    allowed in place of the plain pair, for geometry that should settle like a
    physical object. Time the `state` fades that accompany it from
    `<role>-transition-spring-visual-duration` (reveal: 200 ms, when the spring has
-   covered about 97% of the move), not from the 400 ms tail (the import card morph and
-   the sidebar push fades below are the deliberate exceptions). A hide or hand-off
+   covered about 97% of the move), not from the 400 ms tail (the import card morph
+   below is the deliberate exception). A hide or hand-off
    that must wait for the geometry to finish (a `visibility` step) runs the spring
    duration, tail included.
 3. Pick from the roles below. Delays and staggers are `calc()` fractions of the
@@ -757,40 +757,68 @@ the duration), the audio note particles (`travel` with `constant-easing`; the
 reduced-motion variant runs on `spin`).
 
 Pairs that must stay in lockstep use the same role: every part of the sidebar push
-(the host, the page group, the bookmarks toolbar, the divider, Back/Forward/Reload and
-the band in `bento-shell-mount.css`, and the hidden sidebar's edge-hover slide-over
-that follows it) is the `reveal` spring pair (400 ms, no overshoot; the host's fades are 160 ms fractions of the full spring duration, a
-deliberate exception to rule 2's visual-duration timing, chosen from a side-by-side
-prototype because the visual-duration timing left the rail strip empty for about
-200 ms); the workspace slide (`TabList.css`), the main panel width one-shot and the
-panel enter are `reveal` too. The shell has no collapse transitions of its own: it
-switches between the expanded and rail layouts in one frame, behind the host's fade.
-The sidebar Search peek group is one `reveal` spring pair: the trigger's width, the
-action highlight's `left` and `width`, the closed field row's `margin-inline-start`
-and `padding-inline-start` (which is also the field's open and close growth) and the
-clear button's open `scale`; the New button follows through flex, and the closed
-overlay's `visibility` hide runs the same spring duration. The closed field row's
-fade waits the spring's visual duration; the other fades stay on `state`.
-The onboarding-to-import card morph (`bento-migration-host.css`) is a `reveal` spring
-pair too: the card's `left`, `top`, `width`, `height`, `border-radius` and
-`border-color`, and its sheen layer's `opacity`, run on the spring duration and easing
-(400 ms, no overshoot). The wizard content fades in on `modal` after a delay of
-`calc()` 0.4 of the spring duration, 160 ms, and out on `dismiss` on the way back.
-The 160 ms delay is deliberately later than rule 2's advice to time accompanying fades
-from the 200 ms visual duration (0.4 of that is 80 ms, what the plain `reveal` pair
-gave before): it was picked from a side-by-side prototype and is kept.
+(the host, the shell frame's counter-translation, the page group, the bookmarks
+toolbar, the divider, Back/Forward/Reload and the band in `bento-shell-mount.css`, and
+the hidden sidebar's edge-hover slide-over that follows it) is the `reveal` spring pair
+(400 ms, no overshoot), with no fade in any direction; the workspace slide
+(`TabList.css`), the main panel width one-shot and the panel enter are `reveal` too.
+
+The sidebar collapse and expand choreography (`extensions/bento-shell/src/sidebar/railTransition.css`,
+the "Cascade" direction) runs inside that push while the shell document stays put and
+the strip's edge wipes over it. It animates only `translate` and `opacity`, keyed on
+`data-bento-rail-transition` on `<html>`:
+
+- Moves (the workspace avatar, the list region and the scroller as it rises over the
+  address bar, the New plus, each tab and folder row and its favicon or icon, the
+  active row's retracting tail, the pinned panel rail and the main column's shift, the
+  footer buttons, and the footer backdrop that rises with the divider) are the `reveal`
+  spring pair at `calc()` 0.6 of its duration, so a staggered move still ends inside
+  the slide. A collapse moves to the measured rail places and holds them until the
+  rail layout replaces it; an expand starts at them and moves back.
+- Fades (the workspace name, the New label, row titles, the switcher's fill and the
+  rail square that replaces it, folder outlines, the pinned and folder band, the
+  address bar's fold, pinned panels) are the `state` pair. Trailing controls (the
+  switcher chevron, Search, row buttons and audio controls, an open search field,
+  sidebar cards) leave on the `dismiss` pair in a collapse and return on `state` in an
+  expand, after `calc()` 0.3 of the spring duration (titles after 0.15).
+- Staggers are `calc()` fractions of the spring duration in units of 1/32: the
+  switcher 0, the address bar and the list 1, New 2, then the rows from 3 by their
+  visible position (capped at 11, so the last collapse move ends by 0.95 of the
+  spring), and the footer buttons one unit apart, the toggle first in a collapse and
+  last in an expand. The header units are fixed in the stylesheet. The row and footer
+  delays depend on the scroll position and the phase, and the motion check allows no
+  `--bento-*` variable in an animation value, so `railLayout.ts` writes them at the
+  phase start as inline `animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * <fraction>)`
+  on each row wrapper, title and trailing group (a row's other parts take the wrapper's
+  through `animation-delay: inherit`) and clears them at the end. That is the only
+  script-written motion value; it names the Mux token and a literal fraction, never a
+  time.
+- The end of an expand is `afterMotion` on a timer-only `bento-rail-hold` animation of
+  one spring duration on the app root; a collapse ends on the viewport snap, with the
+  same animation at twice the spring duration as a fallback.
+  The sidebar Search peek group is one `reveal` spring pair: the trigger's width, the
+  action highlight's `left` and `width`, the closed field row's `margin-inline-start`
+  and `padding-inline-start` (which is also the field's open and close growth) and the
+  clear button's open `scale`; the New button follows through flex, and the closed
+  overlay's `visibility` hide runs the same spring duration. The closed field row's
+  fade waits the spring's visual duration; the other fades stay on `state`.
+  The onboarding-to-import card morph (`bento-migration-host.css`) is a `reveal` spring
+  pair too: the card's `left`, `top`, `width`, `height`, `border-radius` and
+  `border-color`, and its sheen layer's `opacity`, run on the spring duration and easing
+  (400 ms, no overshoot). The wizard content fades in on `modal` after a delay of
+  `calc()` 0.4 of the spring duration, 160 ms, and out on `dismiss` on the way back.
+  The 160 ms delay is deliberately later than rule 2's advice to time accompanying fades
+  from the 200 ms visual duration (0.4 of that is 80 ms, what the plain `reveal` pair
+  gave before): it was picked from a side-by-side prototype and is kept.
 
 A fraction of a role is `calc()` over its duration token, as a delay or a shorter
-phase. The sidebar push uses it for the host fade, 0.4 of the `reveal` spring duration
-(160 ms at the default) on `--muxui-semantic-motion-constant-easing`. That is the one
-sanctioned mix of a role's duration with an easing from outside the role: the fade is
-a linear opacity ramp inside the role's slide, and `constant` is the Mux linear
-easing. There is no Bento token for it, and the motion check allows no `--bento-*`
-variable in a `transition` or `animation`.
+phase: the collapse choreography's 0.6 moves and 1/32 staggers above, the import
+wizard's 0.4 delay. There is no Bento token for one, and the motion check allows no
+`--bento-*` variable in a `transition` or `animation`.
 
 Timing consequences of the default values worth knowing when comparing with an
 older build: the workspace slide runs 200 ms (was 260 ms), the focus ring settles in
-120 ms (was 350 ms), the sidebar footer cross-fade is gone (the host fade replaces it), the pinned
+120 ms (was 350 ms), the sidebar footer cross-fade is gone (the footer buttons move into the rail's column instead), the pinned
 rail's `all` transition is 200 ms (was 300 ms), the hidden-sidebar slide-over is
 the 400 ms spring (was 200 ms, and 160 ms before that) and the skeleton shimmer is 1200 ms (was 1400 ms).
 

@@ -1,0 +1,317 @@
+/* Sidebar collapse and expand choreography ("Cascade"), keyed on the phase attribute
+ * railTransition.ts sets on <html> while chrome pushes the host. The layout stays the
+ * expanded one for the whole phase; items move with `translate` (never layout) by the
+ * offsets railLayout.ts measured (--bento-rail-x / -y, relative to the nearest moving
+ * ancestor), text and trailing controls fade, and the phase's last frame equals the
+ * rail. A collapse animates to the rail places, an expand from them: each phase names
+ * its keyframes in --bento-rail-move / -fade / -rise and the rules are shared.
+ *
+ * Timing: moves are 0.6 of the reveal spring pair; fades (text, fills, the address
+ * bar's fold) are the `state` pair, and trailing controls leave on `dismiss`. Staggers are 1/32 of the spring
+ * duration: the header takes units 0 to 2 here, rows from 3 and the footer buttons
+ * (toggle first) are written by script, since a delay may not read a non-Mux variable.
+ * 'measure' only turns transitions off, for the synchronous reads and the settle. */
+@layer bento.app {
+  html[data-bento-rail-transition] :is(.bento-tab-row, .bento-workspace-switcher__trigger) {
+    transition: none !important;
+  }
+  /* Scroll anchoring takes the list viewport's translate (the scroll change a phase
+     carries, such as an expand from the bottom of the rail clamping the scroll
+     position) for a layout shift and scrolls the list again, so the rows jump. */
+  html[data-bento-rail-transition] .bento-tab-list-pane__scroller {
+    overflow-anchor: none;
+  }
+
+  html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) {
+    /* The list rises over the address bar as one opaque layer, under the New bar's
+       lower padding (which the rail drops); the footer and its rising backdrop, which
+       carries the divider, stay above it. */
+    & .bento-shell-app__list-region {
+      z-index: 3;
+      background-color: var(--bento-brand-bg);
+    }
+    & .bento-tab-list-pane__sticky-actions,
+    & .bento-tab-row--active,
+    & .bento-workspace-switcher__trigger {
+      background-color: transparent !important;
+    }
+    & .bento-shell-app__footer {
+      position: relative;
+      z-index: 4;
+      border-top-color: transparent;
+    }
+    & :is(.bento-tab-list__hover-highlight, .bento-tab-list__action-highlight) {
+      visibility: hidden;
+    }
+    &
+      :is(
+        .bento-tab-row,
+        .bento-folder-row,
+        .bento-workspace-switcher__trigger,
+        .bento-workspace-switcher__avatar-frame,
+        .bento-tab-list__viewport--top-surface
+      ) {
+      isolation: isolate;
+    }
+
+    /* Drawn fills: the switcher's fill fades while the rail square fades in under the
+       moving avatar; the active row is a cap the size of the rail square over a tail
+       that retracts under it (clipped by the row); a folder row's outline and the
+       pinned and folder band cross-fade between the full row and the rail square. */
+    & :is(.bento-workspace-switcher__trigger, .bento-workspace-switcher__avatar-frame)::before,
+    & .bento-tab-row--active::before,
+    & .bento-tab-row--active::after,
+    & .bento-folder-row::before,
+    & .bento-folder-row::after,
+    & .bento-tab-list__viewport--top-surface::after,
+    & .bento-shell-app__footer::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      background-color: var(--bento-workspace-switcher-fill);
+    }
+    & .bento-workspace-switcher__avatar-frame {
+      border-radius: var(--muxui-semantic-shape-radius-s);
+    }
+    & .bento-workspace-switcher__avatar-frame::before {
+      background-color: var(--bento-workspace-switcher-rail-fill);
+    }
+    & .bento-tab-row--active::before,
+    & .bento-tab-row--active::after {
+      background-color: var(--bento-tab-row-fill);
+    }
+    & .bento-tab-row--active::after {
+      z-index: -2;
+      inset-inline-start: calc(var(--bento-tab-row-height) / 2);
+      --bento-rail-x: var(--bento-rail-tail-x);
+      --bento-rail-y: 0px;
+    }
+    & :is(.bento-tab-row--active, .bento-folder-row)::before,
+    & .bento-tab-list__viewport--top-surface::after {
+      inset-inline-end: auto;
+      width: var(--bento-tab-row-height);
+    }
+    & .bento-folder-row {
+      position: relative;
+      box-shadow: none;
+    }
+    & .bento-folder-row::before,
+    & .bento-folder-row::after {
+      background-color: transparent;
+      box-shadow: inset 0 0 0 var(--bento-border-hairline) var(--muxui-semantic-color-neutral-30);
+    }
+    & .bento-tab-list__viewport--top-surface::after {
+      inset-inline-start: var(--bento-rail-tab-x, 0px);
+      height: var(--bento-tab-list-top-surface-height, 0px);
+      border-radius: var(--muxui-semantic-shape-radius-s);
+      background-color: var(--bento-tab-list-top-surface-fill);
+    }
+    & .bento-shell-app__footer::before {
+      inset-block-start: auto;
+      z-index: auto;
+      box-sizing: border-box;
+      height: var(--bento-rail-footer-height, 0px);
+      border-top: 1px solid var(--bento-sidebar-divider-color);
+      background-color: var(--bento-brand-bg);
+      --bento-rail-x: 0px;
+      --bento-rail-y: var(--bento-rail-footer-rise, 0px);
+    }
+
+    /* Offsets: rows read the shared ones on the root, the address bar folds. */
+    & .bento-tab-row {
+      --bento-rail-x: var(--bento-rail-tab-x, 0px);
+      --bento-rail-y: var(--bento-rail-tab-y, 0px);
+      --bento-rail-tail-x: calc(-1 * var(--bento-rail-tail, 0px));
+    }
+    & .bento-tab-row--indented {
+      --bento-rail-x: var(--bento-rail-indented-x, 0px);
+      --bento-rail-y: var(--bento-rail-indented-y, 0px);
+      --bento-rail-tail-x: calc(-1 * var(--bento-rail-indented-tail, 0px));
+    }
+    & .bento-tab-row__favicon {
+      --bento-rail-x: var(--bento-rail-favicon-x, 0px);
+      --bento-rail-y: var(--bento-rail-favicon-y, 0px);
+    }
+    & .bento-folder-row {
+      --bento-rail-x: var(--bento-rail-folder-x, 0px);
+      --bento-rail-y: var(--bento-rail-folder-y, 0px);
+    }
+    & .bento-folder-row__icon {
+      --bento-rail-x: var(--bento-rail-folder-icon-x, 0px);
+      --bento-rail-y: var(--bento-rail-folder-icon-y, 0px);
+    }
+    & .bento-sidebar-address-bar {
+      --bento-rail-x: 0px;
+      --bento-rail-y: calc(-1 * var(--bento-sidebar-rail-fold));
+    }
+
+    /* Motion. */
+    &
+      :is(
+        .bento-shell-app__main,
+        .bento-pinned-panels,
+        .bento-workspace-switcher__avatar-frame,
+        .bento-shell-app__list-region,
+        .bento-tab-list__new-action-button svg,
+        .bento-tab-list-pane__scroller,
+        .bento-tab-list__viewport,
+        .bento-tab-row,
+        .bento-tab-row__favicon,
+        .bento-folder-row,
+        .bento-folder-row__icon,
+        .bento-shell-app__footer > *
+      ),
+    & .bento-tab-row--active::after {
+      animation: bento-rail-to
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6)
+        var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+      animation-name: var(--bento-rail-move);
+    }
+    &
+      :is(
+        .bento-workspace-switcher__trigger-name,
+        .bento-workspace-switcher__chevron,
+        .bento-tab-list__new-action-label,
+        .bento-tab-list__search-trigger,
+        .bento-tab-list-search,
+        .bento-tab-row__actions,
+        .bento-tab-row__audio-control,
+        .bento-sidebar-cards
+      ),
+    & :is(.bento-tab-row, .bento-folder-row) > .muxui-text,
+    & :is(.bento-workspace-switcher__trigger, .bento-workspace-switcher__avatar-frame)::before,
+    & .bento-pinned-panels + .bento-shell-app__main::after,
+    & .bento-tab-list__viewport--top-surface::before,
+    & .bento-folder-row::before,
+    & .bento-folder-row::after {
+      animation: bento-rail-out var(--muxui-semantic-motion-state-transition) both;
+      animation-name: var(--bento-rail-fade);
+    }
+    /* The rail's own fills enter as the expanded ones leave. */
+    & :is(.bento-workspace-switcher__avatar-frame, .bento-folder-row)::before {
+      animation-direction: reverse;
+    }
+    /* Pinned panels slide out with the main column's shift and fade; the address bar
+       folds up a unit after the switcher. */
+    & .bento-pinned-panels {
+      animation:
+        bento-rail-to calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6)
+          var(--muxui-semantic-motion-reveal-transition-spring-easing) both,
+        bento-rail-out var(--muxui-semantic-motion-state-transition) both;
+      animation-name: var(--bento-rail-move), var(--bento-rail-fade);
+    }
+    & .bento-sidebar-address-bar {
+      animation: bento-rail-to var(--muxui-semantic-motion-state-transition)
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32) both;
+      animation-name: var(--bento-rail-move), var(--bento-rail-fade);
+    }
+    & .bento-shell-app__footer::before {
+      animation: bento-rail-to
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6)
+        var(--muxui-semantic-motion-reveal-transition-spring-easing)
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.05) both;
+      animation-name: var(--bento-rail-rise);
+    }
+    /* A row's parts take the delay script wrote on its wrapper. */
+    & :is(.bento-tab-row, .bento-folder-row, .bento-tab-row__favicon, .bento-folder-row__icon),
+    & .bento-tab-row--active::after,
+    & .bento-folder-row::before,
+    & .bento-folder-row::after {
+      animation-delay: inherit;
+    }
+    &
+      :is(
+        .bento-shell-app__list-region,
+        .bento-tab-list-pane__scroller,
+        .bento-tab-list__viewport
+      ) {
+      animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32);
+    }
+    & .bento-tab-list__new-action-button svg {
+      animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
+    }
+  }
+
+  html[data-bento-rail-transition='collapse'] {
+    --bento-rail-move: bento-rail-to;
+    --bento-rail-fade: bento-rail-out;
+    --bento-rail-rise: bento-rail-from;
+
+    & .bento-shell-app {
+      animation: bento-rail-hold
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 2) both;
+    }
+    &
+      :is(
+        .bento-tab-list__new-action-label,
+        .bento-tab-list__search-trigger,
+        .bento-tab-list-search
+      ) {
+      animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
+    }
+    &
+      :is(
+        .bento-workspace-switcher__chevron,
+        .bento-tab-list__search-trigger,
+        .bento-tab-list-search,
+        .bento-tab-row__actions,
+        .bento-tab-row__audio-control,
+        .bento-sidebar-cards
+      ) {
+      animation-duration: var(--muxui-semantic-motion-dismiss-transition-duration);
+      animation-timing-function: var(--muxui-semantic-motion-dismiss-transition-easing);
+    }
+  }
+
+  html[data-bento-rail-transition='expand'] {
+    --bento-rail-move: bento-rail-from;
+    --bento-rail-fade: bento-rail-in;
+    --bento-rail-rise: bento-rail-to;
+
+    & .bento-shell-app {
+      animation: bento-rail-hold var(--muxui-semantic-motion-reveal-transition-spring-duration) both;
+    }
+    & :is(.bento-workspace-switcher__trigger-name, .bento-tab-list__new-action-label) {
+      animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.15);
+    }
+    &
+      :is(
+        .bento-workspace-switcher__chevron,
+        .bento-tab-list__search-trigger,
+        .bento-tab-list-search,
+        .bento-sidebar-cards
+      ) {
+      animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3);
+    }
+  }
+
+  @keyframes bento-rail-to {
+    to {
+      translate: var(--bento-rail-x, 0px) var(--bento-rail-y, 0px);
+    }
+  }
+  @keyframes bento-rail-from {
+    from {
+      translate: var(--bento-rail-x, 0px) var(--bento-rail-y, 0px);
+    }
+  }
+  @keyframes bento-rail-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes bento-rail-in {
+    from {
+      opacity: 0;
+    }
+  }
+  /* A timer only: the collapse fallback (twice the spring, for a viewport that never
+     narrows) and the expand's end. */
+  @keyframes bento-rail-hold {
+    to {
+      visibility: visible;
+    }
+  }
+}

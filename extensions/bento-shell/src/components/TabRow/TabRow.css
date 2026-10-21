@@ -78,8 +78,10 @@
      and composite over it. */
   .bento-tab-row--active {
     --bento-tab-row-action-count: 1;
+    /* Also the fill of the highlight that retracts in a collapse (railTransition.css). */
+    --bento-tab-row-fill: var(--color-60);
 
-    background-color: var(--color-60);
+    background-color: var(--bento-tab-row-fill);
     color: var(--color-60-fg);
   }
 

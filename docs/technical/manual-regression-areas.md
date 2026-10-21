@@ -14,6 +14,26 @@ When changing core functionality, manually verify at least the affected subset:
   and divider slide with the sidebar, no jump at the end), the left-edge hover reveal
   (the slide-over takes the 400 ms spring each way, no overshoot) and the show (the divider enters with the strip's edge, never static at its final
   position), including Cmd+S again mid-slide;
+- the collapse and expand choreography in the sidebar (the shell side of the push; Ladle
+  story "App / Collapse choreography (chrome push)" for slow motion and frozen frames):
+  at 0.25x and 1x, collapse and expand with the active tab near the top, inside a folder
+  (indented) and scrolled out of view, with a folder and its band, with pinned panels on
+  and off, with the list scrolled partway and scrolled to the end (an expand from the end
+  clamps the scroll position), and with a workspace whose name is long. Watch for: no
+  jump in the frame the rail appears (end of a collapse) or disappears (start of an
+  expand); the avatar, New plus, favicons, folder icons and footer buttons travel straight
+  to their places, top rows first and the toggle first; the address bar folds under the
+  list and never shows through it; the active highlight retracts into its square and
+  extends back out of it; the footer divider rises with the backdrop and no row shows
+  under it; the hover highlight is hidden during the move and returns on the next pointer
+  move; Cmd+S again mid-move in both directions and ten quick presses end in the last
+  state with no offset left behind (in the Browser Toolbox Console,
+  `document.documentElement.hasAttribute('data-bento-rail-transition')` is false in the
+  shell document, and no element in it has an inline `--bento-rail-x` or
+  `animation-delay`); with reduced motion on, and at a cold start, the switch is instant.
+  Known snaps at the end of a collapse and the start of an expand: a multi-selected (not
+  active) row's tint, an audible or muted row's favicon (the speaker control shifts it),
+  an open sidebar search and a sidebar card fade instead of moving;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;

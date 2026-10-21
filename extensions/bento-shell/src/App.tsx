@@ -31,6 +31,9 @@ import { SidebarCards } from './components/SidebarCards/SidebarCards';
 import { encodeTitlePayload, sendChromeTitle } from './bridge/chromeTitle';
 import { NEW_MENU_ITEMS, trackNewMenuOpen } from './bridge/newMenu';
 import { observeRailViewport, setRailAttribute } from './sidebar/railViewport';
+import { createRailTransition, type RailTransition } from './sidebar/railTransition';
+import { createRailTransitionDom } from './sidebar/railLayout';
+import './sidebar/railTransition.css';
 import { observeFooterButtonEdges, type FooterButtonEdges } from './sidebar/footerAnchor';
 
 // Note: the command palette no longer lives in this entry. It runs in its
@@ -483,17 +486,32 @@ export function App() {
   // rail at its own point in the sidebar slide (see "Sidebar collapse" in
   // docs/technical/workspaces.md), and the shell switches layout in the same
   // frame its viewport does. The setting only drives the semantic parts
-  // (labels, icon, tooltips).
+  // (labels, icon, tooltips) and starts the collapse and expand choreography
+  // (sidebar/railTransition.ts), which runs between the flip and that switch.
   const appRef = useRef<HTMLDivElement>(null);
+  const railTransitionRef = useRef<RailTransition | null>(null);
   useLayoutEffect(() => {
     const root = appRef.current;
     if (!root) return;
-    const stop = observeRailViewport(root, setRailAttribute);
+    const transition = createRailTransition(createRailTransitionDom(root));
+    railTransitionRef.current = transition;
+    const stop = observeRailViewport(root, transition.viewport);
     return () => {
       stop();
+      transition.dispose();
+      railTransitionRef.current = null;
       setRailAttribute(false);
     };
   }, []);
+  // Before paint, so a collapse's first frame is already the phase's.
+  const settingsLoaded = useSettingsStore((s) => s.current !== null);
+  useLayoutEffect(() => {
+    if (!settingsLoaded) return;
+    railTransitionRef.current?.setting({
+      collapsed: sidebarCollapsedSetting,
+      hidden: sidebarHidden,
+    });
+  }, [settingsLoaded, sidebarCollapsedSetting, sidebarHidden]);
 
   return (
     <div

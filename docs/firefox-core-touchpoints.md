@@ -1070,16 +1070,24 @@ rel="stylesheet">` load and error events on chrome documents, and the
   Toolbox Console
   `getComputedStyle(document.documentElement).getPropertyValue('--muxui-semantic-motion-reveal-transition-duration')`
   is `200ms` with the default tokens.
-- Sidebar push (2026-10-17, hide added 2026-10-19): Cmd+S collapse and expand no
-  longer transition the host width, and hide mode's hide slides the same way
-  (`:root[bento-sidebar-push='hide']`, `.bento-sidebar-hidden` lands when the slide
-  ends; no new Firefox surface). `applyChromeSidebarCollapsed` in the mount script
+- Sidebar push (2026-10-17, hide added 2026-10-19, shell frame still and `show` added
+  2026-10-22): Cmd+S collapse and expand no longer transition the host width, and hide
+  mode's hide slides the same way (`:root[bento-sidebar-push='hide']`,
+  `.bento-sidebar-hidden` lands when the slide ends; `'show'` is the expand out of the
+  hidden state; no new Firefox surface). `applyChromeSidebarCollapsed` in the mount script
   slides the host and the in-flow children of `#browser` right of it as one strip
   with `transform` and `opacity` (`:root[bento-sidebar-push]`,
   `.bento-sidebar-push-page`, the `bento-sidebar-push-*` keyframes in this sheet),
-  on the Mux reveal role's spring pair (400 ms, no overshoot; the host fades are 160 ms;
-  the hidden-sidebar edge-hover slide-over uses the same pair), and `#nav-bar::before`
-  is used while it runs. Firefox surface depended on: the
+  on the Mux reveal role's spring pair (400 ms, no overshoot; the hidden-sidebar
+  edge-hover slide-over uses the same pair), and `#nav-bar::before` is used while it
+  runs. Nothing fades. Collapse and expand also keep the shell document still: the host
+  `#bento-shell-host` (a XUL `vbox`) takes `overflow: clip`, the remote
+  `<browser id="bento-shell-frame">` inside it gets an opposite `transform` animation on
+  the host's timing (`bento-sidebar-push-frame-collapse` and `-frame-expand`), and a
+  `#bento-shell-host::after` 1px line marks the visible right edge. Firefox surface
+  depended on: a `transform` animation on a remote `<browser>` element running on the
+  compositor, the `overflow: clip` of its XUL `vbox` parent clipping that remote
+  content, and `::after` rendering on a XUL `vbox`; the
   children of `#browser` are laid out as flex items in document order with
   `#bento-shell-host` first (`browser-box.inc.xhtml`), the page group is found by
   computed style (`display`, `position`), not by id, and `#nav-bar`,
@@ -1092,7 +1100,19 @@ rel="stylesheet">` load and error events on chrome documents, and the
   either end, that the panels are aligned after each toggle, and that
   `document.documentElement.hasAttribute('bento-sidebar-push')` is false afterwards;
   in hide mode, check the same for hide and show (no jump of the page at the start of
-  a hide, the divider entering with the strip on a show); after a Firefox bump,
+  a hide, the divider entering with the strip on a show). For the remote-frame
+  transform and clip: with side panels open, raise
+  `--muxui-semantic-motion-reveal-transition-spring-duration` on the chrome root (30 s),
+  collapse, and in the Browser Toolbox Console check that `document.getAnimations()`
+  lists the host's and `#bento-shell-frame`'s slide, both with `isRunningOnCompositor`
+  true, that their `getComputedStyle(...).transform` translations sum to 0 at several
+  `currentTime` values, that the sidebar's pixels (screenshot) do not move while its
+  right edge does, that the content right of the edge is clipped and a 1px line in the
+  sidebar divider colour sits at the edge (and is absent with no side panels); repeat for
+  expand, and confirm hide and show have no frame animation, clip or line. If the remote
+  frame ignores the transform or the clip (content drawn outside the host, or moving with
+  the host), the counter-translation fails and the sidebar shows the host's slide only;
+  after a Firefox bump,
   re-read `browser-box.inc.xhtml` for added in-flow children of `#browser` and for
   any `::before` or `::after` rule on `#nav-bar`.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
