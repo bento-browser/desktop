@@ -41,8 +41,6 @@ const CONSTANTS = [
   'SIDEBAR_PUSH_PROPS',
   'SIDEBAR_PUSH_DIVIDER_EDGE',
   'SIDEBAR_PUSH_PAGE_CLASS',
-  'SIDEBAR_PUSH_FADE_CLASS',
-  'SIDEBAR_PUSH_FADE_ANIMATION',
   'SIDEBAR_PUSH_KEY',
   'SIDEBAR_PUSH_REDUCED_MOTION',
   'SIDEBAR_PUSH_SLIDE_ANIMATION',
@@ -66,7 +64,6 @@ const FUNCTIONS = [
   'settleSidebarPush',
   'isSidebarCollapsedTarget',
   'isSidebarHiddenTarget',
-  'clearSidebarPushFade',
   'syncGeometryAfterSidebarPush',
   'applyChromeSidebarCollapsed',
   'applyChromeSidebarHidden',
@@ -386,7 +383,7 @@ function makeWorld({
     world.frames.clear();
     for (const [, callback] of queued) callback();
   };
-  /** Finishes the newest live motion wait, as the slide or fade ending would. */
+  /** Finishes the newest live motion wait, as the slide ending would. */
   world.endMotion = () => {
     const wait = [...world.waits].reverse().find((w) => !w.cancelled);
     assert.ok(wait, 'no motion is waiting');
@@ -559,7 +556,7 @@ test('showing right after a hide starts the divider and the toolbar from the hid
   world.payload(true, true);
   // Interrupted before the hide ended: it settles first, then the show begins.
   world.payload(false, false);
-  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'show');
   assert.equal(world.root.props.get('--bento-sidebar-push-divider-shift'), '-300px');
   assert.equal(world.root.props.get('--bento-sidebar-push-nav-from'), '0px');
   assert.equal(world.host.classes.has('bento-sidebar-hidden'), false);

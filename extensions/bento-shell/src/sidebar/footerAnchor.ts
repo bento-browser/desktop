@@ -1,3 +1,5 @@
+import { RAIL_TRANSITION_ATTRIBUTE } from './railTransition';
+
 /**
  * Where a sidebar footer button sits, as chrome needs it to anchor a native panel
  * that Firefox opens on its own (the downloads panel after a download starts).
@@ -50,6 +52,10 @@ function sameEdges(a: FooterButtonEdges, b: FooterButtonEdges): boolean {
  * step, so a sidebar drag (which resizes the footer every frame but leaves the edges
  * alone) sends nothing.
  *
+ * A collapse or expand (`data-bento-rail-transition` on `html`) moves the buttons with
+ * a translation after the footer's last resize, so readings during it are skipped and
+ * the edges are measured again once the phase attribute goes: one read per toggle.
+ *
  * `getButton` is read on each observation, not once: switching the rail swaps the
  * tooltip wrapper, so React mounts a new button element and a held one goes stale.
  */
@@ -57,15 +63,23 @@ export function observeFooterButtonEdges(
   footer: Element,
   getButton: () => Element | null,
   onChange: (edges: FooterButtonEdges) => void,
+  html: Element = document.documentElement,
 ): () => void {
   let last: FooterButtonEdges | null = null;
-  const observer = new ResizeObserver(() => {
+  const measure = () => {
+    if (html.hasAttribute(RAIL_TRANSITION_ATTRIBUTE)) return;
     const button = getButton();
     const edges = button && measureFooterButtonEdges(button);
     if (!edges || (last && sameEdges(last, edges))) return;
     last = edges;
     onChange(edges);
-  });
+  };
+  const observer = new ResizeObserver(measure);
   observer.observe(footer);
-  return () => observer.disconnect();
+  const phase = new MutationObserver(measure);
+  phase.observe(html, { attributes: true, attributeFilter: [RAIL_TRANSITION_ATTRIBUTE] });
+  return () => {
+    observer.disconnect();
+    phase.disconnect();
+  };
 }

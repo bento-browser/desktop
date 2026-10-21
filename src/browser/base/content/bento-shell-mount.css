@@ -561,9 +561,10 @@
     transition: none;
   }
 }
-/* Sidebar push (Cmd+S collapse, expand and hide).
+/* Sidebar push (Cmd+S collapse, expand, hide and show).
    applyChromeSidebarCollapsed in bento-shell-mount.js runs the slide:
-   - :root[bento-sidebar-push='collapse'|'hide'|'expand'] for the length of the slide;
+   - :root[bento-sidebar-push='collapse'|'expand'|'hide'|'show'] for the length of the slide
+     (show is the expand out of the hidden state);
    - --bento-sidebar-push-delta on :root, the host's width minus the layout space the
      host holds at the narrow end (the rail, or 0 when the sidebar was hidden or is
      being hidden);
@@ -575,23 +576,23 @@
    lays out once, at its final geometry, and the group's transform hides the
    difference: host and page group move as one strip, so the host's right edge and
    the page's left edge never separate. Collapse and hide slide the host left by
-   delta and the group from delta back to 0; expand slides the host in from -delta
-   and the group from 0 to delta, and the final layout replaces the transforms in
-   one frame. A collapse fades the host out over the last part of the slide and back
-   in after its snap to the rail (.bento-sidebar-push-fade), and an expand fades it
-   in over the first part, so the shell's switch between the expanded and rail
-   layouts is never seen. A hide has no fade: its host ends fully out of the window,
-   where the snap to the hidden rail (the .bento-sidebar-hidden rule above, put on
-   the host by the script in the frame the push ends) cannot be seen. That rule's
-   transform transition is held off for the frame. Only transform and opacity
-   animate. Every slide runs on the reveal role's spring pair (400 ms, no overshoot:
-   the keyframes are from/to only, so the curve applies once over the move). The
-   fades are fractions of the spring's full duration on the constant easing: a
-   collapse fades out over its last 40% (160 ms, after a 240 ms delay) and back in
-   over 160 ms after the snap, an expand fades in over its first 160 ms. That is
-   later than the visual-duration timing the Mux guide suggests for fades that go
-   with a spring (200 ms): Andrew chose it from a side-by-side prototype, because
-   timing them from the visual duration left the rail strip empty for about 200 ms. */
+   delta and the group from delta back to 0; expand and show slide the host in from
+   -delta and the group from 0 to delta, and the final layout replaces the transforms
+   in one frame.
+   Collapse and expand keep the shell document still while that edge moves: the
+   host clips its content and #bento-shell-frame is translated by the opposite
+   amount on the same timing, so the shell's pixels stay where they are and the
+   host's moving right edge uncovers or covers them. Nothing fades, and the shell
+   reorganises its own layout during the slide (the host keeps its expanded width
+   for a collapse, and is widened at the start of an expand). The shell's own right
+   border is outside the strip while the document is wider than it, so a 1px line
+   (#bento-shell-host::after) marks the host's right edge for the slide. A hide
+   or show is a plain host slide: the host is fully out of the window at the far
+   end, where the switch to or from the hidden rail layout (the .bento-sidebar-hidden
+   rule above, put on the host by the script in the frame the push ends, with its
+   transform transition held off) cannot be seen. Only transform animates. Every
+   slide runs on the reveal role's spring pair (400 ms, no overshoot: the keyframes
+   are from/to only, so the curve applies once over the move). */
 :root {
   --bento-sidebar-push-delta: 0px;
   --bento-sidebar-push-divider-shift: 0px;
@@ -607,39 +608,49 @@
 :root[bento-sidebar-push] #bento-shell-splitter-affordance {
   pointer-events: none;
 }
-:root[bento-sidebar-push='collapse'] #bento-shell-host {
-  animation:
-    bento-sidebar-push-host-collapse var(--muxui-semantic-motion-reveal-transition-spring-duration)
-      var(--muxui-semantic-motion-reveal-transition-spring-easing) both,
-    bento-sidebar-push-fade-out
-      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
-      var(--muxui-semantic-motion-constant-easing)
-      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6) both;
-}
-:root[bento-sidebar-push='expand'] #bento-shell-host {
-  animation:
-    bento-sidebar-push-host-expand var(--muxui-semantic-motion-reveal-transition-spring-duration)
-      var(--muxui-semantic-motion-reveal-transition-spring-easing) both,
-    bento-sidebar-push-fade-in
-      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
-      var(--muxui-semantic-motion-constant-easing) both;
-}
-#bento-shell-host.bento-sidebar-push-fade {
-  animation: bento-sidebar-push-fade-in
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
-    var(--muxui-semantic-motion-constant-easing) both;
-}
-:root[bento-sidebar-push='hide'] #bento-shell-host {
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) #bento-shell-host {
   animation: bento-sidebar-push-host-collapse
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+:root:is([bento-sidebar-push='expand'], [bento-sidebar-push='show']) #bento-shell-host {
+  animation: bento-sidebar-push-host-expand
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+/* Collapse and expand: the host clips, the shell document is counter-translated by the
+   host's own amount (same keyframe timing) so it stays at its on-screen position, and
+   a 1px line stands where the shell's own right border will be. */
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='expand']) #bento-shell-host {
+  overflow: clip;
+}
+:root[bento-sidebar-push='collapse'] #bento-shell-host > #bento-shell-frame {
+  animation: bento-sidebar-push-frame-collapse
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+:root[bento-sidebar-push='expand'] #bento-shell-host > #bento-shell-frame {
+  animation: bento-sidebar-push-frame-expand
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='expand']):not([bento-no-side-panels='true'])
+  #bento-shell-host::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--bento-sidebar-divider-color);
+  pointer-events: none;
 }
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) .bento-sidebar-push-page {
   animation: bento-sidebar-push-page-collapse
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
-:root[bento-sidebar-push='expand'] .bento-sidebar-push-page {
+:root:is([bento-sidebar-push='expand'], [bento-sidebar-push='show']) .bento-sidebar-push-page {
   animation: bento-sidebar-push-page-expand
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
@@ -692,7 +703,7 @@
   width: var(--bento-sidebar-push-split-from);
   background-color: var(--bento-toolbar-sidebar-bg);
 }
-:root[bento-sidebar-push='expand'] #nav-bar::before {
+:root:is([bento-sidebar-push='expand'], [bento-sidebar-push='show']) #nav-bar::before {
   left: var(--bento-sidebar-push-split-from);
   right: 0;
   background-color: var(--bento-toolbar-main-bg);
@@ -704,7 +715,8 @@
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
 }
-:root[bento-sidebar-push='expand'][bento-sidebar-addressbar='true'] #PersonalToolbar.bento-sidebar-push-page {
+:root:is([bento-sidebar-push='expand'], [bento-sidebar-push='show'])[bento-sidebar-addressbar='true']
+  #PersonalToolbar.bento-sidebar-push-page {
   animation: bento-sidebar-push-page-expand
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
@@ -765,20 +777,20 @@
     transform: translateX(var(--bento-sidebar-push-delta));
   }
 }
-@keyframes bento-sidebar-push-fade-out {
+@keyframes bento-sidebar-push-frame-collapse {
   from {
-    opacity: 1;
+    transform: translateX(0);
   }
   to {
-    opacity: 0;
+    transform: translateX(var(--bento-sidebar-push-delta));
   }
 }
-@keyframes bento-sidebar-push-fade-in {
+@keyframes bento-sidebar-push-frame-expand {
   from {
-    opacity: 0;
+    transform: translateX(var(--bento-sidebar-push-delta));
   }
   to {
-    opacity: 1;
+    transform: translateX(0);
   }
 }
 #bento-shell-splitter.bento-sidebar-collapsed {
