@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { WELCOME_CLOSE_PREFIX, WELCOME_OPEN_SETTINGS_PREFIX } from '../bridge/useWelcome';
 import {
   finishOnboarding,
+  restartsOnboarding,
   LAST_STEP,
   parseStoredStep,
   pendingThemeView,
@@ -194,6 +195,17 @@ describe('theme chooser pointer, focus and selection rules', () => {
     expect(requestedTheme('standard-harbour', 'default')).toBe('standard-harbour');
     expect(requestedTheme('standard-harbour', 'standard-harbour')).toBeNull();
     expect(requestedTheme(undefined, 'default')).toBeNull();
+  });
+});
+
+describe('restarting onboarding', () => {
+  it('restarts only when welcomeSeen goes from true back to false', () => {
+    expect(restartsOnboarding(true, false)).toBe(true);
+    expect(restartsOnboarding(undefined, false)).toBe(false);
+    expect(restartsOnboarding(false, false)).toBe(false);
+    expect(restartsOnboarding(false, true)).toBe(false);
+    expect(restartsOnboarding(true, true)).toBe(false);
+    expect(restartsOnboarding(true, undefined)).toBe(false);
   });
 });
 

@@ -75,6 +75,7 @@ earlier choices can be revisited. The steps are:
 
 The onboarding dialog is not dismissed by clicking the scrim or pressing Esc.
 Only Start browsing and Open Settings end onboarding; until then it reopens on the next launch.
+If Bento's settings are reset afterwards, onboarding opens again from Welcome.
 On narrow windows the tile grids collapse to fewer columns and the dialog is
 sized to the window minus a small margin.
 
