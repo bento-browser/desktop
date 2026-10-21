@@ -137,7 +137,7 @@ function Frame({ width, children }: { width: FrameWidth; children: ReactNode }) 
 }
 
 /** Shows `themeId` on the story's <html>, as the welcome page does for the active workspace's theme
- * (useWorkspaceTheme), so the dialog's accents and controls follow the card chosen. */
+ * (useWorkspaceTheme), so the dialog's accents and controls follow the swatch chosen. */
 function useStoryRootTheme(themeId: string) {
   const colorScheme = useResolvedColorScheme();
   useEffect(() => {
@@ -159,7 +159,7 @@ function OptionsDemo<Id extends string>({
   options,
   initial,
 }: {
-  layout: 'tiles' | 'cards' | 'rows' | 'grid';
+  layout: 'tiles' | 'rows' | 'grid';
   label: string;
   options: readonly WelcomeOption<Id>[];
   initial: Id;
@@ -400,7 +400,7 @@ DialogNarrow.argTypes = DialogSteps.argTypes;
 DialogNarrow.meta = { width: 'small' };
 
 export const DialogTheme: Story<{ theme: string }> = ({ theme }) => (
-  // The Theme step. Choosing a card repaints the dialog in that theme, as the workspace's theme does
+  // The Theme step. Choosing a swatch repaints the dialog in that theme, as the workspace's theme does
   // in the welcome page; light and dark follow the toolbar toggle.
   <WelcomeDialog
     key={theme}
@@ -409,8 +409,8 @@ export const DialogTheme: Story<{ theme: string }> = ({ theme }) => (
     initialTheme={theme}
   />
 );
-DialogTheme.storyName = 'Dialog (theme step, opens on the selected theme)';
-DialogTheme.args = { theme: 'standard-blueprint' };
+DialogTheme.storyName = 'Dialog (theme step)';
+DialogTheme.args = { theme: 'default' };
 DialogTheme.argTypes = {
   theme: {
     options: ['default', 'standard-blueprint', 'standard-wildflower', 'monochrome-teal'],
@@ -428,7 +428,8 @@ export const DialogThemeNarrow: Story<{ theme: string }> = ({ theme }) => (
 );
 DialogThemeNarrow.args = DialogTheme.args;
 DialogThemeNarrow.argTypes = DialogTheme.argTypes;
-DialogThemeNarrow.storyName = 'Dialog (theme step, narrow viewport, three columns scroll)';
+DialogThemeNarrow.storyName =
+  'Dialog (theme step, narrow viewport, shorter preview and wrapped rows)';
 DialogThemeNarrow.meta = { width: 'small' };
 
 export const Dots = () => (
@@ -447,19 +448,20 @@ export const AppearanceTiles = () => (
 );
 AppearanceTiles.storyName = 'Options: appearance tiles (Dark selected)';
 
-export const ThemeCardsColourful = () => (
+export const ThemeChooserDefault = () => (
   <Frame width={720}>
     <ThemeDemo initial="default" />
   </Frame>
 );
-ThemeCardsColourful.storyName = 'Options: theme cards (Colourful, Default selected)';
+ThemeChooserDefault.storyName =
+  'Theme chooser (Default selected; hover or focus a swatch to preview)';
 
-export const ThemeCardsMonochrome = () => (
+export const ThemeChooserMonochrome = () => (
   <Frame width={720}>
     <ThemeDemo initial="monochrome-teal" />
   </Frame>
 );
-ThemeCardsMonochrome.storyName = 'Options: theme cards (Monochrome selected)';
+ThemeChooserMonochrome.storyName = 'Theme chooser (a monochrome theme selected)';
 
 export const PrivacyRows = () => (
   <Frame width={600}>

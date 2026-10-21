@@ -8,16 +8,16 @@ welcome overlay (`welcome.html`, source under
 with one topic per step, and browser-data import is the fourth step. The persisted
 step value is the index below.
 
-| #   | Step id      | Behaviour                                                                                                                                                                                               | State and messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| --- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0   | `welcome`    | Introduction and Get started.                                                                                                                                                                           | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                                                                           | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 2   | `theme`      | A Colourful and Monochrome switch (Mux `Tabs`, segment variant) over preview cards: Default and the eight standard themes (Harbour included), or the seven monochrome themes.                           | `workspace/update { id, changes: { themeId } }` for this window's active workspace on every selection, with an optimistic pick; nothing is dispatched until an active workspace is known. The selected card is `resolveThemeId(workspace.themeId)`, and the switch opens on the collection holding it. See [Theme step](#theme-step).                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 3   | `import`     | One button per browser found (Chrome, Safari, Edge, Brave, Vivaldi, Opera), a Firefox or Zen button, Skip, and Other sources.                                                                           | Browser buttons and Other sources store step 4 and signal chrome (below); Firefox or Zen stores step 4 and asks chrome to restart; Skip is a plain step change to 4. See [Import sources](#import-sources).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| 4   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                                                                           | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 5   | `search`     | Firefox's visible engines in two columns, each with its favicon (or a search glyph) before the name, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty. | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`. The preselected tile is Firefox's live default, which tools sets to `ddg` at boot while onboarding is unfinished and no engine is stored (`applyBootDefaultSearchEngine`; see [privacy-search.md](privacy-search.md)); without that seed the tile would show Firefox's own default, Google.                                                                                                                                                                                                                                                                                                                                                        |
-| 6   | `tour`       | Workspaces, panels, and command palette tiles, each with its 3D illustration and shortcuts.                                                                                                             | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 7   | `ready`      | Summary of Appearance, Theme, Privacy, and Search with Change actions, and Start browsing.                                                                                                              | Appearance and Privacy read `uiColorMode` and `privacyProtectionLevel` from the settings snapshot. Theme reads the active workspace's `themeId` (resolved, so an alias or unknown id shows its resolved theme, Default when unset) with the optimistic pick, and shows the theme's name led by its `ColorSwatch`. Search reads `defaultSearchEngine` from the privacy snapshot (falling back to the settings value, then `ddg`) and shows the engine name from `availableSearchEngines`. Until that list loads it shows Firefox's name for a known default id (`ddg` as DuckDuckGo, and `google`, `bing`, `wikipedia`, `ebay`, `perplexity`), else the id itself. Change jumps to step 1, 2, 4, or 5. Start browsing closes onboarding. |
+| #   | Step id      | Behaviour                                                                                                                                                                                                                                               | State and messages                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | `welcome`    | Introduction and Get started.                                                                                                                                                                                                                           | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 1   | `appearance` | Light, Dark, and Auto tiles, applied at once.                                                                                                                                                                                                           | `settings/update { uiColorMode }` on every selection; the selected tile is the stored value, else `light`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2   | `theme`      | One live preview of a theme over two swatch rows (Colourful: Default and the eight standard themes, Harbour included; Monochrome: the seven monochrome themes) and the theme's name and description. Hover or focus previews; a click or Space selects. | `workspace/update { id, changes: { themeId } }` for this window's active workspace on every selection, with a pending pick; nothing is dispatched until an active workspace is known. The selected swatch is `resolveThemeId(workspace.themeId)`. See [Theme step](#theme-step).                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 3   | `import`     | One button per browser found (Chrome, Safari, Edge, Brave, Vivaldi, Opera), a Firefox or Zen button, Skip, and Other sources.                                                                                                                           | Browser buttons and Other sources store step 4 and signal chrome (below); Firefox or Zen stores step 4 and asks chrome to restart; Skip is a plain step change to 4. See [Import sources](#import-sources).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 4   | `privacy`    | One row per `PRIVACY_LEVELS` entry (label and one-line summary), Standard tagged Recommended.                                                                                                                                                           | `privacy/setProtectionLevel` on selection; Continue re-dispatches the current level (the stored one, else `standard`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 5   | `search`     | Firefox's visible engines in two columns, each with its favicon (or a search glyph) before the name, a Private tag on privacy-oriented ones, "Loading Firefox search engines…" while the list is empty.                                                 | `privacy/setDefaultSearchEngine` (optimistic) from `privacy.availableSearchEngines`. The preselected tile is Firefox's live default, which tools sets to `ddg` at boot while onboarding is unfinished and no engine is stored (`applyBootDefaultSearchEngine`; see [privacy-search.md](privacy-search.md)); without that seed the tile would show Firefox's own default, Google.                                                                                                                                                                                                                                                                                                                                                        |
+| 6   | `tour`       | Workspaces, panels, and command palette tiles, each with its 3D illustration and shortcuts.                                                                                                                                                             | None.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 7   | `ready`      | Summary of Appearance, Theme, Privacy, and Search with Change actions, and Start browsing.                                                                                                                                                              | Appearance and Privacy read `uiColorMode` and `privacyProtectionLevel` from the settings snapshot. Theme reads the active workspace's `themeId` (resolved, so an alias or unknown id shows its resolved theme, Default when unset) with the optimistic pick, and shows the theme's name led by its `ColorSwatch`. Search reads `defaultSearchEngine` from the privacy snapshot (falling back to the settings value, then `ddg`) and shows the engine name from `availableSearchEngines`. Until that list loads it shows Firefox's name for a known default id (`ddg` as DuckDuckGo, and `google`, `bing`, `wikipedia`, `ebay`, `perplexity`), else the id itself. Change jumps to step 1, 2, 4, or 5. Start browsing closes onboarding. |
 
 Illustrations are static WebP files in `extensions/bento-shell/public/welcome/`,
 copied into `dist/` by Vite and loaded through Mux `Image` as `./welcome/<name>.webp`:
@@ -684,22 +684,53 @@ Pitfalls:
 
 ## Theme step
 
-Renderer path: `ThemeChooser` in `welcome/WelcomeSurfaces.tsx` (Mux `Tabs`
-`variant="segment"` over `WelcomeOptions` with `layout="cards"`, one panel per
-`THEME_GROUPS` entry), mounted by `welcome/main.tsx`. Colourful is `default` plus the
-`standard` collection (nine cards, five columns); Monochrome is the `monochrome`
-collection (seven cards, four columns). Harbour is listed although it matches
-Default. A card's preview is `ThemePreview`: a mini Bento window whose pane carries
-`getThemeScopeAttributes(theme.id, scheme)`, with `scheme` from
-`useResolvedColorScheme()` so it follows the dialog's Light or Dark. Each theme other
-than Default is its own sheet, so `ThemeChooser` keeps every theme's sheet loaded
-while the step shows (`useThemeSheets(ALL_THEME_IDS)`, as the workspace theme picker
-does). Loading only the collection on screen let a card paint in the dialog's own
-tokens for a frame after a collection switch, while the new sheets loaded.
+Renderer path: `ThemeChooser` in `welcome/WelcomeSurfaces.tsx`, mounted by
+`welcome/main.tsx`. It stacks `ThemePreview`, two swatch rows and a name line.
+`THEME_GROUPS` defines the rows: Colourful is `default` plus the `standard`
+collection (nine swatches, Harbour included although it matches Default), Monochrome is
+the `monochrome` collection (seven). Each row is a Mux `ToggleButtonGroup`
+(`selectionMode="single"`, labelled "Colourful themes" and "Monochrome themes") that
+receives the selected id only when it holds that theme, so one selection spans both
+rows. Swatches are keyed by theme, not by colour, because Default and Harbour share
+theirs (a colour-keyed `ColorSwatchPicker` would collide). A swatch is a
+`ToggleButton` (`aria-label` is the theme name, `data-theme-swatch` the theme id) holding the
+Mux `ColorSwatch` the workspace theme picker draws (circle, `brand60` and `neutral20`)
+at `--bento-welcome-swatch`; the selected one gets a ring (its outline).
+
+`ThemePreview` draws a low-fidelity Bento window from shapes only, with no text or
+glyph: dots for the titlebar, a sidebar of a workspace circle with a bar, an outlined
+address box with a short bar, a short bar for New, three tab rows (a small square and a
+bar each, the first active) and four toolbar squares, and a panel with a thicker heading
+bar, three skeleton bars and an accent rectangle. The root carries
+`getThemeScopeAttributes(themeId, scheme)` (`scheme` from `useResolvedColorScheme()`, so
+it follows the dialog's Light or Dark), so only public Mux semantic tokens colour it:
+neutral bars are `surface-track` (the heading bar `content-muted`), so they stay tinted
+per theme, and the theme reads through the workspace circle and the active tab
+(`--muxui-semantic-color-color-60`, with `-fg` for the tab's square and bar), which is
+what the real tab row reaches through the legacy `--color-60`, and the button
+(`action-background`). No legacy alias is used; the cap in `.legacy-alias-cap.json` is
+unchanged. It is `aria-hidden`; the swatches and the name line carry the meaning. It
+is `min(100%, --bento-welcome-theme-preview-width)` wide (28rem, about 70% of the
+dialog's content width) and centred. Every size inside it is one of four tokens in
+`bento-tokens.css` or a `calc()` of them: `--bento-welcome-theme-preview-unit` (an icon or
+toolbar square, 0.625rem), `-gap` (every gap and padding, 0.375rem), `-radius` (a row's
+corner, 0.3125rem) and `-bar` (a skeleton bar's height, 0.375rem); only the skeleton
+bars' widths are percentages. The selected swatch's ring is `--bento-focus-ring-width`.
+
+Preview state: hovering or focusing a swatch sets one local `previewId` (the latest of
+the two wins), shown in the preview and the name line only. The rules are the pure
+functions in `welcome/themeChooser.ts` (`swatchThemeId`, `nextPreview`, `requestedTheme`),
+which the shell tests cover without a DOM: the pointer moving to whitespace in the rows,
+the pointer or focus leaving the rows, and activating a swatch each clear it, so the
+selected theme shows again, and activating the already selected swatch writes nothing. The dialog's own accent follows
+the workspace theme (`useWorkspaceTheme`), never the previewed one. Each theme other
+than Default is its own sheet, so `ThemeChooser` keeps every theme's sheet loaded while
+the step shows (`useThemeSheets(ALL_THEME_IDS)`, as the workspace theme picker does);
+otherwise a swatch or the preview could paint in the dialog's own tokens for a frame.
 
 Write path: `main.tsx` takes the window's active workspace from
 `useCurrentWindowId()` and `useActiveWorkspaceIdForWindow`, the same selection
-`useWorkspaceTheme` makes. A card dispatches
+`useWorkspaceTheme` makes. A swatch dispatches
 `workspace/update { id, changes: { themeId } }` and keeps the pick in local state
 together with the workspace it went to. The pure `pendingThemeView` (in
 `WelcomeSurfaces.tsx`) turns `{ pending, activeWorkspaceId, storedThemeId }` into the
@@ -715,9 +746,13 @@ the sidebar uses. The Ready summary's Theme row (`themeSummaryRow`) shows the na
 by a Mux `ColorSwatch` (`brand60` and `neutral20`, as the workspace theme picker draws
 it).
 
-Compact (48rem and below): three columns, scrolling inside the stage up to
-`--bento-welcome-card-list` (two whole rows), like the search grid, so the footer is
-never pushed off.
+Compact (48rem and below): the preview takes `--bento-welcome-theme-preview-compact`
+(its width is already capped at 100%), drops the New row, the toolbar squares and the
+third skeleton bar, and the swatch rows wrap. At 30rem and below the swatches shrink to `--bento-welcome-swatch-compact` (both
+rows then fit one line each at 400 px) and the name line reserves two lines, so
+hovering does not move the rows above. The wide dialog (45rem by 33rem) fits with no
+scrolling; at 400 px the dialog's own content column scrolls by about 13 px, with the
+footer always in view.
 
 Pitfalls:
 
@@ -726,21 +761,28 @@ Pitfalls:
   `BENTO_WELCOME_POST_IMPORT_STEP` all carry the number. A profile that quit mid-flow
   before this step existed reopens one step earlier than it left (a stored 3, then
   Import, reopens on Theme); first run only.
-- Card labels must stay on one line at the wide layout, or a taller row pushes the
-  second row under the footer. That is why the cards use the tiny inset and why
-  Monochrome has four columns ('Mountain Meadow' does not fit a five-column card).
-- The generic `.bento-welcome__preview-lines > span` and
-  `.bento-welcome__preview-sidebar > span` rules out-specify a bare class: select the
-  preview's button, active tab and workspace dots with at least equal specificity or
-  they render as plain grey bars.
+- The preview's panel and sidebar children must not shrink (`flex: none`): with the
+  dialog's fixed height the skeleton bars collapsed to nothing. Rows that hold a bar must
+  be `display: flex` (the address box and New row are spans): a bar inside an inline span
+  ignores its width and height and disappears. The wide preview's height is what leaves the dialog's content column exactly
+  full; adding a row, a taller name line or a larger swatch makes it scroll.
+- The swatch row must switch off the Mux group's border, clipping, fill and hover
+  background (the layer order lets the Bento layer win) or each swatch shows a filled
+  tile; the selected state is an outline, so the group's sliding fill stays transparent.
+- Find a hovered swatch by `data-theme-swatch`, never by `data-theme`: the theme scope
+  also sets `data-theme` on `<html>`, so `closest('[data-theme]')` from the whitespace
+  between swatches climbed to it and previewed Default.
+- Mux reports the selected id again when the selected swatch is pressed (it only blocks
+  deselection), so `onSelectionChange` must skip an id equal to the selected theme or a
+  press writes the workspace again; and it must end the hover override, or a selection
+  left the preview on the last hovered theme.
+- A single `previewId` for hover and focus (latest wins). With separate hover and focus
+  states a pointer parked over one swatch hid the focus preview of the others while
+  arrowing.
 - A pending pick tied to no workspace (a bare "optimistic theme id") leaks to another
   workspace with the same stored theme, and clearing it whenever the stored id changes
   lets an older acknowledgement hide the newest pick until its own arrives; keep the
   workspace id with the pick and clear it only on a match.
-- `.bento-welcome__options--cards` needs `box-sizing: border-box`: with its inset and
-  `inline-size: 100%` it overflowed the content column and clipped the fifth column.
-- Mux `Tabs` renders an empty `.muxui-tab-panel` (with padding) for an item that has
-  no `panel`; give the switch real panels instead of a sibling grid.
 
 ## Manual verification
 
@@ -758,16 +800,19 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
 4. Bento window, Appearance: click Dark, then Light, then Auto. The dialog and
    the browser chrome repaint immediately on each click, without pressing
    Continue.
-   Bento window, Theme (step 2, "Pick a colour theme"): the switch opens on
-   Colourful with Default selected on a fresh profile and nine cards in two rows
-   (Default, Harbour, Lagoon, Blueprint, Violet Dusk, Wildflower, Terracotta,
-   Amber Grove, Fern). Click Blueprint: the dialog, its Continue button and the
-   sidebar behind it repaint in Blueprint at once. Click Monochrome: seven cards
-   in two rows, every name on one line; click Teal. Click Back and Continue: the
-   switch reopens on Monochrome with Teal selected. In the sidebar's workspace
-   edit dialog the first workspace's theme is Teal. Narrow the window to 640 px:
-   three columns, the grid scrolls inside the dialog and Back and Continue stay
-   in view. Repeat in Light and Dark.
+   Bento window, Theme (step 2, "Pick a colour theme"): one large preview of a Bento
+   window over two rows of swatches (nine, then seven), with the name and description
+   of the theme below; Default is selected with a ring on a fresh profile. Hover
+   Fern: the preview and name line show Fern, the dialog and sidebar stay as they
+   were; move the pointer off the rows and the selected theme returns. Press Tab to
+   a row and the arrow keys: each focused swatch shows in the preview; Tab out
+   restores the selected one. Click Blueprint (or press Space on it): the dialog, its
+   Continue button and the sidebar behind it repaint in Blueprint at once. Select
+   Teal in the Monochrome row: the ring moves to it and Blueprint's loses it. Click
+   Back and Continue: Teal is still selected. In the sidebar's workspace edit dialog
+   the first workspace's theme is Teal. Narrow the window to 640 px: the preview is
+   shorter and Back and Continue stay in view; at 400 px the swatches shrink and
+   the content column may scroll. Repeat in Light and Dark.
 5. Bento window, Import: confirm one button per browser installed on the machine
    (Chrome, Safari, and the others only when they have data), each with its logo,
    name and chevron, and a Firefox or Zen button marked "Restarts Bento" when a

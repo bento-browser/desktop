@@ -3,15 +3,7 @@
 // import it; everything here is side-effect free.
 
 import { useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
-import {
-  Button,
-  ColorSwatch,
-  Image,
-  Tabs,
-  Text,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@muxui/react';
+import { Button, ColorSwatch, Image, Text, ToggleButton, ToggleButtonGroup } from '@muxui/react';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 import RotateCcw from 'lucide-react/dist/esm/icons/rotate-ccw';
@@ -25,13 +17,14 @@ import { PRIVACY_LEVELS } from '@shared/privacy-levels';
 
 import { BentoIcon } from '../components/primitives/BentoIcon';
 import { Row } from '../components/primitives/BentoRow';
-import { BENTO_THEMES, getThemeMeta, resolveThemeId, type BentoThemeMeta } from '../theme/presets';
+import { BENTO_THEMES, getThemeMeta, resolveThemeId } from '../theme/presets';
 import {
   getThemeScopeAttributes,
   useResolvedColorScheme,
   type ThemeColorScheme,
 } from '../theme/themeScope';
 import { ALL_THEME_IDS, useThemeSheets } from '../theme/themeSheets';
+import { nextPreview, requestedTheme, swatchThemeId } from './themeChooser';
 import { importTitle, type DialogGeometry } from './importHandoff';
 import {
   firefoxZenSpan,
@@ -307,22 +300,18 @@ export interface WelcomeOption<Id extends string> {
   icon?: ReactNode;
 }
 
-/** The one selectable surface for Appearance, Theme, Privacy and Search: a single-select
- * Mux group whose items Bento lays out as tiles (preview above the label), cards (tiles
- * in five columns that scroll when compact), rows (one column), or a two-column grid
- * that scrolls past eight items. */
+/** The one selectable surface for Appearance, Privacy and Search: a single-select
+ * Mux group whose items Bento lays out as tiles (preview above the label), rows
+ * (one column), or a two-column grid that scrolls past eight items. */
 export function WelcomeOptions<Id extends string>({
   label,
   layout,
-  columns,
   options,
   value,
   onChange,
 }: {
   label: string;
-  layout: 'tiles' | 'cards' | 'rows' | 'grid';
-  /** Cards only: the column count of the wide layout (the compact layout always has three). */
-  columns?: number;
+  layout: 'tiles' | 'rows' | 'grid';
   options: readonly WelcomeOption<Id>[];
   value: Id;
   onChange: (next: Id) => void;
@@ -339,7 +328,6 @@ export function WelcomeOptions<Id extends string>({
         if (next) onChange(next.id);
       }}
       className={`bento-welcome__options bento-welcome__options--${layout}`}
-      data-columns={columns}
     >
       {options.map((option) => (
         <ToggleButton key={option.id} id={option.id} className="bento-welcome__option">
@@ -394,30 +382,19 @@ export const APPEARANCE_OPTIONS = [
   { id: 'system', label: 'Auto', preview: <AppearancePreview mode="system" /> },
 ] as const satisfies readonly WelcomeOption<UiColorModePref>[];
 
-/** The Theme step's two collections: Default and the standard themes, then the monochrome ones. */
+/** The Theme step's two swatch rows: Default and the standard themes, then the monochrome ones. */
 export const THEME_GROUPS = [
   {
     id: 'colourful',
     label: 'Colourful',
-    // Nine cards in two rows of five.
-    columns: 5,
     themes: BENTO_THEMES.filter((theme) => theme.collection !== 'monochrome'),
   },
   {
     id: 'monochrome',
     label: 'Monochrome',
-    // Seven cards in two rows of four: wide enough for 'Mountain Meadow' on one line.
-    columns: 4,
     themes: BENTO_THEMES.filter((theme) => theme.collection === 'monochrome'),
   },
 ] as const;
-
-export type ThemeGroupId = (typeof THEME_GROUPS)[number]['id'];
-
-/** The collection holding `themeId` (an alias or unknown id resolves first). */
-export function themeGroupOf(themeId: string | undefined | null): ThemeGroupId {
-  return getThemeMeta(themeId).collection === 'monochrome' ? 'monochrome' : 'colourful';
-}
 
 /** A theme pick written to a workspace and not yet reported back by the workspace snapshot. */
 export interface PendingTheme {
@@ -449,9 +426,13 @@ export function pendingThemeView({
     : { themeId: picked, settled: false };
 }
 
-/** Mini Bento window for a theme card: workspace dots and tab bars (the active tab marked) in a
- * sidebar beside a content panel with an accent button. The pane carries the theme's own scope, so
- * only public Mux tokens colour it; the sheet for that scope must be loaded (ThemeChooser). */
+/** A low-fidelity Bento window drawn in a theme's own scope, from shapes only (no text): a titlebar
+ * of dots, a sidebar (workspace switcher, address field, a New row, three tabs with the first active,
+ * toolbar squares) and a content panel (a heading bar, skeleton lines, an accent button). The root
+ * carries `getThemeScopeAttributes`, so only public Mux tokens colour it: the avatar and the active
+ * tab take the theme's colour-60 and the button its action colour, which is how the theme reads
+ * through; the bars are neutral. The sheet for that scope must be loaded (ThemeChooser).
+ * Decorative: the swatches and the name line carry the meaning. */
 export function ThemePreview({
   themeId,
   colorScheme,
@@ -460,49 +441,71 @@ export function ThemePreview({
   colorScheme: ThemeColorScheme;
 }) {
   return (
-    <span className="bento-welcome__preview" aria-hidden="true">
-      <span
-        className="bento-welcome__preview-pane bento-welcome__preview-pane--theme"
-        {...getThemeScopeAttributes(themeId, colorScheme)}
-      >
-        <span className="bento-welcome__preview-sidebar">
-          <span className="bento-welcome__preview-workspaces">
-            <span data-active="true" />
-            <span />
-            <span />
-          </span>
+    <span
+      className="bento-welcome__theme-preview"
+      aria-hidden="true"
+      {...getThemeScopeAttributes(themeId, colorScheme)}
+    >
+      <span className="bento-welcome__theme-titlebar">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span className="bento-welcome__theme-sidebar">
+        <span className="bento-welcome__theme-workspace">
+          <span className="bento-welcome__theme-avatar" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-address">
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-new">
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab" data-active="true">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tab">
+          <span className="bento-welcome__theme-icon" />
+          <span className="bento-welcome__theme-bar" />
+        </span>
+        <span className="bento-welcome__theme-tools">
           <span />
-          <span data-active="true" />
+          <span />
+          <span />
           <span />
         </span>
-        <span className="bento-welcome__preview-lines">
-          <span />
-          <span />
-          <span />
-          <span className="bento-welcome__preview-button" />
-        </span>
+      </span>
+      <span className="bento-welcome__theme-panel">
+        <span className="bento-welcome__theme-bar bento-welcome__theme-heading" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-bar" />
+        <span className="bento-welcome__theme-button" />
       </span>
     </span>
   );
 }
 
-/** One card per theme, each previewing the theme in `colorScheme`. */
-export function themeOptions(
-  themes: readonly BentoThemeMeta[],
-  colorScheme: ThemeColorScheme,
-): WelcomeOption<string>[] {
-  return themes.map((theme) => ({
-    id: theme.id,
-    label: theme.name,
-    preview: <ThemePreview themeId={theme.id} colorScheme={colorScheme} />,
-  }));
+/** The swatch an event came from, if any (see swatchThemeId). */
+function swatchAt(target: EventTarget): string | null {
+  return target instanceof Element ? swatchThemeId(target) : null;
 }
 
-/** The Theme step's body: a Colourful or Monochrome switch over that collection's preview cards.
- * It shows the collection holding `value` until the user picks the other one (so a workspace that
- * reaches this document after it mounted still lands on its theme). Every card renders its own
- * theme scope, so every theme's sheet is kept loaded while the step shows (as the workspace theme
- * picker does): a collection switch never paints a card in the dialog's own tokens. */
+/** The Theme step's body: a live preview of a theme over two rows of swatches (Colourful, then
+ * Monochrome) and the theme's name and description. One selection spans both rows: each row is
+ * a single-select Mux `ToggleButtonGroup` that gets `value` only when it holds that theme (Default
+ * and Harbour share their colours, so the swatches are keyed by theme, not by colour). Hovering or
+ * focusing a swatch shows that theme in the preview and the name line only (themeChooser.ts has
+ * the rules): the pointer moving to whitespace or leaving the rows, focus leaving them, or
+ * activating a swatch shows the selected theme again. Choosing a different theme calls
+ * `onChange`. Every theme's sheet is kept loaded while the step shows (as the workspace theme
+ * picker does), so the preview and swatches never paint in the dialog's own tokens. */
 export function ThemeChooser({
   value,
   onChange,
@@ -511,34 +514,76 @@ export function ThemeChooser({
   onChange: (themeId: string) => void;
 }) {
   const colorScheme = useResolvedColorScheme();
-  const [pickedGroup, setPickedGroup] = useState<ThemeGroupId>();
-  const groupId = pickedGroup ?? themeGroupOf(value);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   useThemeSheets(ALL_THEME_IDS);
+  const shown = getThemeMeta(previewId ?? value);
 
   return (
-    <Tabs
-      aria-label="Theme collection"
-      variant="segment"
-      size="sm"
-      className="bento-welcome__theme-tabs"
-      value={groupId}
-      onChange={(next) => setPickedGroup(THEME_GROUPS.find((group) => group.id === next)?.id)}
-      // Mux mounts only the selected panel, so a collection's cards measure once visible.
-      items={THEME_GROUPS.map((group) => ({
-        id: group.id,
-        label: group.label,
-        panel: (
-          <WelcomeOptions
-            label={`${group.label} themes`}
-            layout="cards"
-            columns={group.columns}
-            options={themeOptions(group.themes, colorScheme)}
-            value={value}
-            onChange={onChange}
-          />
-        ),
-      }))}
-    />
+    <div className="bento-welcome__theme-chooser">
+      <ThemePreview themeId={shown.id} colorScheme={colorScheme} />
+      <div
+        className="bento-welcome__theme-swatches"
+        onMouseOver={(event) => {
+          const swatch = swatchAt(event.target);
+          setPreviewId((current) => nextPreview(current, { type: 'point', swatch }));
+        }}
+        onMouseLeave={() => setPreviewId((current) => nextPreview(current, { type: 'leave' }))}
+        onFocus={(event) => {
+          const swatch = swatchAt(event.target);
+          setPreviewId((current) => nextPreview(current, { type: 'focus', swatch }));
+        }}
+        onBlur={(event) => {
+          if (!(
+            event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)
+          )) {
+            setPreviewId((current) => nextPreview(current, { type: 'leave' }));
+          }
+        }}
+      >
+        {THEME_GROUPS.map((group) => (
+          <ToggleButtonGroup
+            key={group.id}
+            aria-label={`${group.label} themes`}
+            selectionMode="single"
+            disallowEmptySelection
+            selectedIds={group.themes.some((theme) => theme.id === value) ? [value] : []}
+            onSelectionChange={(ids) => {
+              setPreviewId((current) => nextPreview(current, { type: 'select' }));
+              const next = requestedTheme(
+                group.themes.find((theme) => theme.id === ids[0])?.id,
+                value,
+              );
+              if (next) onChange(next);
+            }}
+            className="bento-welcome__swatch-row"
+          >
+            {group.themes.map((theme) => (
+              <ToggleButton
+                key={theme.id}
+                id={theme.id}
+                aria-label={theme.name}
+                data-theme-swatch={theme.id}
+                className="bento-welcome__swatch"
+              >
+                <ColorSwatch
+                  {...getThemeScopeAttributes(theme.id, colorScheme)}
+                  color={theme.brand60}
+                  secondaryColor={theme.neutral20}
+                  shape="circle"
+                  className="bento-welcome__swatch-color"
+                />
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        ))}
+      </div>
+      <Text as="p" size="sm" color="muted" className="bento-welcome__theme-name">
+        <Text as="span" variant="label" size="sm" color="default">
+          {shown.name}
+        </Text>{' '}
+        {shown.description}
+      </Text>
+    </div>
   );
 }
 
