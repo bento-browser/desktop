@@ -7,11 +7,12 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { WELCOME_CLOSE_PREFIX, WELCOME_OPEN_SETTINGS_PREFIX } from '../bridge/useWelcome';
 import {
+  finishOnboarding,
   LAST_STEP,
   parseStoredStep,
   pendingThemeView,
-  searchEngineName,
   searchEngineOptions,
   startImport,
   stepAfter,
@@ -196,17 +197,49 @@ describe('theme chooser pointer, focus and selection rules', () => {
   });
 });
 
-describe('searchEngineName', () => {
-  const loaded = [{ id: 'ddg', name: 'DuckDuckGo (Private)', isDefault: true }];
+describe('finishing onboarding', () => {
+  const finish = (prefix: string) => {
+    const log: string[] = [];
+    finishOnboarding(prefix, {
+      clearStep: () => log.push('clear step'),
+      markSeen: () => log.push('welcomeSeen'),
+      send: (title) => log.push(title),
+    });
+    return log;
+  };
 
-  it('prefers the loaded engine list', () => {
-    expect(searchEngineName(loaded, 'ddg')).toBe('DuckDuckGo (Private)');
+  it('persists the dismissal, then sends the close title only, for Start browsing', () => {
+    expect(finish(WELCOME_CLOSE_PREFIX)).toEqual([
+      'clear step',
+      'welcomeSeen',
+      expect.stringMatching(/^BENTO_CLOSE_WELCOME_\d+$/),
+    ]);
   });
 
-  it('names a default engine before the list loads, and falls back to the id', () => {
-    expect(searchEngineName([], 'ddg')).toBe('DuckDuckGo');
-    expect(searchEngineName([], 'custom-engine')).toBe('custom-engine');
-    expect(searchEngineName([], 'constructor')).toBe('constructor');
+  it('persists the dismissal, then sends the open-Settings title only, for Open Settings', () => {
+    expect(finish(WELCOME_OPEN_SETTINGS_PREFIX)).toEqual([
+      'clear step',
+      'welcomeSeen',
+      expect.stringMatching(/^BENTO_OPEN_SETTINGS_\d+$/),
+    ]);
+  });
+
+  it('is answered by the mount script: its welcome frame hides the overlay and opens Settings', () => {
+    const mount = readFileSync(
+      new URL('../../../../src/browser/base/content/bento-shell-mount.js', import.meta.url),
+      'utf8',
+    );
+    expect(mount).toContain(`const SETTINGS_OPEN_PREFIX = '${WELCOME_OPEN_SETTINGS_PREFIX}_';`);
+    const start = mount.search(/'bento-welcome-frame',\s*\(title\) => \{/);
+    expect(start).toBeGreaterThan(-1);
+    const handler = mount.slice(start, mount.indexOf("'bento-embedded-import-frame',", start));
+    // Only a showing dialog opens Settings, so a double click during the fade adds no second tab.
+    expect(handler).toMatch(
+      /startsWith\(SETTINGS_OPEN_PREFIX\)\) \{(?:\s*\/\/[^\n]*)*\s*const host = document\.getElementById\('bento-welcome-host'\);\s*if \(host && isWelcomeShowing\(host\)\) \{\s*hideWelcome\(\);\s*void openBentoSettings\(false\);/,
+    );
+    expect(mount).toMatch(
+      /function isWelcomeShowing\(host\) \{\s*return isWelcomeVisible\(host\) && host\.style\.opacity !== '0';/,
+    );
   });
 });
 

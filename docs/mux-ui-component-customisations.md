@@ -490,7 +490,7 @@ roles or labels to the dots.
 
 Motion uses the Mux roles only. The step body enters on `reveal`
 (`--muxui-semantic-motion-reveal-transition`) and replays on every step because it
-remounts per step. The import source tiles, tour tiles, and summary rows also
+remounts per step. The import source tiles and tour tiles also
 stagger: each sets an inline `animationDelay` computed in JS as a
 `calc()` of `--muxui-semantic-motion-reveal-transition-duration`, the index, and
 a fixed fraction, so no script holds a duration. The delay is inline because a

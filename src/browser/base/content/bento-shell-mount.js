@@ -2964,6 +2964,12 @@
     return host.style.display !== 'none';
   }
 
+  // Visible and not fading out: hideWelcome sets opacity 0 at once and hides the host only after
+  // the fade, and showWelcome sets it back to 1, so this holds no state of its own.
+  function isWelcomeShowing(host) {
+    return isWelcomeVisible(host) && host.style.opacity !== '0';
+  }
+
   function showWelcome() {
     const host = document.getElementById('bento-welcome-host');
     if (!host) {
@@ -3670,7 +3676,12 @@
   // Welcome overlay (first-run). No payload — sidebar's App.tsx reads
   // settings.welcomeSeen and signals BENTO_OPEN_WELCOME_<ts> the first
   // time it sees false; final welcome dismiss paths flip the flag + signal
-  // BENTO_CLOSE_WELCOME_<ts>. The import action signals
+  // BENTO_CLOSE_WELCOME_<ts>, except the Ready step's Open Settings, which
+  // flips the flag and signals BENTO_OPEN_SETTINGS_<ts> alone (title IPC is
+  // last-write-wins, so no close title follows): the welcome frame's handler
+  // hides the overlay and opens Settings, as the palette's does, but only while
+  // the dialog is showing (isWelcomeShowing), so a repeat during the fade does
+  // nothing and a later reopen works with no page state. The import action signals
   // BENTO_IMPORT_BROWSER_DATA_<nextStep>_<ts> without flipping the flag, which
   // opens the embedded Firefox migration host above the still-mounted welcome
   // flow.
@@ -17227,7 +17238,17 @@
         (title) => {
           if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
           else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
-          else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
+          else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
+            // The Ready step's Open Settings; the page already marked onboarding finished. Only a
+            // showing dialog opens Settings: a second one during the fade (a double click) would
+            // add a second Settings tab, because the first navigation has not committed and
+            // openBentoSettings still finds no Settings tab.
+            const host = document.getElementById('bento-welcome-host');
+            if (host && isWelcomeShowing(host)) {
+              hideWelcome();
+              void openBentoSettings(false);
+            }
+          } else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
             __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
             showEmbeddedBrowserImportFromWelcome(parseWelcomeImportHandoff(title));
           } else if (title.startsWith(WELCOME_HANDOFF_PREFIX)) handleWelcomeHandoffTitle(title);
