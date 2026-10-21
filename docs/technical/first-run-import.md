@@ -710,7 +710,7 @@ per theme, and the theme reads through the workspace circle and the active tab
 what the real tab row reaches through the legacy `--color-60`, and the button
 (`action-background`). No legacy alias is used; the cap in `.legacy-alias-cap.json` is
 unchanged. It is `aria-hidden`; the swatches and the name line carry the meaning. It
-is `min(100%, --bento-welcome-theme-preview-width)` wide (28rem, about 70% of the
+is `min(100%, --bento-welcome-theme-preview-width)` wide (22.5rem, about 55% of the
 dialog's content width) and centred. Every size inside it is one of four tokens in
 `bento-tokens.css` or a `calc()` of them: `--bento-welcome-theme-preview-unit` (an icon or
 toolbar square, 0.625rem), `-gap` (every gap and padding, 0.375rem), `-radius` (a row's
