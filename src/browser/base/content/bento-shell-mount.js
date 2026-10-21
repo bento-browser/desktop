@@ -264,15 +264,14 @@
   );
 
   // @bento-firefox-compat:begin
-  //
   // Runtime half of the firefox-compat check; scripts/firefox-compat-registry.mjs
   // holds the use, sites and locators, and a test keeps this list equal to its
   // runtime entries. After delayed startup each window probes the list once and
-  // logs '[bento-compat] missing <id>', never throwing. The probe is passive: it
-  // reads descriptors, never calls an accessor. A member anywhere on the prototype
-  // chain is present; an owner that is a lazy accessor is deferred, and a module
-  // is imported only if Cu.isESModuleLoaded. It sits above the patch sites (they
-  // call bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
+  // logs '[bento-compat] missing <id>'. The probe is passive: it reads
+  // descriptors, never calls an accessor. A member anywhere on the prototype
+  // chain is present; a lazy-accessor owner is deferred, and a module is imported
+  // only if Cu.isESModuleLoaded. It sits above the patch sites (they call
+  // bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
@@ -328,6 +327,7 @@
       'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs': 'SessionSaver',
       'resource://gre/modules/Extension.sys.mjs': 'Management',
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
+      'resource://gre/modules/Timer.sys.mjs': 'setTimeout',
       'chrome://devtools-startup/content/DevToolsShim.sys.mjs': 'DevToolsShim',
     },
     // members that need more than the owner path
@@ -339,7 +339,7 @@
     // a global assigned by a script that another global's getter loads
     gate: { PrivateDownloadsSubview: 'DownloadsPanel' },
   };
-  // Owners that are not window globals, found by native calls, not gBrowser getters.
+  // Owners that are not window globals, found by native calls.
   const BENTO_COMPAT_ROOTS = {
     MozBrowser: (win) => win.customElements?.get('browser'),
     MozTabbrowserTab: (win) => win.document?.querySelector('.tabbrowser-tab[selected]'),

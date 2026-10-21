@@ -1,12 +1,19 @@
 'use strict';
 
-/* globals ChromeUtils, ExtensionAPI, Services */
+/* globals ChromeUtils, Cu, ExtensionAPI, Services */
 
 const { SearchService } = ChromeUtils.importESModule(
   'moz-src:///toolkit/components/search/SearchService.sys.mjs',
 );
 const { SearchUtils } = ChromeUtils.importESModule(
   'moz-src:///toolkit/components/search/SearchUtils.sys.mjs',
+);
+// An experiment's scope has none of the web globals the search icon pipeline uses. A missing one
+// throws a ReferenceError that the pipeline's catch blocks turn into "no icon", so list every
+// global the file touches here, and take the timers from their module.
+Cu.importGlobalProperties(['AbortController', 'TextDecoder', 'btoa', 'fetch']);
+const { setTimeout, clearTimeout } = ChromeUtils.importESModule(
+  'resource://gre/modules/Timer.sys.mjs',
 );
 
 const MAX_SEARCH_ICON_BYTES = 512 * 1024;
@@ -15,6 +22,10 @@ const SEARCH_ICON_FETCH_TIMEOUT_MS = 5000;
 const SEARCH_ICON_CONCURRENCY = 4;
 const FETCHABLE_SEARCH_ICON_SCHEMES = new Set(['https', 'moz-extension']);
 const CHANNEL_SEARCH_ICON_SCHEMES = new Set(['chrome', 'resource', 'moz-icon']);
+// Firefox makes the icons of its configured engines with URL.createObjectURL in a system scope
+// (IconHandler.createIconURL), so SearchEngine.getIconURL() returns blob:system/<uuid>. No other
+// blob origin (a page's, or a null principal's) is fetched.
+const SYSTEM_BLOB_ICON_URL = /^blob:system\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 const BUNDLED_SEARCH_ICON_PATHS = Object.freeze({
   bing: {
@@ -226,22 +237,42 @@ async function readBoundedResponseBytes(response) {
   return assertBoundedIconBytes(bytes);
 }
 
+/**
+ * Gives up on a fetch: cancels what is left of the response body and aborts the request, so the
+ * connection closes. Firefox buffers unread response data in an unbounded pipe, so an early
+ * rejection that only dropped the response would let a hostile or broken server keep streaming.
+ */
+function abandonIconFetch(controller, response) {
+  try {
+    response?.body?.cancel().catch(() => {});
+  } catch {
+    /* The body is locked or already consumed. */
+  }
+  controller.abort();
+}
+
 async function fetchBoundedIcon(iconUrl) {
   const controller = new AbortController();
+  // The timer aborts the request too, which also fails a body read that is still pending.
   const timeout = setTimeout(() => controller.abort(), SEARCH_ICON_FETCH_TIMEOUT_MS);
+  let response;
+  let completed = false;
   try {
-    const response = await fetch(iconUrl, {
+    response = await fetch(iconUrl, {
       signal: controller.signal,
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
     });
     if (!response.ok) throw new Error(`Search engine icon request failed: ${response.status}`);
-    return {
+    const result = {
       bytes: await readBoundedResponseBytes(response),
       contentType: response.headers.get('content-type') || '',
     };
+    completed = true;
+    return result;
   } finally {
     clearTimeout(timeout);
+    if (!completed) abandonIconFetch(controller, response);
   }
 }
 
@@ -260,7 +291,10 @@ async function iconUrlToDataUrl(iconUrl, contentTypeHint = '') {
   let bytes;
   let contentType = contentTypeHint;
   try {
-    if (FETCHABLE_SEARCH_ICON_SCHEMES.has(uri.scheme)) {
+    if (
+      FETCHABLE_SEARCH_ICON_SCHEMES.has(uri.scheme) ||
+      (uri.scheme === 'blob' && SYSTEM_BLOB_ICON_URL.test(iconUrl))
+    ) {
       const fetched = await fetchBoundedIcon(iconUrl);
       bytes = fetched.bytes;
       contentType = fetched.contentType || contentType;

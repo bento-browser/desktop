@@ -850,6 +850,60 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   longer accepted by current builds. Rollback variants carry the same grant
   handshake (see `docs/settings-consolidation-rollback.md`).
 
+### Search Engine Icons (bento-privacy Experiment)
+
+- Status: Active
+- Last updated: 2026-10-21
+- Firefox 158.0 review (2026-10-21): `SearchEngine.getIconURL()` returns
+  `blob:system/<uuid>` for every configured engine (Google, Bing, DuckDuckGo,
+  Perplexity and Wikipedia on a fresh profile). Those blobs come from
+  `IconHandler.createIconURL` (`URL.createObjectURL` in a system module), and a
+  system-scope `fetch` of one returns the icon bytes with their MIME type. The
+  experiment scope had no `fetch`, `AbortController`, `TextDecoder`, `btoa` or
+  timers, so before this change no engine had an `iconUrl` at all.
+- Files or patches:
+  - `extensions/bento-tools/experiments/bento-privacy/api.js`
+    (`getSearchEngines`, `getEngineIconUrl`, `iconUrlToDataUrl`,
+    `SYSTEM_BLOB_ICON_URL`) and `search-icons/`
+  - `scripts/bento-privacy-security.test.mjs`
+  - `scripts/firefox-compat-registry.mjs` (`SearchEngine.getIconURL`,
+    `IconHandler.createIconURL`, `resource://gre/modules/Timer.sys.mjs`,
+    `Timer.clearTimeout`) and the `Timer.sys.mjs` line of the probe list in
+    `src/browser/base/content/bento-shell-mount.js`
+  - No Firefox patch.
+- Bento functionality: `browser.bentoPrivacy.getSearchEngines()` returns each
+  visible engine with a `data:image/` `iconUrl` (size limits per URL form:
+  `docs/technical/privacy-search.md`), which the
+  onboarding Search step and the address bar's engine picker draw. An engine
+  without one shows a search glyph.
+- Vanilla Firefox surface touched or depended on: `SearchEngine.getIconURL()` and
+  the URL it returns (`blob:system/<uuid>` for configured engines; `data:` or
+  `moz-extension:` for user-added and add-on engines),
+  `SearchUtils.fetchIcon` for `chrome:`, `resource:` and `moz-icon:`, the
+  `Cu.importGlobalProperties` and `resource://gre/modules/Timer.sys.mjs`
+  facilities an experiment scope offers, and a system-scope `fetch` of a system
+  blob URL.
+- Why this cannot stay extension-only: engine icons live in Firefox's search
+  service and its remote-settings attachments; only the parent process can read
+  them, and extension pages cannot fetch a system blob URL.
+- Firefox update risk: a different icon URL scheme or blob origin from
+  `getIconURL()`, a changed scope for experiment scripts (a global the file uses
+  is no longer provided, or `Cu.importGlobalProperties` is removed), or a
+  `SearchUtils.fetchIcon` signature change. All of them fail silently as "no icon"
+  because the pipeline swallows its errors.
+- Regression checks for future updates: run
+  `node scripts/check-firefox-compat.mjs --engine <tree>` and
+  `node --test scripts/bento-privacy-security.test.mjs`, and confirm the Browser
+  Console shows no `[bento-compat] missing resource://gre/modules/Timer.sys.mjs`
+  (a missing export leaves every search icon empty). In a dev build on a fresh
+  profile, call `browser.bentoPrivacy.getSearchEngines()` (the Marionette recipe
+  in `docs/technical/privacy-search.md`) and confirm every configured engine has
+  a `data:image/` `iconUrl`; then open onboarding's Search step in light and dark
+  and confirm each engine shows its own icon, not the glyph, and that the address
+  bar's engine picker shows the default engine's.
+- Rollback or migration notes: none. Removing the experiment's icon code only
+  returns the glyph fallback.
+
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
@@ -1433,7 +1487,18 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `browser/components/migration/MigrationUtils.sys.mjs`,
   `browser/components/migration/MigrationWizardParent.sys.mjs`,
   `browser/locales/en-US/browser/migrationWizard.ftl`, and the native
-  `ProfileMigrator` / `MigrationUtils` startup and in-window migration paths.
+  `ProfileMigrator` / `MigrationUtils` startup and in-window migration paths. The host
+  and bridge sheets also depend on these Firefox styling surfaces (token names and
+  rules, no registry entries, like the other design tokens the host maps):
+  `toolkit/themes/shared/in-content/common-shared.css` (`--button-*` tokens and the
+  `html|button:enabled:hover`, `:hover:active` and `button:focus-visible` rules),
+  `toolkit/themes/shared/popup.css` (`--panel-background-color`, `--panel-text-color`,
+  `--panel-border-color`, `--panel-border-radius`, `--panel-padding`, and the macOS
+  native `appearance` and `color-scheme`), `toolkit/content/widgets/panel-list/`
+  (`panel-item.css` and its `--button-background-color-menu-*` tokens, the `part="button"`
+  and `part="label"` parts), and `browser/themes/shared/migration/migration-wizard.css`
+  (`panel { --panel-padding }`, `panel-item.selected`), plus the wizard's XUL `<panel>`
+  around its `<panel-list>` (`#ensureSelectionDropdown`).
 - Why this cannot stay extension-only: Firefox's Firefox-profile migrator is
   startup-only and copies profile databases before normal profile initialization;
   Bento's extension welcome overlay can offer the action, but chrome must restart
@@ -1461,7 +1526,12 @@ rel="stylesheet">` load and error events on chrome documents, and the
   action from opening migration, break the Firefox/Zen scoping, restart the
   welcome flow at the first step after import, make the Firefox-family migrators
   enumerate Bento profiles, use Bento's icon for source apps, or make Zen
-  spaces/tabs restore without Bento workspace/panel ownership.
+  spaces/tabs restore without Bento workspace/panel ownership. A rename of the
+  `--button-*` or `--panel-*` tokens above, a change to the specificity of the
+  in-content button rules, the wizard dropping its XUL `<panel>` for a `popover` panel-list
+  (then the `--panel-list-*` tokens and the panel-list shadow apply instead), or
+  `panel-item.selected` changing its fill turns the import host's buttons grey on hover
+  or the selector dropdown back into the native OS-scheme menu.
 - Regression checks for future updates: launch Bento with no existing Bento
   profile while Mozilla Firefox and/or macOS Zen `profiles.ini` files exist,
   confirm Bento onboarding appears first, advance to the import state, click
@@ -1487,6 +1557,11 @@ rel="stylesheet">` load and error events on chrome documents, and the
   other than the wizard's first entry and confirm the selector shows that browser.
   Confirm the Firefox or Zen tile appears only when a Firefox or Zen profile is
   registered, and that it restarts into the startup wizard scoped to Firefox/Zen.
+  In the open wizard, in Light and Dark with macOS set to either appearance, hover and
+  press Import Firefox or Zen (release the pointer away from it) and confirm the fill
+  stays the accent colour, then open the browser selector and confirm the popup uses
+  Bento's surface, border and text colours (not the native menu), the hovered, arrow-key
+  focused and selected rows are readable, and the popup is as wide as the selector.
   Confirm Bento creates
   matching workspaces, the Zen pinned tab appears as a pinned Bento tab, and the
   Zen essential tab appears as a pinned Bento panel. Also confirm copied
@@ -2297,7 +2372,10 @@ below is generated; edit the registry, then run
 | `SearchService.CHANGE_REASON` | source (engine only) | Reason constant passed to setDefault and setDefaultPrivate. | `extensions/bento-tools/experiments/bento-privacy/api.js#setDefaultSearchEngine` | `toolkit/components/search/SearchService.sys.mjs:104` |
 | `moz-src:///toolkit/components/search/SearchUtils.sys.mjs` | module (runtime) | Fetches engine icons for the search settings. | `extensions/bento-tools/experiments/bento-privacy/api.js#SearchUtils` | `toolkit/components/search/SearchUtils.sys.mjs:148` |
 | `SearchUtils.fetchIcon` | source (engine only) | Fetches an engine icon over a privileged channel. | `extensions/bento-tools/experiments/bento-privacy/api.js#iconUrlToDataUrl` | `toolkit/components/search/SearchUtils.sys.mjs:574` |
-| `SearchEngine.getIconURL` | source (engine only) | Reads an engine icon URL (optional call). | `extensions/bento-tools/experiments/bento-privacy/api.js#getEngineIconUrl` | `toolkit/components/search/SearchEngine.sys.mjs:1665` |
+| `SearchEngine.getIconURL` | source (engine only) | Reads an engine icon URL (optional call). Configured engines return blob:system/<uuid>, which the experiment fetches; user-added and add-on engines return data: or moz-extension: URLs. | `extensions/bento-tools/experiments/bento-privacy/api.js#getEngineIconUrl` | `toolkit/components/search/SearchEngine.sys.mjs:1665` |
+| `resource://gre/modules/Timer.sys.mjs` | module (runtime) | Timers for the search icon fetch timeout. An experiment scope has no setTimeout or clearTimeout, and a missing export leaves every search icon empty. | `extensions/bento-tools/experiments/bento-privacy/api.js#setTimeout` | `toolkit/modules/Timer.sys.mjs:96` |
+| `Timer.clearTimeout` | source (engine only) | Cancels the search icon fetch timer once the icon has been read. | `extensions/bento-tools/experiments/bento-privacy/api.js#clearTimeout` | `toolkit/modules/Timer.sys.mjs:161` |
+| `IconHandler.createIconURL` | source (engine only) | Makes the blob:system/<uuid> object URLs that getIconURL returns for configured engines. The experiment fetches only that form; a change of origin or scheme leaves the search icons empty. | `extensions/bento-tools/experiments/bento-privacy/api.js#SYSTEM_BLOB_ICON_URL` | `toolkit/components/search/ConfigSearchEngine.sys.mjs:151` |
 | `resource:///modules/MigrationUtils.sys.mjs` | module (runtime) | Opens the migration wizard from the welcome flow. | `showEmbeddedBrowserImportFromWelcome`, `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:1206` |
 | `MigrationUtils.showMigrationWizard` | source (engine only) | Shows the migration wizard with the NEWTAB entrypoint. | `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:593` |
 | `resource:///modules/ExtensionsUI.sys.mjs` | module (runtime) | Bento re-subscribes ExtensionsUI to the permission-prompt topics when startup missed them. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:65` |
