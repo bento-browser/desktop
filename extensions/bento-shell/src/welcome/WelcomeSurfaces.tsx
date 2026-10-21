@@ -831,6 +831,13 @@ export function TourTiles() {
   );
 }
 
+/** True when onboarding starts over: welcomeSeen goes from true back to false while this
+ * document stays mounted (Reset Bento settings, then the sidebar reopens it). A fresh document
+ * going from nothing to false is not a restart: it resumes its stored step. */
+export function restartsOnboarding(previous: boolean | undefined, next: boolean | undefined) {
+  return previous === true && next === false;
+}
+
 /** Ends onboarding with the one title chrome acts on: `chromeTitlePrefix` is the close title
  * (Start browsing) or the open-Settings title (Open Settings), never both, because title IPC is
  * last-write-wins. It marks the dismissal (clears the stored step, sets welcomeSeen) and sends the

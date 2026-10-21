@@ -14,6 +14,9 @@
 //     BENTO_CLOSE_WELCOME_<ts>, which hides the overlay, Open Settings
 //     BENTO_OPEN_SETTINGS_<ts>, which hides it and opens Settings. Esc and backdrop clicks
 //     are intentionally disabled so first-run onboarding must be completed.
+//   - Reset Bento settings puts welcomeSeen back to false while this document stays mounted
+//     (restartsOnboarding): onboarding restarts from Welcome, stores step 0 and drops the
+//     pending theme pick.
 //   - Browser-data import is an onboarding state, not a final dismissal:
 //     it stores the next onboarding step in extension storage, signals
 //     chrome to open the embedded Firefox migration host, and leaves
@@ -59,6 +62,7 @@ import {
   finishOnboarding,
   parseStoredStep,
   pendingThemeView,
+  restartsOnboarding,
   type PendingTheme,
   PRIVACY_OPTIONS,
   OpenSettingsButton,
@@ -147,6 +151,19 @@ async function storeStep(step: StepIndex): Promise<void> {
     localStorage.setItem(WELCOME_STEP_STORAGE_KEY, String(step));
   } catch {
     // Non-critical. The durable first-run state is still welcomeSeen.
+  }
+}
+
+// The hash chrome stamps on a post-import reload is read before every other resume store, so a
+// restart rewrites it too (only when present) or a reload would resume the old step.
+function mirrorHashStep(step: StepIndex): void {
+  try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (!params.has(WELCOME_STEP_HASH_KEY)) return;
+    params.set(WELCOME_STEP_HASH_KEY, String(step));
+    history.replaceState(null, '', `#${params}`);
+  } catch {
+    // Non-critical mirror.
   }
 }
 
@@ -242,6 +259,7 @@ function WelcomeApp() {
   const [stepIndex, setStepIndex] = useState<StepIndex>(0);
   const [hasLoadedStoredStep, setHasLoadedStoredStep] = useState(false);
   const hasRequestedOpenRef = useRef(false);
+  const lastWelcomeSeenRef = useRef<boolean | undefined>(undefined);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const shownStepRef = useRef<StepIndex | null>(null);
   const step = WELCOME_STEPS[stepIndex] ?? WELCOME_STEPS[0]!;
@@ -322,6 +340,21 @@ function WelcomeApp() {
     if (welcomeSeen !== false || hasRequestedOpenRef.current) return;
     hasRequestedOpenRef.current = true;
     requestWelcome();
+  }, [welcomeSeen]);
+
+  // Reset Bento settings puts welcomeSeen back to false while this document stays mounted, and the
+  // sidebar reopens it: start over from Welcome rather than on the step it ended on. A fresh
+  // document (nothing, then false) is not a restart, so the resume path above is untouched.
+  useEffect(() => {
+    if (welcomeSeen === undefined) return;
+    const restart = restartsOnboarding(lastWelcomeSeenRef.current, welcomeSeen);
+    lastWelcomeSeenRef.current = welcomeSeen;
+    if (!restart) return;
+    pendingStepRef.current = null; // a late handoff release must not jump back to the old step
+    setPendingTheme(null);
+    mirrorHashStep(0);
+    void storeStep(0);
+    setStepIndex(0);
   }, [welcomeSeen]);
 
   useEffect(() => {

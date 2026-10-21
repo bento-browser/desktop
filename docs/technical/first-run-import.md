@@ -824,6 +824,21 @@ same window (Reset Bento settings restores `welcomeSeen=false` and the sidebar
 reopens the retained welcome, as can a late startup retry), and both finish buttons
 and Back would do nothing. The chrome guard reads the host's own style, so a reopen
 works with no page state.
+
+Reopening after a reset starts over. The welcome document stays mounted and keeps its
+React step state, so without a reset the reopened dialog would show the step it ended
+on (Ready). `WelcomeApp` therefore watches `welcomeSeen`: when it goes from true back
+to false in the same document, `restartsOnboarding(previous, next)` is true and the
+page returns to Welcome (index 0), stores that step (`storeStep(0)`, so extension
+storage and localStorage say 0), rewrites the `#bentoWelcomeStep` hash when it carries
+one (the hash is read before every other resume store, so a reload would otherwise
+resume the old step), drops the pending theme pick, and clears `pendingStepRef` so a
+late import-handoff release cannot jump back. A ref (`lastWelcomeSeenRef`) holds the
+last known value and an undefined snapshot is ignored. A fresh document goes from
+nothing to false, which is not a restart, so the stored-step resume path (including
+the post-import resume) is unchanged. The sidebar, not this document, requests the
+reopen (`hasRequestedOpenRef` is already set), and the Step indicator is hidden again
+because step 0 shows none.
 `WelcomeSurfaces.test.ts` checks the helper's effect order and that the mount script
 still routes the prefix through the showing guard to `hideWelcome()` then
 `openBentoSettings(false)`; `scripts/overlay-surfaces.test.mjs` checks
@@ -934,5 +949,7 @@ Use a dev build with a throwaway profile, never a daily-driver profile.
     (once, not two tabs), and after another quit and relaunch onboarding does not
     reopen. Repeat on a fresh profile with a double-click on Open Settings: still
     one Settings tab. Then, in the same window, open the Settings tab's Reset Bento
-    settings and confirm it: onboarding shows again, and both Start browsing and Open
-    Settings (and Back) work, ending onboarding as before.
+    settings and confirm it: onboarding shows again on Welcome (not on Ready), with the
+    "Step N of 7" indicator hidden, Get started leads to Appearance, and both Start
+    browsing and Open Settings still end onboarding as before. On a second pass,
+    quit and relaunch straight after the reset and confirm onboarding opens on Welcome.
