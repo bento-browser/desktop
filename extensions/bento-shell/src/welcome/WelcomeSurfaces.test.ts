@@ -232,10 +232,13 @@ describe('finishing onboarding', () => {
     expect(mount).toContain(`const SETTINGS_OPEN_PREFIX = '${WELCOME_OPEN_SETTINGS_PREFIX}_';`);
     const start = mount.search(/'bento-welcome-frame',\s*\(title\) => \{/);
     expect(start).toBeGreaterThan(-1);
-    const handler = mount.slice(start, mount.indexOf("'bento-embedded-import-frame',", start));
+    // Line comments are dropped first, so the pattern below needs no nested repetition.
+    const handler = mount
+      .slice(start, mount.indexOf("'bento-embedded-import-frame',", start))
+      .replace(/\/\/[^\n]*/g, '');
     // Only a showing dialog opens Settings, so a double click during the fade adds no second tab.
     expect(handler).toMatch(
-      /startsWith\(SETTINGS_OPEN_PREFIX\)\) \{(?:\s*\/\/[^\n]*)*\s*const host = document\.getElementById\('bento-welcome-host'\);\s*if \(host && isWelcomeShowing\(host\)\) \{\s*hideWelcome\(\);\s*void openBentoSettings\(false\);/,
+      /startsWith\(SETTINGS_OPEN_PREFIX\)\) \{\s*const host = document\.getElementById\('bento-welcome-host'\);\s*if \(host && isWelcomeShowing\(host\)\) \{\s*hideWelcome\(\);\s*void openBentoSettings\(false\);/,
     );
     expect(mount).toMatch(
       /function isWelcomeShowing\(host\) \{\s*return isWelcomeVisible\(host\) && host\.style\.opacity !== '0';/,
