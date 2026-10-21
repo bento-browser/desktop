@@ -8,9 +8,11 @@
 //     when SettingsStore reports welcomeSeen=false. The duplicate signal
 //     makes first-run opening resilient to startup title-IPC races with
 //     panel/theme sync, and chrome showWelcome() is idempotent.
-//   - The final finish button flips settings.welcomeSeen=true via the
-//     existing tools port, then signals chrome to hide via
-//     document.title = BENTO_CLOSE_WELCOME_<ts>. Esc and backdrop clicks
+//   - The two buttons of the Ready step finish onboarding (finishOnboarding): each flips
+//     settings.welcomeSeen=true via the existing tools port and clears the stored step, then
+//     sends ONE title (title IPC is last-write-wins): Start browsing
+//     BENTO_CLOSE_WELCOME_<ts>, which hides the overlay, Open Settings
+//     BENTO_OPEN_SETTINGS_<ts>, which hides it and opens Settings. Esc and backdrop clicks
 //     are intentionally disabled so first-run onboarding must be completed.
 //   - Browser-data import is an onboarding state, not a final dismissal:
 //     it stores the next onboarding step in extension storage, signals
@@ -32,7 +34,6 @@ import { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog, Text } from '@muxui/react';
 import type { SearchEngineChoice } from '@shared/protocol';
-import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 
 import '../theme/muxui.css';
 
@@ -42,9 +43,12 @@ import '../theme/bento-fonts.css';
 import '../theme/document-base.css';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
-import { useResolvedColorScheme } from '../theme/themeScope';
 import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
-import { requestWelcome, WELCOME_CLOSE_PREFIX } from '../bridge/useWelcome';
+import {
+  requestWelcome,
+  WELCOME_CLOSE_PREFIX,
+  WELCOME_OPEN_SETTINGS_PREFIX,
+} from '../bridge/useWelcome';
 import { useSettingsStore } from '../state/settings';
 import { usePrivacyStore } from '../state/privacy';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
@@ -52,18 +56,16 @@ import {
   APPEARANCE_OPTIONS,
   ImportSources,
   LAST_STEP,
+  finishOnboarding,
   parseStoredStep,
   pendingThemeView,
   type PendingTheme,
   PRIVACY_OPTIONS,
-  ReadySummary,
-  searchEngineName,
+  OpenSettingsButton,
   searchEngineOptions,
   startFirefoxZenImport,
   startImport,
   stepAfter,
-  stepIndexOf,
-  themeSummaryRow,
   ThemeChooser,
   TourTiles,
   WELCOME_STEPS,
@@ -164,15 +166,21 @@ async function clearStoredStep(): Promise<void> {
   }
 }
 
+// The effects finishOnboarding runs; both Ready buttons share them.
+const FINISH_EFFECTS = {
+  clearStep: () => void clearStoredStep(),
+  markSeen: () => dispatch({ type: 'settings/update', changes: { welcomeSeen: true } }),
+  send: sendChromeTitle,
+};
+
+/** Start browsing: chrome hides the overlay. */
 function close() {
-  // Persist the dismissal first so the overlay never reopens. Chrome
-  // hide is the visual signal; the settings/update is the durable state.
-  // Tools-side persistence is debounced 250ms but the in-memory snapshot
-  // updates synchronously, so a fresh shell connection picks up
-  // welcomeSeen=true immediately.
-  void clearStoredStep();
-  dispatch({ type: 'settings/update', changes: { welcomeSeen: true } });
-  sendChromeTitle(`${WELCOME_CLOSE_PREFIX}_${Date.now()}`);
+  finishOnboarding(WELCOME_CLOSE_PREFIX, FINISH_EFFECTS);
+}
+
+/** Open Settings: chrome hides the overlay and opens Settings (once, while it is showing). */
+function openSettings() {
+  finishOnboarding(WELCOME_OPEN_SETTINGS_PREFIX, FINISH_EFFECTS);
 }
 
 function SearchEnginePicker({
@@ -224,7 +232,6 @@ function WelcomeApp() {
   const workspaceThemeId = useWorkspacesStore((s) =>
     activeWorkspaceId ? s.byId[activeWorkspaceId]?.themeId : undefined,
   );
-  const colorScheme = useResolvedColorScheme();
   // The latest pick and the workspace it went to, shown until that workspace's snapshot reports it.
   const [pendingTheme, setPendingTheme] = useState<PendingTheme | null>(null);
   const { themeId, settled: pendingThemeSettled } = pendingThemeView({
@@ -375,30 +382,7 @@ function WelcomeApp() {
       case 'tour':
         return <TourTiles />;
       case 'ready':
-        return (
-          <ReadySummary
-            rows={[
-              {
-                label: 'Appearance',
-                value:
-                  APPEARANCE_OPTIONS.find((option) => option.id === uiColorMode)?.label ?? 'Light',
-                step: stepIndexOf('appearance'),
-              },
-              themeSummaryRow(themeId, colorScheme),
-              {
-                label: 'Privacy',
-                value: PRIVACY_LEVEL_DETAILS[privacyLevel].label,
-                step: stepIndexOf('privacy'),
-              },
-              {
-                label: 'Search',
-                value: searchEngineName(engines, searchEngine),
-                step: stepIndexOf('search'),
-              },
-            ]}
-            onChange={setStep}
-          />
-        );
+        return <OpenSettingsButton onOpen={openSettings} />;
       default:
         return null;
     }

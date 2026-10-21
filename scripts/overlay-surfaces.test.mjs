@@ -131,6 +131,7 @@ const FUNCTIONS = [
   'showWorkspaceSwitcher',
   'hideWorkspaceSwitcher',
   'isWelcomeVisible',
+  'isWelcomeShowing',
   'showWelcome',
   'hideWelcome',
   'isEmbeddedImportVisible',
@@ -168,6 +169,7 @@ const EXPORTED = [
   'hideWorkspacePalette',
   'hideEditWorkspace',
   'hideWelcome',
+  'isWelcomeShowing',
   'togglePalette',
   'showWorkspacePalette',
   'showMergePalette',
@@ -601,6 +603,29 @@ test('Esc is consumed but does not cancel the mandatory welcome overlay', () => 
   assert.equal(world.isShown('welcome'), true);
   assert.equal(world.pressEscape(), true);
   assert.equal(world.isShown('welcome'), true);
+});
+
+test('the welcome is showing only while visible and not fading out, and again after a reopen', () => {
+  const world = makeWorld();
+  const host = world.host('welcome');
+  assert.equal(world.isWelcomeShowing(host), false, 'hidden');
+
+  world.ready('welcome');
+  world.showWelcome();
+  assert.equal(world.isWelcomeShowing(host), true);
+
+  // Open Settings hides it: the host stays in the DOM while it fades, but a second Open Settings
+  // (a double click) finds it no longer showing and opens no second Settings tab.
+  world.hideWelcome();
+  assert.equal(world.isShown('welcome'), true, 'still visible during the fade');
+  assert.equal(world.isWelcomeShowing(host), false, 'fading out');
+  world.advance(1000);
+  assert.equal(world.isShown('welcome'), false);
+  assert.equal(world.isWelcomeShowing(host), false);
+
+  // Onboarding shown again in the same window (after Reset Bento settings) works with no state.
+  world.showWelcome();
+  assert.equal(world.isWelcomeShowing(host), true);
 });
 
 test('every hide function cancels a cold open', () => {

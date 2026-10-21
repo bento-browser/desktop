@@ -16,12 +16,10 @@ import {
   ImportSources,
   LAST_STEP,
   PRIVACY_OPTIONS,
-  ReadySummary,
-  searchEngineName,
+  OpenSettingsButton,
   searchEngineOptions,
   StepDots,
   stepIndexOf,
-  themeSummaryRow,
   ThemeChooser,
   TourTiles,
   WELCOME_STEPS,
@@ -193,7 +191,6 @@ function WelcomeDialog({
   const [index, setIndex] = useState(initialStep);
   const [mode, setMode] = useState<UiColorModePref>('light');
   const [themeId, setThemeId] = useState(initialTheme);
-  const colorScheme = useResolvedColorScheme();
   useStoryRootTheme(themeId);
   const [level, setLevel] = useState(PRIVACY_OPTIONS[0]!.id);
   const [engine, setEngine] = useState(searchEngines[0]?.id ?? 'ddg');
@@ -234,29 +231,7 @@ function WelcomeDialog({
       />
     ),
     tour: <TourTiles />,
-    ready: (
-      <ReadySummary
-        rows={[
-          {
-            label: 'Appearance',
-            value: APPEARANCE_OPTIONS.find((o) => o.id === mode)?.label ?? '',
-            step: stepIndexOf('appearance'),
-          },
-          themeSummaryRow(themeId, colorScheme),
-          {
-            label: 'Privacy',
-            value: PRIVACY_OPTIONS.find((o) => o.id === level)?.label ?? '',
-            step: stepIndexOf('privacy'),
-          },
-          {
-            label: 'Search',
-            value: searchEngineName(searchEngines, engine),
-            step: stepIndexOf('search'),
-          },
-        ]}
-        onChange={go}
-      />
-    ),
+    ready: <OpenSettingsButton onOpen={() => {}} />,
   }[step.id];
 
   return (
@@ -432,6 +407,17 @@ DialogThemeNarrow.storyName =
   'Dialog (theme step, narrow viewport, shorter preview and wrapped rows)';
 DialogThemeNarrow.meta = { width: 'small' };
 
+export const DialogReady = () => (
+  <WelcomeDialog initialStep={stepIndexOf('ready')} searchEngines={ENGINES} />
+);
+DialogReady.storyName = 'Dialog (ready step, Open Settings)';
+
+export const DialogReadyNarrow = () => (
+  <WelcomeDialog initialStep={stepIndexOf('ready')} searchEngines={ENGINES} />
+);
+DialogReadyNarrow.storyName = 'Dialog (ready step, narrow viewport)';
+DialogReadyNarrow.meta = { width: 'small' };
+
 export const Dots = () => (
   <Frame width={240}>
     {WELCOME_STEPS.map((step, index) => (
@@ -535,23 +521,3 @@ export const Tour = () => (
   </Frame>
 );
 Tour.storyName = 'Tour tiles';
-
-function SummaryDemo() {
-  const colorScheme = useResolvedColorScheme();
-  return (
-    <Frame width={600}>
-      <ReadySummary
-        rows={[
-          { label: 'Appearance', value: 'Auto', step: 1 },
-          themeSummaryRow('monochrome-mountain-meadow', colorScheme),
-          { label: 'Privacy', value: 'Enhanced', step: 4 },
-          { label: 'Search', value: 'A search engine with a very long display name', step: 5 },
-        ]}
-        onChange={() => {}}
-      />
-    </Frame>
-  );
-}
-
-export const Summary = () => <SummaryDemo />;
-Summary.storyName = 'Ready summary (Theme row, long value)';

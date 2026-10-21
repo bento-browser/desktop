@@ -84,7 +84,12 @@ const STEPS = [
     note: 'Add more search engines in the Settings',
   },
   { id: 'tour', title: 'How Bento works' },
-  { id: 'ready', title: 'You are set', illustration: 'ready' },
+  {
+    id: 'ready',
+    title: 'You are set',
+    description: 'Customise Bento Browser any time in Settings.',
+    illustration: 'ready',
+  },
 ] as const satisfies readonly WelcomeStepCopy<string>[];
 
 export type WelcomeStepId = (typeof STEPS)[number]['id'];
@@ -634,22 +639,6 @@ export function searchEngineOptions(
   });
 }
 
-// Firefox's default engine ids, for the Ready summary before the engine list loads.
-const DEFAULT_ENGINE_NAMES: ReadonlyMap<string, string> = new Map([
-  ['ddg', 'DuckDuckGo'],
-  ['google', 'Google'],
-  ['bing', 'Bing'],
-  ['wikipedia', 'Wikipedia'],
-  ['ebay', 'eBay'],
-  ['perplexity', 'Perplexity'],
-]);
-
-/** Display name of the chosen engine: from the loaded list, else a known default's
- * name, else the id itself. */
-export function searchEngineName(engines: readonly SearchEngineChoice[], id: string): string {
-  return engines.find((engine) => engine.id === id)?.name ?? DEFAULT_ENGINE_NAMES.get(id) ?? id;
-}
-
 function ImportTile({
   name,
   sublabel,
@@ -842,68 +831,28 @@ export function TourTiles() {
   );
 }
 
-export interface SummaryRow {
-  label: string;
-  value: string;
-  step: number;
-  /** Mark before the value (the theme's swatch). */
-  leading?: ReactNode;
+/** Ends onboarding with the one title chrome acts on: `chromeTitlePrefix` is the close title
+ * (Start browsing) or the open-Settings title (Open Settings), never both, because title IPC is
+ * last-write-wins. It marks the dismissal (clears the stored step, sets welcomeSeen) and sends the
+ * title without waiting for persistence: SettingsStore writes storage.local before it publishes
+ * the new snapshot, and the page fires and forgets. It holds no state, because this document
+ * stays mounted and onboarding can show again (after Reset Bento settings); chrome ignores a
+ * repeat Open Settings while the dialog fades out. */
+export function finishOnboarding(
+  chromeTitlePrefix: string,
+  effects: { clearStep: () => void; markSeen: () => void; send: (title: string) => void },
+): void {
+  effects.clearStep();
+  effects.markSeen();
+  effects.send(`${chromeTitlePrefix}_${Date.now()}`);
 }
 
-/** The Ready summary's Theme row: the theme's name led by its swatch, as the theme picker draws it. */
-export function themeSummaryRow(themeId: string, colorScheme: ThemeColorScheme): SummaryRow {
-  const theme = getThemeMeta(themeId);
-  return {
-    label: 'Theme',
-    value: theme.name,
-    step: stepIndexOf('theme'),
-    leading: (
-      <ColorSwatch
-        {...getThemeScopeAttributes(theme.id, colorScheme)}
-        color={theme.brand60}
-        secondaryColor={theme.neutral20}
-        shape="circle"
-        className="bento-welcome__summary-swatch"
-      />
-    ),
-  };
-}
-
-/** Ready-step summary; each Change action jumps back to the step that owns the value. */
-export function ReadySummary({
-  rows,
-  onChange,
-}: {
-  rows: readonly SummaryRow[];
-  onChange: (step: number) => void;
-}) {
+/** The Ready step's control: finishes onboarding into Settings. Neutral, so the footer's Start
+ * browsing stays the primary action. */
+export function OpenSettingsButton({ onOpen }: { onOpen: () => void }) {
   return (
-    <dl className="bento-welcome__summary">
-      {rows.map((row, index) => (
-        <div key={row.label} style={stagger(index)}>
-          <dt>
-            <Text size="sm" color="muted">
-              {row.label}
-            </Text>
-          </dt>
-          <dd className="bento-welcome__summary-value">
-            {row.leading}
-            <Text variant="label" size="md">
-              {row.value}
-            </Text>
-          </dd>
-          <dd>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={`Change ${row.label.toLowerCase()}`}
-              onActivate={() => onChange(row.step)}
-            >
-              Change
-            </Button>
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <Button variant="neutral" onActivate={onOpen}>
+      Open Settings
+    </Button>
   );
 }

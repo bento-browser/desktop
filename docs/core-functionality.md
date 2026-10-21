@@ -69,12 +69,12 @@ earlier choices can be revisited. The steps are:
    each with a free-standing 3D illustration, one line of explanation, and its
    keyboard shortcut: switching workspaces, cycling between panels, and opening
    the command palette.
-8. Ready: a summary of the chosen Appearance, Theme (with its colour swatch),
-   Privacy, and Search values. Each row has a Change action that jumps back to
-   that step. Start browsing closes the dialog.
+8. Ready: "You are set", a line saying Bento Browser can be customised any time
+   in Settings, and an Open Settings button that closes the dialog and opens
+   Settings. Start browsing closes the dialog.
 
 The onboarding dialog is not dismissed by clicking the scrim or pressing Esc.
-Only Start browsing ends onboarding; until then it reopens on the next launch.
+Only Start browsing and Open Settings end onboarding; until then it reopens on the next launch.
 On narrow windows the tile grids collapse to fewer columns and the dialog is
 sized to the window minus a small margin.
 

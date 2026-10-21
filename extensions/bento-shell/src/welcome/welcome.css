@@ -600,49 +600,12 @@
     white-space: nowrap;
   }
 
-  .bento-welcome__summary {
-    inline-size: 100%;
-    max-inline-size: var(--bento-welcome-measure);
-    border: 1px solid var(--muxui-semantic-border-subtle);
-    border-radius: var(--muxui-semantic-control-radius);
-    text-align: start;
-  }
-
-  .bento-welcome__summary > div {
-    display: grid;
-    grid-template-columns: 1fr 2fr auto;
-    align-items: center;
-    gap: var(--muxui-semantic-layout-group-gap);
-    padding: var(--muxui-semantic-layout-tight-gap) var(--muxui-semantic-layout-inset-small);
-  }
-
-  .bento-welcome__summary > div + div {
-    border-block-start: 1px solid var(--muxui-semantic-border-subtle);
-  }
-
-  .bento-welcome__summary dd {
-    margin: 0;
-  }
-
-  /* The Theme row's swatch leads its name. */
-  .bento-welcome__summary-value {
-    display: flex;
-    align-items: center;
-    gap: var(--muxui-semantic-layout-group-gap);
-  }
-
-  .bento-welcome__summary-swatch {
-    inline-size: var(--bento-welcome-source-logo);
-    block-size: var(--bento-welcome-source-logo);
-  }
-
   /* Entry motion: the stage on each step change, then its list tiles staggered
    * (animation-delay from WelcomeSurfaces). Option tiles move with the stage:
    * Mux's selection layer measures them, so they do not animate on their own. */
   .bento-welcome__stage,
   .bento-welcome__tiles > li,
-  .bento-welcome__sources > li,
-  .bento-welcome__summary > div {
+  .bento-welcome__sources > li {
     animation: bento-welcome-enter var(--muxui-semantic-motion-reveal-transition) both;
   }
 
@@ -662,8 +625,7 @@
   @media (prefers-reduced-motion: reduce) {
     .bento-welcome__stage,
     .bento-welcome__tiles > li,
-    .bento-welcome__sources > li,
-    .bento-welcome__summary > div {
+    .bento-welcome__sources > li {
       animation-name: bento-welcome-fade;
     }
   }
