@@ -12,7 +12,7 @@ When changing core functionality, manually verify at least the affected subset:
   instant, no rail slide after the page has moved) and a cold start collapsed, and in
   hide mode the hide (from the expanded sidebar and from the rail: the page, toolbar controls
   and divider slide with the sidebar, no jump at the end), the left-edge hover reveal
-  and the show (the divider enters with the strip's edge, never static at its final
+  (the slide-over takes the 400 ms spring each way, no overshoot) and the show (the divider enters with the strip's edge, never static at its final
   position), including Cmd+S again mid-slide;
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;

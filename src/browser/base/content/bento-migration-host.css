@@ -345,20 +345,23 @@ html[data-bento-morph='shown'] .bento-migration-host {
   --bento-morph-content-opacity: 1;
 }
 
-/* The geometry runs on the Mux reveal role. To use another role, change the two tokens in the
- * first rule and the duration in the delay below (a transition cannot read an indirect var()). */
+/* The geometry runs on the Mux reveal role's spring pair (400 ms, bounce 0). To use another
+ * role, change the two tokens in the first rule and the duration in the delay below (a
+ * transition cannot read an indirect var()). The content fade starts at 40% of the full
+ * spring duration (160 ms), later than the visual-duration timing the Mux guide suggests:
+ * Andrew chose it from a side-by-side prototype. */
 html[data-bento-morph='open'] .bento-migration-host,
 html[data-bento-morph='close'] .bento-migration-host,
 html[data-bento-morph='open'] .bento-migration-host::before,
 html[data-bento-morph='close'] .bento-migration-host::before {
   transition-property: left, top, width, height, border-radius, border-color, opacity;
-  transition-duration: var(--muxui-semantic-motion-reveal-transition-duration);
-  transition-timing-function: var(--muxui-semantic-motion-reveal-transition-easing);
+  transition-duration: var(--muxui-semantic-motion-reveal-transition-spring-duration);
+  transition-timing-function: var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
 
 html[data-bento-morph='open'] .bento-migration-host > * {
   transition: opacity var(--muxui-semantic-motion-modal-transition)
-    calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4);
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4);
 }
 
 html[data-bento-morph='close'] .bento-migration-host > * {

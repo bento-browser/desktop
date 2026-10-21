@@ -531,7 +531,10 @@
   overflow: hidden;
   pointer-events: none;
   transform: translateX(-100%);
-  transition: transform var(--muxui-semantic-motion-reveal-transition);
+  /* The edge-hover slide-over, in and out (one rule, no fade or delay), runs on the reveal
+     role's spring pair (400 ms, no overshoot), like the sidebar push below. */
+  transition: transform var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
 #bento-shell-host.bento-sidebar-hidden.bento-sidebar-hidden-revealed {
   z-index: 7;
@@ -568,7 +571,14 @@
    where the snap to the hidden rail (the .bento-sidebar-hidden rule above, put on
    the host by the script in the frame the push ends) cannot be seen. That rule's
    transform transition is held off for the frame. Only transform and opacity
-   animate; the fade is a fraction of the reveal duration on the constant easing. */
+   animate. Every slide runs on the reveal role's spring pair (400 ms, no overshoot:
+   the keyframes are from/to only, so the curve applies once over the move). The
+   fades are fractions of the spring's full duration on the constant easing: a
+   collapse fades out over its last 40% (160 ms, after a 240 ms delay) and back in
+   over 160 ms after the snap, an expand fades in over its first 160 ms. That is
+   later than the visual-duration timing the Mux guide suggests for fades that go
+   with a spring (200 ms): Andrew chose it from a side-by-side prototype, because
+   timing them from the visual duration left the rail strip empty for about 200 ms. */
 :root {
   --bento-sidebar-push-delta: 0px;
   --bento-sidebar-push-divider-shift: 0px;
@@ -586,32 +596,40 @@
 }
 :root[bento-sidebar-push='collapse'] #bento-shell-host {
   animation:
-    bento-sidebar-push-host-collapse var(--muxui-semantic-motion-reveal-transition) both,
+    bento-sidebar-push-host-collapse var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing) both,
     bento-sidebar-push-fade-out
-      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
       var(--muxui-semantic-motion-constant-easing)
-      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.6) both;
+      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6) both;
 }
 :root[bento-sidebar-push='expand'] #bento-shell-host {
   animation:
-    bento-sidebar-push-host-expand var(--muxui-semantic-motion-reveal-transition) both,
+    bento-sidebar-push-host-expand var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing) both,
     bento-sidebar-push-fade-in
-      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+      calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
       var(--muxui-semantic-motion-constant-easing) both;
 }
 #bento-shell-host.bento-sidebar-push-fade {
   animation: bento-sidebar-push-fade-in
-    calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.4)
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4)
     var(--muxui-semantic-motion-constant-easing) both;
 }
 :root[bento-sidebar-push='hide'] #bento-shell-host {
-  animation: bento-sidebar-push-host-collapse var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-host-collapse
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) .bento-sidebar-push-page {
-  animation: bento-sidebar-push-page-collapse var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-page-collapse
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root[bento-sidebar-push='expand'] .bento-sidebar-push-page {
-  animation: bento-sidebar-push-page-expand var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-page-expand
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 /* The toolbar band's share of the slide. commitToolbarForSidebarPush commits the
    final geometry (divider position, toolbar split, Back/Forward/Reload offset) at
@@ -629,12 +647,16 @@
    - the bookmarks toolbar, which starts at the strip's left edge, is part of the
      page group (below). */
 :root[bento-sidebar-push] #bento-sidebar-chrome-divider {
-  animation: bento-sidebar-push-divider var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-divider
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root[bento-sidebar-push][bento-sidebar-addressbar='true']
   #nav-bar-customization-target
   > :is(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav) {
-  animation: bento-sidebar-push-nav var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-nav
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root[bento-sidebar-push][bento-sidebar-addressbar='true']
   #nav-bar-customization-target
@@ -648,7 +670,9 @@
   bottom: 0;
   z-index: -1;
   pointer-events: none;
-  animation: bento-sidebar-push-band var(--muxui-semantic-motion-reveal-transition) both;
+  animation: bento-sidebar-push-band
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) #nav-bar::before {
   left: 0;
@@ -663,10 +687,14 @@
 /* Bento mode pins the bookmarks toolbar's own animation off; the push moves it. */
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide'])[bento-sidebar-addressbar='true']
   #PersonalToolbar.bento-sidebar-push-page {
-  animation: bento-sidebar-push-page-collapse var(--muxui-semantic-motion-reveal-transition) both !important;
+  animation: bento-sidebar-push-page-collapse
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
 }
 :root[bento-sidebar-push='expand'][bento-sidebar-addressbar='true'] #PersonalToolbar.bento-sidebar-push-page {
-  animation: bento-sidebar-push-page-expand var(--muxui-semantic-motion-reveal-transition) both !important;
+  animation: bento-sidebar-push-page-expand
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
 }
 @keyframes bento-sidebar-push-divider {
   from {

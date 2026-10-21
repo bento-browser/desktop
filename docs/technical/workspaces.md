@@ -181,7 +181,12 @@ rail off the left edge, and hides the splitter. A window capture
 `.bento-sidebar-hidden-revealed` while the pointer is within 12 px of the left edge or
 over the host (host `pointerenter`/`pointerleave`, a short grace timer and window blur
 hide it again), so the
-collapsed rail slides over the content without changing the content layout.
+collapsed rail slides over the content without changing the content layout. The slide
+(`transform`, in and out through the one `.bento-sidebar-hidden` transition) runs on
+the Mux `reveal` role's spring pair, 400 ms with no overshoot, like the push below;
+there is no fade or delay, and `HIDE_GRACE_MS` (120 ms) is the pointer-leave grace
+before the class goes, not a copy of a motion duration. A re-hover or a leave
+mid-slide reverses the running transition from where it is.
 While `sidebarHidden` is true, the divider, toolbar-navigation, and
 bookmarks-toolbar alignment paths must treat the sidebar width as zero even
 during hover reveal.
@@ -754,10 +759,22 @@ slide. A toggle is the setting changing; every other payload repeats the same
 value and does nothing.
 
 The slide ("push") makes the sidebar and the page one strip. Layout changes once
-per toggle, only `transform` and `opacity` animate, and the duration and easing
-are the Mux `reveal` role (the fade is `calc()` over that duration, 0.4 of it,
-with `--muxui-semantic-motion-constant-easing`; Bento has no motion tokens of its
-own). `delta` is the host's width (expanded, or the rail's for a hide from the rail)
+per toggle, only `transform` and `opacity` animate, and every slide (the host, the
+page group, the bookmarks toolbar, the divider, Back/Forward/Reload and the band)
+runs on the Mux `reveal` role's spring pair: `--muxui-semantic-motion-reveal-transition-spring-duration`
+(400 ms) and `-spring-easing` (a sampled `linear()` curve, bounce 0, so no
+overshoot), written as separate values in the `animation` shorthand. The keyframes
+are `from`/`to` only, so the curve applies once over the whole move. The fades are
+`calc()` fractions of that full duration on `--muxui-semantic-motion-constant-easing`
+(160 ms, 0.4 of it); Bento has no motion tokens of its own. The fades are timed from
+the full 400 ms on purpose, not from the spring's 200 ms visual duration that the Mux
+guide advises for fades beside a spring ([the roles
+table](../mux-ui-component-customisations.md#motion)): Andrew chose it from a
+side-by-side prototype, because the visual-duration timing left the rail strip empty
+for about 200 ms. To go back to the plain `reveal` pair (200 ms, `ease-out`), change
+the spring tokens in the `:root[bento-sidebar-push...]` block of
+`bento-shell-mount.css` to `reveal-transition-duration` and `-easing`, with the fade
+fractions over the duration. `delta` is the host's width (expanded, or the rail's for a hide from the rail)
 minus the layout space the host holds at the narrow end (the rail, or 0 when the
 sidebar was hidden or is being hidden).
 
@@ -771,14 +788,18 @@ sidebar was hidden or is being hidden).
   zone are absolute and stay put.
 - Collapse: the host goes from `translateX(0)` to `translateX(-delta)` and the page
   group from `translateX(delta)` to 0, so nothing moves at the first frame; the
-  host fades out over the last 0.4 of the slide. When the slide ends, one style
-  change snaps the host to the rail (the collapsed class, margin and transforms
-  gone) and fades it back in over 0.4. Expand mirrors it: the host is widened and
-  margined at once, starts at `translateX(-delta)` and opacity 0, fades in over the
-  first 0.4 while the page group goes from 0 to `delta`; the end drops the margin
-  and transforms in one frame, so the page lays out once to its narrower geometry.
+  host fades out from 240 ms to 400 ms (a delay of 0.6 of the slide, a duration of
+  0.4). When the slide ends, one style change snaps the host to the rail (the
+  collapsed class, margin and transforms gone) and fades it back in over 160 ms.
+  Expand mirrors it: the host is widened and margined at once, starts at
+  `translateX(-delta)` and opacity 0, fades in over the first 160 ms while the page
+  group goes from 0 to `delta`; the end drops the margin and transforms in one
+  frame, so the page lays out once to its narrower geometry.
 - The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
-  `afterMotion` on the host's slide animation (never a copied duration).
+  `afterMotion` on the host's slide animation (never a copied duration): it reads the
+  animation's computed duration and delay, 400 ms with the default tokens, and waits
+  for that animation's `animationend` or a timer 50 ms past it. It ignores the timing
+  function, so the `linear()` spring changes nothing in script.
   `settleSidebarPush` is also the interruption: a toggle during a slide or the fade
   settles it at its final state first (margin, transforms, opacity, classes, root
   attribute and custom properties all gone), then starts the new slide from there.
@@ -800,8 +821,8 @@ sidebar was hidden or is being hidden).
   change that drops the transforms, with the hidden rule's transform transition held
   off for that change (an inline `transition: none`, restored after a layout flush),
   and hides the divider line. The end state is the one a boot into the hidden state
-  has. The hover reveal and its own transform transition are unchanged, except that
-  `reveal` ignores the pointer while a push runs, so a pointer at the left edge cannot
+  has. The hover reveal and its own transform transition (the spring pair, as above) are
+  unchanged, except that `reveal` ignores the pointer while a push runs, so a pointer at the left edge cannot
   leave the revealed class waiting for the class that lands at the end. Expanding out
   of the hidden state is a push with `delta` equal to the whole expanded width.
 - The expanded width is computed (inline width inside the min and max the sheet
@@ -847,7 +868,7 @@ sidebar was hidden or is being hidden).
   is already final. Reads that mix the group with the host, toolbar or window
   (`rectOverlapsBentoSidebar`, the toolbar updaters, popup anchoring from
   `getBoundingClientRect`) describe the painted geometry at that instant and are
-  redone at the end; interactions during the 200 ms are not guarded.
+  redone at the end; interactions during the 400 ms are not guarded.
 - Shell: the rail layout is `data-bento-collapsed` on `<html>`, and it follows the
   width the shell is rendered at. `observeRailViewport`
   (`extensions/bento-shell/src/sidebar/railViewport.ts`) watches the app root with a
@@ -875,7 +896,11 @@ hover-reveal, and show (the divider enters with the strip's edge, not static at 
 position), Cmd+S again mid-slide in both directions, and ten quick presses; with the OS
 reduced-motion setting on (no slide; in hide mode the hide, the show and the hover
 reveal are instant, with no rail slide over the page after the page has moved);
-cold start collapsed and expanded (no animation); a long tab list scrolled
+to watch a push slowly, raise `--muxui-semantic-motion-reveal-transition-spring-duration`
+on the chrome root (the plain `-reveal-duration` no longer moves it; the hover
+reveal's slide-over runs on the same token); hover the left edge of a hidden sidebar and
+move away: the slide-over takes the spring duration each way, with no overshoot, and a
+re-hover mid-slide reverses it smoothly; cold start collapsed and expanded (no animation); a long tab list scrolled
 partway, collapsed and expanded (the custom scrollbar matches the rail).
 
 ## Workspace pitfalls
@@ -998,8 +1023,10 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   out over the finished layout. A `prefers-reduced-motion: reduce` block after the
   hidden rules turns it off, which also makes the hover reveal instant.
 - Do not write a raw duration or easing for the fade. It is `calc()` over the Mux
-  `reveal` duration with the `constant` easing, which keeps `pnpm run lint:motion`
-  satisfied and the fade in step with the slide when a theme changes the role.
+  `reveal` spring duration with the `constant` easing, which keeps `pnpm run lint:motion`
+  satisfied and the fade in step with the slide when a theme changes the role. Do not
+  time it from the spring's visual duration: the collapse fade would end near 200 ms,
+  with the rail strip empty until the snap.
 - Do not render the same workspace in two windows unless the panel architecture
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.

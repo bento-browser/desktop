@@ -1044,7 +1044,9 @@ rel="stylesheet">` load and error events on chrome documents, and the
   slides the host and the in-flow children of `#browser` right of it as one strip
   with `transform` and `opacity` (`:root[bento-sidebar-push]`,
   `.bento-sidebar-push-page`, the `bento-sidebar-push-*` keyframes in this sheet),
-  on the Mux reveal role, and `#nav-bar::before` is used while it runs. Firefox surface depended on: the
+  on the Mux reveal role's spring pair (400 ms, no overshoot; the host fades are 160 ms;
+  the hidden-sidebar edge-hover slide-over uses the same pair), and `#nav-bar::before`
+  is used while it runs. Firefox surface depended on: the
   children of `#browser` are laid out as flex items in document order with
   `#bento-shell-host` first (`browser-box.inc.xhtml`), the page group is found by
   computed style (`display`, `position`), not by id, and `#nav-bar`,
