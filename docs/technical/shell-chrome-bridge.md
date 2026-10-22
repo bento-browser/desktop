@@ -386,6 +386,16 @@ Pitfalls:
   regular documents, so private ones do not use it yet.
 - Do not import the hub through two URL spellings (see above), and do not read
   `embedderElement.ownerGlobal` in the actor.
+- A content-process actor (`BentoKeyChild`, `BentoShellBusChild`, any new
+  `*Child.sys.mjs`) must be copied into the dev app as a real file, with its parent
+  module beside it: add a `copy_content_actor` line in
+  `scripts/sync-builtin-addon-symlinks.sh`. A dev build otherwise leaves the file a
+  symlink chain into `src/browser/actors`, which the content-process sandbox cannot
+  read (read paths cover the app bundle, not the checkout), so the load fails
+  (`Failed to load resource:///actors/BentoShellBusChild.sys.mjs`) and every relay
+  document, private windows included, never connects. Packaged builds copy the
+  files through `moz.build` and are unaffected. `scripts/bento-build.test.mjs`
+  fails when any actor under `src/browser/actors` stays a symlink after the script.
 - Do not send a private window's workspace-bound state with `send`: tools wraps it
   (`messaging/audience.ts`), and the fan-out is the only place that decides the
   audience.
