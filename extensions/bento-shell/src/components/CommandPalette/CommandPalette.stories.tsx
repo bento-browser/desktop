@@ -47,3 +47,25 @@ export const SettingsResults = () => {
 };
 
 SettingsResults.storyName = 'Searching settings (Settings group, labels only)';
+
+/** The one highlight, in light mode. Arrow keys slide it and the pointer moves it too. */
+export const LightMode = () => {
+  useEffect(() => {
+    seedMany();
+    seedTabs(8, 0);
+    const root = document.documentElement;
+    const names = ['data-color-mode', 'data-theme', 'data-muxui-color-scheme'];
+    const before = names.map((name) => root.getAttribute(name));
+    for (const name of names) root.setAttribute(name, 'light');
+    return () => {
+      names.forEach((name, index) => {
+        const value = before[index];
+        if (value === null || value === undefined) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      });
+    };
+  }, []);
+  return <CommandPalette onClose={noop} />;
+};
+
+LightMode.storyName = 'Light mode (row highlight)';

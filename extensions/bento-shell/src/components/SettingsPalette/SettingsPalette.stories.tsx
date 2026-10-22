@@ -1,7 +1,8 @@
 // Settings palette stories, one per step of the chosen mock (plans/settings-palette/mocks/
-// a-quickpick.html). Each starts on its stage and edits a local copy of the fixture, so
-// toggles, editors and stages work in the story. `useFakeSettingsPalette` stands in for the
-// tools connection; nothing here touches the relay.
+// a-quickpick.html), plus the nav row's states: opened from the command palette, a deep path,
+// and light mode. Each starts on its stage and edits a local copy of the fixture, so toggles,
+// editors and stages work in the story. `useFakeSettingsPalette` stands in for the tools
+// connection; nothing here touches the relay.
 
 import { useEffect, type ComponentProps } from 'react';
 import {
@@ -22,21 +23,53 @@ const onClose = () => {
   );
 };
 
+/** What Back to the command palette did, counted on <body> like the close requests. */
+const onBackToPalette = () => {
+  document.body.dataset.backToPaletteRequests = String(
+    Number(document.body.dataset.backToPaletteRequests ?? 0) + 1,
+  );
+};
+
+/** Shows the story in one colour mode whatever Ladle's own toggle says, and puts it back. */
+function useForcedColorMode(mode: 'light' | 'dark' | null) {
+  useEffect(() => {
+    if (!mode) return;
+    const root = document.documentElement;
+    const names = ['data-color-mode', 'data-theme', 'data-muxui-color-scheme'];
+    const before = names.map((name) => root.getAttribute(name));
+    for (const name of names) root.setAttribute(name, mode);
+    return () => {
+      names.forEach((name, index) => {
+        const value = before[index];
+        if (value === null || value === undefined) root.removeAttribute(name);
+        else root.setAttribute(name, value);
+      });
+    };
+  }, [mode]);
+}
+
 function Story({
   model = REGULAR_MODEL,
   stages,
   view,
+  fromPalette = false,
+  mode = null,
 }: {
   model?: SettingsPaletteModel;
   stages?: readonly Stage[];
   view?: ComponentProps<typeof SettingsPalette>['view'];
+  /** Opened from the command palette: the path starts there and Back at the root returns. */
+  fromPalette?: boolean;
+  mode?: 'light' | 'dark' | null;
 }) {
   const fake = useFakeSettingsPalette(model);
+  useForcedColorMode(mode);
   return (
     <SettingsPalette
       view={view ?? fake.view}
       actions={fake.actions}
       onClose={onClose}
+      onBackToPalette={fromPalette ? onBackToPalette : undefined}
       initialStages={stages}
     />
   );
@@ -163,3 +196,48 @@ export const PendingWrite = () => (
   />
 );
 PendingWrite.storyName = 'Writes in flight';
+
+/** Opened from a command palette result or its Open Settings command. */
+export const FromCommandPalette = () => <Story fromPalette />;
+FromCommandPalette.storyName = 'From command palette (root)';
+
+export const FromCommandPaletteNumber = () => (
+  <Story fromPalette stages={at({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })} />
+);
+FromCommandPaletteNumber.storyName = 'From command palette (number editor)';
+
+/** Three levels down: every ancestor is a button, the current page is not. */
+export const DeepPath = () => (
+  <Story
+    fromPalette
+    stages={at(
+      { kind: 'sizes' },
+      { kind: 'sizeActions', index: 2 },
+      { kind: 'sizeEdit', index: 2 },
+    )}
+  />
+);
+DeepPath.storyName = 'Deep path (from command palette, size editor)';
+
+/** Choice stages open on the current option, not the first row. */
+export const HttpsOnly = () => (
+  <Story stages={at({ kind: 'advanced' }, { kind: 'enum', key: 'httpsOnlyMode' })} />
+);
+HttpsOnly.storyName = 'Choice opens on the current option (HTTPS-only)';
+
+export const LightRoot = () => <Story mode="light" />;
+LightRoot.storyName = 'Light mode (root)';
+
+export const LightNumber = () => (
+  <Story mode="light" stages={at({ kind: 'number', key: 'panelCornerRadiusPx' })} />
+);
+LightNumber.storyName = 'Light mode (number editor)';
+
+export const LightDeepPath = () => (
+  <Story
+    mode="light"
+    fromPalette
+    stages={at({ kind: 'sizes' }, { kind: 'sizeActions', index: 2 })}
+  />
+);
+LightDeepPath.storyName = 'Light mode (deep path)';

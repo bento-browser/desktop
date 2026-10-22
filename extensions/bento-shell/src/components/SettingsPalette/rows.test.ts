@@ -22,6 +22,7 @@ import {
   type PaletteRow,
 } from './rows';
 import { PANEL_SIZE_LIMITS } from './settingsCatalog';
+import type { Stage } from './stageStack';
 import type { SettingsPaletteModel } from './types';
 
 const labels = (rows: readonly PaletteRow[]) => rows.map((row) => row.label);
@@ -137,7 +138,7 @@ describe('search', () => {
 describe('number stages', () => {
   it('lists presets with Min, Default and Max markers and applies the value', () => {
     const rows = rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL);
-    expect(rows.map((row) => `${row.label}${row.value ? ` ${row.value}` : ''}`)).toEqual([
+    expect(rows.map((row) => `${row.label}${row.note ? ` ${row.note}` : ''}`)).toEqual([
       '0 px Min',
       '8 px',
       '12 px Default',
@@ -185,7 +186,7 @@ describe('choice stages', () => {
     expect(rows[1]!.detail?.benefits.length).toBeGreaterThan(0);
     expect(rows[1]!.detail?.caveats.length).toBeGreaterThan(0);
     expect(rows[1]!.intent).toEqual({ type: 'setProtection', level: 'enhanced' });
-    expect(rows[3]).toMatchObject({ info: true, value: 'Detected only', intent: { type: 'none' } });
+    expect(rows[3]).toMatchObject({ info: true, note: 'Detected only', intent: { type: 'none' } });
     const custom: SettingsPaletteModel = {
       ...REGULAR_MODEL,
       privacy: { ...REGULAR_MODEL.privacy!, protectionLevel: 'custom' },
@@ -204,7 +205,7 @@ describe('choice stages', () => {
       'Wikipedia (en)',
       'Manage search engines',
     ]);
-    expect(rows[0]).toMatchObject({ radio: 'on', value: 'Current' });
+    expect(rows[0]).toMatchObject({ radio: 'on', note: 'Current' });
     expect(rows[1]!.intent).toEqual({ type: 'setSearch', id: 'google' });
     expect(rows.at(-1)).toMatchObject({
       trail: '↗',
@@ -255,7 +256,7 @@ describe('advanced privacy and shortcuts', () => {
   it('lists the 15 keys in the mock order; two open a choice and the rest toggle', () => {
     const rows = advancedRows(REGULAR_MODEL);
     expect(rows).toHaveLength(15);
-    expect(rows[0]).toMatchObject({ label: 'Local Safe Browsing', value: 'On' });
+    expect(rows[0]).toMatchObject({ label: 'Local Safe Browsing', value: 'On', switchOn: true });
     expect(find(rows, 'advanced:remoteSafeBrowsingEnabled')).toMatchObject({
       value: 'Off',
       intent: { type: 'toggleAdvanced', key: 'remoteSafeBrowsingEnabled', current: false },
@@ -398,7 +399,7 @@ describe('stage chrome', () => {
 
   it('describes the editor footers as in the mock', () => {
     expect(footerFor({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL, 6)).toEqual({
-      hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc revert'],
+      hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc cancel'],
       status: 'Live preview',
     });
     expect(footerFor({ kind: 'sizes' }, REGULAR_MODEL, 6).status).toBe('5 of 64 sizes');
@@ -414,6 +415,39 @@ describe('stage chrome', () => {
     };
     expect(footerFor({ kind: 'backups' }, REGULAR_MODEL, 4).hints.at(-1)).toBe('Esc back');
     expect(footerFor({ kind: 'backups' }, waiting, 4).hints.at(-1)).toBe('Esc cancel import');
+  });
+
+  it('says what Esc does in the state the palette is in', () => {
+    const esc = (stage: Stage, query = '', model = REGULAR_MODEL) =>
+      footerFor(stage, model, 4, query).hints.at(-1);
+    expect(esc({ kind: 'root' })).toBe('Esc close');
+    expect(esc({ kind: 'root' }, 'radius')).toBe('Esc clear');
+    expect(esc({ kind: 'advanced' })).toBe('Esc back');
+    expect(esc({ kind: 'advanced' }, 'web')).toBe('Esc clear');
+    expect(esc({ kind: 'number', key: 'panelCornerRadiusPx' })).toBe('Esc cancel');
+    expect(esc({ kind: 'text', key: 'defaultWorkspaceName' })).toBe('Esc cancel');
+    expect(esc({ kind: 'sizeEdit', index: 0 })).toBe('Esc cancel');
+  });
+
+  it('offers no arrows on the static shortcuts list', () => {
+    expect(footerFor({ kind: 'shortcuts' }, REGULAR_MODEL, 8).hints).toEqual(['Esc back']);
+  });
+
+  it('shows the target state on a switch while its write is in flight', () => {
+    const off = rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelShadowsEnabled');
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    expect(off).toMatchObject({ switchOn: stored, pending: false });
+    const writing: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['panelShadowsEnabled']),
+    };
+    const during = rootRows(writing).find((row) => row.id === 'setting:panelShadowsEnabled');
+    expect(during).toMatchObject({ switchOn: !stored, pending: true });
+    // The row keeps the stored On or Off as its text value, and only toggle rows carry a switch.
+    expect(during?.value).toBe(stored ? 'On' : 'Off');
+    expect(
+      rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelCornerRadiusPx'),
+    ).not.toHaveProperty('switchOn');
   });
 
   it('shows only a retry while the snapshot is missing', () => {
