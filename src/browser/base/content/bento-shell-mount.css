@@ -49,8 +49,8 @@
      native tab strip is hidden. Keep that shared control row clear of
      the window edge without introducing a second titlebar surface. */
   --bento-toolbar-top-inset: 4px;
+  /* --bento-toolbar-main-bg comes from bento-tokens.css: the shell's rail look paints it too. */
   --bento-toolbar-sidebar-bg: var(--neutral-5);
-  --bento-toolbar-main-bg: var(--neutral-14);
   --bento-toolbar-divider-x: 100vw;
   --bento-panel-strip-bg: var(--bento-toolbar-main-bg);
   --bento-strip-scrollbar-row-height: calc(
@@ -60,6 +60,28 @@
 }
 :root[bento-no-side-panels='true'] {
   --bento-toolbar-main-bg: var(--neutral-5);
+}
+/* The rail (bento-sidebar-rail: the host is, or is sliding to, the collapsed rail; set
+   by applyChromeSidebarCollapsed): the sidebar side of the toolbar split takes the main
+   colour, so the window controls, the rail and the gap around the page are one surface.
+   With no side panels the main colour is the sidebar one already. */
+:root[bento-sidebar-rail] {
+  --bento-toolbar-sidebar-bg: var(--bento-toolbar-main-bg);
+}
+/* The toolbar's own sidebar-side colour is a registered property so a collapse or expand
+   can fade it (a gradient stop cannot transition): the three toolbar surfaces and the
+   push band declare it, and 'Sidebar push' below transitions it. Not inherited, so only
+   those elements restyle while it moves. The window and #browser backgrounds read
+   --bento-toolbar-sidebar-bg and switch at once: the host covers them. */
+@property --bento-toolbar-left-bg {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+#navigator-toolbox,
+#TabsToolbar,
+#nav-bar {
+  --bento-toolbar-left-bg: var(--bento-toolbar-sidebar-bg);
 }
 #tabbrowser-tabpanels.bento-panel-shadows-disabled,
 #bento-strip-container.bento-panel-shadows-disabled {
@@ -132,8 +154,8 @@
   background-color: var(--bento-toolbar-main-bg) !important;
   background-image: linear-gradient(
     to right,
-    var(--bento-toolbar-sidebar-bg) 0,
-    var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
+    var(--bento-toolbar-left-bg) 0,
+    var(--bento-toolbar-left-bg) var(--bento-toolbar-divider-x),
     var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
     var(--bento-toolbar-main-bg) 100%
   ) !important;
@@ -162,6 +184,10 @@
    layered !important rules. Keep these in the same layer so the panel
    path cannot leak that sidebar colour behind the main-side strip. */
 @layer bento.chrome-theme {
+  /* bento-chrome-theme.css paints the host neutral-5; in the rail it is the main colour. */
+  #bento-shell-host {
+    background-color: var(--bento-toolbar-sidebar-bg) !important;
+  }
   :root[bento-sidebar-addressbar='true'] body,
   :root[bento-sidebar-addressbar='true'] body::after,
   :root[bento-sidebar-addressbar='true'] #browser,
@@ -590,9 +616,14 @@
    or show is a plain host slide: the host is fully out of the window at the far
    end, where the switch to or from the hidden rail layout (the .bento-sidebar-hidden
    rule above, put on the host by the script in the frame the push ends, with its
-   transform transition held off) cannot be seen. Only transform animates. Every
-   slide runs on the reveal role's spring pair (400 ms, no overshoot: the keyframes
-   are from/to only, so the curve applies once over the move). */
+   transform transition held off) cannot be seen. Every slide runs on the reveal
+   role's spring pair (400 ms, no overshoot: the keyframes are from/to only, so the
+   curve applies once over the move).
+   The slide itself is transform only. A collapse or expand also changes the rail
+   colour (the sidebar side of the toolbar split, the host's background and the chrome
+   divider line become the main colour, and the host's edge line goes, in the rail): the
+   script flips :root[bento-sidebar-rail] to the target as the push starts and the rules
+   after the toolbar band below fade to it on the same spring pair. */
 :root {
   --bento-sidebar-push-delta: 0px;
   --bento-sidebar-push-divider-shift: 0px;
@@ -644,6 +675,18 @@
   width: 1px;
   background-color: var(--bento-sidebar-divider-color);
   pointer-events: none;
+}
+/* The rail has no right edge line (it is one surface with the gap around the page), so the
+   line leaves with a collapse and arrives with an expand, on the colour's timing. */
+:root[bento-sidebar-push='collapse']:not([bento-no-side-panels='true']) #bento-shell-host::after {
+  animation: bento-sidebar-push-edge-out
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+:root[bento-sidebar-push='expand']:not([bento-no-side-panels='true']) #bento-shell-host::after {
+  animation: bento-sidebar-push-edge-in
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) .bento-sidebar-push-page {
   animation: bento-sidebar-push-page-collapse
@@ -701,7 +744,9 @@
 :root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='hide']) #nav-bar::before {
   left: 0;
   width: var(--bento-sidebar-push-split-from);
-  background-color: var(--bento-toolbar-sidebar-bg);
+  /* The band is the old sidebar segment: it takes #nav-bar's colour as it fades. */
+  --bento-toolbar-left-bg: inherit;
+  background-color: var(--bento-toolbar-left-bg);
 }
 :root:is([bento-sidebar-push='expand'], [bento-sidebar-push='show']) #nav-bar::before {
   left: var(--bento-sidebar-push-split-from);
@@ -720,6 +765,41 @@
   animation: bento-sidebar-push-page-expand
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
+}
+/* The colour change of a collapse or expand runs with the slide, on the same spring pair
+   (a hide or show switches at once). The rail attribute is flipped to the target in the
+   frame the push starts, so each of these starts from the colour it had and ends on the
+   settled one: the toolbar's sidebar-side segment, the host behind the shell, and the
+   chrome divider line, which is gone in the rail. */
+/* Not on a toolbox whose fullscreen reveal is animating: Firefox's own `transition: 0.8s
+   margin-top` on #navigator-toolbox[fullscreenShouldAnimate] would be replaced by this one and
+   cut short, so its colour switches at once then. */
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='expand'])
+  :is(#navigator-toolbox:not([fullscreenShouldAnimate]), #TabsToolbar, #nav-bar) {
+  transition: --bento-toolbar-left-bg
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='expand']) #bento-shell-host {
+  transition: background-color var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+:root[bento-sidebar-rail]:not([bento-no-side-panels='true']) #bento-sidebar-chrome-divider {
+  background-color: transparent;
+}
+:root:is([bento-sidebar-push='collapse'], [bento-sidebar-push='expand']) #bento-sidebar-chrome-divider {
+  transition: background-color var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+@keyframes bento-sidebar-push-edge-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes bento-sidebar-push-edge-in {
+  from {
+    opacity: 0;
+  }
 }
 @keyframes bento-sidebar-push-divider {
   from {

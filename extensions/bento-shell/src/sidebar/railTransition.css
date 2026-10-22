@@ -10,10 +10,30 @@
  * bar's fold) are the `state` pair, and trailing controls leave on `dismiss`. Staggers are 1/32 of the spring
  * duration: the header takes units 0 to 2 here, rows from 3 and the footer buttons
  * (toggle first) are written by script, since a delay may not read a non-Mux variable.
- * 'measure' only turns transitions off, for the synchronous reads and the settle. */
+ * 'measure' only turns the row transitions off, for the synchronous reads and the settle.
+ * The rail look's background colour (app.css) fades on the spring pair under the phase
+ * attribute, 'measure' included; see the transition rule just below. */
 @layer bento.app {
   html[data-bento-rail-transition] :is(.bento-tab-row, .bento-workspace-switcher__trigger) {
     transition: none !important;
+  }
+  /* The rail look's colour (app.css) fades with the phase on the reveal spring pair, like
+     the chrome's push. Declared only while the phase attribute is present, 'measure'
+     included (an expand drops the rail attribute in its measure step, so the colour starts
+     leaving the rail there), so theme and mode changes stay instant. The sticky New bar
+     is left out: it is transparent for the phase and takes its colour at the settle. */
+  html[data-bento-rail-transition]
+    :is(
+      .bento-shell-app,
+      .bento-shell-app__header,
+      .bento-shell-app__workspace-switcher,
+      .bento-shell-app__list-region,
+      .bento-shell-app__footer,
+      .bento-sidebar-address-bar,
+      .bento-sidebar-address-bar__row
+    ) {
+    transition: background-color var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing);
   }
   /* Scroll anchoring takes the list viewport's translate (the scroll change a phase
      carries, such as an expand from the bottom of the rail clamping the scroll
@@ -28,7 +48,6 @@
        carries the divider, stay above it. */
     & .bento-shell-app__list-region {
       z-index: 3;
-      background-color: var(--bento-brand-bg);
     }
     & .bento-tab-list-pane__sticky-actions,
     & .bento-tab-row--active,
@@ -106,7 +125,7 @@
       inset-inline-start: var(--bento-rail-tab-x, 0px);
       height: var(--bento-tab-list-top-surface-height, 0px);
       border-radius: var(--muxui-semantic-shape-radius-s);
-      background-color: var(--bento-tab-list-top-surface-fill);
+      background-color: var(--bento-rail-band-fill);
     }
     & .bento-shell-app__footer::before {
       inset-block-start: auto;
@@ -114,7 +133,7 @@
       box-sizing: border-box;
       height: var(--bento-rail-footer-height, 0px);
       border-top: 1px solid var(--bento-sidebar-divider-color);
-      background-color: var(--bento-brand-bg);
+      background-color: inherit;
       --bento-rail-x: 0px;
       --bento-rail-y: var(--bento-rail-footer-rise, 0px);
     }

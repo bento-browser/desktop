@@ -227,6 +227,16 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   `src/browser` is not scanned.
   `panel-newtab.css` does not import `muxui.css` and declares only
   `bento.tokens`.
+- Rail colours (see "Rail colour" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)):
+  `--bento-toolbar-main-bg` (the toolbar's main surface, neutral-14, shared by chrome's
+  mount sheet and the shell's rail look), `--bento-rail-band-fill` and
+  `--bento-rail-square-base` (neutral-18) are declared once in `bento-tokens.css` from
+  public Mux semantic neutrals, so every theme, mode and contrast follows. A window with
+  no side panels resets them (neutral-5, neutral-12, neutral-5): chrome under
+  `:root[bento-no-side-panels]` for the main colour, the shell on
+  `.bento-shell-app--no-side-panels`. The rail's `--bento-brand-bg` is re-pointed on
+  `.bento-shell-app` in the rail look, not at `:root`; the document background keeps the
+  brand colour.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
 
