@@ -180,7 +180,7 @@ with an `ol` of Mux `Button`s (`ghost`, `sm`, one per ancestor) and a plain `spa
 (`aria-current="page"`) for the current page. Mux `Breadcrumbs` is not used because it
 makes a link only of an item that has an `href`, and these levels are actions. Close sits in
 the nav row, outside the SearchField, which gives every button inside it `tabindex="-1"`;
-Clear stays in the field and opts back into the tab order (exception below). A row is a Mux `Item` with a title, an optional note beside it
+Clear stays in the field and opts back into the tab order and keyboard use (exception below). A row is a Mux `Item` with a title, an optional note beside it
 (`.bento-settings-palette__note`: Current, Min, Default, Max), a spacer, then an `ItemMeta`
 value or a switch, and a trailing icon; its state is carried by data attributes (`data-info`
 for a static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
@@ -228,9 +228,12 @@ pinned Mux version documents the prop:
   last input was the pointer, which it learns from `pointermove`; the hook dispatches one
   from a capturing `pointerover` listener so the first row entered after a key press takes
   the focus too.
-- `excludeFromTabOrder: false` on `CommandPalette.ClearButton` in the Settings palette
-  (`CLEAR_IN_TAB_ORDER`): the SearchField's button context makes every button in it
-  `tabindex="-1"`, and Clear should be reachable by Tab.
+- `IN_TAB_ORDER` (`components/primitives/inTabOrder.ts`) on `CommandPalette.ClearButton` in
+  both palettes and on `CommandPalette.Close` in the command palette, the buttons that sit
+  inside the SearchField: `excludeFromTabOrder: false`, because the SearchField's button
+  context makes every button in it `tabindex="-1"`; and an `onPressStart` that takes the focus
+  back for a key press, because the context's press-start focuses the input, which moved the
+  focus off the button before its key-up and left Enter and Space doing nothing.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
