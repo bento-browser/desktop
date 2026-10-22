@@ -188,6 +188,14 @@ text `--muxui-semantic-feedback-invalid-content` and the warning mark
 `--muxui-semantic-status-warning`; Bento adds no colour or motion of its own, and a
 pending row dims and ends in an ellipsis rather than animating.
 
+Recorded exception to the public-API rule: the Settings palette passes
+`autoFocus: 'first'` to `CommandPalette.ListBox` through a plain props object
+(`FOCUS_FIRST_ROW` in `SettingsPalette.tsx`) so each stage opens with its first row
+focused. `CommandPaletteListBoxProps` declares no focus strategy; the value reaches React
+Aria only because the part forwards its props. A documented focus-strategy prop is being
+added to Mux; replace the props object with it once the pinned Mux version ships it, and
+delete this paragraph.
+
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
 declares the `bento` sublayer order (`bento.tokens`, `bento.fonts`,
