@@ -8,7 +8,7 @@ import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import { migrateLegacyEntriesToPersistence } from '../panels/PanelStore';
 import { PrivacyMutationService } from '../privacy/PrivacyMutationService';
 import { moveTabsToWindow } from '../tabs/AdoptedTab';
-import type { NativeOperationComponent } from '../native-preferences/OperationRegistry';
+import type { DurableOperationComponent } from '../settings-domain/OperationRegistry';
 
 export interface ImportContext {
   workspaces: WorkspaceStore;
@@ -27,7 +27,7 @@ export interface ImportContext {
     onOldTabRemoved?(tabId: number): Promise<void>;
     onWindowMap?(mapping: Record<number, string>): Promise<void>;
     /** Privacy or search effects that did not stick; the rest of the import completed. */
-    onLiveEffectFailures?(failed: NativeOperationComponent[]): void;
+    onLiveEffectFailures?(failed: DurableOperationComponent[]): void;
   };
 }
 

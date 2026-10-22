@@ -36,8 +36,7 @@ privileged surface that normal WebExtension APIs cannot provide:
 - default search engine reads/writes through Firefox `SearchService`;
 - `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
   handshake (see "Add-panel grant" below). It is not a privacy operation; it
-  lives here because this experiment is present in every shipped tools manifest,
-  including the rollback variants.
+  lives here because this experiment is present in every shipped tools manifest.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
@@ -119,17 +118,9 @@ It owns payload validation, the private-window policy, serialization through
 (`OperationRegistry`, key `bento.nativeOperations.v1`), the graph journal for
 imports and restores (`GraphOperationJournal`, keys `bento.graphOperation.v1`,
 `bento.graphOperation.sources.v1`, `bento.graphPublication.v1`), import
-validation tokens, the revision counter, and the change notices. Three callers
+validation tokens, the revision counter, and the change notices. Two callers
 share it, so a change cannot behave differently by the way it arrived:
 
-- The native observer bridge (`native-preferences/NativePreferencesService.ts`)
-  keeps only its sessions, hello and resume tokens, envelope validation,
-  deadlines, publication and the two operations only it offers
-  (`operation/reconcile`, `request/cancel`). It passes every other operation to
-  `execute` with the session's client instance id as both `clientId` and
-  `ownerId`, and renames the domain's error codes to the generated contract's
-  (`schema_invalid` to `invalid_payload`, `token_invalid` to
-  `validation_token_invalid`, `caller_unbound` to `target_window_unavailable`).
 - The overlay transport (`settings-domain/SettingsClientTransport.ts`) accepts
   `settings-client/request` messages (`extensions/_shared/settings-client-protocol.ts`)
   that the shell background relays on the authenticated tools port. The
@@ -144,9 +135,11 @@ share it, so a change cannot behave differently by the way it arrived:
   `privacy/setDefaultSearchEngine`) call the service's typed mutations. A reset
   from that port gets a registry record owned by `shell-port`.
 
-Two entry points validate settings differently on purpose. The overlay and
-native `settings/update` accept exactly the editable inventory of the contract
-(`validateSettingsChanges`), while the ordinary action keeps the full shell set
+Two entry points validate settings differently on purpose. The overlay
+`settings/update` accepts exactly the editable inventory
+(`validateSettingsChanges` over `EDITABLE_SETTING_RULES` in
+`extensions/_shared/settings-rules.ts`, which also holds the advanced privacy rules
+and the request limits), while the ordinary action keeps the full shell set
 that welcome (`welcomeSeen`) and the sidebar (`sidebarHidden`,
 `sidebarCollapsed`) write. Both call the same `updateSettings`, which takes the
 `settings` slot of the coordinator and writes through `SettingsStore`.
@@ -168,13 +161,14 @@ lists them) or `failed` (every component failed). `components` is final for
 every kind; `phase` is the progress indicator while it runs.
 
 Ownership of a durable operation is the caller's `ownerId`. For the overlay it is
-the parent-process session id, the boot id and the window id, so a reloaded
-Settings document in the same window can read its predecessor's status and
-`snapshot/get` lists the window's running and recently finished operations
-(`pendingOperations`, ten minutes) for it to resume polling. Native-owned
-records (client instance id) are readable through the native transport only.
-Window ids repeat across browser sessions, which is why the boot identity is part
-of the key. `recoveredOperationNotices` lists only records recovery or startup
+the tools session id (`sessionId`, a UUID `background.ts` draws once per tools run)
+and the window id, so a reloaded Settings document in the same window can read its
+predecessor's status and `snapshot/get` lists the window's running and recently
+finished operations (`pendingOperations`, ten minutes) for it to resume polling.
+Records of another owner, such as the `shell-port` reset, are never readable
+through the overlay. Window ids repeat across browser sessions, which is why the
+session id is part of the key; reloading the tools extension starts a new session,
+so a Settings document that outlives it cannot read the earlier session's records. `recoveredOperationNotices` lists only records recovery or startup
 settlement closed (`recovered: true`).
 
 Backup operations, `recovery/acknowledgeNotice` and `settings/reset` are refused
@@ -186,13 +180,15 @@ to a private caller (`private_window_forbidden`; `isPrivateForbiddenOperation`),
 background and is never saved. The UI hiding of those rows is presentation only.
 
 Manual verification surface: the Settings palette (app menu, Bento Settings: change a
-setting and a protection level, export, import, reset), and the native pane until it
-is removed. The domain's behavior is covered by `settings-domain/*.test.ts`.
+setting and a protection level, export, import, reset). The domain's behavior is
+covered by `settings-domain/*.test.ts`. At startup tools also deletes the retired
+`bento.nativeSessions.v1` key (`retiredStorage.ts`); `bento.nativeOperations.v1`
+keeps its name because stored records live there.
 
 ### Settings palette (shell side)
 
-The Settings palette is the shell-side replacement for the native pane (the native
-pane stays reachable by URL until it is removed). Chrome hosts it as the
+The Settings palette is Bento's only settings surface (it replaced the native
+`about:preferences#bento` pane). Chrome hosts it as the
 `settings-palette` overlay ([overlay-documents.md](overlay-documents.md)); the app
 menu, the command palette's Open Settings and Privacy commands and the welcome Open
 Settings button open it. It is a staged quick pick on the public Mux `CommandPalette`
@@ -203,7 +199,7 @@ parts, and it is split so each piece is testable without the browser:
   `SettingsPaletteActions` object and keeps only navigation state: a stack of stages
   (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
   search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
-  compares the bounds with `native-preferences-contract.json`), and `rows.ts` turns the
+  compares the bounds with `_shared/settings-rules.ts`), and `rows.ts` turns the
   model and a stage into rows, each carrying an intent, so what every stage shows is
   asserted in `rows.test.ts` and the component only renders and dispatches them.
 - `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
@@ -229,9 +225,10 @@ undefined`, and the palette then shows no backup rows or automatic-backup
   `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
   notices as `event`. The background side is `bridge/settingsRelay.ts`.
 - `useShowSignal.ts` listens for chrome's `bento-settings-show` event (see
-  overlay-documents.md): each show bumps `openToken` (the palette returns to
-  `initialStages`: the root, or the protection level list for the privacy link) and
-  refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
+  overlay-documents.md): each show bumps `openToken` (the palette returns to the stages
+  and search text `resolveSettingsTarget` gives for the show's `target`: the root, the
+  protection level list for the privacy link, or the setting a command palette result
+  named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
   so the first show is never lost.
 
 Editor stages (a number or a workspace name typed in the search field) behave as
@@ -252,56 +249,6 @@ rows, the Bento color mode row changes only that window and is not saved, and ot
 settings save for the profile. Reset closes the palette and onboarding opens again.
 Export lands in the download directory; Import shows what the file holds before it
 changes anything.
-
-Native Bento Settings is registered by
-`patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
-Firefox `SettingGroupManager` controls and a generated observer protocol to the
-tools-owned `browser.bentoNativePreferences` experiment. The canonical contract
-is `extensions/_shared/native-preferences-contract.json`; generated TypeScript,
-raw-script, Firefox ESM, and fixture artifacts must pass
-`pnpm native-protocol:check:all`. The experiment derives the source window and
-private state from the system-principal Settings document, and the tools service
-binds each resumable session to that window, audience, contract hash, and direct
-parent-process attestation. Settings persistence is awaited before publication.
-Setting-group Fluent messages must provide a `.label` attribute rather than a
-message value. `moz-fieldset` localizes `label`, `description`, and `ariaLabel`;
-a message value makes Fluent replace its light-DOM contents and deletes every
-rendered `setting-control`, leaving a correctly titled but empty card.
-The pane title message provides both a value for the native navigation button
-and a `.heading` attribute for `moz-page-header`; omitting `.heading` leaves the
-page icon visible with an empty heading.
-All Bento dropdowns remain `moz-select` controls but opt into its Firefox-owned
-`panel-list` rendering path with `force-panel-list`. This bypasses the macOS
-native select picker, which does not open reliably for these controls when the
-Settings document is hosted in Bento's panel layout, while preserving the
-standard `moz-select` value/change API used by the custom Bento settings model.
-The `bento-range-control`, `bento-size-list`, `bento-backup-manager`, and
-`bento-shortcut-list` elements remain Bento controller boundaries, but their
-visible controls are composed from Firefox `moz-slider`, `moz-input-number`,
-`moz-button`, `moz-input-search`, `moz-box-group`, and `moz-box-item`
-components. Bento owns value synchronization, persistence, filtering, backup
-operations, and stable occurrence identities; Firefox owns the rendered form,
-list, focus, action, and reorder affordances. Native component labels use
-Fluent `.label` attributes, while dynamic row text is assigned through the
-component properties. Chrome-bound title signals must not be written twice in
-one synchronous handler because the later title replaces the earlier one
-before the shell-frame title handler reads it.
-
-`bento-size-list` names its native `moz-box-group[type="reorderable-list"]`
-with a `label[is="moz-label"]`. Firefox supplies drag reordering and
-Ctrl+Shift+ArrowUp/ArrowDown keyboard reordering through that group. Each row
-contains a `moz-input-number` and one `moz-button[type="destructive"]` Remove
-action. Rows intentionally have no numbered `moz-box-item` label because their
-position changes when reordered; each number input keeps the unnumbered
-accessible name “Panel size.” Separate Move up and Move down buttons would
-duplicate the native list affordance and must not be added back.
-
-The main `setting-pane[data-category="paneBento"]` is substantially longer than
-Firefox's other native panes. Keep its native `setting-group` cards continuously
-rendered. Applying `content-visibility: auto` to these groups causes Gecko to
-show large blank regions while scrolling before the skipped cards are painted.
-Do not restore that containment optimization; scrolling must preserve section
-visibility even if all native groups participate in layout and paint.
 
 The About pane's `updates` setting group is hidden whenever
 `AppConstants.MOZ_UPDATER` is false, which is every Bento build while
@@ -325,8 +272,8 @@ confirm only the support group renders and that searching "update" shows no
 Updates text; see the "About Pane Updates Group" entry in
 `docs/firefox-core-touchpoints.md`.
 
-The native Keyboard shortcuts control is a read-only searchable catalogue. The
-Keyboard shortcuts group also writes
+The Keyboard shortcuts list of the Settings palette is a read-only searchable
+catalogue. The sidebar shortcut behavior row writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
 that value from the `BENTO_PANELS` title payload to decide whether Cmd/Ctrl+S
 targets the collapsed rail or the hidden sidebar state with edge-hover reveal.
@@ -476,8 +423,7 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - Settle what a restart cut off. A reservation is persisted before the effect
   runs and before the journal exists, so a restart can leave a `reserved` or
   `running` record of any kind (a reset, a delete, an import that never reached its
-  journal) that nothing would ever finish, and the rollback adapter treats such a
-  record as blocking. `SettingsDomainService` calls
+  journal) that nothing would ever finish. `SettingsDomainService` calls
   `OperationRegistry.settleInterrupted` once startup recovery has run; it fails them
   as `backend_restarted` and leaves the record a surviving journal still covers
   to `GraphOperationRecovery`.

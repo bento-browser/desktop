@@ -6,8 +6,7 @@
 // strings and arrays, safe integer ids, and URL schemes the action may open.
 // ACTION_FIELDS has one entry per Action type and one guard per field, both
 // enforced by the compiler, so a new action or field cannot ship without a
-// validator. Deeper domain checks stay with the stores (e.g. validateExportSchema
-// for backup/import, which owns the user-facing import error).
+// validator. Deeper domain checks stay with the stores.
 
 import {
   ALLOWED_URL_SCHEMES,
@@ -24,7 +23,6 @@ import {
 import { ADVANCED_KEY_TO_BROWSER_PRIVACY, ADVANCED_KEY_TO_PREF } from './privacy-levels';
 import type {
   Action,
-  BentoExportSchema,
   BentoSettings,
   PanelLayoutMoveTarget,
   PrivacyAdvancedKey,
@@ -155,10 +153,6 @@ const workspaceChanges = shape<Partial<Pick<Workspace, 'name' | 'themeId' | 'ico
 const settingsChanges: Guard<Partial<BentoSettings>> = (v): v is Partial<BentoSettings> =>
   isValidBentoSettingsPatch(v);
 
-// Only the envelope is checked here; backup/import runs validateExportSchema on
-// the payload and reports a user-facing import error.
-const exportData: Guard<BentoExportSchema> = (v): v is BentoExportSchema => isRecord(v);
-
 /** One entry per Action type; adding a type or field without a guard fails to compile. */
 const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = {
   ping: {},
@@ -254,18 +248,6 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'pinnedPanels/requestSnapshot': {},
   'savedPanels/save': { url: navUrl(), title, favIconUrl: optional(favIconUrl) },
   'savedPanels/requestSnapshot': {},
-  'backup/export': { workspaceIds: optional(list(id, MAX_ID_LIST)) },
-  'backup/import': {
-    data: exportData,
-    options: shape<{
-      importSettings: boolean;
-      importSavedPanels: boolean;
-      replaceExisting: boolean;
-    }>({ importSettings: bool, importSavedPanels: bool, replaceExisting: bool }),
-  },
-  'backup/requestList': {},
-  'backup/restore': { backupId: id },
-  'backup/delete': { backupId: id },
   'externalMerge/requestSources': { requestId: id },
   'externalMerge/merge': {
     sourceId: id,

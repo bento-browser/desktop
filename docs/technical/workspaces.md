@@ -1812,8 +1812,7 @@ workspaces.
   now `__workspaceFadeCleanupFrame`. A new switch, `clearWorkspaceFadeClasses` and
   the cancel all go through `cancelWorkspaceFadeCleanup`, which cancels the frame
   and the timer, and the frame callback clears any timer before it starts one.
-  The archived mount script carries the same code. Covered by
-  `scripts/mount-motion.test.mjs` and `scripts/rollback-motion.test.mjs`.
+  Covered by `scripts/mount-motion.test.mjs`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

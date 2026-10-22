@@ -614,21 +614,6 @@ export type Action =
    * as a `savedPanels/snapshot` event. Sent on shell entry mount so
    * the panel-trailer iframe paints its favicon row immediately. */
   | { type: 'savedPanels/requestSnapshot' }
-  /** Export workspace state as a JSON snapshot. When `workspaceIds` is
-   * omitted, all workspaces are exported. Tools collects the full state
-   * (including tab URLs via browser.tabs.get) and replies with
-   * `backup/exportReady`. */
-  | { type: 'backup/export'; workspaceIds?: string[] }
-  /** Import workspace state from a validated export schema. Additive:
-   * creates new workspaces with fresh UUIDs, never overwrites existing. */
-  | { type: 'backup/import'; data: BentoExportSchema; options: ImportOptions }
-  /** Request the list of stored auto-backups (metadata only). */
-  | { type: 'backup/requestList' }
-  /** Restore from a stored auto-backup by id. Same additive semantics
-   * as backup/import. */
-  | { type: 'backup/restore'; backupId: string }
-  /** Delete a stored auto-backup by id. */
-  | { type: 'backup/delete'; backupId: string }
   | { type: 'externalMerge/requestSources'; requestId: string }
   | {
       type: 'externalMerge/merge';
@@ -775,8 +760,7 @@ export interface ExternalMergeProgress {
   completedTabs: number;
   /**
    * Tabs that actually opened in Bento so far; what a cancelled import left behind.
-   * Every emit site sets it. It is optional only because the archived rollback tools
-   * (rollback/legacy-source), type-checked against this file, predate it.
+   * Every emit site sets it.
    */
   importedTabs?: number;
   currentWorkspaceName?: string;
@@ -930,10 +914,6 @@ export type Event =
    * inside the folder). The panel-trailer iframe mirrors this into its
    * Zustand store and re-renders the favicon row. */
   | { type: 'savedPanels/snapshot'; items: SavedPanelEntry[] }
-  | { type: 'backup/exportReady'; json: string; filename: string }
-  | { type: 'backup/importComplete'; summary: ImportSummary }
-  | { type: 'backup/importError'; message: string }
-  | { type: 'backup/list'; backups: BackupListEntry[] }
   | {
       type: 'externalMerge/sources';
       requestId: string;

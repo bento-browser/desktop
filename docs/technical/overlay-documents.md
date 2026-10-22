@@ -33,8 +33,8 @@ document its show. `OverlayName` and `useOverlayReadySignal` are kept equal to t
 mount's table by `scripts/overlay-manager.test.mjs`. The show is not a channel message:
 a frame script (`BentoSettingsPaletteShow`, loaded into the frame like the merge
 palette's) dispatches a `bento-settings-show` CustomEvent with a JSON detail
-(`{stage: 'protection' | null}`) on the document's window, so it reaches a private
-window's document too. The document returns to its first list (or the named one),
+(`{target: <root row id> | null}`) on the document's window, so it reaches a private
+window's document too. The document returns to its first list (or the one the target names),
 and refreshes its snapshot, on each show. Its titles to chrome: `BENTO_CLOSE_SETTINGS_PALETTE_<ts>`
 hides it; `BENTO_OPEN_MERGE_PALETTE_<ts>` opens the merge palette (which dismisses it);
 `BENTO_OPEN_FIREFOX_SEARCH_SETTINGS_<ts>` hides it and opens `about:preferences#search`

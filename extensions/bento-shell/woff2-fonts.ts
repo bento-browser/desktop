@@ -8,9 +8,8 @@
 // table byte-for-byte (the spec's "null transform" for glyf and loca), so it needs nothing
 // beyond Node's built-in Brotli; the optional glyf transform would save a few percent more.
 //
-// Shared by vite.config.ts and the archived rollback config
-// (rollback/legacy-source/extensions/bento-shell/vite.config.ts). List it before
-// panelNewtabCss, whose font check looks for the renamed file.
+// List it before panelNewtabCss in vite.config.ts, whose font check looks for the renamed
+// file.
 
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';

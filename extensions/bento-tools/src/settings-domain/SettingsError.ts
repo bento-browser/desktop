@@ -1,8 +1,5 @@
 import { SETTINGS_ERROR_RETRYABLE, type SettingsErrorCode } from '@shared/settings-client-protocol';
-import {
-  OperationConflictError,
-  OperationOwnershipError,
-} from '../native-preferences/OperationRegistry';
+import { OperationConflictError, OperationOwnershipError } from './OperationRegistry';
 
 /** A failed settings operation, named with the shared error catalogue. */
 export class SettingsError extends Error {

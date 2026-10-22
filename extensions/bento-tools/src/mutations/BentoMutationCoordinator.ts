@@ -17,7 +17,7 @@ export interface MutationContext {
 }
 
 /**
- * The one serialization boundary for native settings, backup and graph work.
+ * The one serialization boundary for settings, backup and graph work.
  *
  * Browser events may still arrive while an operation awaits Firefox APIs, so
  * callers that construct an immutable graph snapshot also compare the epoch

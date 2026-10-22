@@ -85,8 +85,8 @@ dispatches the same `ViewShowing`.
 
 Manual check: open the app menu from the footer in light and dark mode. "Bento
 Settings" sits directly above "Settings" with the same height, hover and focus
-ring; ArrowDown from Zoom reaches it, Enter or a click opens `about:settings#bento`
-and closes the menu; reopening several times and in a second window shows one
+ring; ArrowDown from Zoom reaches it, Enter or a click closes the menu and opens
+the Settings palette; reopening several times and in a second window shows one
 item.
 
 Bento does not reimplement Firefox's app menu in React. The native menu keeps

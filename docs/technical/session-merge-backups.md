@@ -15,15 +15,7 @@ places, and all of them end in the mount script's `showMergePalette()`
 - the "Merge browser session" row in the "Backup and data" group of the Settings
   palette (hidden in private windows like the other backup rows): its document
   writes `BENTO_OPEN_MERGE_PALETTE_<timestamp>` and the Settings frame's title handler
-  routes it to `showMergePalette()`, which dismisses the Settings palette; and the
-  button of the same name on the native Bento Settings page (patch 15, still
-  reachable by URL, hidden in private windows like the neighbouring backup buttons),
-  which dispatches a `BentoOpenMergePalette` `CustomEvent` on
-  `window.browsingContext.topChromeWindow`, read at click time because a Settings
-  tab keeps its document when moved to another window. The mount script of that
-  window listens for the event, so the palette opens over the window that holds
-  the tab. No observer is registered, so there is nothing to remove on window
-  close;
+  routes it to `showMergePalette()`, which dismisses the Settings palette;
 - the sidebar merge progress card (see "Sidebar progress card"), which signals the
   same `BENTO_OPEN_MERGE_PALETTE_<timestamp>` title from the shell frame to
   reopen the progress view. The footer has no merge button, idle or running.
@@ -56,9 +48,8 @@ normalized session) for documents that never listed the sources. Once
 events carry the real workspace and tab totals, processed counts
 (`completedTabs`, every tab the import has looked at, including ones it skipped or
 that failed), `importedTabs` (the tabs it actually opened, the executor's
-`summary.tabsOpened` at that moment; typed optional only because the archived rollback
-tools, which `pnpm run rollback:check` type-checks against the live shared protocol,
-predate it, and the shell then falls back to `completedTabs`), the current workspace
+`summary.tabsOpened` at that moment; typed optional, and the shell falls back to
+`completedTabs` when it is absent), the current workspace
 name, and optional workspace/site activity. The shell store accepts
 only progress for its active operation, retains the latest progress snapshot,
 and keeps the latest 100 activity entries. The overlay switches its Mux UI
@@ -311,7 +302,7 @@ only supported navigation URL schemes, and rejects unknown or out-of-range
 settings. `SettingsStore` also rejects invalid stored or runtime settings
 patches so import validation cannot be bypassed through another action path.
 Every imported normal, panel, and fallback tab is created explicitly in the
-authenticated Settings session's target window. Snapshot collection filters
+Settings caller's window. Snapshot collection filters
 incognito tabs before building normal-tab, panel-layout, and pinned-panel
 records. New automatic backups are tagged `private-filtered-v1`; untagged or
 unrecognized version-one entries are surfaced as `legacy-unknown`.
@@ -333,18 +324,16 @@ across profiles or sessions. Do not treat `panelLayout` alone as the complete
 layout snapshot; workspace-level main width and strip scroll are separate
 `PanelStore` state and must travel with the backup payload.
 
-The native `#bentoBackups` subpane owns export, validation/import, restore, and
-delete affordances. File selection stays in privileged Firefox UI, import files
-are capped at 10 MiB, and destructive/reset actions require native confirmation.
-Private sessions reject backup operations before storage lookup.
+The Settings palette's Backup and data stage owns export, validation/import,
+restore, and delete affordances. Import files are capped at 10 MiB, and
+destructive and reset actions require an in-palette confirmation. Private
+sessions reject backup operations before storage lookup.
 
-Native and overlay backup operations run in `SettingsDomainService` (see
-[privacy-search.md](privacy-search.md)); the ordinary `backup/*` shell-port
-handlers remain until the native pane is removed, but nothing dispatches them and
-they lack the coordinator, size bounds, operation records and private-caller
-check. The service enforces the contract bounds (`backupFileBytes` for a file or
-an export in UTF-8 bytes, `workspaceCount` and `sourceIdCodeUnits` for the ids
-of a partial export) and answers `payload_too_large`, `schema_invalid` and
+Backup operations run in `SettingsDomainService` (see
+[privacy-search.md](privacy-search.md)); there are no ordinary `backup/*`
+shell-port actions or events. The service enforces its bounds (`backupFileBytes` for a file or
+an export in UTF-8 bytes, `workspaceCount` and `idCodeUnits` for the ids
+of a partial export, all in `_shared/settings-rules.ts`) and answers `payload_too_large`, `schema_invalid` and
 `token_invalid`. A validation token is bound to the document and window that
 previewed the file, expires after five minutes, is single use, and a document
 keeps one at a time (a new preview replaces its earlier token; expired tokens
@@ -360,32 +349,6 @@ refused with `graph_reserved`. Regression checks: restore a backup, delete it, a
 retry the same operation id (it replays); import a file whose settings carry a
 privacy level while the privacy API is failing (the operation is `partial`);
 kill the background mid-import and confirm the next import starts.
-
-Native Settings observer envelopes cross from Firefox chrome into the tools
-experiment, so the experiment normalizes the data-only envelope into its own
-realm before applying strict plain-object validation. Privileged Settings pages
-can reject `sessionStorage` writes; in that case the resumable session tuple is
-stored as serialized data on the owning tab's browser element, which preserves
-per-tab reload identity without sharing it with another Settings tab. A resumed
-hello rotates the token and resets that new document generation's replay
-sequence before authenticated requests begin. The tools service binds each
-session to the browser window it was issued for and answers a request from
-another window with `invalid_session`. A Settings tab torn out or dragged to
-another window keeps its document and the session it holds in memory, but the
-document's top chrome window changes, so every later request was refused and the
-page never recovered. `BentoNativeModel.ensureSession` therefore remembers the
-window its live session was issued in (`hostChromeWindowId`) and says hello
-again, before sending, whenever the document's window differs; the service
-answers a hello that names another window with a fresh session for the same
-client, so operations the client owns stay reachable. A hello answers for the
-window it was sent from, and the tab can move while one is in flight (requests
-share the pending hello), so `ensureSession` checks the window again after each
-hello and repeats it, up to `MAX_HELLO_ATTEMPTS`, before it sends anything. When
-the attempts run out it rejects with `invalid_session` instead of sending a
-token the service would refuse. Do not reuse a session across windows by
-relaxing the service's window check. `scripts/native-preferences-model.test.mjs`
-runs the model extracted from patch 15 against a fake service with that window
-binding.
 
 When `replaceExisting` is enabled, import must create the replacement workspaces
 and tabs before removing old workspace tabs. Removing old tabs first can close

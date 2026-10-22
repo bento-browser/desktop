@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ADVANCED_PRIVACY_RULES, EDITABLE_SETTING_RULES } from '@shared/settings-rules';
 import {
   ADVANCED_PRIVACY_SPECS,
   BOOLEAN_SPECS,
@@ -13,59 +12,41 @@ import {
   presetValues,
 } from './settingsCatalog';
 
-interface ContractSetting {
-  type: string;
-  min?: number;
-  max?: number;
-  maxItems?: number;
-  maxLength?: number;
-}
+const editable: Record<
+  string,
+  (typeof EDITABLE_SETTING_RULES)[keyof typeof EDITABLE_SETTING_RULES]
+> = EDITABLE_SETTING_RULES;
 
-const contract = JSON.parse(
-  readFileSync(
-    fileURLToPath(new URL('../../../../_shared/native-preferences-contract.json', import.meta.url)),
-    'utf8',
-  ),
-) as {
-  editableSettings: Record<string, ContractSetting>;
-  advancedPrivacy: Record<string, ContractSetting>;
-};
-
-describe('catalog against the tools contract', () => {
-  it('has the contract bounds for every number', () => {
+describe('catalog against the tools rules', () => {
+  it('has the rule bounds for every number', () => {
     for (const spec of Object.values(NUMBER_SPECS)) {
-      const bounds = contract.editableSettings[spec.key];
-      expect(bounds, spec.key).toMatchObject({ type: 'integer', min: spec.min, max: spec.max });
+      const rule = editable[spec.key];
+      expect(rule, spec.key).toMatchObject({ type: 'integer', min: spec.min, max: spec.max });
     }
   });
 
-  it('covers every integer, boolean and enum setting of the contract', () => {
-    const integers = Object.entries(contract.editableSettings)
-      .filter(([, setting]) => setting.type === 'integer')
-      .map(([key]) => key)
-      .sort();
-    expect(Object.keys(NUMBER_SPECS).sort()).toEqual(integers);
-    const booleans = Object.entries(contract.editableSettings)
-      .filter(([, setting]) => setting.type === 'boolean')
-      .map(([key]) => key)
-      .sort();
-    expect(Object.keys(BOOLEAN_SPECS).sort()).toEqual(booleans);
+  it('covers every integer and boolean setting of the rules', () => {
+    const keysOf = (type: string) =>
+      Object.entries(editable)
+        .filter(([, rule]) => rule.type === type)
+        .map(([key]) => key)
+        .sort();
+    expect(Object.keys(NUMBER_SPECS).sort()).toEqual(keysOf('integer'));
+    expect(Object.keys(BOOLEAN_SPECS).sort()).toEqual(keysOf('boolean'));
   });
 
   it('matches the custom size and name limits', () => {
-    expect(contract.editableSettings.customPanelSizes).toMatchObject({
+    expect(EDITABLE_SETTING_RULES.customPanelSizes).toMatchObject({
       min: PANEL_SIZE_LIMITS.min,
       max: PANEL_SIZE_LIMITS.max,
       maxItems: PANEL_SIZE_LIMITS.maxItems,
     });
-    expect(contract.editableSettings.defaultWorkspaceName?.maxLength).toBe(
-      MAX_WORKSPACE_NAME_LENGTH,
-    );
+    expect(EDITABLE_SETTING_RULES.defaultWorkspaceName.maxLength).toBe(MAX_WORKSPACE_NAME_LENGTH);
   });
 
-  it('lists every advanced privacy key of the contract once', () => {
+  it('lists every advanced privacy key of the rules once', () => {
     expect(ADVANCED_PRIVACY_SPECS.map((spec) => spec.key).sort()).toEqual(
-      Object.keys(contract.advancedPrivacy).sort(),
+      Object.keys(ADVANCED_PRIVACY_RULES).sort(),
     );
   });
 

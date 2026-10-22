@@ -437,10 +437,9 @@ Pitfalls:
   three values from the unsubstituted saved settings in a private document. A
   background reload (Alt+Shift+R in a dev build) drops the per-window entries; the
   windows start again from the saved values.
-- The native Settings page changes the saved colour mode through the native
-  preferences bridge, not through `settings/update`, so it still changes the saved
-  value (and so the regular windows) even when opened from a private window; an open
-  private window keeps its own.
+- The Settings palette's colour mode row in a private window writes only that
+  window's own mode (the domain drops the window-local keys of a private
+  `settings/update`); the saved value, and so the regular windows, stay as they are.
 
 Manual verification: open a private window, then in the Browser Toolbox Console
 import `resource:///actors/BentoShellBusParent.sys.mjs` and attach a listener with

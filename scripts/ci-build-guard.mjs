@@ -21,12 +21,6 @@ const nativeCommands = [
     pattern: /\b(?:build-bento|build-release|mach-raw|sync-firefox-upstream)\.sh\b/,
   },
   {
-    // The driver defaults to `build`; `check` is its only non-native action. The
-    // variant and action must share the invocation's line.
-    description: 'a rollback variant build',
-    pattern: /\bbuild-rollback-variant\.mjs(?![ \t]+\S+[ \t]+check(?![\w-]))/,
-  },
-  {
     description: 'a mach command',
     pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
   },

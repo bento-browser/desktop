@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import process from 'node:process';
 
 import { isReleaseBuild } from '../../scripts/build-mode.mjs';
 
@@ -150,28 +151,14 @@ export function muxSourcePlugin(mux, npmPackageJson) {
   };
 }
 
-/** Stamp the rollback script gives the archived shell, whose Vite config cannot stamp itself. */
-export function rollbackMuxStamp(variant) {
-  return { source: 'rollback', variant };
-}
-
 /**
  * Throws unless `text` (the contents of a packaged `muxui-source.json`, or
- * undefined when absent) allows shipping. Without a rollback variant only the
- * published npm package is allowed; with one, only that variant's own stamp.
+ * undefined when absent) allows shipping: only the published npm package does.
  * `where` names the inspected location for the error message.
  */
-export function assertMuxSourceStamp(text, { where, variant, variants }) {
-  if (variant !== undefined && !variants.includes(variant)) {
-    throw new Error(
-      `BENTO_RELEASE_VARIANT "${variant}" is not a rollback variant (${variants.join(', ')}).`,
-    );
-  }
-  const expected = variant === undefined ? 'the published npm @muxui/react' : `${variant}`;
+export function assertMuxSourceStamp(text, { where }) {
   const fix =
-    variant === undefined
-      ? 'Unset MUXUI_LOCAL, then rebuild (pnpm run ext:build), re-import (pnpm run import), and rebuild the native resources (pnpm run build) before packaging.'
-      : 'Rebuild the variant (pnpm run rollback:build-*) so its archived shell is imported and built natively.';
+    'Unset MUXUI_LOCAL, then rebuild (pnpm run ext:build), re-import (pnpm run import), and rebuild the native resources (pnpm run build) before packaging.';
   let stamp;
   if (text === undefined) {
     throw new Error(`${where} is missing, so the shell's Mux source is unknown. ${fix}`);
@@ -181,13 +168,9 @@ export function assertMuxSourceStamp(text, { where, variant, variants }) {
   } catch {
     throw new Error(`${where} is not valid JSON. ${fix}`);
   }
-  const allowed =
-    variant === undefined
-      ? stamp?.source === 'npm'
-      : stamp?.source === 'rollback' && stamp.variant === variant;
-  if (!allowed) {
+  if (stamp?.source !== 'npm') {
     throw new Error(
-      `${where} says the shell was built from ${JSON.stringify(stamp)}; expected ${expected}. ${fix}`,
+      `${where} says the shell was built from ${JSON.stringify(stamp)}; expected the published npm @muxui/react. ${fix}`,
     );
   }
 }

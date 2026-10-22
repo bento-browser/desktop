@@ -2341,8 +2341,9 @@
     return host.style.display !== 'none';
   }
 
-  // `stage` is an optional deep link the document understands ('protection' for the privacy link).
-  function showSettingsPalette(stage) {
+  // `target` is an optional root row id of the Settings palette ('privacy:level',
+  // 'setting:panelCornerRadiusPx'): the document opens there, and on its first list for an unknown id.
+  function showSettingsPalette(target) {
     const host = document.getElementById('bento-settings-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showSettingsPalette: host missing');
@@ -2359,7 +2360,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       // The show goes out with the reveal, to a document that is listening.
-      dispatchSettingsPaletteShow(stage);
+      dispatchSettingsPaletteShow(target);
       const frame = document.getElementById('bento-settings-palette-frame');
       setTimeout(() => frame?.focus(), 0);
     });
@@ -2372,6 +2373,14 @@
     if (!host) return;
     host.style.opacity = '0';
     hideOverlayHostAfterFade(host);
+  }
+
+  // A command palette result: BENTO_OPEN_SETTING:<id>:<ts>. The id comes from a page's title, so
+  // it is checked before it goes on; the Settings document ignores one it does not know.
+  function handleSettingsTargetTitle(title) {
+    const rest = title.slice(SETTINGS_TARGET_OPEN_PREFIX.length);
+    const id = rest.slice(0, Math.max(rest.lastIndexOf(':'), 0));
+    showSettingsPalette(SETTINGS_TARGET_ID_PATTERN.test(id) ? id : undefined);
   }
 
   // Firefox's own search settings, for adding engines Bento does not list. A Settings tab that
@@ -2456,11 +2465,6 @@
       showMergePalette();
     }
   }
-
-  // The native Bento Settings page (patch 15) asks for the merge palette by
-  // dispatching this event on its top chrome window, so it opens over the window
-  // that holds the Settings tab, wherever the tab has been moved.
-  window.addEventListener('BentoOpenMergePalette', () => showMergePalette());
 
   // ─── Floating address/search bar overlay ──────────────────────────────
 
@@ -3770,6 +3774,10 @@
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_';
   const SETTINGS_PRIVACY_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_PRIVACY_';
+  // BENTO_OPEN_SETTING:<root row id of the Settings palette>:<ts>, from a command palette result.
+  // It does not start with SETTINGS_OPEN_PREFIX (no 'S' after 'SETTING'), so route order is free.
+  const SETTINGS_TARGET_OPEN_PREFIX = 'BENTO_OPEN_SETTING:';
+  const SETTINGS_TARGET_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
   const SETTINGS_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_SETTINGS_PALETTE';
   const FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_FIREFOX_SEARCH_SETTINGS';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
@@ -9365,14 +9373,14 @@
     encodeURIComponent(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC);
 
   // The Settings palette document stays loaded while hidden, so chrome tells it when it is shown (and
-  // which stage a deep link wants) with a DOM event, not the bus: this also reaches a private window.
+  // which setting a link wants) with a DOM event, not the bus: this also reaches a private window.
   const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoSettingsPaletteShow", function(msg) {' +
     '  try {' +
-    '    var stage = msg.data && typeof msg.data.stage === "string" ? msg.data.stage : null;' +
+    '    var target = msg.data && typeof msg.data.target === "string" ? msg.data.target : null;' +
     '    content.dispatchEvent(new content.CustomEvent("bento-settings-show", {' +
-    '      detail: JSON.stringify({ stage: stage })' +
+    '      detail: JSON.stringify({ target: target })' +
     '    }));' +
     '  } catch (e) {}' +
     '});';
@@ -9569,24 +9577,24 @@
     }
   }
 
-  function dispatchSettingsPaletteShow(stage, attempt = 0) {
+  function dispatchSettingsPaletteShow(target, attempt = 0) {
     const frame = document.getElementById('bento-settings-palette-frame');
     if (!frame) return false;
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
-        if (attempt < 10) setTimeout(() => dispatchSettingsPaletteShow(stage, attempt + 1), 100);
+        if (attempt < 10) setTimeout(() => dispatchSettingsPaletteShow(target, attempt + 1), 100);
         return false;
       }
       if (!frame._bentoSettingsPaletteShowScriptLoaded && typeof mm.loadFrameScript === 'function') {
         mm.loadFrameScript(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL, true);
         frame._bentoSettingsPaletteShowScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoSettingsPaletteShow', { stage: stage || null });
+      mm.sendAsyncMessage('BentoSettingsPaletteShow', { target: target || null });
       return true;
     } catch (err) {
       if (attempt < 10) {
-        setTimeout(() => dispatchSettingsPaletteShow(stage, attempt + 1), 100);
+        setTimeout(() => dispatchSettingsPaletteShow(target, attempt + 1), 100);
       } else {
         console.warn('[bento-shell-mount] settings palette show dispatch failed:', err);
       }
@@ -17284,14 +17292,15 @@
   function attachPaletteCloseListener() {
     registerBentoShellDocument();
 
-    // Palette: CLOSE hides it; the two SETTINGS prefixes open the Settings palette (the privacy one
-    // on the protection level stage), which dismisses it; OPEN_MERGE_PALETTE opens the merge
-    // palette, which dismisses it too.
+    // Palette: CLOSE hides it; the SETTINGS prefixes open the Settings palette (the privacy one on
+    // the protection level list, a command palette result at its setting), which dismisses it;
+    // OPEN_MERGE_PALETTE opens the merge palette, which dismisses it too.
     const handlePaletteFrameTitle = (title) => {
       if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
-      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) showSettingsPalette('protection');
+      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) showSettingsPalette('privacy:level');
       else if (title.startsWith(SETTINGS_OPEN_PREFIX)) showSettingsPalette();
+      else if (title.startsWith(SETTINGS_TARGET_OPEN_PREFIX)) handleSettingsTargetTitle(title);
     };
 
     // Menu overlay: SELECT routes the chosen itemId back to the chrome

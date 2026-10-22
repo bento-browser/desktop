@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BentoExportSchema } from '@shared/protocol';
-import { OperationRegistry } from '../native-preferences/OperationRegistry';
+import { OperationRegistry } from '../settings-domain/OperationRegistry';
 import { GraphOperationJournal, GraphOperationRecovery } from './GraphOperationJournal';
 
 const OWNER = 'owner';
@@ -62,8 +62,6 @@ describe('GraphOperationRecovery', () => {
       applySavedPanels: false,
       ownerClientInstanceId: OWNER,
       targetWindowId: 1,
-      acceptedParentSessionId: 'session',
-      acceptedParentBootId: 'boot',
       sourceHash: 'hash',
       sourceJson: options.json ?? JSON.stringify(exportFile()),
       oldWorkspaceIds: [],

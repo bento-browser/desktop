@@ -41,9 +41,19 @@ and `showMergePalette()` dismisses the command palette itself. The Settings
 sentinels open the Settings palette overlay (`showSettingsPalette()`, which dismisses
 the command palette; the privacy one opens on the protection level list), described in
 [overlay-documents.md](overlay-documents.md) and
-[privacy-search.md](privacy-search.md#settings-palette-shell-side). Opening any of
-the command palette, workspace palette, merge palette or Settings palette dismisses
-the others. See [session-merge-backups.md](session-merge-backups.md) for the other
+[privacy-search.md](privacy-search.md#settings-palette-shell-side). A
+Settings group appears in the results only while the query is not empty: the command
+palette holds a static index of the Settings palette's root rows
+(`CommandPalette/settingsIndex.ts`: id, label, group and search words, no values and
+no settings state, because the palette chunk is size-ratcheted; `settingsIndex.test.ts`
+keeps it equal to `rootRows`). Choosing one writes `BENTO_OPEN_SETTING:<row id>:<ts>`;
+`handleSettingsTargetTitle` checks the id against a pattern and opens the Settings
+palette with it as the show's `target`, and the Settings document resolves it
+(`SettingsPalette/targets.ts`): a number, choice or name setting opens its own list, the
+privacy rows and shortcuts their lists, and a switch or the search-engine link the first
+list with the label typed in. An id the document does not know opens the first list.
+Opening any of the command palette, workspace palette, merge palette or Settings palette
+dismisses the others. See [session-merge-backups.md](session-merge-backups.md) for the other
 open paths.
 
 ## Sidebar Tab And Panel Search

@@ -21,10 +21,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 //   - shell CSS (extensions/bento-shell/src, minus the generated theme/presets);
 //   - hand-written chrome CSS (src/browser/base/content, minus the generated
 //     bento-chrome-tokens.css and bento-chrome-themes/);
-//   - rollback/legacy-source CSS;
-//   - inline CSS in scripts: bento-shell-mount.js, the shell's .ts/.tsx and the archived
-//     rollback .js/.ts/.tsx, archived mount strings included (tests excluded). A string
-//     literal fails when it holds a declaration of the properties above that breaks the
+//   - inline CSS in scripts: bento-shell-mount.js and the shell's .ts/.tsx (tests
+//     excluded). A string literal fails when it holds a declaration of the properties above that breaks the
 //     rule (cssText and other CSS-like strings), an easing function, a retired
 //     --bento-duration-*, --bento-easing-* token, or a raw time next to a
 //     --muxui-semantic-motion-* token, and so does the value of a transition or animation
@@ -431,10 +429,8 @@ export function scannedFiles(root = REPO_ROOT) {
         (file) => !file.endsWith('bento-chrome-tokens.css'),
       ),
     ],
-    ['css', listFiles(resolve(root, 'rollback/legacy-source'), css)],
     ['script', listFiles(resolve(root, 'extensions/bento-shell/src'), typescript)],
     ['script', [resolve(chromeDir, 'bento-shell-mount.js')]],
-    ['script', listFiles(resolve(root, 'rollback/legacy-source'), script)],
   ];
   return sets.flatMap(([kind, files]) =>
     files.map((file) => ({ file: toPosix(relative(root, file)), kind })),

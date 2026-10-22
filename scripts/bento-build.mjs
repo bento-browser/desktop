@@ -1916,13 +1916,11 @@ async function commandPackage(ctx) {
   if (updatesEnabled(config)) assertUpdaterReady(ctx, config);
   const objDir = requireConfiguredObjDir(ctx, 'package');
   const objDist = path.join(objDir, 'dist');
-  // Releases ship only the published npm Mux, or a rollback variant's own shell
-  // (docs/build-tooling.md, "Local Mux UI"). Packaging copies the shell from the
-  // objdir, not from the imported source, so the stamp is read there. The
-  // packager's input (dist/bin) is checked first only to fail before the long
-  // mach package; the staged application below is the authoritative check.
-  const variant = process.env.BENTO_RELEASE_VARIANT || undefined;
-  assertShellMuxSource(path.join(objDist, 'bin', 'browser'), variant);
+  // Releases ship only the published npm Mux (docs/build-tooling.md, "Local Mux UI").
+  // Packaging copies the shell from the objdir, not from the imported source, so the
+  // stamp is read there. The packager's input (dist/bin) is checked first only to fail
+  // before the long mach package; the staged application below is the authoritative check.
+  assertShellMuxSource(path.join(objDist, 'bin', 'browser'));
   const updates = builtUpdaterState(ctx, config, objDir);
   // Likewise the dev-only reload command: a release build over an object directory an
   // earlier dev build filled can still hold it, even though the staged sources are clean.
@@ -1931,7 +1929,7 @@ async function commandPackage(ctx) {
   await run('bash', ['scripts/mach-raw.sh', 'package-multi-locale', '--locales', ...readLocales(ctx, config)], { cwd: ctx.root });
   const application = packagedApplication(objDist, config);
   if (!application) fail(`package: packaged ${config.binaryName} application is missing under ${objDist}`);
-  assertShellMuxSource(stagedBrowserDir(application), variant);
+  assertShellMuxSource(stagedBrowserDir(application));
   copyDirectoryFiles(ctx, objDist);
   const build = applicationIni(application);
   const manifest = {

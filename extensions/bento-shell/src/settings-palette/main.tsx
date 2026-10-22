@@ -65,7 +65,7 @@ function SettingsPaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const view = useStore(settings.store, (state) => state.view);
-  const { openToken, initialStages } = useShowSignal(settings.actions.refresh);
+  const { openToken, stages, query } = useShowSignal(settings.actions.refresh);
   // After the effect that listens for the show: chrome reveals the overlay on this announcement.
   useOverlayReadySignal('settings-palette');
   return (
@@ -73,7 +73,8 @@ function SettingsPaletteApp() {
       view={view}
       actions={settings.actions}
       onClose={close}
-      initialStages={initialStages}
+      initialStages={stages}
+      initialQuery={query}
       openToken={openToken}
     />
   );

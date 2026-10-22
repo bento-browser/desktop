@@ -2,10 +2,10 @@ import type { BentoSettings } from '@shared/protocol';
 import {
   failComponents,
   finishComponents,
-  type NativeOperationComponent,
-  type NativeOperationKind,
+  type DurableOperationComponent,
+  type DurableOperationKind,
   type OperationRegistry,
-} from '../native-preferences/OperationRegistry';
+} from '../settings-domain/OperationRegistry';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { TabRegistry } from '../tabs/TabRegistry';
@@ -40,14 +40,12 @@ export type GraphOperationPhase =
 export interface GraphOperationJournalRecord {
   version: 1;
   operationId: string;
-  kind: Extract<NativeOperationKind, 'backup/importValidated' | 'backup/restore'>;
+  kind: Extract<DurableOperationKind, 'backup/importValidated' | 'backup/restore'>;
   mode: 'additive' | 'replace';
   applySettings: boolean;
   applySavedPanels: boolean;
   ownerClientInstanceId: string;
   targetWindowId: number;
-  acceptedParentSessionId: string;
-  acceptedParentBootId: string;
   sourceHash: string;
   sourceCacheId: string;
   phase: GraphOperationPhase;
@@ -118,14 +116,12 @@ export class GraphOperationJournal {
 
   async begin(input: {
     operationId: string;
-    kind: Extract<NativeOperationKind, 'backup/importValidated' | 'backup/restore'>;
+    kind: Extract<DurableOperationKind, 'backup/importValidated' | 'backup/restore'>;
     mode: 'additive' | 'replace';
     applySettings: boolean;
     applySavedPanels: boolean;
     ownerClientInstanceId: string;
     targetWindowId: number;
-    acceptedParentSessionId: string;
-    acceptedParentBootId: string;
     sourceHash: string;
     sourceJson: string;
     oldWorkspaceIds: string[];
@@ -145,8 +141,6 @@ export class GraphOperationJournal {
       applySavedPanels: input.applySavedPanels,
       ownerClientInstanceId: input.ownerClientInstanceId,
       targetWindowId: input.targetWindowId,
-      acceptedParentSessionId: input.acceptedParentSessionId,
-      acceptedParentBootId: input.acceptedParentBootId,
       sourceHash: input.sourceHash,
       sourceCacheId,
       phase: 'prepared',
@@ -398,7 +392,7 @@ export class GraphOperationRecovery {
       const source = sourceJson ? validateExportSchema(JSON.parse(sourceJson)) : null;
       if (source) {
         // A live effect that does not stick (privacy, search) leaves the operation partial.
-        const failed: NativeOperationComponent[] = [];
+        const failed: DurableOperationComponent[] = [];
         if (record.applySavedPanels) {
           await this.#journal.update(record.operationId, { phase: 'applying-saved-panels' });
           const existing = new Set(this.#savedPanels.list().map((entry) => entry.url));

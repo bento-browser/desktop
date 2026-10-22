@@ -57,14 +57,14 @@ earlier choices can be revisited. The steps are:
 5. Privacy: Standard, Enhanced, and Hardened protection levels, each with a
    one-line summary. Standard is marked Recommended and is the default for fresh
    profiles. The choice is applied immediately, and a note under the levels
-   says "Protection levels can be fine-tuned in the Settings".
+   says "Protection levels can be fine-tuned in Settings".
 6. Search: Firefox's currently visible search engines, listed in two columns and
    scrolling inside the list when there are many. Each engine shows its icon
    (a search glyph when it has none). DuckDuckGo is already the default, and so
    preselected, on a fresh profile; a profile that has finished onboarding keeps
    whatever engine it has. Engines Bento recognises as privacy-oriented carry a
    Private tag. The choice is applied immediately, and a note under the list says
-   "Add more search engines in the Settings".
+   "Add more search engines in Firefox's search settings".
 7. Tour: a short introduction to workspaces, panels, and the command palette,
    each with a free-standing 3D illustration, one line of explanation, and its
    keyboard shortcut: switching workspaces, cycling between panels, and opening
@@ -413,7 +413,12 @@ active states so mouse and keyboard navigation both have visible feedback. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an
-icon-only clear affordance.
+icon-only clear affordance. While you type, a Settings group lists the settings
+that match by name (not in the empty palette, and without their values);
+choosing one opens the Settings palette at that setting: on its own list for a
+number, choice, name, search engine, privacy or shortcuts setting, and on the
+first list with its name typed in for a switch. A private window's results leave
+out the backup settings.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
 at the top of the sidebar above the tab list. It mirrors the active main
@@ -749,7 +754,8 @@ devices.
 Bento Settings is a quick-pick palette over the window, not a page. The app menu's
 "Bento Settings" item, the command palette's Open Settings command, and the
 onboarding dialog's Open Settings button open it; the command palette's
-Privacy command opens it on the protection level list. It is a searchable list
+Privacy command opens it on the protection level list, and a matching setting
+in the command palette's results opens it at that setting. It is a searchable list
 of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
 Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
 current value on each row. Enter flips a switch or opens a short list of
@@ -787,8 +793,8 @@ palette is closed. A private window's Settings palette has no backup, merge or
 reset rows; its Bento color mode is that window's own and is not saved, and any
 other setting changed there is saved for the whole profile as usual.
 
-Firefox's own Settings page keeps a Bento category at `about:preferences#bento`
-and `about:settings#bento` for now; the Settings palette is the product surface.
+Firefox's own Settings page (`about:preferences`) has no Bento category; the
+Settings palette is the only place Bento's settings live.
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.
