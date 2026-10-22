@@ -20,4 +20,3 @@ contributor-facing guides.
 - [Firefox core touchpoints](firefox-core-touchpoints.md)
 - [Firefox build tooling](build-tooling.md)
 - [Privacy defaults](privacy.md)
-- [Settings consolidation rollback](settings-consolidation-rollback.md)

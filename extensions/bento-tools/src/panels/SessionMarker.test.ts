@@ -75,11 +75,4 @@ describe('panel session markers', () => {
 
     expect(browser.sessions.setTabValue).toHaveBeenCalledWith(42, 'bento.isDevtoolsPanel', '1');
   });
-
-  // The archived rollback source calls it with the tab alone and has no private windows.
-  it('keeps the one-argument call of the archived rollback source marking the panel', async () => {
-    await setDevtoolsPanelMarker(42);
-
-    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(42, 'bento.isDevtoolsPanel', '1');
-  });
 });

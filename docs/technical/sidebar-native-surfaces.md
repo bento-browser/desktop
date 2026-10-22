@@ -66,9 +66,8 @@ The sidebar footer has no Settings button. Bento Settings is reached from the
 native app menu: `installBentoSettingsAppMenuItem()` in the mount script adds a
 `toolbarbutton.subviewbutton` (id `bento-appmenu-settings-button`, fixed label
 "Bento Settings", like the other Bento-added menu items; no shortcut) directly
-above `#appMenu-settings-button`. Its `command` calls `openBentoSettings()`, which
-opens `about:settings#bento` or focuses an existing Settings tab in that window
-and switches it to `#bento`. Bento does not hide the panel: Firefox's panel close
+above `#appMenu-settings-button`. Its `command` calls `showSettingsPalette()`, which
+opens the Settings palette overlay over that window (overlay-documents.md). Bento does not hide the panel: Firefox's panel close
 listeners (`CustomizableUI.maybeAutoHidePanel`) close it after a click or Enter,
 as they do for Firefox's own Settings item. The command palette's Settings
 command is separate and still sends `BENTO_OPEN_SETTINGS_`.
@@ -86,8 +85,8 @@ dispatches the same `ViewShowing`.
 
 Manual check: open the app menu from the footer in light and dark mode. "Bento
 Settings" sits directly above "Settings" with the same height, hover and focus
-ring; ArrowDown from Zoom reaches it, Enter or a click opens `about:settings#bento`
-and closes the menu; reopening several times and in a second window shows one
+ring; ArrowDown from Zoom reaches it, Enter or a click closes the menu and opens
+the Settings palette; reopening several times and in a second window shows one
 item.
 
 Bento does not reimplement Firefox's app menu in React. The native menu keeps

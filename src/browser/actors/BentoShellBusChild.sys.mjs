@@ -12,7 +12,10 @@
 // The parent decides whether the document is a bento-shell frame and who it
 // belongs to; this side only moves strings.
 
-const MAX_MESSAGE_CHARS = 8 * 1024 * 1024;
+// Limit on the serialized message, so JSON escaping counts: a 10 MiB backup file import is two
+// times that at worst (quotes and newlines become two characters). Keep equal to
+// RELAY_UP_MAX_CHARS in extensions/bento-shell/src/settings-palette/relayLimit.ts.
+const MAX_MESSAGE_CHARS = 22 * 1024 * 1024;
 
 export class BentoShellBusChild extends JSWindowActorChild {
   handleEvent(event) {

@@ -596,6 +596,7 @@ test('window startup loads the shell and the eager overlays, not the others', ()
     'Palette',
     'WorkspacePalette',
     'MergePalette',
+    'SettingsPalette',
     'Addrbar',
     'Confirm',
     'EditWorkspace',

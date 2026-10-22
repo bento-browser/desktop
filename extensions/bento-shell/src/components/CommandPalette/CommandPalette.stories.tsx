@@ -37,3 +37,13 @@ export const EmptyState = () => {
 };
 
 EmptyState.storyName = 'No tabs, no workspaces (only static commands)';
+
+export const SettingsResults = () => {
+  useEffect(() => {
+    seedMany();
+    seedTabs(8, 0);
+  }, []);
+  return <CommandPalette onClose={noop} initialQuery="radius" />;
+};
+
+SettingsResults.storyName = 'Searching settings (Settings group, labels only)';

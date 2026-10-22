@@ -64,12 +64,8 @@ export async function clearPanelMarker(tabId: number): Promise<void> {
   }
 }
 
-/**
- * `workspaceId` is omitted only by the archived rollback source (`rollback/legacy-source`),
- * which has no private windows and calls this with the tab alone; every live caller passes it.
- */
-export async function setDevtoolsPanelMarker(tabId: number, workspaceId?: string): Promise<void> {
-  if (workspaceId !== undefined && isEphemeralWorkspaceId(workspaceId)) return;
+export async function setDevtoolsPanelMarker(tabId: number, workspaceId: string): Promise<void> {
+  if (isEphemeralWorkspaceId(workspaceId)) return;
   try {
     await browser.sessions.setTabValue(tabId, DEVTOOLS_PANEL_SESSION_KEY, '1');
   } catch (err) {

@@ -212,6 +212,7 @@ else
   copy_content_actor BentoKeyParent.sys.mjs
   copy_content_actor BentoShellBusChild.sys.mjs
   copy_content_actor BentoShellBusParent.sys.mjs
+  copy_content_actor BentoShellDocumentRegistry.sys.mjs
 fi
 
 echo "sync-symlinks: finished"

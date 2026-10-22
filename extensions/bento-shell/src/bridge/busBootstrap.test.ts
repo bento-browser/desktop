@@ -319,7 +319,6 @@ async function joinDocument({
   const { usePanelsStore } = await import('../state/panels');
   const { useSettingsStore } = await import('../state/settings');
   const { useWorkspacesStore, selectActiveIdForWindow } = await import('../state/workspaces');
-  const { useBackupStore } = await import('../state/backup');
   const applied = { panels: 0 };
   usePanelsStore.subscribe(() => (applied.panels += 1));
   initToolsPort();
@@ -331,7 +330,6 @@ async function joinDocument({
     usePanelsStore,
     useSettingsStore,
     useWorkspacesStore,
-    useBackupStore,
     selectActiveIdForWindow,
     applied,
   };
@@ -365,7 +363,6 @@ async function joinPrivateDocument({
   const { initToolsPort, dispatch, enableSidePanelTitleBridge } = await import('./useToolsPort');
   const { useTabsStore } = await import('../state/tabs');
   const { useWorkspacesStore } = await import('../state/workspaces');
-  const { useBackupStore } = await import('../state/backup');
   const { useSettingsStore } = await import('../state/settings');
   initToolsPort();
   if (sidebar) enableSidePanelTitleBridge();
@@ -376,7 +373,6 @@ async function joinPrivateDocument({
     dispatch,
     useTabsStore,
     useWorkspacesStore,
-    useBackupStore,
     useSettingsStore,
   };
 }
@@ -618,14 +614,12 @@ describe('shell bus bootstrap', () => {
       expect(focusedEvents(second.documentId)).toEqual([]);
     });
 
-    it('never sends backup or external merge events to a private document', async () => {
+    it('never sends external merge events to a private document', async () => {
       tools.addPrivateWindow(PRIVATE_WINDOW);
-      const regular = await joinDocument({ windowId: 1 });
+      await joinDocument({ windowId: 1 });
       tools.boot();
       const privateDocument = await joinPrivateDocument({ windowId: PRIVATE_WINDOW });
 
-      tools.emit({ type: 'backup/list', backups: [{ id: 'b1', createdAt: 1 } as never] });
-      tools.emit({ type: 'backup/importError', message: 'nope' });
       tools.emit({
         type: 'externalMerge/sources',
         requestId: 'r1',
@@ -638,8 +632,7 @@ describe('shell bus bootstrap', () => {
         .map(({ event }) => event?.type)
         .filter((type): type is string => type !== undefined);
       expect(received).toContain('settings/changed');
-      expect(received.filter((type) => /^(backup|externalMerge)\//.test(type))).toEqual([]);
-      expect(regular.useBackupStore.getState().backups).toHaveLength(1);
+      expect(received.filter((type) => type.startsWith('externalMerge/'))).toEqual([]);
     });
 
     it('replaces the window id a private page claims with the one chrome gave the hub', async () => {

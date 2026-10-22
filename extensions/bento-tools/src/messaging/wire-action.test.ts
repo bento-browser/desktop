@@ -116,15 +116,6 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
     favIconUrl: 'data:image/png;base64,AAAA',
   },
   'savedPanels/requestSnapshot': { type: 'savedPanels/requestSnapshot' },
-  'backup/export': { type: 'backup/export', workspaceIds: ['ws-1'] },
-  'backup/import': {
-    type: 'backup/import',
-    data: { schemaVersion: 2 } as never,
-    options: { importSettings: true, importSavedPanels: false, replaceExisting: false },
-  },
-  'backup/requestList': { type: 'backup/requestList' },
-  'backup/restore': { type: 'backup/restore', backupId: 'b-1' },
-  'backup/delete': { type: 'backup/delete', backupId: 'b-1' },
   'externalMerge/requestSources': { type: 'externalMerge/requestSources', requestId: 'r-1' },
   'externalMerge/merge': {
     type: 'externalMerge/merge',
@@ -265,21 +256,6 @@ describe('parseWireAction: malformed messages', () => {
     expect(parse(withFields('privacy/setProtectionLevel', { level: 'off' }))).toBeNull();
     expect(parse(withFields('panel/openAt', { position: 'middle' }))).toBeNull();
     expect(parse(withFields('panelLayout/fillChooser', { mode: 'triple' }))).toBeNull();
-    expect(parse(withFields('backup/import', { options: { importSettings: true } }))).toBeNull();
-    expect(
-      parse(
-        withFields('backup/import', {
-          options: {
-            importSettings: true,
-            importSavedPanels: true,
-            replaceExisting: true,
-            extra: 1,
-          },
-        }),
-      ),
-    ).toBeNull();
-    expect(parse(withFields('backup/import', { data: 'not-an-object' }))).toBeNull();
-    expect(parse(withFields('backup/import', { data: [] }))).toBeNull();
   });
 
   it('rejects oversized strings and empty ids', () => {
@@ -303,7 +279,6 @@ describe('parseWireAction: malformed messages', () => {
     expect(parse(withFields('tabFolder/reorder', { orderedIds: strings }))).toBeNull();
     expect(parse(withFields('panelLayout/reorderRoot', { rootNodeIds: strings }))).toBeNull();
     expect(parse(withFields('externalMerge/merge', { targetIds: strings }))).toBeNull();
-    expect(parse(withFields('backup/export', { workspaceIds: strings }))).toBeNull();
     expect(parse(withFields('tabFolder/reorder', { orderedIds: ['ok', 5] }))).toBeNull();
     expect(parse(withFields('panelLayout/fillChooser', { urls: ['', '', ''] }))).toBeNull();
     expect(

@@ -11,7 +11,6 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { MUX_SOURCE_STAMP, assertMuxSourceStamp } from '../extensions/bento-shell/muxui-local.mjs';
-import { ROLLBACK_VARIANTS } from './rollback-variants.mjs';
 
 const STAMP_ENTRY = `chrome/browser/builtin-addons/bento-shell/dist/${MUX_SOURCE_STAMP}`;
 
@@ -80,10 +79,9 @@ export function readShellMuxStamp(browserDir) {
 }
 
 /**
- * Throws unless the shell shipped under `browserDir` carries an allowed stamp:
- * npm without a rollback variant, otherwise only that variant's own stamp.
+ * Throws unless the shell shipped under `browserDir` carries the published npm stamp.
  */
-export function assertShellMuxSource(browserDir, variant) {
+export function assertShellMuxSource(browserDir) {
   const { text, where } = readShellMuxStamp(browserDir);
-  assertMuxSourceStamp(text, { where, variant, variants: ROLLBACK_VARIANTS });
+  assertMuxSourceStamp(text, { where });
 }

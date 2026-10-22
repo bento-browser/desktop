@@ -1474,6 +1474,11 @@
         navigate: setBentoWorkspacePaletteSrc,
       }),
       overlayEntry({ id: 'merge-palette', navigate: setBentoMergePaletteSrc }),
+      overlayEntry({
+        id: 'settings-palette',
+        created: true,
+        navigate: setBentoSettingsPaletteSrc,
+      }),
       overlayEntry({ id: 'welcome', created: true, navigate: setBentoWelcomeSrc }),
       // Chrome-hosted page with no handshake; showEmbeddedBrowserImportFromWelcome
       // sets its src each time it opens.
@@ -1748,6 +1753,10 @@
 
   function setBentoMergePaletteSrc() {
     setFrameSrc('bento-merge-palette-frame', '/dist/merge-palette.html');
+  }
+
+  function setBentoSettingsPaletteSrc() {
+    setFrameSrc('bento-settings-palette-frame', '/dist/settings-palette.html');
   }
 
   function setBentoAddrbarSrc() {
@@ -2063,6 +2072,11 @@
   });
 
   ensureOverlayHost({
+    hostId: 'bento-settings-palette-host',
+    zIndex: 99997,
+  });
+
+  ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
     zIndex: 99997,
   });
@@ -2222,6 +2236,20 @@
     }
   }
 
+  function dismissWorkspacePalette() {
+    if (
+      isOverlayOpen('bento-workspace-palette-host', isWorkspacePaletteVisible, 'workspace-palette')
+    ) {
+      hideWorkspacePalette();
+    }
+  }
+
+  function dismissSettingsPalette() {
+    if (isOverlayOpen('bento-settings-palette-host', isSettingsPaletteVisible, 'settings-palette')) {
+      hideSettingsPalette();
+    }
+  }
+
   function showPalette() {
     const host = document.getElementById('bento-palette-host');
     if (!host) {
@@ -2229,6 +2257,7 @@
       return;
     }
     dismissMergePalette();
+    dismissSettingsPalette();
     openOverlay('palette', () => {
       showOverlayToolbarScrim('palette');
       cancelMotion(host, 'hide');
@@ -2280,6 +2309,7 @@
       return;
     }
     dismissPalette();
+    dismissSettingsPalette();
     openOverlay('workspace-palette', () => {
       showOverlayToolbarScrim('workspace-palette');
       cancelMotion(host, 'hide');
@@ -2304,6 +2334,76 @@
     hideOverlayHostAfterFade(host);
   }
 
+  // ─── Settings palette overlay ─────────────────────────────────────────
+  // The quick-pick Settings surface (extensions/bento-shell/src/settings-palette). One document per
+  // window; it talks to bento-tools through the BentoShellBus relay, so it works in private windows.
+  function isSettingsPaletteVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  // `target` is an optional root row id of the Settings palette ('privacy:level',
+  // 'setting:panelCornerRadiusPx'): the document opens there, and on its first list for an unknown id.
+  function showSettingsPalette(target) {
+    const host = document.getElementById('bento-settings-palette-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showSettingsPalette: host missing');
+      return;
+    }
+    dismissPalette();
+    dismissMergePalette();
+    dismissWorkspacePalette();
+    openOverlay('settings-palette', () => {
+      showOverlayToolbarScrim('settings-palette');
+      cancelMotion(host, 'hide');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      // The show goes out with the reveal, to a document that is listening.
+      dispatchSettingsPaletteShow(target);
+      const frame = document.getElementById('bento-settings-palette-frame');
+      setTimeout(() => frame?.focus(), 0);
+    });
+  }
+
+  function hideSettingsPalette() {
+    overlays.cancel('settings-palette');
+    const host = document.getElementById('bento-settings-palette-host');
+    hideOverlayToolbarScrim('settings-palette');
+    if (!host) return;
+    host.style.opacity = '0';
+    hideOverlayHostAfterFade(host);
+    // The document stays loaded, so it is told: an unfinished edit is put back and its timer
+    // stopped now, not at the next show.
+    dispatchSettingsPaletteHide();
+  }
+
+  // A command palette result: BENTO_OPEN_SETTING:<id>:<ts>. The id comes from a page's title, so
+  // it is checked before it goes on; the Settings document ignores one it does not know.
+  function handleSettingsTargetTitle(title) {
+    const rest = title.slice(SETTINGS_TARGET_OPEN_PREFIX.length);
+    const id = rest.slice(0, Math.max(rest.lastIndexOf(':'), 0));
+    showSettingsPalette(SETTINGS_TARGET_ID_PATTERN.test(id) ? id : undefined);
+  }
+
+  // Firefox's own search settings, for adding engines Bento does not list. A Settings tab that
+  // is already open is reused.
+  function openFirefoxSearchSettings() {
+    const existing = Array.from(window.gBrowser?.browsers || []).find((browser) => {
+      const spec = browser.currentURI?.spec || '';
+      return spec.startsWith('about:preferences') || spec.startsWith('about:settings');
+    });
+    if (existing) {
+      window.gBrowser.selectedTab = window.gBrowser.getTabForBrowser(existing);
+      existing.contentWindow.location.hash = 'search';
+    } else {
+      window.gBrowser.selectedTab = window.gBrowser.addTrustedTab('about:preferences#search', {
+        relatedToCurrent: true,
+      });
+    }
+    window.focus();
+  }
+
   let mergePaletteOpenSeq = 0;
 
   function nextMergePaletteNonce(kind) {
@@ -2322,6 +2422,7 @@
       return;
     }
     dismissPalette();
+    dismissSettingsPalette();
     // The rail merge card's tooltip is up when its click opens this; the overlay covers it.
     hidePanelNavigatorTooltip();
     const nonce = nextMergePaletteNonce('open');
@@ -2367,11 +2468,6 @@
       showMergePalette();
     }
   }
-
-  // The native Bento Settings page (patch 15) asks for the merge palette by
-  // dispatching this event on its top chrome window, so it opens over the window
-  // that holds the Settings tab, wherever the tab has been moved.
-  window.addEventListener('BentoOpenMergePalette', () => showMergePalette());
 
   // ─── Floating address/search bar overlay ──────────────────────────────
 
@@ -2530,6 +2626,7 @@
       ['bento-edit-workspace-host', isEditWorkspaceVisible, 'bento-edit-workspace-frame'],
       ['bento-workspace-palette-host', isWorkspacePaletteVisible, 'bento-workspace-palette-frame'],
       ['bento-merge-palette-host', isMergePaletteVisible, 'bento-merge-palette-frame'],
+      ['bento-settings-palette-host', isSettingsPaletteVisible, 'bento-settings-palette-frame'],
       ['bento-embedded-import-host', isEmbeddedImportVisible, 'bento-embedded-import-frame'],
       ['bento-welcome-host', isWelcomeVisible, 'bento-welcome-frame'],
       ['bento-workspace-switcher-host', isWorkspaceSwitcherVisible, 'bento-workspace-switcher-frame'],
@@ -3680,6 +3777,12 @@
   const MERGE_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
   const SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_';
   const SETTINGS_PRIVACY_OPEN_PREFIX = 'BENTO_OPEN_SETTINGS_PRIVACY_';
+  // BENTO_OPEN_SETTING:<root row id of the Settings palette>:<ts>, from a command palette result.
+  // It does not start with SETTINGS_OPEN_PREFIX (no 'S' after 'SETTING'), so route order is free.
+  const SETTINGS_TARGET_OPEN_PREFIX = 'BENTO_OPEN_SETTING:';
+  const SETTINGS_TARGET_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
+  const SETTINGS_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_SETTINGS_PALETTE';
+  const FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_FIREFOX_SEARCH_SETTINGS';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
   const DOWNLOADS_ANCHOR_PREFIX = 'BENTO_DOWNLOADS_ANCHOR:';
@@ -3822,36 +3925,6 @@
     { once: true },
   );
 
-  async function openBentoSettings(focusPrivacy = false) {
-    const settingsBrowser = Array.from(window.gBrowser?.browsers || []).find((browser) => {
-      const spec = browser.currentURI?.spec || '';
-      return spec.startsWith('about:preferences') || spec.startsWith('about:settings');
-    });
-    let browser = settingsBrowser;
-    if (!browser) {
-      const tab = window.gBrowser.addTrustedTab('about:settings#bento', {
-        relatedToCurrent: true,
-      });
-      window.gBrowser.selectedTab = tab;
-      browser = tab.linkedBrowser;
-    } else {
-      window.gBrowser.selectedTab = window.gBrowser.getTabForBrowser(browser);
-      const contentWindow = browser.contentWindow;
-      if (contentWindow?.location?.hash !== '#bento') {
-        contentWindow.location.hash = 'bento';
-      }
-    }
-    window.focus();
-    if (!focusPrivacy) return;
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      const contentWindow = browser.contentWindow;
-      if (contentWindow?.BentoPreferences) {
-        contentWindow.BentoPreferences.focusGroup('bentoPrivacySearch');
-        return;
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 50));
-    }
-  }
   // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark|system>
   // The shell sets this on settings/changed; the active BENTO_PANELS
   // payload also carries the same uiColorMode field as a self-correcting
@@ -4152,9 +4225,7 @@
       item.id = BENTO_APPMENU_SETTINGS_ID;
       item.className = 'subviewbutton';
       item.setAttribute('label', 'Bento Settings');
-      item.addEventListener('command', () => {
-        void openBentoSettings(false);
-      });
+      item.addEventListener('command', () => showSettingsPalette());
       firefoxSettings.before(item);
     });
   }
@@ -9304,6 +9375,28 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC);
 
+  // The Settings palette document stays loaded while hidden, so chrome tells it when it is shown (and
+  // which setting a link wants) and when it is hidden with DOM events, not the bus: this also reaches
+  // a private window.
+  const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoSettingsPaletteShow", function(msg) {' +
+    '  try {' +
+    '    var target = msg.data && typeof msg.data.target === "string" ? msg.data.target : null;' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-settings-show", {' +
+    '      detail: JSON.stringify({ target: target })' +
+    '    }));' +
+    '  } catch (e) {}' +
+    '});' +
+    'addMessageListener("BentoSettingsPaletteHide", function() {' +
+    '  try {' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-settings-hide"));' +
+    '  } catch (e) {}' +
+    '});';
+  const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC);
+
   const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoPanelTrailerCycleFocus", function(msg) {' +
@@ -9491,6 +9584,62 @@
       }
       return false;
     }
+  }
+
+  // Every Show or Hide takes the next generation, and a retry of an older one is dropped: a Hide
+  // that waited for the frame must not land after the Show that came later (it would cancel the
+  // editor session that Show just began), nor a Show after a later Hide reopen the state.
+  let settingsLifecycleSeq = 0;
+
+  // Sends a lifecycle message to the Settings document's frame script, loading the script on first
+  // use. A message that cannot go yet (the frame has no message manager) is retried briefly.
+  function sendSettingsPaletteMessage(
+    name,
+    data,
+    attempt = 0,
+    generation = (settingsLifecycleSeq += 1),
+  ) {
+    if (generation !== settingsLifecycleSeq) return false;
+    const frame = document.getElementById('bento-settings-palette-frame');
+    if (!frame) return false;
+    const retry = () =>
+      setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1, generation), 100);
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') {
+        if (attempt < 10) retry();
+        return false;
+      }
+      if (!frame._bentoSettingsPaletteShowScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL, true);
+        frame._bentoSettingsPaletteShowScriptLoaded = true;
+      }
+      mm.sendAsyncMessage(name, data);
+      return true;
+    } catch (err) {
+      if (attempt < 10) {
+        retry();
+      } else {
+        console.warn('[bento-shell-mount] settings palette ' + name + ' dispatch failed:', err);
+      }
+      return false;
+    }
+  }
+
+  function dispatchSettingsPaletteShow(target) {
+    return sendSettingsPaletteMessage('BentoSettingsPaletteShow', { target: target || null });
+  }
+
+  // Only a document that was shown has anything to put back, so a hide before the first show is
+  // not sent (it would load the frame script for nothing). It still ends a Show still waiting for
+  // the frame.
+  function dispatchSettingsPaletteHide() {
+    const frame = document.getElementById('bento-settings-palette-frame');
+    if (!frame || !frame._bentoSettingsPaletteShowScriptLoaded) {
+      settingsLifecycleSeq += 1;
+      return false;
+    }
+    return sendSettingsPaletteMessage('BentoSettingsPaletteHide', {});
   }
 
   function setPanelTrailerAddFocus(focused) {
@@ -17183,18 +17332,15 @@
   function attachPaletteCloseListener() {
     registerBentoShellDocument();
 
-    // Palette: CLOSE hides it; the two SETTINGS prefixes hide it and open
-    // Settings; OPEN_MERGE_PALETTE opens the merge palette, which dismisses it.
+    // Palette: CLOSE hides it; the SETTINGS prefixes open the Settings palette (the privacy one on
+    // the protection level list, a command palette result at its setting), which dismisses it;
+    // OPEN_MERGE_PALETTE opens the merge palette, which dismisses it too.
     const handlePaletteFrameTitle = (title) => {
       if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
-      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
-        hidePalette();
-        void openBentoSettings(true);
-      } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
-        hidePalette();
-        void openBentoSettings(false);
-      }
+      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) showSettingsPalette('privacy:level');
+      else if (title.startsWith(SETTINGS_OPEN_PREFIX)) showSettingsPalette();
+      else if (title.startsWith(SETTINGS_TARGET_OPEN_PREFIX)) handleSettingsTargetTitle(title);
     };
 
     // Menu overlay: SELECT routes the chosen itemId back to the chrome
@@ -17272,6 +17418,17 @@
         },
       ],
       [
+        'bento-settings-palette-frame',
+        (title) => {
+          if (title.startsWith(SETTINGS_PALETTE_CLOSE_PREFIX)) hideSettingsPalette();
+          else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+          else if (title.startsWith(FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX)) {
+            hideSettingsPalette();
+            openFirefoxSearchSettings();
+          }
+        },
+      ],
+      [
         'bento-workspace-palette-frame',
         (title) => {
           if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
@@ -17308,13 +17465,12 @@
           else if (title.startsWith(WELCOME_CLOSE_PREFIX)) hideWelcome();
           else if (title.startsWith(SETTINGS_OPEN_PREFIX)) {
             // The Ready step's Open Settings; the page already marked onboarding finished. Only a
-            // showing dialog opens Settings: a second one during the fade (a double click) would
-            // add a second Settings tab, because the first navigation has not committed and
-            // openBentoSettings still finds no Settings tab.
+            // showing dialog opens Settings, so a second one during the fade (a double click) is
+            // ignored.
             const host = document.getElementById('bento-welcome-host');
             if (host && isWelcomeShowing(host)) {
               hideWelcome();
-              void openBentoSettings(false);
+              showSettingsPalette();
             }
           } else if (title.startsWith(WELCOME_IMPORT_BROWSER_DATA_PREFIX)) {
             __bentoPendingWelcomeResumeStep = parseWelcomeImportResumeStep(title);
@@ -17443,7 +17599,7 @@
       (e) => {
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): menu > confirm > edit-workspace >
-        // workspace palette > welcome > workspace-switcher > address bar >
+        // workspace palette / settings palette > welcome > workspace-switcher > address bar >
         // merge palette > palette. An overlay whose open still waits for its
         // document counts as open: Esc cancels that open instead of letting it
         // appear afterwards. Welcome is mandatory onboarding: consume Esc there
@@ -17469,6 +17625,13 @@
           )
         ) {
           return consume(hideWorkspacePalette);
+        }
+        // The Settings document handles its own Esc (a stage back, then close) while it has focus;
+        // this covers focus left in chrome, and an open still waiting for its document.
+        if (
+          isOverlayOpen('bento-settings-palette-host', isSettingsPaletteVisible, 'settings-palette')
+        ) {
+          return consume(hideSettingsPalette);
         }
         const embeddedImportHost = document.getElementById('bento-embedded-import-host');
         if (embeddedImportHost && isEmbeddedImportVisible(embeddedImportHost)) {
@@ -18285,6 +18448,7 @@
           'bento-palette-frame',
           'bento-workspace-palette-frame',
           'bento-merge-palette-frame',
+          'bento-settings-palette-frame',
           'bento-addrbar-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
@@ -18313,6 +18477,7 @@
             else if (id === 'bento-palette-frame') setBentoPaletteSrc();
             else if (id === 'bento-workspace-palette-frame') setBentoWorkspacePaletteSrc();
             else if (id === 'bento-merge-palette-frame') setBentoMergePaletteSrc();
+            else if (id === 'bento-settings-palette-frame') setBentoSettingsPaletteSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();

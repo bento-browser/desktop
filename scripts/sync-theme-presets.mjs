@@ -44,7 +44,7 @@ const PRESETS_DIR = resolve(SHELL_DIR, 'src/theme/presets');
 const INDEX_CSS_PATH = resolve(PRESETS_DIR, 'index.css');
 const INDEX_TS_PATH = resolve(PRESETS_DIR, 'index.ts');
 // Vite copies public/ into dist/, so the sheets keep stable URLs (./themes/<id>.css)
-// in every build, including the archived rollback configs.
+// in every build.
 const SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 
 const DEFAULT_THEME_ID = 'default';

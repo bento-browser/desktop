@@ -248,8 +248,8 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   resolves a live tab (`tab.incognito`) or a closing-window snapshot
   (`TabRegistry.isPrivate`, valid only while the closing listeners run). The
   other `storage.local` writers in `bento-tools` were audited and hold no tab
-  data: workspaces, tab folders (user-chosen names), settings, native-operation
-  and session records, graph journal and rollback state (ids and hashes plus the
+  data: workspaces, tab folders (user-chosen names), settings, durable-operation
+  records, graph journal state (ids and hashes plus the
   backup JSON being restored), and the graph publication (already filtered by
   `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
   incognito tabs when it resolves URLs, and omits private panels, pins, and

@@ -14,6 +14,7 @@ const OVERLAY_ENTRIES: Record<string, string> = {
   palette: 'palette',
   'workspace-palette': 'workspace-palette',
   'merge-palette': 'merge-palette',
+  'settings-palette': 'settings-palette',
   'address-bar': 'addrbar',
   confirm: 'confirm',
   'edit-workspace': 'edit-workspace',

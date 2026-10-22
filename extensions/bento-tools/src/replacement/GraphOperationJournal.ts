@@ -1,7 +1,11 @@
-import type {
-  NativeOperationKind,
-  OperationRegistry,
-} from '../native-preferences/OperationRegistry';
+import type { BentoSettings } from '@shared/protocol';
+import {
+  failComponents,
+  finishComponents,
+  type DurableOperationComponent,
+  type DurableOperationKind,
+  type OperationRegistry,
+} from '../settings-domain/OperationRegistry';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { TabRegistry } from '../tabs/TabRegistry';
@@ -36,14 +40,12 @@ export type GraphOperationPhase =
 export interface GraphOperationJournalRecord {
   version: 1;
   operationId: string;
-  kind: Extract<NativeOperationKind, 'backup/importValidated' | 'backup/restore'>;
+  kind: Extract<DurableOperationKind, 'backup/importValidated' | 'backup/restore'>;
   mode: 'additive' | 'replace';
   applySettings: boolean;
   applySavedPanels: boolean;
   ownerClientInstanceId: string;
   targetWindowId: number;
-  acceptedParentSessionId: string;
-  acceptedParentBootId: string;
   sourceHash: string;
   sourceCacheId: string;
   phase: GraphOperationPhase;
@@ -114,14 +116,12 @@ export class GraphOperationJournal {
 
   async begin(input: {
     operationId: string;
-    kind: Extract<NativeOperationKind, 'backup/importValidated' | 'backup/restore'>;
+    kind: Extract<DurableOperationKind, 'backup/importValidated' | 'backup/restore'>;
     mode: 'additive' | 'replace';
     applySettings: boolean;
     applySavedPanels: boolean;
     ownerClientInstanceId: string;
     targetWindowId: number;
-    acceptedParentSessionId: string;
-    acceptedParentBootId: string;
     sourceHash: string;
     sourceJson: string;
     oldWorkspaceIds: string[];
@@ -141,8 +141,6 @@ export class GraphOperationJournal {
       applySavedPanels: input.applySavedPanels,
       ownerClientInstanceId: input.ownerClientInstanceId,
       targetWindowId: input.targetWindowId,
-      acceptedParentSessionId: input.acceptedParentSessionId,
-      acceptedParentBootId: input.acceptedParentBootId,
       sourceHash: input.sourceHash,
       sourceCacheId,
       phase: 'prepared',
@@ -272,6 +270,25 @@ export class GraphOperationJournal {
   }
 }
 
+/**
+ * Components of an import or restore that did not apply because the operation never asked for
+ * them: no old graph to clean outside a replacement, saved panels or settings the options leave
+ * out, and privacy or search when the source file carries no value for them.
+ */
+export function graphSkippedComponents(
+  operation: Pick<GraphOperationJournalRecord, 'mode' | 'applySettings' | 'applySavedPanels'>,
+  sourceSettings: Partial<BentoSettings> | undefined,
+): Set<string> {
+  const skipped = new Set<string>();
+  if (operation.mode !== 'replace') skipped.add('oldGraphCleanup');
+  if (!operation.applySavedPanels) skipped.add('savedPanels');
+  const settings = operation.applySettings ? sourceSettings : undefined;
+  if (!settings) skipped.add('settings');
+  if (!settings?.privacyProtectionLevel) skipped.add('privacy');
+  if (!settings?.defaultSearchEngine) skipped.add('search');
+  return skipped;
+}
+
 const PRE_PUBLICATION_PHASES = new Set<GraphOperationPhase>([
   'prepared',
   'creating-workspaces',
@@ -320,6 +337,14 @@ export class GraphOperationRecovery {
     await Promise.all([this.#journal.init(), this.#operations.init()]);
     const record = this.#journal.current();
     if (!record) return;
+    const components = this.#operations.peek(record.operationId)?.components ?? [];
+
+    // A terminal record is finished work an earlier build left behind: it would otherwise
+    // keep refusing every other import or restore.
+    if (record.phase === 'terminal') {
+      await this.#journal.clear(record.operationId);
+      return;
+    }
 
     if (PRE_PUBLICATION_PHASES.has(record.phase)) {
       const survivingTabs: number[] = [];
@@ -347,7 +372,9 @@ export class GraphOperationRecovery {
           state: 'failed',
           phase: 'terminal',
           errorCode: 'backend_restarted',
+          components: failComponents(components, 'backend_restarted', true),
           reconcileComponents: [],
+          recovered: true,
         });
         await this.#journal.clear(record.operationId);
         return;
@@ -364,6 +391,8 @@ export class GraphOperationRecovery {
       const sourceJson = await this.#journal.readSource(record.operationId);
       const source = sourceJson ? validateExportSchema(JSON.parse(sourceJson)) : null;
       if (source) {
+        // A live effect that does not stick (privacy, search) leaves the operation partial.
+        const failed: DurableOperationComponent[] = [];
         if (record.applySavedPanels) {
           await this.#journal.update(record.operationId, { phase: 'applying-saved-panels' });
           const existing = new Set(this.#savedPanels.list().map((entry) => entry.url));
@@ -377,18 +406,29 @@ export class GraphOperationRecovery {
           if (Object.keys(ordinary).length > 0) await this.#settings.update(ordinary);
           if (privacyProtectionLevel) {
             await this.#journal.update(record.operationId, { phase: 'applying-privacy' });
-            await this.#privacyMutations.setProtectionLevel(privacyProtectionLevel);
+            const outcome = await this.#privacyMutations.setProtectionLevel(privacyProtectionLevel);
+            if (outcome.state !== 'succeeded') failed.push(outcome.component);
           }
           if (defaultSearchEngine) {
             await this.#journal.update(record.operationId, { phase: 'applying-search' });
-            await this.#privacyMutations.setSearchEngine(defaultSearchEngine);
+            const outcome = await this.#privacyMutations.setSearchEngine(defaultSearchEngine);
+            if (outcome.state !== 'succeeded') failed.push(outcome.component);
           }
         }
+        const finished = finishComponents(
+          components,
+          failed,
+          graphSkippedComponents(record, source.settings),
+        );
+        const state = failed.length > 0 ? 'partial' : 'succeeded';
+        const reconcileComponents = failed.map((entry) => entry.component);
         await this.#operations.update(record.operationId, {
-          state: 'succeeded',
+          state,
           phase: 'terminal',
-          reconcileComponents: [],
-          result: { recovered: true },
+          components: finished,
+          reconcileComponents,
+          result: { recovered: true, state, components: finished, reconcileComponents },
+          recovered: true,
         });
         await this.#journal.clear(record.operationId);
         return;
@@ -399,13 +439,17 @@ export class GraphOperationRecovery {
       state: 'partial',
       phase: 'terminal',
       errorCode: 'backend_restarted',
+      components: failComponents(components, 'backend_restarted', false, ['graphPersistence']),
       reconcileComponents: ['graphPersistence'],
       result: {
         createdWorkspaceIds: record.createdWorkspaceIds,
         createdTabIds: record.createdTabIds,
         phase: record.phase,
       },
+      recovered: true,
     });
-    await this.#journal.update(record.operationId, { phase: 'terminal' });
+    // The outcome is recorded in the operation; the journal would only keep refusing every
+    // other import or restore with `graph_reserved`.
+    await this.#journal.clear(record.operationId);
   }
 }

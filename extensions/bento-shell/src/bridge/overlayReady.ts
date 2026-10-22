@@ -17,6 +17,7 @@ export type OverlayName =
   | 'palette'
   | 'workspace-palette'
   | 'merge-palette'
+  | 'settings-palette'
   | 'addrbar'
   | 'confirm'
   | 'edit-workspace'
