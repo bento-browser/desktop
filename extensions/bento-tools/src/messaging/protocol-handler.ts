@@ -1780,7 +1780,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panelLayout/setGroupRatio': {
-      ctx.panels.setGroupRatio(action.groupId, action.ratio);
+      // The action names no tab, so the boundary guard cannot tell whose group it is:
+      // only the source window's own workspace is searched.
+      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
+      if (!wsId) return;
+      ctx.panels.setGroupRatio(wsId, action.groupId, action.ratio);
       return;
     }
     case 'pinnedPanel/add': {

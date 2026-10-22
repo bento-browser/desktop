@@ -174,6 +174,11 @@ export class TabRegistry {
     browser.tabs.onAttached.addListener(this.#onAttached);
 
     const all = await browser.tabs.query({});
+    // Privacy first: an event for one of these tabs can arrive while the session values
+    // below are read, and its delta is classified (and its audience fixed) when queued.
+    for (const tab of all) {
+      if (tab.incognito === true && typeof tab.id === 'number') this.#privateTabIds.add(tab.id);
+    }
     // Hydrate session-stored workspace assignments in parallel.
     const hydrated = await Promise.all(
       all.map(async (t) => {
@@ -202,7 +207,6 @@ export class TabRegistry {
     }
     for (const tab of all) {
       if (typeof tab.id !== 'number') continue;
-      if (tab.incognito === true) this.#privateTabIds.add(tab.id);
       const url = tabUrl(tab);
       if (url) this.#urlByTabId.set(tab.id, url);
     }
@@ -691,8 +695,10 @@ export class TabRegistry {
   ) => {
     const existing = this.#tabs.get(id);
     if (!existing) {
-      // Defensive: treat as create if we missed it
+      // Defensive: treat as create if we missed it. Privacy is recorded before the delta
+      // is queued: it decides the delta's audience, and a later init cannot change it.
       const snap = { ...toSnapshot(tab), id };
+      if (tab.incognito === true) this.#privateTabIds.add(id);
       const url = snap.url;
       if (url) this.#urlByTabId.set(id, url);
       this.#tabs.set(id, snap);

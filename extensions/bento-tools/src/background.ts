@@ -24,6 +24,7 @@ import {
   isActivationCurrent,
 } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
+import { dropRemovedTabFromPanels } from './panels/RemovedTab';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { createBrowserStartup } from './tabs/BrowserStartup';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
@@ -1409,29 +1410,16 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'removed') {
-      closeDevtoolsPanelTabs(
-        panels.findLinksForInspectedTab(d.id).map((link) => link.devtoolsTabId),
-        'inspected-tab devtools close',
+      dropRemovedTabFromPanels(
+        {
+          panels,
+          pinnedPanels,
+          closeDevtoolsPanelTabs,
+          syncPanelMarkers: syncPanelMarkersForWorkspace,
+          emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
+        },
+        d.id,
       );
-      const affected = panels.findWorkspacesContainingTab(d.id);
-      for (const wsId of affected) {
-        const wasDevtools = panels.isDevtoolsPanel(wsId, d.id);
-        panels.remove(wsId, d.id);
-        if (wasDevtools) pinnedPanels.removeForTab(d.id);
-        if (!wasDevtools) {
-          closeDevtoolsPanelTabs(
-            panels.takeOrphanedDevtoolsTabs(wsId),
-            'panel-removed devtools close',
-          );
-        }
-        // Remaining panels' indexes shifted — rewrite their markers
-        // so a future Cmd+Shift+T lands at the correct slot.
-        syncPanelMarkersForWorkspace(wsId);
-      }
-      const activeId = workspaces.getActiveId();
-      if (activeId && affected.includes(activeId)) {
-        void emitPanelsSync(activeId);
-      }
       continue;
     }
   }

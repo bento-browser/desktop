@@ -1197,6 +1197,19 @@ workspaces.
   regular tab, another private window's, or an unknown id) is refused. A cross switch
   is also refused by the store: `activate` is a no-op between a private window and any
   regular workspace.
+- Actions that name a group or slot rather than a tab cannot be checked by that guard, so
+  the handler searches only the source window's own workspace: `panelLayout/setGroupRatio`
+  (and the other layout actions, which already pass the window's workspace) never finds a
+  group of another window's or a private window's workspace. `PanelStore.setGroupRatio`
+  takes the workspace id.
+- A private tab that goes away is a removal for its window, also when it moved to another
+  private window. `dropRemovedTabFromPanels` (`panels/RemovedTab.ts`) removes it from every
+  workspace's panels and publishes each affected workspace through the audience helper,
+  not only the regular workspace the global active id names, so the old private window's
+  panels (and the strip the shell re-sends for a window-local sidebar change) do not keep
+  a panel whose tab left. `TabRegistry` records a tab's privacy before it queues any delta
+  for it, including the create-on-unknown path of an `onUpdated` that arrives while
+  `init()` reads session values, because a delta's audience is fixed when it is queued.
 - Close: the workspace, its panels and its remembered active tab are dropped; no
   regular workspace's ownership or tabs change.
 - Manual verification: open a private window, check the sidebar lists the "Private"
