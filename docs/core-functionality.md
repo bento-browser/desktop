@@ -97,16 +97,15 @@ and are separate from the additive Bento backup import flow.
 The sidebar footer exposes Firefox's native app menu and Firefox's native
 downloads panel; it has no separate Settings or merge button. The app menu lists
 "Bento Settings" directly above Firefox's own Settings item, and the command
-palette has an Open Settings command. Native footer panels are left-edge
+palette has an Open Settings command; both open the Settings palette. Native footer panels are left-edge
 anchored to their trigger buttons so they grow rightward when screen space
 permits, and they open without Firefox's arrow-panel slide animation. The
 native Bookmarks sidebar uses Bento-scaled title styling, matches the Bento
 sidebar address field for bookmark search, and has its own resizable edge
 separate from the main Bento sidebar. The manual "Merge browser session" action
 opens from the command palette's "Merge browser session" command or from the
-"Merge browser session" button in the Backup and data group of Bento Settings
-(not shown in private windows); from Settings it opens over the window that
-holds the Settings tab. While a merge is running, a progress card floats over the
+"Merge browser session" row in the Backup and data group of the Settings palette
+(not shown in private windows); from Settings it opens over the same window. While a merge is running, a progress card floats over the
 bottom of the sidebar's tab list, above the footer: a progress ring (with the
 percentage inside once the tab totals are known), "Importing from" the source
 browser, the space being imported with how many tabs are done, and the site last
@@ -747,41 +746,49 @@ not reset the toggle or make an otherwise matching preset appear as Custom.
 Firefox's HTTPS exception UI remains available for HTTP-only sites and local
 devices.
 
-The Bento category in Firefox's native Settings includes a privacy level
-selector, default search engine selector, and
-advanced privacy controls for the main browser-level levers. Settings displays
-the current protection level in the Privacy card header and shows the benefits
-and caveats for Standard, Enhanced, and Hardened so users can compare
-compatibility impact before switching. The first-run onboarding privacy step
-lists each level with a one-line summary and marks Standard as recommended. The
-search choices shown in onboarding and Settings are Firefox's currently visible
-search engines, with DuckDuckGo as Bento's default for a fresh profile; a
-profile that already finished onboarding keeps its current engine. The
-onboarding search step shows each visible engine's icon and tags
-privacy-oriented ones as Private when Firefox exposes them. Settings also includes a searchable keyboard
-shortcuts command palette whose results are grouped by category and show command
-titles, supporting descriptions, and key tokens. The Keyboard shortcuts card
-also lets users choose whether `Cmd/Ctrl+S` collapses the sidebar to the rail or
-hides it with left-edge hover access. Bento bundles uBlock Origin
-enabled by default and leaves it removable/disableable by the user.
+Bento Settings is a quick-pick palette over the window, not a page. The app menu's
+"Bento Settings" item, the command palette's Open Settings command, and the
+onboarding dialog's Open Settings button open it; the command palette's
+Privacy command opens it on the protection level list. It is a searchable list
+of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
+Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
+current value on each row. Enter flips a switch or opens a short list of
+choices. A number or name opens a value field with preset rows where they help;
+the value applies live while typing (panel corners move as you type), Enter
+keeps it, and Esc puts the previous value back. Esc steps back one list and
+closes the palette from the first one, and opening it again starts at the first
+list. Settings changed in one window appear in the Settings palette of every
+other window.
 
-Settings is available at both `about:preferences#bento` and
-`about:settings#bento`, including when Firefox's settings-redesign preference is
-disabled. Its native page header displays the Bento heading beside the Settings
-icon. The app menu's "Bento Settings" item and the command palette's Open
-Settings command reuse the Settings tab in the source browser window. Backups
-and keyboard shortcuts use native Bento subpanes. Panel
-sliders, numeric fields, list rows, reorder handles, search, and actions use
-Firefox's native Settings components. Custom panel-size rows show the numeric
-value and Remove action without position-based labels because the rows are
-reorderable. Dropdown fields use Firefox's `moz-select` control with its
-Firefox-owned panel menu, so they open consistently inside the Bento panel
-layout. When panel shadows are enabled, panel and main-content frames retain
-their full elevation shadows throughout live sidebar and window resizing.
-Native Settings content holds its current viewport during a live resize and
-performs one final layout when the gesture settles, including when the Settings
-tab is in the background. A Settings tab dragged or moved to another window keeps
-working there. There is no separate extension-hosted Settings page.
+The protection level list shows the current level and the benefits and caveats
+of Standard, Enhanced, and Hardened, so users can compare compatibility impact
+before switching; Custom is shown as detected state only. The default search
+engine list offers Firefox's currently visible search engines (DuckDuckGo is
+Bento's default for a fresh profile; a profile that already finished onboarding
+keeps its current engine) and a "Manage search engines" row that opens Firefox's
+own search settings to add more. Advanced privacy lists the main browser-level
+levers as switches and choices. When a privacy change is saved but Firefox could
+not apply it, the palette says so. The first-run onboarding privacy step lists
+each level with a one-line summary and marks Standard as recommended, and its
+search step shows each visible engine's icon and tags privacy-oriented ones as
+Private when Firefox exposes them. The Keyboard shortcuts list is searchable
+and shows each command's title and key tokens, and Settings lets users choose
+whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
+left-edge hover access. Bento bundles uBlock Origin enabled by default and
+leaves it removable/disableable by the user.
+
+Backup and data lists Export (a file download), Import (choose a file, review
+what it holds, then confirm), stored backups (restore and delete, each with a
+confirmation) and Merge browser session, which opens the merge palette. Reset
+Bento settings asks for confirmation, restores Bento settings, the protection
+level and the search engine to their defaults, and closes the palette so the
+onboarding dialog can open again. Operations that take time keep running if the
+palette is closed. A private window's Settings palette has no backup, merge or
+reset rows; its Bento color mode is that window's own and is not saved, and any
+other setting changed there is saved for the whole profile as usual.
+
+Firefox's own Settings page keeps a Bento category at `about:preferences#bento`
+and `about:settings#bento` for now; the Settings palette is the product surface.
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.

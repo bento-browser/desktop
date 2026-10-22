@@ -37,8 +37,14 @@ from the palette overlay document, and the mount script routes it in
 `BENTO_OPEN_SETTINGS_` and `BENTO_OPEN_SETTINGS_PRIVACY_`, and the Actions-group
 "Merge browser session" command sends `BENTO_OPEN_MERGE_PALETTE_`. That handler
 accepts the merge title from the palette frame as well as from the shell frame,
-and `showMergePalette()` dismisses the command palette itself. See
-[session-merge-backups.md](session-merge-backups.md) for the other open paths.
+and `showMergePalette()` dismisses the command palette itself. The Settings
+sentinels open the Settings palette overlay (`showSettingsPalette()`, which dismisses
+the command palette; the privacy one opens on the protection level list), described in
+[overlay-documents.md](overlay-documents.md) and
+[privacy-search.md](privacy-search.md#settings-palette-shell-side). Opening any of
+the command palette, workspace palette, merge palette or Settings palette dismisses
+the others. See [session-merge-backups.md](session-merge-backups.md) for the other
+open paths.
 
 ## Sidebar Tab And Panel Search
 

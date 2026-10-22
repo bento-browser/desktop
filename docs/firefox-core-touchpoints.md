@@ -322,7 +322,7 @@ Use this shape for new or changed touchpoints:
   "Bento Settings" `toolbarbutton.subviewbutton` directly above Firefox's
   Settings item in the app menu main view (inserted on the panel's bubbling
   `ViewShowing` for `#appMenu-mainView`, so any way of opening the menu gets it
-  exactly once; its command calls `openBentoSettings` and Firefox's panel close
+  exactly once; its command calls `showSettingsPalette` and Firefox's panel close
   listeners hide the menu), opens the manual merge palette from the command
   palette overlay's title signal and from a `BentoOpenMergePalette` event that
   the native Bento Settings page dispatches on its top chrome window, opens
@@ -903,9 +903,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Bento functionality: shell documents in a private window reach the shell
   background through a JSWindowActor pair and a parent-process hub, because
   `BroadcastChannel` is partitioned by `privateBrowsingId`. The actor attaches to
-  every bento-shell extension frame in every window; today only private-window
-  documents use it for the bus (regular windows keep `BroadcastChannel`), and it is
-  the transport the Settings overlay reuses. The parent derives the document's
+  every bento-shell extension frame in every window; only private-window
+  documents use it for the bus (regular windows keep `BroadcastChannel`), and the
+  Settings palette overlay uses it for its requests in every window. The parent derives the document's
   window id and privacy from the hosting chrome window; the page supplies only a
   JSON string. Chrome posts a private window's tools-bound actions straight into the
   hub.
@@ -937,6 +937,49 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   working shell (the pre-existing state); the patch hunk is independent of the key
   actors. The shell manifest version was bumped because the experiment API gained
   functions.
+
+### Settings Palette Overlay (mount script)
+
+- Status: Active
+- Last updated: 2026-10-22
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`settings-palette` overlay
+    entry, `ensureOverlayHost` for `bento-settings-palette-host`,
+    `showSettingsPalette` / `hideSettingsPalette` / `dismissSettingsPalette`,
+    `dispatchSettingsPaletteShow` and its `SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL`,
+    `openFirefoxSearchSettings`, the `bento-settings-palette-frame` title handler)
+  - `scripts/firefox-compat-registry.mjs` (new sites on `gBrowser.addTrustedTab` and
+    `MessageManager.loadFrameScript`; no new Firefox member), the regenerated table
+    below
+  - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`
+- Bento functionality: Bento Settings is a quick-pick overlay over the browser
+  window instead of a Settings tab. The app menu item, the command palette's two
+  commands and the welcome Open Settings button open it (`BENTO_OPEN_SETTINGS_`,
+  `BENTO_OPEN_SETTINGS_PRIVACY_`); chrome sends the document its show with a frame
+  script (`BentoSettingsPaletteShow`, the same `loadFrameScript` and
+  `sendAsyncMessage` the merge palette uses) that dispatches a DOM event, so no
+  channel is involved. The overlay opens Firefox's own search settings
+  (`about:preferences#search`, through `gBrowser.addTrustedTab` or the open Settings
+  tab) for adding engines. The native `about:preferences#bento` pane is untouched
+  and stays reachable by URL.
+- Vanilla Firefox surface touched or depended on: `gBrowser.addTrustedTab`,
+  `messageManager.loadFrameScript`/`sendAsyncMessage` (both already logged), the
+  overlay manager and `afterMotion` of the mount script, and the BentoShellBus relay
+  (entry above) for requests.
+- Why this cannot stay extension-only: the overlay must cover the window, including
+  the toolbar, which only a chrome-hosted `<browser>` can do; opening Firefox's own
+  search settings needs a privileged tab.
+- Firefox update risk: a `loadFrameScript` data: URL restriction or a change to
+  `addTrustedTab` would break the show message and the search settings link; the
+  overlay would then open at its first list and the link would do nothing.
+- Regression checks for future updates: open Settings from the app menu, the command
+  palette (Open Settings and Privacy) and the welcome Open Settings button, in a
+  regular and a private window; confirm Esc steps back one list and closes from the
+  first; confirm "Manage search engines" opens `about:preferences#search`; confirm
+  the merge palette and the command palette close the Settings palette and the
+  reverse.
+- Rollback or migration notes: none; the native pane is still the fallback by URL
+  until it is removed.
 
 ### Search Engine Icons (bento-privacy Experiment)
 
@@ -1643,13 +1686,13 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   URLs are not copied into Bento's normal profile. The Ready step's Open Settings
   button ends onboarding and sends `BENTO_OPEN_SETTINGS_<ts>` from the welcome
   frame; the mount script's `bento-welcome-frame` title handler answers with
-  `hideWelcome()` and then `openBentoSettings(false)`, the same helper the app
+  `hideWelcome()` and then `showSettingsPalette()`, the same helper the app
   menu's Bento Settings item and the command palette use, so it adds no Firefox
   member and no compat-registry entry (Start browsing sends the close title and
   only hides the overlay). The handler acts only while the welcome host is showing
   (`isWelcomeShowing`: visible and opacity not `0`), because `hideWelcome()` fades the
-  host out and a second `openBentoSettings` call made before the first Settings
-  navigation commits still sees `about:blank` and adds a second tab. The guard reads
+  host out and a second Open Settings title made during the fade would open the Settings
+  palette twice (it added a second Settings tab before the palette). The guard reads
   the host's style, not page state, so onboarding shown again in the same window
   (after Reset Bento settings) finishes normally.
 - Vanilla Firefox surface touched or depended on:
@@ -2437,7 +2480,7 @@ below is generated; edit the registry, then run
 | `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
 | `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:428` |
 | `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
-| `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
+| `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `openFirefoxSearchSettings` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3682` |
 | `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, and a page's window.close() uses it to name the tab that asked. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
 | `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
@@ -2466,7 +2509,7 @@ below is generated; edit the registry, then run
 | `MozBrowser.prototype.contentTitle` | member (runtime) | The title-IPC handler reads frame.contentTitle after pagetitlechanged. | `attachPaletteCloseListener` | `toolkit/content/widgets/browser-custom-element.mjs:674` |
 | `MozBrowser.prototype.getInPermitUnload` | method (runtime) | Says synchronously whether a tab is answering a beforeunload check. permitUnload throws when asked again, so a close repeated meanwhile hands nothing over and such a window takes no tabs. | `isCheckingUnload` | `toolkit/content/widgets/browser-custom-element.mjs:1718` |
 | `MozBrowser.mIconURL` | member (runtime) | Panel header favicon fallback reads the browser mIconURL field. | `createPanelHeader` | `toolkit/content/widgets/browser-custom-element.mjs:140` |
-| `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL`, `WELCOME_HANDOFF_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:368` |
+| `MessageManager.loadFrameScript` | source (engine only) | Bento injects data: URL frame scripts into its own extension frames and panel browsers. | `ensurePanelScrollFrameScript`, `installPanelNavigatorTooltipFrameScript`, `SHELL_ACTION_FRAME_SCRIPT_URL`, `SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL`, `WELCOME_HANDOFF_FRAME_SCRIPT_URL` | `dom/chrome-webidl/MessageManager.webidl:368` |
 | `pagetitlechanged` | source (engine only) | Chrome-only bubbling event on the embedding <browser>; the title-IPC control plane. | `attachPaletteCloseListener` | `dom/ipc/WindowGlobalParent.cpp:558` |
 | `PopupNotifications._isActiveBrowser` | method (runtime) | Also accepts browsers of split-view panel tabs so panel-originated popups show. | `patchPopupNotificationsForSplitView` | `toolkit/modules/PopupNotifications.sys.mjs:1666` |
 | `PanelUI.ensureReady` | method (runtime) | Builds the app menu before Bento anchors it to a sidebar footer button. | `openNativeAppMenuFromSidebar` | `browser/components/customizableui/content/panelUI.js:560` |

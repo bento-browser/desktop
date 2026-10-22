@@ -299,7 +299,8 @@ listed sources. Two private windows do share one partition, so the channel still
 works between documents of private windows.
 
 Private windows use a relay; regular windows keep the `BroadcastChannel` hot path
-unchanged.
+unchanged. The one exception is the Settings overlay, which uses the relay in every
+window (see "The Settings overlay on the relay" below).
 
 - Transport choice: `setFrameSrc` stamps `#bentoPrivate=1` on every frame URL of a
   private window. `bridge/useToolsPort.ts` reads it (`readPrivateFromHash`) and
@@ -372,6 +373,33 @@ unchanged.
 - Identity of actions: for every message that arrives through the hub the background
   overwrites `__windowId` (and a `shell/hello` payload window) with the hub's window
   id. A window id the page puts in its URL hash or actions is ignored.
+- The Settings overlay on the relay: the Settings document (`settings-palette.html`)
+  says `{kind: 'settings-hello', helloId}` and sends each request as
+  `{kind: 'settings-request', request}` in every window, regular or private. The
+  background (`bridge/settingsRelay.ts`, `SettingsRelay`) keeps these documents apart
+  from the private sidebar documents (`relayDocuments`), takes the identity from the
+  hub (`{documentId, windowId, isPrivate}`, never from the page: a `caller` field the
+  page adds is dropped) and forwards the request to tools on the authenticated port as
+  a `settings-client/request`. It puts its own id on the wire (`requestId`) and maps
+  tools' `settings/result` back to the asking document under that document's own id,
+  delivered with `postToDocument` as `{kind: 'settings-result', result}`; a result is
+  never part of the fan-out. A request on a port that is down is answered at once with
+  `internal_error`; pending requests are dropped when the port disconnects (the
+  client's own deadline and `operation/status` polling cover them), and when the
+  document closes. A request from a document that is not registered registers it, so a
+  background reload does not strand an open Settings document. Profile-wide change
+  notices (`settings/changed`, `privacy/changed`, `searchEngines/changed`) reach every
+  registered Settings document (a private window's with its own values over the saved
+  ones), so a change in one window shows in the others' open palettes.
+  A private caller's Bento color mode is the window's own: tools strips
+  `WINDOW_LOCAL_SETTING_KEYS` from the update of a private overlay caller (it still
+  saves the rest), and on the successful result the background applies the window-local
+  part to the window's entry, tells the window's other documents (the sidebar and
+  overlays, with `applyWindowLocalSettings`) and puts the window's colour mode over the
+  `snapshot/get` and `settings/update` results the Settings document reads. Tools
+  refuses backup operations, notice acknowledgement and `settings/reset` from a private
+  caller (`isPrivateForbiddenOperation`), so the document's hidden rows are not the
+  only guard.
 - Document-local actions (`menu/open`, `ui/*`) stay on a plain `BroadcastChannel`
   inside the private partition, in the document (`localChannel`) and in chrome's
   `BentoShellAction` frame script. Only tools-bound actions use the relay. Chrome's
@@ -380,6 +408,10 @@ unchanged.
 
 Pitfalls:
 
+- The Settings overlay must say `settings-hello` (not `hello`) and must not send
+  tools-bound `action`s: a `hello` from a private document is a private sidebar and
+  makes tools create the window's Private workspace. A regular document's relay
+  traffic is ignored unless it is a Settings message.
 - Do not create a `BroadcastChannel` in the shell background for private documents
   or expect one document-level channel to reach it. `bento-shell-doc:<mountToken>`
   (graph publication) has the same partition flaw; the coordinator publishes only to
@@ -415,6 +447,12 @@ import `resource:///actors/BentoShellBusParent.sys.mjs` and attach a listener wi
 `BentoShellBusHub.onUp`: each private document's `hello` shows `isPrivate: true` and
 the window's id; the same list for a regular window's documents shows nothing,
 because regular windows do not use the relay.
+
+Settings overlay on the relay: open Settings from the app menu in a regular and a
+private window. In the Browser Toolbox Console, `BentoShellBusHub.onUp` shows a
+`settings-hello` with the hub's `windowId` and `isPrivate` for each; from the private
+window's Settings document, a dispatched `bento-bus-up` with a `settings-request` for
+`backup/getContext` answers `private_window_forbidden`, whatever `caller` it carries.
 
 Window-local sidebar state: with two private windows and a regular window open,
 collapse the sidebar and switch the colour mode in one of them (Cmd+S, the collapse

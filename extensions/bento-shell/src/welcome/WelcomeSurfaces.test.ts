@@ -236,7 +236,7 @@ describe('finishing onboarding', () => {
     ]);
   });
 
-  it('is answered by the mount script: its welcome frame hides the overlay and opens Settings', () => {
+  it('is answered by the mount script: its welcome frame hides the overlay and opens the Settings palette', () => {
     const mount = readFileSync(
       new URL('../../../../src/browser/base/content/bento-shell-mount.js', import.meta.url),
       'utf8',
@@ -248,9 +248,9 @@ describe('finishing onboarding', () => {
     const handler = mount
       .slice(start, mount.indexOf("'bento-embedded-import-frame',", start))
       .replace(/\/\/[^\n]*/g, '');
-    // Only a showing dialog opens Settings, so a double click during the fade adds no second tab.
+    // Only a showing dialog opens Settings, so a double click during the fade opens it once.
     expect(handler).toMatch(
-      /startsWith\(SETTINGS_OPEN_PREFIX\)\) \{\s*const host = document\.getElementById\('bento-welcome-host'\);\s*if \(host && isWelcomeShowing\(host\)\) \{\s*hideWelcome\(\);\s*void openBentoSettings\(false\);/,
+      /startsWith\(SETTINGS_OPEN_PREFIX\)\) \{\s*const host = document\.getElementById\('bento-welcome-host'\);\s*if \(host && isWelcomeShowing\(host\)\) \{\s*hideWelcome\(\);\s*showSettingsPalette\(\);/,
     );
     expect(mount).toMatch(
       /function isWelcomeShowing\(host\) \{\s*return isWelcomeVisible\(host\) && host\.style\.opacity !== '0';/,

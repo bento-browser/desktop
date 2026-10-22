@@ -50,6 +50,11 @@ export class PrivateWindowSettings {
     return this.view(windowId, this.#saved);
   }
 
+  /** The window's own values, or undefined while it is not known yet. */
+  own(windowId: number): WindowLocalSettings | undefined {
+    return this.#byWindow.get(windowId);
+  }
+
   /** `settings` as the window sees them: its own values over the saved ones. */
   view(windowId: number, settings: BentoSettings | null): BentoSettings | null {
     const own = this.#byWindow.get(windowId);

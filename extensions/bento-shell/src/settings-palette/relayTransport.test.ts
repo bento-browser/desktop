@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRelayTransport, RELAY_DOWN_EVENT, RELAY_UP_EVENT } from './relayTransport';
+import { createRelayTransport } from './relayTransport';
+
+const RELAY_UP_EVENT = 'bento-bus-up';
+const RELAY_DOWN_EVENT = 'bento-bus-down';
 
 function setup(queueMs?: number) {
   const target = new EventTarget();
@@ -27,11 +30,11 @@ describe('relay transport', () => {
     expect(up).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(250);
     await vi.advanceTimersByTimeAsync(500);
-    expect(up.filter((m) => m.kind === 'hello')).toHaveLength(3);
+    expect(up.filter((m) => m.kind === 'settings-hello')).toHaveLength(3);
     down({ kind: 'ack', helloId: 'hello-1' });
     expect(transport.isReady).toBe(true);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(up.filter((m) => m.kind === 'hello')).toHaveLength(3);
+    expect(up.filter((m) => m.kind === 'settings-hello')).toHaveLength(3);
   });
 
   it('ignores an acknowledgement for another hello', () => {
@@ -41,7 +44,7 @@ describe('relay transport', () => {
     expect(transport.isReady).toBe(false);
   });
 
-  it('holds requests until ready, then sends them as settings actions', () => {
+  it('holds requests until ready, then sends them as settings requests', () => {
     const { up, transport, down } = setup();
     transport.connect();
     transport.send({
@@ -49,13 +52,12 @@ describe('relay transport', () => {
       operation: 'snapshot/get',
       payload: { domains: ['settings'] },
     });
-    expect(up.some((m) => m.kind === 'action')).toBe(false);
+    expect(up.some((m) => m.kind === 'settings-request')).toBe(false);
     down({ kind: 'ack', helloId: 'hello-1' });
-    expect(up.filter((m) => m.kind === 'action')).toEqual([
+    expect(up.filter((m) => m.kind === 'settings-request')).toEqual([
       {
-        kind: 'action',
-        action: {
-          type: 'settings/request',
+        kind: 'settings-request',
+        request: {
           requestId: 'r1',
           operation: 'snapshot/get',
           payload: { domains: ['settings'] },
@@ -63,7 +65,7 @@ describe('relay transport', () => {
       },
     ]);
     transport.send({ requestId: 'r2', operation: 'backup/getContext', payload: {} });
-    expect(up.filter((m) => m.kind === 'action')).toHaveLength(2);
+    expect(up.filter((m) => m.kind === 'settings-request')).toHaveLength(2);
   });
 
   it('drops a request that waited longer than the queue time', async () => {
@@ -74,22 +76,25 @@ describe('relay transport', () => {
     transport.send({ requestId: 'new', operation: 'snapshot/get', payload: {} });
     down({ kind: 'ack', helloId: 'hello-1' });
     const ids = up
-      .filter((m) => m.kind === 'action')
-      .map((m) => (m.action as { requestId: string }).requestId);
+      .filter((m) => m.kind === 'settings-request')
+      .map((m) => (m.request as { requestId: string }).requestId);
     expect(ids).toEqual(['new']);
   });
 
-  it('hands relayed events to the client and skips everything else', () => {
+  it('hands results and change notices to the client and skips everything else', () => {
     const { transport, down, target } = setup();
     const seen: unknown[] = [];
     transport.onMessage((message) => seen.push(message));
     transport.connect();
+    const result = { type: 'settings/result', requestId: 'r1', ok: true, result: {}, revision: 1 };
     down({ kind: 'event', event: { type: 'settings/changed', settings: {} } });
     down({ kind: 'ack', helloId: 'hello-1' });
+    down({ kind: 'settings-result', result });
     down({ kind: 'unknown' });
+    down(null);
     target.dispatchEvent(new CustomEvent(RELAY_DOWN_EVENT, { detail: 'not json' }));
     target.dispatchEvent(new CustomEvent(RELAY_DOWN_EVENT, { detail: 42 }));
-    expect(seen).toEqual([{ type: 'settings/changed', settings: {} }]);
+    expect(seen).toEqual([{ type: 'settings/changed', settings: {} }, result]);
   });
 
   it('stops listening and clears the queue when disconnected', () => {
@@ -98,7 +103,7 @@ describe('relay transport', () => {
     transport.send({ requestId: 'r1', operation: 'snapshot/get', payload: {} });
     disconnect();
     down({ kind: 'ack', helloId: 'hello-1' });
-    expect(up.some((m) => m.kind === 'action')).toBe(false);
+    expect(up.some((m) => m.kind === 'settings-request')).toBe(false);
     expect(transport.isReady).toBe(false);
   });
 });

@@ -22,7 +22,7 @@ import {
   type PendingOperation,
   type PrivacyMutationResult,
   type SearchMutationResult,
-  type SettingsClientRequest,
+  type SettingsRequestBody,
   type SettingsErrorCode,
   type SettingsOperation,
   type SettingsPayloads,
@@ -32,11 +32,7 @@ import {
   type ValidateImportResult,
 } from '@shared/settings-client-protocol';
 
-/** The part of a request the document supplies; chrome adds the caller. */
-export type SettingsRequestBody = Pick<
-  SettingsClientRequest,
-  'requestId' | 'operationId' | 'operation' | 'payload'
->;
+export type { SettingsRequestBody };
 
 export type SettingsChangeEvent = Extract<
   Event,
