@@ -1776,7 +1776,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // only the source window's own workspace is searched.
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      ctx.panels.setGroupRatioIn(wsId, action.groupId, action.ratio);
+      ctx.panels.setGroupRatio(wsId, action.groupId, action.ratio);
       return;
     }
     case 'pinnedPanel/add': {
