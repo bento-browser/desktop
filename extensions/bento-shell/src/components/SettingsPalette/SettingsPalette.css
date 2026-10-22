@@ -1,15 +1,17 @@
 /* Layer-2 component: SettingsPalette. Mux UI's CommandPalette styles are unlayered, so the
  * sizing and row overrides here are unlayered with selectors scoped to this palette. */
 
-/* The popup is a sibling of the Root in the DOM, so it is found through its dialog. */
+/* The popup is a sibling of the Root in the DOM, so it is found through its dialog. It has the
+ * command palette's size and keeps it, so a short stage does not shrink the palette. */
 .muxui-command-palette__popup:has(> .bento-settings-palette__dialog) {
-  width: min(var(--bento-settings-palette-width), var(--bento-settings-palette-max-inline));
+  width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
+  height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
 .muxui-command-palette__dialog.bento-settings-palette__dialog,
 .muxui-command-palette__content.bento-settings-palette__content {
   min-height: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 .muxui-command-palette__listbox.bento-settings-palette__listbox {
@@ -18,19 +20,78 @@
   flex: 1 1 auto;
 }
 
+/* Back, the path and Close, above the field. Mux's search field row is the model for the
+ * padding, rule and surface so the two rows read as one header. */
+.bento-settings-palette__nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--muxui-semantic-layout-control-gap);
+  padding: var(--muxui-semantic-layout-inset-tight);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+  background-color: var(--muxui-semantic-color-neutral-10);
+}
+
+.bento-settings-palette__path {
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.bento-settings-palette__path ol {
+  display: flex;
+  min-inline-size: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bento-settings-palette__path li {
+  display: flex;
+  min-inline-size: 0;
+  flex: 0 1 auto;
+  align-items: center;
+}
+
+/* A long label gives way before the path scrolls off: an ancestor is capped and ends in an
+ * ellipsis, and the current page takes what is left. */
+.bento-settings-palette__path .muxui-button,
+.bento-settings-palette__path-current {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bento-settings-palette__path .muxui-button {
+  max-inline-size: var(--bento-settings-palette-path-item-max);
+}
+
+.bento-settings-palette__path-current {
+  padding-inline: var(--muxui-semantic-layout-inset-tight);
+  color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+.bento-settings-palette__path-separator {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-50);
+  font-size: var(--muxui-semantic-typography-small-size);
+}
+
 /* A real position for Clear and Close, so the input cannot cover them. */
 .muxui-command-palette__close.bento-settings-palette__close {
   position: static;
   flex: 0 0 auto;
 }
 
-/* The path in front of the field: 'Settings / Panel corner radius / '. */
+/* The field row holds the filter or the value being typed, never the path. */
 .bento-settings-palette__search-icon {
   flex: 0 0 auto;
   color: var(--muxui-semantic-color-neutral-60);
 }
 
-.bento-settings-palette__crumbs,
 .bento-settings-palette__unit,
 .bento-settings-palette__bounds {
   color: var(--muxui-semantic-color-neutral-60);
@@ -38,17 +99,11 @@
   white-space: nowrap;
 }
 
-.bento-settings-palette__crumbs,
 .bento-settings-palette__unit {
   flex: 0 0 auto;
 }
 
-.bento-settings-palette__crumb-current {
-  color: var(--muxui-semantic-color-neutral-90);
-  font-weight: var(--muxui-semantic-typography-control-weight);
-}
-
-/* The value being typed hugs its unit; the bounds sit at the far end. A search input in
+/* The value being typed hugs its unit, and the bounds follow right after. A search input in
  * Chromium reserves room for its own clear button, which would clip the value (the palette
  * has its own Clear); Firefox has no such area. */
 .muxui-command-palette__input.bento-settings-palette__input[data-editing] {
@@ -61,7 +116,7 @@
 }
 
 .bento-settings-palette__bounds {
-  margin-inline-start: auto;
+  margin-inline-start: var(--muxui-semantic-layout-inset-medium);
 }
 
 .bento-settings-palette__bounds[data-invalid] {
@@ -133,29 +188,44 @@
   border-start-end-radius: 0;
 }
 
-/* A write in flight: the value dims and ends in an ellipsis, with no animation. */
-.bento-settings-palette__item[data-pending] .bento-settings-palette__value {
+/* A write in flight: the value dims and ends in an ellipsis, with no animation. A switch row
+ * shows the new state at once instead, so it has nothing to dim. */
+.bento-settings-palette__item[data-pending]:not([data-switch]) .bento-settings-palette__value {
   color: var(--muxui-semantic-color-neutral-50);
 }
 
-.bento-settings-palette__item[data-pending] .bento-settings-palette__value::after {
+.bento-settings-palette__item[data-pending]:not([data-switch])
+  .bento-settings-palette__value::after {
   content: '…';
 }
 
-/* In an editor stage the list is a set of presets, not a focus target: the list keeps no
- * focus of its own there (the arrows are handled by the field), so only the preset that
- * matches the value is marked. */
-.bento-settings-palette__content[data-editing]
-  .bento-settings-palette__item[data-focused]:not([data-current]) {
-  background-color: transparent;
-  box-shadow: none;
-  color: inherit;
+/* The remark after a label (Current, Min, Default, Max); the rest of the row follows it on the
+ * right. */
+.bento-settings-palette__note {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-small-size);
 }
 
-/* The preset that matches the number being typed. */
-.bento-settings-palette__item[data-current] {
-  background-color: var(--muxui-item-focus-bg);
-  color: var(--muxui-item-focus-color);
+.bento-settings-palette__spacer {
+  flex: 1 1 0;
+}
+
+.muxui-command-palette__item-content.bento-settings-palette__item-content {
+  flex: 0 1 auto;
+}
+
+/* The switch is a picture of the state: the row is the control. */
+.bento-settings-palette__switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.bento-settings-palette__switch .muxui-switch-field__button {
+  min-block-size: 0;
+  /* No label beside the track: the padding Mux keeps for one is not needed. */
+  padding-inline-start: var(--muxui-switch-field-track-width);
 }
 
 .bento-settings-palette__radio,
@@ -247,4 +317,44 @@
   flex: 0 0 auto;
   align-self: flex-end;
   white-space: nowrap;
+}
+
+/* A stage change slides the list in from the side it came from: one short keyframe on the
+ * reveal pair, nothing that loops. */
+@keyframes bento-settings-stage-forward {
+  from {
+    opacity: 0;
+    transform: translateX(var(--muxui-semantic-layout-inset-large));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bento-settings-stage-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--muxui-semantic-layout-inset-large) * -1));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bento-settings-palette__listbox[data-travel='forward'] {
+  animation: bento-settings-stage-forward var(--muxui-semantic-motion-reveal-transition);
+}
+
+.bento-settings-palette__listbox[data-travel='back'] {
+  animation: bento-settings-stage-back var(--muxui-semantic-motion-reveal-transition);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-settings-palette__listbox[data-travel] {
+    animation: none;
+  }
 }

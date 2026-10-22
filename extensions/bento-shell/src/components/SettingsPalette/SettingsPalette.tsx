@@ -2,8 +2,9 @@
 //
 // Bento's settings as a staged quick pick on the Mux CommandPalette parts. The root lists every
 // setting grouped, with its value on the right; choosing a row toggles it in place or opens a
-// stage (a list of choices, or a number or name typed in the search field). The search field
-// shows the path and Esc goes back one stage, closing from the root.
+// stage (a list of choices, or a number or name typed in the search field). A nav row above the
+// field holds Back, the path to the current page (every ancestor a button) and Close, and Esc
+// goes back one stage, closing from the root.
 //
 // Presentational: it takes the settings model and the write actions (`SettingsPaletteActions`)
 // and keeps only navigation state, so stories and tests drive it without a connection. The
@@ -20,8 +21,10 @@ import {
   useState,
   type ChangeEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
-import { CommandPalette as Palette } from '@muxui/react';
+import { Button, CommandPalette as Palette, IconButton, SwitchField } from '@muxui/react';
+import ChevronLeftIcon from 'lucide-react/dist/esm/icons/chevron-left';
 import ChevronRightIcon from 'lucide-react/dist/esm/icons/chevron-right';
 import ExternalLinkIcon from 'lucide-react/dist/esm/icons/external-link';
 import PlusIcon from 'lucide-react/dist/esm/icons/plus';
@@ -29,6 +32,11 @@ import SearchIcon from 'lucide-react/dist/esm/icons/search';
 import TriangleAlertIcon from 'lucide-react/dist/esm/icons/triangle-alert';
 
 import { BentoIcon } from '../primitives';
+import {
+  FOCUS_ON_HOVER,
+  ROW_HIGHLIGHT_CLASS,
+  useRowHighlight,
+} from '../primitives/useRowHighlight';
 import { toggleChange } from './editing';
 import {
   editorSpecFor,
@@ -46,12 +54,12 @@ import {
 } from './rows';
 import { createSizeRunner, stackAfterSizeChange, waitsForSave } from './sizeIntents';
 import {
-  crumbPrefix,
-  crumbsFor,
   escapeOutcome,
   initialStack,
   isEditorStage,
+  pathLabels,
   popStage,
+  popToIndex,
   popToKind,
   pushStage,
   stageKey,
@@ -67,6 +75,9 @@ export interface SettingsPaletteProps {
   actions: SettingsPaletteActions;
   /** Dismisses the palette (Esc from the root, the backdrop, the close button, a finished reset). */
   onClose: () => void;
+  /** Given when the command palette opened Settings: the path starts with it, and Back at the
+   * root returns there. Other openers leave it out and Back is disabled at the root. */
+  onBackToPalette?: () => void;
   /** Stages to start on, root first. The root alone by default. */
   initialStages?: readonly Stage[];
   /** Search text to start with (a link to a setting that has no list of its own). */
@@ -127,10 +138,62 @@ function groupRows(rows: readonly PaletteRow[]): RowGroup[] {
 // boolean, so it is passed as a plain props object.
 const FOCUS_FIRST_ROW: Record<string, unknown> = { autoFocus: 'first' };
 
+// The Clear button sits inside the SearchField, which tells every button in it to stay out of the
+// tab order. Clear is a control the keyboard should reach, so it opts back in, through a plain
+// props object because `ButtonPartProps` does not declare the React Aria prop.
+const CLEAR_IN_TAB_ORDER: Record<string, unknown> = { excludeFromTabOrder: false };
+
+/**
+ * The list of one stage. React Aria focuses the first selected row when a list mounts, so the
+ * stage mounts with the row it should open on selected and drops the selection once that has
+ * happened. Nothing stays selected: rows here are actions, and a selection would change how a
+ * press is handled.
+ */
+function StageList({
+  focusRow,
+  editing,
+  highlightRef,
+  label,
+  travel,
+  children,
+}: {
+  focusRow: string | null;
+  editing: boolean;
+  highlightRef: (list: HTMLElement | null) => void;
+  label: string;
+  /** Which way the list arrived: it slides in from that side. */
+  travel: 'forward' | 'back' | null;
+  children: ReactNode;
+}) {
+  const [seeded, setSeeded] = useState(focusRow !== null);
+  useEffect(() => {
+    if (!seeded) return;
+    // After the frame in which the list has its rows and has taken its focus.
+    const frame = requestAnimationFrame(() => setSeeded(false));
+    return () => cancelAnimationFrame(frame);
+  }, [seeded]);
+  const selection: Record<string, unknown> =
+    seeded && focusRow !== null ? { selectionMode: 'single', selectedKeys: [focusRow] } : {};
+  return (
+    <Palette.ListBox
+      ref={highlightRef}
+      aria-label={label}
+      className={`bento-settings-palette__listbox ${ROW_HIGHLIGHT_CLASS}`}
+      data-travel={travel ?? undefined}
+      {...FOCUS_ON_HOVER}
+      {...(editing ? {} : FOCUS_FIRST_ROW)}
+      {...selection}
+    >
+      {children}
+    </Palette.ListBox>
+  );
+}
+
 export default function SettingsPalette({
   view,
   actions,
   onClose,
+  onBackToPalette,
   initialStages,
   initialQuery = '',
   openToken = 0,
@@ -140,6 +203,13 @@ export default function SettingsPalette({
   const start = useMemo(() => [...(initialStages ?? initialStack())], [initialStages]);
   const [stack, setStack] = useState<Stage[]>(start);
   const [query, setQuery] = useState(initialQuery);
+  // Which way the last move went (the list slides in from that side) and the row to open the
+  // list on when going back: the one that opened the page being left. The row belongs to the
+  // show it was set in (a new show's list mounts before the state is reset).
+  const [travel, setTravel] = useState<'forward' | 'back' | null>(null);
+  const [returnRow, setReturnRow] = useState<{ id: string; show: number } | null>(null);
+  // The row that opened the stage above each depth: `openers[i]` is a row of `stack[i]`.
+  const openers = useRef<(string | undefined)[]>([]);
   const stage = topStage(stack);
   const editor = useStageEditor(stage, model, actions);
   const latest = useRef({ model, actions });
@@ -154,6 +224,8 @@ export default function SettingsPalette({
   const fileRef = useRef<HTMLInputElement>(null);
   const editing = isEditorStage(stage);
   const spec = editorSpecFor(stage);
+  // An editor stage keeps no focus of its own: its highlight marks the preset that matches the value.
+  const highlightRef = useRowHighlight(editing ? '[role="option"][data-current]' : undefined);
 
   // Begins the editor of a stage the palette opened on (a story, a deep link) once the model is there.
   const began = useRef(false);
@@ -176,6 +248,9 @@ export default function SettingsPalette({
     // reports what ended while the palette was hidden, which a clear after it would erase.
     setStack(start);
     setQuery(initialQuery);
+    setTravel(null);
+    setReturnRow(null);
+    openers.current = [];
     const top = topStage(start);
     if (model && isEditorStage(top)) editor.begin(top, model);
     inputRef.current?.focus();
@@ -205,27 +280,65 @@ export default function SettingsPalette({
     onClose();
   }, [editor, onClose]);
 
-  const go = (next: Stage) => {
+  const go = (next: Stage, opener?: string) => {
     actions.clearNotice();
     setQuery('');
     if (model) editor.begin(next, model);
+    openers.current.length = stack.length;
+    openers.current[stack.length - 1] = opener;
+    setReturnRow(null);
+    setTravel('forward');
     setStack((current) => pushStage(current, next));
   };
 
+  /** Settles the list on the stage at `depth` after going back to it. */
+  const arriveAt = (depth: number) => {
+    setQuery('');
+    const id = openers.current[depth];
+    setReturnRow(id === undefined ? null : { id, show: openToken });
+    openers.current.length = depth + 1;
+    setTravel('back');
+  };
+
   const back = () => {
+    if (stack.length < 2) return;
     actions.clearNotice();
     editor.revert();
-    setQuery('');
+    arriveAt(stack.length - 2);
     setStack((current) => popStage(current));
   };
 
   /** Leaves an editor stage after its value was kept. */
   const finishEdit = () => {
-    setQuery('');
+    if (stack.length < 2) return;
+    arriveAt(stack.length - 2);
     setStack((current) => popStage(current));
   };
 
-  const popToBackups = () => setStack((current) => popToKind(current, 'backups'));
+  /** Back button and Backspace: a stage back, or from the root to the command palette. */
+  const navBack = () => {
+    if (stack.length > 1) {
+      back();
+    } else if (onBackToPalette) {
+      editor.revert();
+      onBackToPalette();
+    }
+  };
+
+  /** A path button: the page `depth` levels from the root. The field keeps the focus. */
+  const goToDepth = (depth: number) => {
+    actions.clearNotice();
+    editor.revert();
+    arriveAt(depth);
+    setStack((current) => popToIndex(current, depth));
+    inputRef.current?.focus();
+  };
+
+  const popToBackups = () => {
+    setTravel(null);
+    setReturnRow(null);
+    setStack((current) => popToKind(current, 'backups'));
+  };
 
   const rows = useMemo<PaletteRow[]>(() => {
     if (!model) return view.kind === 'ready' ? [] : statusRows(view);
@@ -236,7 +349,7 @@ export default function SettingsPalette({
     return isFilterable(stage) && query ? filterRows(all, query) : all;
   }, [model, view, stage, query]);
 
-  const run = (intent: Intent) => {
+  const run = (intent: Intent, rowId?: string) => {
     if (intent.type === 'retry') {
       actions.refresh();
       return;
@@ -256,7 +369,7 @@ export default function SettingsPalette({
         }
         break;
       case 'push':
-        go(intent.stage);
+        go(intent.stage, rowId);
         break;
       case 'change':
         void actions.update(intent.changes);
@@ -288,7 +401,11 @@ export default function SettingsPalette({
         // The stage follows the entry only once the new order is saved: until then the actions
         // still belong to the entry they were opened on, and a second press is ignored.
         void sizes.run(intent).then((saved) => {
-          if (saved) setStack((current) => stackAfterSizeChange(current, intent));
+          if (saved) {
+            setTravel(null);
+            setReturnRow(null);
+            setStack((current) => stackAfterSizeChange(current, intent));
+          }
         });
         break;
       case 'export':
@@ -328,30 +445,51 @@ export default function SettingsPalette({
     }
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Escape') {
+  // One Esc is one step: clear a search, dismiss an import preview, go back a stage, or close
+  // from the root. It is heard on the window, not on the field, so it works wherever the focus
+  // is in the dialog (a path button, Close, Clear), and before React Aria's own Esc handling,
+  // which would close the dialog from anywhere.
+  const onEscape = () => {
+    switch (escapeOutcome(stack, { query, importPreview: model?.importPreview != null })) {
+      case 'clearQuery':
+        setQuery('');
+        break;
+      case 'cancelImport':
+        actions.cancelImport();
+        break;
+      case 'back':
+        back();
+        break;
+      case 'close':
+        close();
+        break;
+    }
+  };
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing) return;
       event.preventDefault();
       event.stopPropagation();
-      // One Esc is one step: clear a search, dismiss an import preview, go back a stage, or
-      // close from the root.
-      switch (escapeOutcome(stack, { query, importPreview: model?.importPreview != null })) {
-        case 'clearQuery':
-          setQuery('');
-          break;
-        case 'cancelImport':
-          actions.cancelImport();
-          break;
-        case 'back':
-          back();
-          break;
-        case 'close':
-          close();
-          break;
+      escapeRef.current();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (!editing) {
+      // Backspace in an empty filter is Back.
+      if (event.key === 'Backspace' && !event.repeat && query === '') {
+        if (stack.length > 1 || onBackToPalette) {
+          event.preventDefault();
+          navBack();
+        }
       }
       return;
     }
-    if (!editing) return;
     // In an editor stage the arrows step through presets and Enter keeps the value; the
     // list's own navigation never sees them.
     if (event.key === 'Enter') {
@@ -369,8 +507,17 @@ export default function SettingsPalette({
     }
   };
 
-  const labelOf = (s: Stage) => (model ? stageLabel(s, model) : '');
-  const crumbs = crumbsFor(stack, labelOf);
+  const labelOf = (s: Stage) =>
+    model ? stageLabel(s, model) : s.kind === 'root' ? 'Settings' : '';
+  const path = pathLabels(stack, labelOf);
+  const currentLabel = path[path.length - 1] ?? 'Settings';
+  const canGoBack = stack.length > 1 || onBackToPalette !== undefined;
+  const backLabel =
+    stack.length > 1
+      ? `Back to ${path[path.length - 2]}`
+      : onBackToPalette
+        ? 'Back to Command palette'
+        : 'Back';
   const fieldValue = editing ? editor.draft : query;
   const onFieldChange = (event: ChangeEvent<HTMLInputElement>) => {
     const text = event.currentTarget.value;
@@ -384,27 +531,34 @@ export default function SettingsPalette({
   // The shortcuts are all static rows, and still the thing the footer counts there.
   const counted = stage.kind === 'shortcuts' ? rows.length : rows.filter((row) => !row.info).length;
   const footer: FooterCopy = model
-    ? footerFor(stage, model, counted)
+    ? footerFor(stage, model, counted, editing ? '' : query)
     : { hints: view.kind === 'error' ? ['Enter try again', 'Esc close'] : ['Esc close'] };
   const notice = model?.notice ?? null;
-  const placeholder = stage.kind === 'root' ? 'Search settings' : undefined;
+  const placeholder = stage.kind === 'root' ? 'Search settings' : 'Filter';
   const fieldLabel = editing
-    ? `${crumbs.current ?? 'Setting'} value`
+    ? `${currentLabel} value`
     : stage.kind === 'root'
       ? 'Search settings'
-      : `Filter ${crumbs.current ?? ''}`;
+      : `Filter ${currentLabel}`;
+  // The row a stage opens on: the one that opened the page when going back, else the current
+  // choice of a list of choices. An editor stage focuses no row.
+  const returnTo = returnRow?.show === openToken ? returnRow.id : null;
+  const focusRow = editing
+    ? null
+    : (returnTo ?? rows.find((row) => row.radio === 'on' && !row.info)?.id ?? null);
 
   const renderRow = (row: PaletteRow) => (
     <Palette.Item
       key={row.id}
       id={row.id}
-      textValue={[row.label, row.value].filter(Boolean).join(' ')}
+      textValue={[row.label, row.note, row.value].filter(Boolean).join(' ')}
       disabled={row.info}
-      onActivate={() => run(row.intent)}
+      onActivate={() => run(row.intent, row.id)}
       className="bento-settings-palette__item"
       data-tone={row.tone}
       data-info={row.info ? '' : undefined}
       data-pending={row.pending ? '' : undefined}
+      data-switch={row.switchOn !== undefined ? '' : undefined}
       data-separated={row.separated ? '' : undefined}
       data-detail={row.detail ? '' : undefined}
       data-current={
@@ -433,10 +587,23 @@ export default function SettingsPalette({
           <BentoIcon icon={TriangleAlertIcon} size="sm" />
         </Palette.ItemIcon>
       ) : null}
-      <Palette.ItemContent>
+      <Palette.ItemContent className="bento-settings-palette__item-content">
         <Palette.ItemTitle className="bento-settings-palette__label">{row.label}</Palette.ItemTitle>
       </Palette.ItemContent>
-      {row.value ? (
+      {row.note ? <span className="bento-settings-palette__note">{row.note}</span> : null}
+      <span className="bento-settings-palette__spacer" aria-hidden="true" />
+      {row.switchOn !== undefined ? (
+        // Presentational: the row is the control. Inert keeps the switch out of the tab order and
+        // out of hit testing (a click lands on the row), and hidden from assistive technology,
+        // which reads On or Off from the row's text value.
+        <span className="bento-settings-palette__switch" aria-hidden="true" inert>
+          <SwitchField.Root size="sm" aria-label={row.label} checked={row.switchOn}>
+            <SwitchField.Button>
+              <SwitchField.Thumb />
+            </SwitchField.Button>
+          </SwitchField.Root>
+        </span>
+      ) : row.value ? (
         <Palette.ItemMeta className="bento-settings-palette__value">{row.value}</Palette.ItemMeta>
       ) : null}
       {row.trail ? (
@@ -480,24 +647,74 @@ export default function SettingsPalette({
             className="bento-settings-palette__content"
             data-editing={editing ? '' : undefined}
           >
-            <Palette.SearchField className="bento-settings-palette__field" aria-label={fieldLabel}>
-              <BentoIcon
-                icon={SearchIcon}
+            <div className="bento-settings-palette__nav">
+              <IconButton
+                variant="ghost"
                 size="sm"
-                className="bento-settings-palette__search-icon"
+                aria-label={backLabel}
+                disabled={!canGoBack}
+                onActivate={navBack}
+              >
+                <BentoIcon icon={ChevronLeftIcon} size="sm" />
+              </IconButton>
+              <nav className="bento-settings-palette__path" aria-label="Settings path">
+                <ol>
+                  {onBackToPalette ? (
+                    <li>
+                      <Button variant="ghost" size="sm" onActivate={onBackToPalette}>
+                        Command palette
+                      </Button>
+                      <span className="bento-settings-palette__path-separator" aria-hidden="true">
+                        /
+                      </span>
+                    </li>
+                  ) : null}
+                  {path.map((label, depth) => {
+                    const isCurrent = depth === path.length - 1;
+                    return (
+                      <li key={`${depth}:${label}`}>
+                        {isCurrent ? (
+                          <span
+                            className="bento-settings-palette__path-current"
+                            aria-current="page"
+                          >
+                            {label}
+                          </span>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onActivate={() => goToDepth(depth)}>
+                              {label}
+                            </Button>
+                            <span
+                              className="bento-settings-palette__path-separator"
+                              aria-hidden="true"
+                            >
+                              /
+                            </span>
+                          </>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </nav>
+              <Palette.Close
+                aria-label="Close settings"
+                className="bento-settings-palette__close"
               />
-              {stage.kind !== 'root' ? (
-                <span className="bento-settings-palette__crumbs">
-                  {crumbPrefix(editing ? [...crumbs.trail, crumbs.current ?? ''] : crumbs.trail)}
-                  {editing ? null : (
-                    <span className="bento-settings-palette__crumb-current">{crumbs.current}</span>
-                  )}
-                </span>
-              ) : null}
+            </div>
+            <Palette.SearchField className="bento-settings-palette__field" aria-label={fieldLabel}>
+              {editing ? null : (
+                <BentoIcon
+                  icon={SearchIcon}
+                  size="sm"
+                  className="bento-settings-palette__search-icon"
+                />
+              )}
               <Palette.Input
                 ref={inputRef}
                 className="bento-settings-palette__input"
-                placeholder={placeholder}
+                placeholder={editing ? undefined : placeholder}
                 value={fieldValue}
                 onChange={onFieldChange}
                 onKeyDown={handleKeyDown}
@@ -506,7 +723,7 @@ export default function SettingsPalette({
                 inputMode={spec ? 'numeric' : undefined}
                 // The number or name sizes the field to itself (the digits' width, plus one for the caret).
                 style={
-                  editing ? { inlineSize: `${Math.max(1, editor.draft.length) + 1}ch` } : undefined
+                  spec ? { inlineSize: `${Math.max(1, editor.draft.length) + 1}ch` } : undefined
                 }
                 data-editing={editing ? '' : undefined}
                 autoFocus
@@ -531,18 +748,21 @@ export default function SettingsPalette({
                 </span>
               ) : null}
               {!editing && query.length > 0 ? (
-                <Palette.ClearButton aria-label="Clear search" onClick={() => setQuery('')} />
+                <Palette.ClearButton
+                  aria-label="Clear search"
+                  onClick={() => setQuery('')}
+                  {...CLEAR_IN_TAB_ORDER}
+                />
               ) : null}
-              <Palette.Close
-                aria-label="Close settings"
-                className="bento-settings-palette__close"
-              />
             </Palette.SearchField>
-            <Palette.ListBox
-              key={`${view.kind}:${stageKey(stage)}:${model?.importPreview ? 'preview' : ''}`}
-              aria-label={labelOf(stage) || 'Settings'}
-              className="bento-settings-palette__listbox"
-              {...(editing ? {} : FOCUS_FIRST_ROW)}
+            <StageList
+              // A new show remounts the list too, so it opens on its first row, scrolled to the top.
+              key={`${openToken}:${view.kind}:${stageKey(stage)}:${model?.importPreview ? 'preview' : ''}`}
+              focusRow={focusRow}
+              editing={editing}
+              highlightRef={highlightRef}
+              label={labelOf(stage) || 'Settings'}
+              travel={travel}
             >
               {withHeaders
                 ? groups.map((group) => (
@@ -554,7 +774,7 @@ export default function SettingsPalette({
                     </Palette.Section>
                   ))
                 : rows.map(renderRow)}
-            </Palette.ListBox>
+            </StageList>
             {view.kind === 'ready' && rows.length === 0 && !editing && stage.kind !== 'text' ? (
               <Palette.Empty>No matching settings.</Palette.Empty>
             ) : null}

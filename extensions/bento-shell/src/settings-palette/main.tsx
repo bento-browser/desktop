@@ -25,14 +25,18 @@ import { useOverlayReadySignal } from '../bridge/overlayReady';
 import { createRelayTransport } from './relayTransport';
 import { createSettingsClient } from './settingsClient';
 import { createSettingsPaletteStore, type SettingsPaletteHost } from './settingsStore';
+import { BACK_TO_PALETTE_TITLE_PREFIX, CLOSE_TITLE_PREFIX, titleFor } from './titles';
 import { useShowSignal } from './useShowSignal';
 
 initToolsPort();
 
-const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_SETTINGS_PALETTE';
-
 function close() {
-  sendChromeTitle(`${CLOSE_TITLE_PREFIX}_${Date.now()}`);
+  sendChromeTitle(titleFor(CLOSE_TITLE_PREFIX));
+}
+
+/** Chrome hides Settings and shows the command palette again, with the query it had. */
+function backToPalette() {
+  sendChromeTitle(titleFor(BACK_TO_PALETTE_TITLE_PREFIX));
 }
 
 /** Hands the export to the user the way a web page would: a download of a Blob. */
@@ -67,7 +71,7 @@ function SettingsPaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const view = useStore(settings.store, (state) => state.view);
-  const { openToken, hideToken, stages, query } = useShowSignal(
+  const { openToken, hideToken, stages, query, origin } = useShowSignal(
     settings.actions.refresh,
     settings.actions.setVisible,
   );
@@ -78,6 +82,7 @@ function SettingsPaletteApp() {
       view={view}
       actions={settings.actions}
       onClose={close}
+      onBackToPalette={origin === 'palette' ? backToPalette : undefined}
       initialStages={stages}
       initialQuery={query}
       openToken={openToken}
