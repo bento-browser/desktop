@@ -124,6 +124,11 @@
     --bento-command-palette-height: 30rem;
     --bento-command-palette-max-inline: 90vw;
     --bento-command-palette-max-block: 80vh;
+    /* Settings palette: the popup takes its width from its content up to this; its height is
+       the list's, up to the Mux popup limit. Mark: the radio and the search engine tile. */
+    --bento-settings-palette-width: 40rem;
+    --bento-settings-palette-max-inline: 90vw;
+    --bento-settings-palette-mark-size: 1rem;
     --bento-merge-progress-log-min-height: 8rem;
     --bento-merge-progress-log-max-height: 14rem;
     /* Floating sidebar cards (components/SidebarCards), laid over the bottom of the tab
