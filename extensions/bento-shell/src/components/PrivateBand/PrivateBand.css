@@ -1,0 +1,110 @@
+/* Layer-2 component: PrivateBand.
+ *
+ * An inverted block in the place the workspace switcher takes: the Mux neutral step and its
+ * paired foreground give a light block in a dark window and a dark one in a light window
+ * with no scope of their own. Expanded it spans the sidebar edge to edge with the glyph at
+ * the start and two text lines; in the rail it is a glyph-only block the rail wide (the
+ * shell's own width, in CSS). The glyph never moves between the two: its start inset centres
+ * it in the rail (rail width and glyph size tokens), and the text starts one inset after the
+ * glyph, so it begins at the rail's edge. The sidebar's narrowing edge therefore clips the
+ * text away in a collapse and the widening edge reveals it in an expand, at full opacity, and
+ * the rail layout hides nothing that was still visible. The Mux Button supplies the press
+ * state and keyboard activation; its box and fill give way to the band's. The note is a Mux
+ * Popover. */
+@layer bento.components {
+  .bento-private-band {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .muxui-button.bento-private-band__button {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    height: var(--bento-private-band-height);
+    min-height: var(--bento-private-band-height);
+    padding-block: 0;
+    padding-inline-start: var(--bento-private-band-inset);
+    padding-inline-end: var(--muxui-semantic-layout-inset-large);
+    border: 0;
+    border-radius: 0;
+    background-color: var(--muxui-semantic-color-neutral-90);
+    color: var(--muxui-semantic-color-neutral-90-fg);
+    font: inherit;
+    text-align: start;
+    transition: background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .muxui-button.bento-private-band__button:hover:not([data-disabled]),
+  .muxui-button.bento-private-band__button[aria-expanded='true'] {
+    background-color: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-neutral-90) 88%,
+      var(--muxui-semantic-color-neutral-90-fg)
+    );
+  }
+
+  /* The ring is drawn inside the band: it spans the frame, so an outer ring would clip. */
+  .muxui-button.bento-private-band__button:focus-visible {
+    box-shadow:
+      inset 0 0 0 var(--bento-focus-ring-width) var(--muxui-semantic-focus-inner),
+      inset 0 0 0 calc(var(--bento-focus-ring-width) * 2) var(--muxui-semantic-focus-ring);
+  }
+
+  .bento-private-band__button .muxui-button-content {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--bento-private-band-inset);
+    min-width: 0;
+    width: 100%;
+  }
+
+  .bento-private-band__icon {
+    flex: none;
+    width: var(--bento-private-band-icon-size);
+    height: var(--bento-private-band-icon-size);
+  }
+
+  .bento-private-band__text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .muxui-text.bento-private-band__title,
+  .muxui-text.bento-private-band__summary {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    color: inherit;
+  }
+
+  .muxui-text.bento-private-band__title {
+    font-weight: var(--muxui-semantic-typography-label-weight);
+  }
+
+  /* Mux's popover is a strong (inverted) surface; the note is a plain raised one, so the
+     band above it stays the only inverted block. */
+  .muxui-popover.bento-private-band__note {
+    box-sizing: border-box;
+    width: var(--bento-private-note-width);
+    max-width: 100%;
+    padding: var(--muxui-semantic-layout-inset-medium);
+    border: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+    background-color: var(--muxui-semantic-surface-raised);
+    color: var(--muxui-semantic-content-default);
+  }
+
+  /* Rail: a glyph-only block. The glyph keeps its place (the same start inset), the text is
+     already past the edge, and nothing is left of the end padding. */
+  html[data-bento-collapsed='true'] .muxui-button.bento-private-band__button {
+    padding-inline-end: 0;
+  }
+
+  html[data-bento-collapsed='true'] .bento-private-band__text {
+    display: none;
+  }
+}

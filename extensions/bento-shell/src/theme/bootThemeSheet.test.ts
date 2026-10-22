@@ -16,13 +16,15 @@ const sheetIds = readdirSync(new URL('../../public/themes/', import.meta.url))
   .map((file) => file.slice(0, -'.css'.length));
 
 /** Run public/boot.js against a fake document whose localStorage holds `hint`. */
-function runBoot(hint: string | null, options: { optOut?: boolean } = {}) {
+function runBoot(hint: string | null, options: { optOut?: boolean; hash?: string } = {}) {
   const fake = createFakeDocument({ hasAttribute: () => options.optOut === true });
   const storage = createFakeStorage(hint === null ? {} : { [THEME_HINT_KEY]: hint });
   runInNewContext(bootSource, {
     document: fake.document,
     localStorage: storage,
     matchMedia: () => ({ matches: false }),
+    location: { hash: options.hash ?? '' },
+    URLSearchParams,
   });
   return { head: fake.head, root: fake.documentElement };
 }
@@ -90,5 +92,24 @@ describe('boot.js theme sheet request', () => {
 
   it('requests nothing for a page that opts out', () => {
     expect(runBoot('standard-harbour', { optOut: true }).head.links.size).toBe(0);
+  });
+});
+
+describe('boot.js chrome rem scale', () => {
+  it("scales the panel gutter by chrome's rem over the shell's for a private window sidebar", () => {
+    const { root } = runBoot(null, { hash: '#bentoWindowId=7&bentoPrivate=1&bentoChromeRem=11' });
+    expect(root.properties.get('--bento-chrome-rem-scale')).toBe('0.6875');
+  });
+
+  it.each([
+    ['no stamp', '#bentoWindowId=7'],
+    ['an empty stamp', '#bentoChromeRem='],
+    ['zero', '#bentoChromeRem=0'],
+    ['a negative size', '#bentoChromeRem=-11'],
+    ['a unit', '#bentoChromeRem=11px'],
+    ['a script', '#bentoChromeRem=1;alert(1)'],
+    ['a long number', '#bentoChromeRem=12345'],
+  ])('leaves the scale at its default for %s', (_, hash) => {
+    expect(runBoot(null, { hash }).root.properties.has('--bento-chrome-rem-scale')).toBe(false);
   });
 });

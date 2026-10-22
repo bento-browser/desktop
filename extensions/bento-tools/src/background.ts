@@ -24,9 +24,12 @@ import {
   isActivationCurrent,
 } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
+import { dropRemovedTabFromPanels } from './panels/RemovedTab';
 import { SleepPolicy } from './tabs/SleepPolicy';
 import { createBrowserStartup } from './tabs/BrowserStartup';
 import { WorkspaceStore } from './workspaces/WorkspaceStore';
+import { isEphemeralWorkspaceId } from './workspaces/ephemeral';
+import { adoptPrivateTabs, joinPrivateWorkspace } from './workspaces/privateTabs';
 import { SettingsStore } from './settings/SettingsStore';
 import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
@@ -63,6 +66,12 @@ import { GraphOperationJournal, GraphOperationRecovery } from './replacement/Gra
 import { PrivacyMutationService } from './privacy/PrivacyMutationService';
 import { GraphPublicationCoordinator } from './replacement/GraphPublicationCoordinator';
 import { isShellClientMessage } from '@shared/shell-client-protocol';
+import {
+  audienceMessage,
+  partitionTabDeltas,
+  sendWorkspaceEvent,
+  type Audience,
+} from './messaging/audience';
 
 const tabs = new TabRegistry();
 const workspaces = new WorkspaceStore();
@@ -247,6 +256,59 @@ function broadcastEvent(event: Event): void {
   }
 }
 
+/** Like broadcastEvent, to one audience of shell documents only. */
+function broadcastAudience(audience: Audience, event: Event): void {
+  for (const port of connectedPorts) {
+    try {
+      port.postMessage(audienceMessage(audience, event));
+    } catch (err) {
+      console.warn('[bento-tools] audience broadcast failed:', err);
+    }
+  }
+}
+
+// ---- Private windows -------------------------------------------------------
+// Each private window gets a temporary "Private" workspace (WorkspaceStore keeps
+// it in memory only). Its tabs belong to it, its events reach that window's
+// documents only (broadcastAudience), and it is discarded with the window.
+
+/** A window announced as private: make its workspace and adopt tabs it already has. */
+function adoptPrivateWindow(windowId: number): void {
+  workspaces.ensurePrivate(windowId);
+  adoptPrivateTabs(workspaces, tabs, windowId);
+}
+
+/** Gives a private window's documents their state: its tabs, its Private workspace,
+ * and its panels. Nothing of the regular workspaces is in it. */
+function syncPrivateWindow(windowId: number): void {
+  void bootReady.then(() => {
+    adoptPrivateWindow(windowId);
+    const workspace = workspaces.privateWorkspaceOf(windowId);
+    if (!workspace) return;
+    const audience = { privateWindowId: windowId };
+    const snapshot = workspaces.snapshotForPrivateWindow(windowId);
+    broadcastAudience(audience, { type: 'tabs/snapshot', tabs: tabs.snapshotPrivate(windowId) });
+    broadcastAudience(audience, {
+      type: 'workspaces/snapshot',
+      workspaces: snapshot.workspaces,
+      activeId: snapshot.activeId,
+      activeIdByWindow: snapshot.activeIdByWindow,
+    });
+    broadcastAudience(audience, { type: 'pinnedPanels/snapshot', entries: [] });
+    broadcastAudience(audience, { type: 'tabFolders/snapshot', folders: [] });
+    void emitPanelsSync(workspace.id);
+  });
+}
+
+/** The window closed: drop everything its Private workspace held. */
+function discardPrivateWindow(windowId: number): void {
+  const workspace = workspaces.forgetPrivateWindow(windowId);
+  if (!workspace) return;
+  panels.removeWorkspace(workspace.id);
+  lastActiveTabByWorkspace.delete(workspace.id);
+  prunePreferredActivationTabs((_windowKey, workspaceId) => workspaceId === workspace.id);
+}
+
 const PARKED_WORKSPACE_TABS_STORAGE_KEY = 'bento.parkedWorkspaceTabs';
 const IMPORT_PINNED_PANEL_SESSION_KEY = 'bento.importPinnedPanel';
 const SESSION_READ_RETRY_DELAY_MS = 50;
@@ -363,6 +425,8 @@ function parkTabsForClosingWindow(windowId: number, closingTabs: WindowClosingTa
   }
 
   for (const [workspaceId, workspaceTabs] of byWorkspace) {
+    // A private window's Private workspace is discarded with its window, never parked.
+    if (isEphemeralWorkspaceId(workspaceId)) continue;
     // Private tabs are never parked; panel slots without a URL are omitted
     // from the persisted layout.
     const panelTabIds = new Set(panels.getPanels(workspaceId));
@@ -657,14 +721,30 @@ async function readPanelMarkersForTabsWithRetries(
 // This is the immediate emit. Boot/restore paths that must not continue
 // before the broadcast has gone out await it directly; everything else goes
 // through the coalescing `emitPanelsSync` below.
+type PanelsSyncOptions = {
+  scrollToPanelTabId?: number;
+  scrollToPanelReveal?: 'full' | 'right-edge';
+  windowId?: number;
+};
+
 async function emitPanelsSyncNow(
   workspaceId: string,
-  options: {
-    scrollToPanelTabId?: number;
-    scrollToPanelReveal?: 'full' | 'right-edge';
-    windowId?: number;
-  } = {},
+  options: PanelsSyncOptions = {},
 ): Promise<void> {
+  // The audience is fixed before the reads below await: a Private workspace's window can
+  // close meanwhile, and a lookup after the await would then call its panels regular.
+  await sendWorkspaceEvent(
+    workspaces,
+    workspaceId,
+    () => buildPanelsSync(workspaceId, options),
+    broadcastAudience,
+  );
+}
+
+async function buildPanelsSync(
+  workspaceId: string,
+  options: PanelsSyncOptions,
+): Promise<Event | null> {
   // No active-workspace gate. Sidebar's tab-list filter
   // (useWorkspaceTabIds) needs panel ids for EVERY workspace so the
   // workspace-switch slide animation can render the new pane with
@@ -728,7 +808,7 @@ async function emitPanelsSyncNow(
     }
     syncPanelMarkersForWorkspace(workspaceId);
     await emitPanelsSyncNow(workspaceId, options);
-    return;
+    return null;
   }
   const mainWidthPx = panels.getMainWidth(workspaceId);
   const defaultPanelWidthPx = settings.snapshot().defaultPanelWidthPx;
@@ -796,7 +876,7 @@ async function emitPanelsSyncNow(
       event.scrollToPanelReveal = 'right-edge';
     }
   }
-  broadcastEvent(event);
+  return event;
 }
 
 // Coalesced entry point for every other caller: requests for one workspace
@@ -810,15 +890,8 @@ const emitPanelsSync = createPanelsSyncScheduler(emitPanelsSyncNow);
 const keys = new KeyRegistry({ workspaces, broadcastEvent });
 
 function getActiveWorkspacePanelTabIds(): number[] {
-  const workspaceIds = new Set<string>();
-  const globalActiveId = workspaces.getActiveId();
-  if (globalActiveId) workspaceIds.add(globalActiveId);
-  for (const workspaceId of Object.values(workspaces.getActiveIdByWindow())) {
-    if (workspaceId) workspaceIds.add(workspaceId);
-  }
-
   const tabIds = new Set<number>();
-  for (const workspaceId of workspaceIds) {
+  for (const workspaceId of workspaces.shownWorkspaceIds()) {
     for (const tabId of panels.getVisiblePanelIds(workspaceId)) {
       tabIds.add(tabId);
     }
@@ -965,13 +1038,7 @@ const bootReady = storesReady.then(async () => {
       cornerRadiusChanged ||
       splitterSizeChanged
     ) {
-      const targets = new Set<string>();
-      const globalActive = workspaces.getActiveId();
-      if (globalActive) targets.add(globalActive);
-      for (const wsId of Object.values(workspaces.getActiveIdByWindow())) {
-        if (wsId) targets.add(wsId);
-      }
-      for (const wsId of targets) void emitPanelsSync(wsId);
+      for (const wsId of workspaces.shownWorkspaceIds()) void emitPanelsSync(wsId);
     }
     backup.onSettingsChanged(next);
   });
@@ -1246,7 +1313,11 @@ tabs.onDeltas((deltas) => {
   const panelMetadataRefreshWorkspaces = new Set<string>();
   for (const d of deltas) {
     if (d.kind === 'created') {
-      if (tabs.isPrivate(d.tab.id)) continue;
+      if (tabs.isPrivate(d.tab.id)) {
+        // Never assigned like a regular tab (no session value).
+        joinPrivateWorkspace(workspaces, tabs, d.tab.id, d.tab.windowId);
+        continue;
+      }
       if (d.tab.folderId && !tabFolders.has(d.tab.folderId)) {
         void tabs.setFolder(d.tab.id, null);
       }
@@ -1339,29 +1410,16 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'removed') {
-      closeDevtoolsPanelTabs(
-        panels.findLinksForInspectedTab(d.id).map((link) => link.devtoolsTabId),
-        'inspected-tab devtools close',
+      dropRemovedTabFromPanels(
+        {
+          panels,
+          pinnedPanels,
+          closeDevtoolsPanelTabs,
+          syncPanelMarkers: syncPanelMarkersForWorkspace,
+          emitPanelsSync: (workspaceId) => void emitPanelsSync(workspaceId),
+        },
+        d.id,
       );
-      const affected = panels.findWorkspacesContainingTab(d.id);
-      for (const wsId of affected) {
-        const wasDevtools = panels.isDevtoolsPanel(wsId, d.id);
-        panels.remove(wsId, d.id);
-        if (wasDevtools) pinnedPanels.removeForTab(d.id);
-        if (!wasDevtools) {
-          closeDevtoolsPanelTabs(
-            panels.takeOrphanedDevtoolsTabs(wsId),
-            'panel-removed devtools close',
-          );
-        }
-        // Remaining panels' indexes shifted — rewrite their markers
-        // so a future Cmd+Shift+T lands at the correct slot.
-        syncPanelMarkersForWorkspace(wsId);
-      }
-      const activeId = workspaces.getActiveId();
-      if (activeId && affected.includes(activeId)) {
-        void emitPanelsSync(activeId);
-      }
       continue;
     }
   }
@@ -1454,13 +1512,7 @@ workspaces.onDeltas((deltas) => {
 // per-window active workspace plus the global fallback, then sync each.
 savedPanels.onChange((items) => {
   broadcastEvent({ type: 'savedPanels/snapshot', items });
-  const targets = new Set<string>();
-  const globalActive = workspaces.getActiveId();
-  if (globalActive) targets.add(globalActive);
-  for (const wsId of Object.values(workspaces.getActiveIdByWindow())) {
-    if (wsId) targets.add(wsId);
-  }
-  for (const wsId of targets) void emitPanelsSync(wsId);
+  for (const wsId of workspaces.shownWorkspaceIds()) void emitPanelsSync(wsId);
 });
 
 // "Add panel" trailer button (bento-shell-mount.js addNewPanel) creates the
@@ -1866,6 +1918,7 @@ tabs.onWindowClosing(({ windowId, tabs: closingTabs }) => {
 // would throw, but the activation would have been refused anyway).
 browser.windows.onRemoved.addListener((windowId) => {
   workspaces.forgetWindow(windowId);
+  discardPrivateWindow(windowId);
   activationGenerations.forget(windowId);
   prunePreferredActivationTabs((windowKey) => windowKey === String(windowId));
 });
@@ -1898,6 +1951,11 @@ browser.tabs.onDetached.addListener(async (tabId, { oldWindowId }) => {
 // workspace (and panel slot) of the window it left. Release that so the tab joins
 // the destination window's workspace; see tabs/AdoptedTab.ts.
 browser.tabs.onAttached.addListener((tabId, { newWindowId }) => {
+  // A private tab moved to another private window joins that window's Private workspace.
+  if (tabs.isPrivate(tabId)) {
+    joinPrivateWorkspace(workspaces, tabs, tabId, newWindowId);
+    return;
+  }
   // Nothing is written to a tab before startup has hydrated the registry.
   if (!adoptionGate.isSettled()) return;
   void releaseAdoptedTab(
@@ -2199,7 +2257,9 @@ workspaces.onDeltas((deltas) => {
   return Promise.all(activations).then(() => undefined);
 });
 
-const shellWindows = createWindowRegistry(browser.windows);
+const shellWindows = createWindowRegistry(browser.windows, undefined, (window) => {
+  if (window.incognito === true && typeof window.id === 'number') adoptPrivateWindow(window.id);
+});
 
 browser.runtime.onConnectExternal.addListener((port) => {
   if (!isAuthorizedShellPort(port)) {
@@ -2230,20 +2290,37 @@ browser.runtime.onConnectExternal.addListener((port) => {
   // emit order); without this synchronous subscribe, mutations that
   // fire between addListener and the awaited send-snapshot would race
   // and the shell would miss them.
+  const sendAudience = (audience: Audience, event: Event) => {
+    try {
+      port.postMessage(audienceMessage(audience, event));
+    } catch (err) {
+      console.warn('[bento-tools] postMessage failed (port may be disconnected):', err);
+    }
+  };
+  // Workspace-bound state is addressed: regular documents get the regular graph,
+  // a private window's documents get only that window's tabs and Private
+  // workspace. Settings and other global events go to everyone.
   const unsubTabs = tabs.onDeltas((deltas) => {
-    send({ type: 'tabs/changed', deltas });
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, deltas);
+    if (regular.length > 0) sendAudience('regular', { type: 'tabs/changed', deltas: regular });
+    for (const [privateWindowId, windowDeltas] of privateByWindow) {
+      sendAudience({ privateWindowId }, { type: 'tabs/changed', deltas: windowDeltas });
+    }
   });
   const unsubWorkspaces = workspaces.onDeltas((deltas) => {
-    send({ type: 'workspaces/changed', deltas });
+    sendAudience('regular', { type: 'workspaces/changed', deltas });
+  });
+  const unsubPrivateWorkspaces = workspaces.onPrivateDeltas((privateWindowId, deltas) => {
+    sendAudience({ privateWindowId }, { type: 'workspaces/changed', deltas });
   });
   const unsubSettings = settings.onChange((next) => {
     send({ type: 'settings/changed', settings: next });
   });
   const unsubPinnedPanels = pinnedPanels.onDeltas((deltas) => {
-    send({ type: 'pinnedPanels/changed', deltas });
+    sendAudience('regular', { type: 'pinnedPanels/changed', deltas });
   });
   const unsubTabFolders = tabFolders.onDeltas((deltas) => {
-    send({ type: 'tabFolders/changed', deltas });
+    sendAudience('regular', { type: 'tabFolders/changed', deltas });
   });
 
   // Every other message is a shell Action. shellActionIntake validates it
@@ -2268,6 +2345,9 @@ browser.runtime.onConnectExternal.addListener((port) => {
         savedPanels,
         backup,
         send,
+        sendAudience,
+        syncPrivateWindow,
+        sourceWindowPrivate: workspaces.isPrivateWindow(sourceWindowId),
         broadcast: broadcastEvent,
         emitPanelsSync,
         syncPanelMarkers: syncPanelMarkersForWorkspace,
@@ -2287,6 +2367,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     connectedPorts.delete(port);
     unsubTabs();
     unsubWorkspaces();
+    unsubPrivateWorkspaces();
     unsubSettings();
     unsubPinnedPanels();
     unsubTabFolders();
@@ -2306,17 +2387,17 @@ browser.runtime.onConnectExternal.addListener((port) => {
   // the per-workspace panels/sync complete, or those documents stay empty.
   void bootReady.then(() => {
     send({ type: 'tools/booted', version: '0.0.0' });
-    send({ type: 'tabs/snapshot', tabs: tabs.snapshot() });
+    sendAudience('regular', { type: 'tabs/snapshot', tabs: tabs.snapshotRegular() });
     const wsSnap = workspaces.snapshot();
-    send({
+    sendAudience('regular', {
       type: 'workspaces/snapshot',
       workspaces: wsSnap.workspaces,
       activeId: wsSnap.activeId,
       activeIdByWindow: wsSnap.activeIdByWindow,
     });
     send({ type: 'settings/snapshot', settings: settings.snapshot() });
-    send({ type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
-    send({ type: 'tabFolders/snapshot', folders: tabFolders.snapshot() });
+    sendAudience('regular', { type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
+    sendAudience('regular', { type: 'tabFolders/snapshot', folders: tabFolders.snapshot() });
     send({ type: 'savedPanels/snapshot', items: savedPanels.list() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the
@@ -2330,5 +2411,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     for (const ws of wsSnap.workspaces) {
       void emitPanelsSync(ws.id);
     }
+    // Private windows that already said hello (tools restarted under them).
+    for (const privateWindowId of workspaces.privateWindowIds()) syncPrivateWindow(privateWindowId);
   });
 });

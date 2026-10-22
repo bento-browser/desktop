@@ -9,6 +9,8 @@
 // collapses into one IO, and a single-flight write queue (as in
 // panels/Persistence.ts) so an older state cannot land after a newer one.
 
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
+
 const STORAGE_KEY = 'bento.pinnedPanels';
 const BACKUP_STORAGE_KEY = 'bento.pinnedPanels.backup';
 const VERSION = 4;
@@ -206,9 +208,10 @@ export class Persistence {
   }
 
   async #flush(state: PersistedState): Promise<void> {
+    // The Private workspace of a private window is never stored.
     const payload: StoredShapeV4 = {
       version: VERSION,
-      entries: state.entries,
+      entries: state.entries.filter((entry) => !isEphemeralWorkspaceId(entry.workspaceId)),
     };
     // Two-step write: copy the existing primary to the backup slot
     // before overwriting. Same trade-off as workspaces/Persistence —

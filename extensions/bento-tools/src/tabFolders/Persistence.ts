@@ -1,4 +1,5 @@
 import type { TabFolder } from '@shared/protocol';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 
 const STORAGE_KEY = 'bento.tabFolders';
 const BACKUP_STORAGE_KEY = 'bento.tabFolders.backup';
@@ -92,7 +93,9 @@ export class Persistence {
   }
 
   async #flush(state: PersistedState): Promise<void> {
-    const payload: StoredShapeV1 = { version: VERSION, folders: state.folders };
+    // The Private workspace of a private window is never stored.
+    const folders = state.folders.filter((folder) => !isEphemeralWorkspaceId(folder.workspaceId));
+    const payload: StoredShapeV1 = { version: VERSION, folders };
     try {
       const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
       const prev = raw[STORAGE_KEY];

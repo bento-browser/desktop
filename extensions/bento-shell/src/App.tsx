@@ -9,6 +9,7 @@ import PanelLeftOpen from 'lucide-react/dist/esm/icons/panel-left-open';
 
 import { TabList } from './components/TabList/TabList';
 import { PinnedPanels } from './components/PinnedPanels/PinnedPanels';
+import { PrivateBand } from './components/PrivateBand/PrivateBand';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher/WorkspaceSwitcher';
 import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddressBar';
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
@@ -21,6 +22,7 @@ import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from './state/works
 import { getPanelIdsForWorkspace, usePanelsStore } from './state/panels';
 import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
+import { usePrivateWindow } from './state/privateWindow';
 import type { UiColorModePref } from '@shared/protocol';
 import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
 import { applyGraphProjection } from './state/graph';
@@ -121,6 +123,9 @@ function openSidebarContextMenuInChrome(payload: object) {
 
 export function App() {
   const ready = useToolsReady();
+  // A private window has one temporary workspace and stores nothing: no workspace switcher
+  // (the Private band takes its place), no pinned panels, no workspace or folder moves.
+  const isPrivate = usePrivateWindow();
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const tabsById = useTabsStore((s) => s.byId);
@@ -341,13 +346,13 @@ export function App() {
       if (!isBatch) items.push({ id: 'new-tab-below', label: 'New tab below' });
       if (!isBatch) items.push({ id: 'rename-tab', label: 'Rename tab' });
       if (isBatch) {
-        items.push(
-          { id: 'reload-selected-tabs', label: `Reload ${targetTabIds.length} tabs` },
-          {
+        items.push({ id: 'reload-selected-tabs', label: `Reload ${targetTabIds.length} tabs` });
+        if (!isPrivate) {
+          items.push({
             id: 'move-selected-to-new-workspace',
             label: `Move ${targetTabIds.length} tabs to new workspace`,
-          },
-        );
+          });
+        }
       } else {
         items.push(
           { id: 'reload-tab', label: 'Reload tab' },
@@ -363,14 +368,14 @@ export function App() {
           items.push({ id: 'open-in-side-panel', label: 'Convert to panel' });
         }
       }
-      if (workspaceItems.length > 0) {
+      if (!isPrivate && workspaceItems.length > 0) {
         items.push({
           id: 'move-to-workspace',
           label: isBatch ? 'Move selected tabs to workspace' : 'Move to workspace',
           items: workspaceItems,
         });
       }
-      if (!allTargetsPinned) {
+      if (!isPrivate && !allTargetsPinned) {
         items.push({
           id: 'move-to-folder',
           label: isBatch ? 'Move selected tabs to folder' : 'Move to folder',
@@ -521,7 +526,7 @@ export function App() {
       }
       onContextMenu={onRootContextMenu}
     >
-      <PinnedPanels />
+      {!isPrivate && <PinnedPanels />}
       <div className="bento-shell-app__main">
         {!ready && (
           <Row gap="xs" align="center" className="bento-shell-app__header">
@@ -530,9 +535,15 @@ export function App() {
             </Text>
           </Row>
         )}
-        <div className="bento-shell-app__workspace-switcher">
-          <WorkspaceSwitcher />
-        </div>
+        {isPrivate ? (
+          <div className="bento-shell-app__workspace-switcher bento-shell-app__workspace-switcher--private">
+            <PrivateBand rail={sidebarCollapsed} />
+          </div>
+        ) : (
+          <div className="bento-shell-app__workspace-switcher">
+            <WorkspaceSwitcher />
+          </div>
+        )}
         <SidebarAddressBar />
         <div className="bento-shell-app__list-region">
           <TabList

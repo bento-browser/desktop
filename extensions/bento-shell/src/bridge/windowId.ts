@@ -19,6 +19,21 @@ export function readWindowIdFromHash(): number | null {
   }
 }
 
+/**
+ * Whether the hosting chrome window is private. The mount stamps `#bentoPrivate=1`
+ * on every frame of a private window. BroadcastChannel is partitioned by
+ * privateBrowsingId, so such a document cannot reach the shell background over it
+ * and talks to it through the BentoShellBus relay instead (see shellBus.ts).
+ */
+export function readPrivateFromHash(): boolean {
+  try {
+    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
+    return new URLSearchParams(hash).get('bentoPrivate') === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** This document's window id, fixed for the document's life (the frame URL hash). */
 export const thisWindowId = readWindowIdFromHash();
 

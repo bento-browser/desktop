@@ -11,6 +11,7 @@ import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 
 const PUBLICATION_KEY = 'bento.graphPublication.v1';
 const ACK_TIMEOUT_MS = 5000;
@@ -192,7 +193,9 @@ export class GraphPublicationCoordinator {
       activeId: workspaceSnapshot.activeId,
       activeIdByWindow: workspaceSnapshot.activeIdByWindow,
       tabs: classifiedTabs,
-      tabFolders: this.#tabFolders.snapshot(),
+      tabFolders: this.#tabFolders
+        .snapshot()
+        .filter((folder) => !isEphemeralWorkspaceId(folder.workspaceId)),
       panelsByWorkspace: workspaceSnapshot.workspaces.map((workspace) => ({
         workspaceId: workspace.id,
         tabIds: this.#panels

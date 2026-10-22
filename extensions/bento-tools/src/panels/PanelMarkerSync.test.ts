@@ -281,3 +281,21 @@ describe('panel marker keys', () => {
     expect(markerSync.capturedKey(TOP)).toBeUndefined();
   });
 });
+
+describe('panel markers of a private window', () => {
+  it('writes none for the Private workspace', () => {
+    const getVisiblePanelIds = vi.fn(() => [10]);
+    const markers = createPanelMarkerSync({
+      getVisiblePanelIds,
+      isDevtoolsPanel: vi.fn(() => false),
+      getPanelRestoreLocation: vi.fn(),
+      getPanelKey: vi.fn(),
+      workspacesWithPersistedUrls: vi.fn(() => []),
+      dropPersistedPanel: vi.fn(),
+    } as unknown as Parameters<typeof createPanelMarkerSync>[0]);
+
+    markers.sync('private:abc');
+
+    expect(getVisiblePanelIds).not.toHaveBeenCalled();
+  });
+});

@@ -148,6 +148,27 @@
     --bento-merge-card-dismiss-room: var(--muxui-control-size-sm);
     --bento-merge-card-rail-size: 2.25rem;
     --bento-merge-card-rail-ring-size: 1.375rem;
+    /* Private window band (components/PrivateBand), in the place of the workspace switcher:
+       its height, its glyph's size, the start inset that centres the glyph in the rail (the
+       same in both layouts, so the glyph never moves; also the gap to the text, which then
+       starts at the rail's edge) and the width of the note it opens. Its colours are the Mux
+       neutral step and paired foreground, which invert with the page's mode. */
+    --bento-private-band-height: 3.25rem;
+    --bento-private-band-icon-size: 24px;
+    --bento-private-band-inset: calc(
+      (var(--bento-tab-strip-width-collapsed) - var(--bento-private-band-icon-size)) / 2
+    );
+    --bento-private-note-width: 14.5rem;
+    /* Where the main panels start below the toolbar: chrome's gutter token (--space-3xs, which is
+       the Mux space-3xs reference dimension; rounded like the no-panels frame margin) at
+       chrome's rem, not the shell's. Chrome stamps its root font size on a private window's
+       sidebar frame (#bentoChromeRem) and boot.js turns it into this scale (chrome's rem over
+       the shell's); 0 elsewhere, so the inset is 0. The Private band's slot pads by the inset. */
+    --bento-chrome-rem-scale: 0;
+    --bento-panel-top-inset: round(
+      calc(var(--muxui-reference-dimension-space-3xs) * var(--bento-chrome-rem-scale)),
+      1px
+    );
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;

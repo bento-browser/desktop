@@ -6,6 +6,7 @@ import {
   type PanelPersistenceWorkspaceLayout,
   type WorkspacePanelLayout,
 } from './PanelLayout';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 import type { PersistedPanelEntry, PersistedWorkspacePanels } from './PanelStore';
 
 const STORAGE_KEY = 'bento.panels';
@@ -289,6 +290,8 @@ export class Persistence {
       };
     }
     for (const [workspaceId, layout] of layouts) {
+      // A private window's Private workspace is never stored.
+      if (isEphemeralWorkspaceId(workspaceId)) continue;
       // A workspace with persisted entries not applied yet (`restorePanelsForWorkspace`) has only
       // the panels that came back with their session markers, in marker order, numbered from the
       // start. Written out, that would replace the entries, their keys and their layout.
@@ -319,6 +322,7 @@ export class Persistence {
     }
     const mainWidthRecord: Record<string, number> = {};
     for (const [workspaceId, width] of mainWidthByWorkspace) {
+      if (isEphemeralWorkspaceId(workspaceId)) continue;
       if (typeof width === 'number' && Number.isFinite(width) && width > 0) {
         mainWidthRecord[workspaceId] = Math.max(MAIN_PANEL_MIN_WIDTH, Math.round(width));
       }
@@ -332,6 +336,7 @@ export class Persistence {
       const writePayload: Record<string, unknown> = { [STORAGE_KEY]: payload };
       const stripScrollRecord: Record<string, number> = {};
       for (const [workspaceId, scrollLeft] of stripScrollByWorkspace) {
+        if (isEphemeralWorkspaceId(workspaceId)) continue;
         if (Number.isFinite(scrollLeft) && scrollLeft >= 0) {
           stripScrollRecord[workspaceId] = Math.round(scrollLeft);
         }

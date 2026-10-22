@@ -49,6 +49,14 @@
     & .bento-shell-app__list-region {
       z-index: 3;
     }
+    /* A private window's band keeps its solid fill for the phase (a regular window's
+       switcher fill is transparent), so the rising list region and the folding address
+       bar must not paint over it. The footer keeps its own order above (4, later in the
+       document); at rest nothing here applies. */
+    & .bento-shell-app__workspace-switcher--private {
+      position: relative;
+      z-index: 4;
+    }
     & .bento-tab-list-pane__sticky-actions,
     & .bento-tab-row--active,
     & .bento-workspace-switcher__trigger {

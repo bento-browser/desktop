@@ -232,6 +232,36 @@ saved panel layout, the pinned panel rail, or the tabs kept when a window closes
 Their URLs, titles, favicons, and panel slots do not come back after relaunch,
 matching Firefox private-browsing behavior.
 
+A private window has its own temporary workspace named "Private". Its sidebar,
+command palette and address bar work as in a regular window, and its tabs and panels
+belong to that workspace. The Private workspace is never saved, never appears in
+another window's workspace list, switcher or palette results, and is discarded when
+the window closes; a private window lists no other workspace. It cannot switch to or
+create workspaces, create folders or pin panels, move tabs between workspaces, or use
+backups and session merge. Opening a private window never changes which workspace a
+regular window shows.
+
+A private window keeps its own sidebar state. Collapsing or hiding the sidebar
+(the collapse button, Cmd+S) and switching the colour mode (the footer colour
+control) change that window only, and none of it is saved. A new private window
+starts from the saved values at the moment it opens, then changes on its own; a later
+change in a regular window does not reach a private window that is already open,
+and a private window's change never reaches a regular window, another private
+window, or the saved settings. Regular windows keep sharing the saved settings.
+
+A private window's sidebar is marked by an inverted block at the top, in the place of
+the workspace switcher: a mask glyph with "Private" over "Nothing here is saved."
+Activating it opens a short note ("Private window: Tabs and panels are not saved.
+Closing the window discards them."). In the collapsed rail the block is the glyph
+alone, and the note shows beside it on hover or keyboard focus. The glyph stays where the
+rail centres it, so collapsing or expanding the sidebar does not move it: the text beside
+it is clipped away as the sidebar narrows and revealed as it widens, at full strength. The
+block starts level with the top of the main panels. The window always uses
+the default theme. It has no workspace switcher, no pinned panel rail, no "Edit this
+workspace", no theme picker, no "Pin this panel" or "Save panel" item, no workspace or folder
+entries in the tab menu, and its command palette lists no workspace commands and no
+session merge.
+
 Workspace export/import and automatic backups should preserve the same browsing
 layout state as restart persistence: tabs, panels, panel order, panel widths,
 main content width, subdivisions, split-panel ratios, pinned panel references

@@ -52,6 +52,7 @@ const firefoxSystemModuleGlobals = {
   Services: 'readonly',
   JSWindowActorChild: 'readonly',
   JSWindowActorParent: 'readonly',
+  WebExtensionPolicy: 'readonly',
   console: 'readonly',
 };
 

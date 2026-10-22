@@ -1310,11 +1310,25 @@ test('shell scripts act on the one selected object directory, never on every obj
     const actors = (name) => engineFile(root, name, 'dist', 'bin', 'browser', 'actors');
     fs.mkdirSync(path.join(root, 'extensions', 'bento-shell', 'dist'), { recursive: true });
     fs.writeFileSync(path.join(root, 'extensions', 'bento-shell', 'dist', 'app.js'), 'built');
+    // Every actor the repo ships. A dev build links them into dist as a symlink chain back into
+    // src/browser/actors, which a content process cannot read (sandbox read paths), so the
+    // script must replace each with a real file.
+    const actorFiles = fs.readdirSync(path.join(repoRoot, 'src', 'browser', 'actors')).filter((f) => f.endsWith('.sys.mjs'));
+    assert.ok(actorFiles.some((f) => f.endsWith('Child.sys.mjs')), 'the repo has content-process actors');
+    const appActors = (name) => engineFile(root, name, 'dist', 'Bento.app', 'Contents', 'Resources', 'browser', 'actors');
     fs.mkdirSync(path.join(root, 'src', 'browser', 'actors'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'src', 'browser', 'actors', 'BentoKeyChild.sys.mjs'), 'actor');
+    for (const file of actorFiles) {
+      fs.writeFileSync(path.join(root, 'src', 'browser', 'actors', file), `actor ${file}`);
+    }
     for (const name of ['obj-bento', 'obj-legacy']) {
       fs.mkdirSync(shellDest(name), { recursive: true });
       fs.mkdirSync(actors(name), { recursive: true });
+    }
+    fs.mkdirSync(appActors('obj-bento'), { recursive: true });
+    for (const dir of [actors('obj-bento'), appActors('obj-bento')]) {
+      for (const file of actorFiles) {
+        fs.symlinkSync(path.join(root, 'src', 'browser', 'actors', file), path.join(dir, file));
+      }
     }
 
     const shell = runScript(root, 'sync-shell.sh');
@@ -1324,7 +1338,18 @@ test('shell scripts act on the one selected object directory, never on every obj
 
     const symlinks = runScript(root, 'sync-builtin-addon-symlinks.sh');
     assert.equal(symlinks.status, 0, symlinks.stderr);
-    assert.equal(fs.existsSync(path.join(actors('obj-bento'), 'BentoKeyChild.sys.mjs')), true);
+    for (const dir of [actors('obj-bento'), appActors('obj-bento')]) {
+      for (const file of actorFiles) {
+        // O_NOFOLLOW makes the open fail (ELOOP) on a leftover symlink, so one open both checks
+        // and reads the file instead of an lstat followed by a separate read.
+        const fd = fs.openSync(path.join(dir, file), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          assert.equal(fs.readFileSync(fd, 'utf8'), `actor ${file}`);
+        } finally {
+          fs.closeSync(fd);
+        }
+      }
+    }
     assert.equal(fs.existsSync(path.join(actors('obj-legacy'), 'BentoKeyChild.sys.mjs')), false);
 
     // Without obj-bento, a single legacy build is used and announced...
