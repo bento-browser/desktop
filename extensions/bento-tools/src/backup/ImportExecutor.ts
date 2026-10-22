@@ -8,6 +8,7 @@ import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import { migrateLegacyEntriesToPersistence } from '../panels/PanelStore';
 import { PrivacyMutationService } from '../privacy/PrivacyMutationService';
 import { moveTabsToWindow } from '../tabs/AdoptedTab';
+import type { DurableOperationComponent } from '../settings-domain/OperationRegistry';
 
 export interface ImportContext {
   workspaces: WorkspaceStore;
@@ -25,6 +26,8 @@ export interface ImportContext {
     onTabCreated(tabId: number): Promise<void>;
     onOldTabRemoved?(tabId: number): Promise<void>;
     onWindowMap?(mapping: Record<number, string>): Promise<void>;
+    /** Privacy or search effects that did not stick; the rest of the import completed. */
+    onLiveEffectFailures?(failed: DurableOperationComponent[]): void;
   };
 }
 
@@ -335,9 +338,11 @@ export async function executeImport(
         : Promise.resolve(null),
       defaultSearchEngine ? live.setSearchEngine(defaultSearchEngine) : Promise.resolve(null),
     ]);
-    summary.settingsApplied = outcomes.every(
-      (outcome) => outcome === null || outcome.state === 'succeeded',
+    const failed = outcomes.flatMap((outcome) =>
+      outcome && outcome.state !== 'succeeded' ? [outcome.component] : [],
     );
+    summary.settingsApplied = failed.length === 0;
+    if (failed.length > 0) ctx.operation?.onLiveEffectFailures?.(failed);
   }
 
   if (options.importSavedPanels && data.savedPanels) {

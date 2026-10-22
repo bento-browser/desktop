@@ -59,9 +59,11 @@ import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
-import { NativePreferencesService } from './native-preferences/NativePreferencesService';
+import { SettingsDomainService } from './settings-domain/SettingsDomainService';
+import { createSettingsClientTransport } from './settings-domain/SettingsClientTransport';
 import { BentoMutationCoordinator } from './mutations/BentoMutationCoordinator';
-import { OperationRegistry } from './native-preferences/OperationRegistry';
+import { OperationRegistry } from './settings-domain/OperationRegistry';
+import { removeRetiredSettingsStorage } from './settings-domain/retiredStorage';
 import { GraphOperationJournal, GraphOperationRecovery } from './replacement/GraphOperationJournal';
 import { PrivacyMutationService } from './privacy/PrivacyMutationService';
 import { GraphPublicationCoordinator } from './replacement/GraphPublicationCoordinator';
@@ -947,6 +949,7 @@ const startupRestored = new Promise<void>((resolve) => {
 const activationGenerations = createActivationGenerations();
 
 const bootReady = storesReady.then(async () => {
+  void removeRetiredSettingsStorage();
   await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
@@ -1265,7 +1268,7 @@ const bootReady = storesReady.then(async () => {
 // A boot that fails must not leave activations waiting for good.
 void bootReady.then(releaseStartupActivations, releaseStartupActivations);
 
-const nativePreferences = new NativePreferencesService({
+const settingsDomain = new SettingsDomainService({
   ready: bootReady,
   settings,
   backup,
@@ -1280,9 +1283,16 @@ const nativePreferences = new NativePreferencesService({
   recovery: graphRecovery,
   privacyMutations,
   graphPublications,
-  backendInstanceId,
+  broadcast: broadcastEvent,
 });
-nativePreferences.start();
+// Windows the shell may claim as a source: shell actions and Settings requests both check them.
+const shellWindows = createWindowRegistry(browser.windows, undefined, (window) => {
+  if (window.incognito === true && typeof window.id === 'number') adoptPrivateWindow(window.id);
+});
+const settingsClient = createSettingsClientTransport({
+  service: settingsDomain,
+  windows: shellWindows,
+});
 keys.init();
 
 // Per-workspace memory of the last-focused tab. When the user switches
@@ -2257,10 +2267,6 @@ workspaces.onDeltas((deltas) => {
   return Promise.all(activations).then(() => undefined);
 });
 
-const shellWindows = createWindowRegistry(browser.windows, undefined, (window) => {
-  if (window.incognito === true && typeof window.id === 'number') adoptPrivateWindow(window.id);
-});
-
 browser.runtime.onConnectExternal.addListener((port) => {
   if (!isAuthorizedShellPort(port)) {
     console.warn('[bento-tools] rejecting unauthorized external port:', {
@@ -2343,12 +2349,12 @@ browser.runtime.onConnectExternal.addListener((port) => {
         pinnedPanels,
         tabFolders,
         savedPanels,
-        backup,
         send,
         sendAudience,
         syncPrivateWindow,
         sourceWindowPrivate: workspaces.isPrivateWindow(sourceWindowId),
         broadcast: broadcastEvent,
+        settingsDomain,
         emitPanelsSync,
         syncPanelMarkers: syncPanelMarkersForWorkspace,
         handoff: windowHandoff,
@@ -2359,6 +2365,18 @@ browser.runtime.onConnectExternal.addListener((port) => {
 
   port.onMessage.addListener((message: unknown) => {
     if (isShellClientMessage(message) && graphPublications.handle(port, message)) return;
+    // Settings results go back on this port only, never through the broadcast set.
+    const claimed = settingsClient.handle(message, (result) => {
+      try {
+        port.postMessage(result);
+      } catch (err) {
+        console.warn(
+          '[bento-tools] settings result not delivered (port may be disconnected):',
+          err,
+        );
+      }
+    });
+    if (claimed) return;
     shellActionIntake(message);
   });
 

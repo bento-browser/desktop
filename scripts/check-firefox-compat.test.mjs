@@ -862,12 +862,6 @@ const RENAMES = [
     '_getFile',
   ],
   [
-    'AsyncSetting.emitChange',
-    '  emitChange = () => {\n    this.emit("change");\n  };\n',
-    'emitChange',
-    'notifyChange',
-  ],
-  [
     'TabSelect',
     '    let event = new this.documentGlobal.CustomEvent("TabSelect", {\n',
     '"TabSelect"',

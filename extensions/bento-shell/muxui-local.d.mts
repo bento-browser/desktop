@@ -17,11 +17,7 @@ export function muxLocalRoot(env?: NodeJS.ProcessEnv): string | undefined;
 export function resolveMuxLocal(env?: NodeJS.ProcessEnv): MuxLocal | undefined;
 export function muxLocalViteConfig(mux: MuxLocal | undefined, workspaceRoot: string): UserConfig;
 export function muxSourcePlugin(mux: MuxLocal | undefined, npmPackageJson: string): Plugin;
-export function rollbackMuxStamp(variant: string): { source: 'rollback'; variant: string };
-export function assertMuxSourceStamp(
-  text: string | undefined,
-  options: { where: string; variant: string | undefined; variants: readonly string[] },
-): void;
+export function assertMuxSourceStamp(text: string | undefined, options: { where: string }): void;
 export function muxLocalTsconfig(mux: MuxLocal): {
   extends: string;
   compilerOptions: { paths: Record<string, string[]> };

@@ -106,11 +106,6 @@ When changing core functionality, manually verify at least the affected subset:
   its workspace after the move; deleting a workspace with "close its tabs" does not
   rescue the doomed tabs; a private window, a popup and a DevTools window never
   receive tabs;
-- a Settings tab (`about:preferences#bento`) moved to another window (drag out,
-  "Move to New Window"): change a setting and open the privacy or backup
-  controls there; no `invalid_session` appears in the Browser Console and the
-  change persists, also when the tab moves right after opening, while the first
-  session hello is still pending;
 - opening several windows in a row (`bv windows-cycle 3`): no
   `this.window.gBrowser is undefined` in the Browser Console, and every window
   gets its workspace from its first `shell/hello`;
@@ -126,8 +121,11 @@ When changing core functionality, manually verify at least the affected subset:
 - theme switch and sidebar footer UI light/dark/Auto switch;
 - the Firefox app menu from the sidebar footer button: "Bento Settings" sits
   directly above "Settings", once after repeated opens and in a second window;
-  arrow keys reach it, and Enter or a click opens or refocuses
-  `about:settings#bento` and closes the menu. The footer has no Settings button
+  arrow keys reach it, and Enter or a click opens the Settings palette over the
+  window and closes the menu; the command palette's Open Settings and Privacy
+  commands and the welcome Open Settings button open it too (Privacy on the
+  protection level list), in a regular and a private window, and the Settings
+  palette closes when the command, workspace or merge palette opens; The footer has no Settings button
   in the expanded or collapsed rail (details in
   [sidebar-native-surfaces.md](sidebar-native-surfaces.md));
 - the sidebar merge progress card: while a merge runs it floats over the end of
@@ -330,22 +328,19 @@ sync and Alt+Shift+R, with the sidebar expanded:
 13. A non-web page (for example a Bento settings or other extension page) shows a
     single line at the standard row height with no domain.
 
-## Palette search headers and rollback file selection
+## Palette search headers
 
-Command and merge palettes, including the archived command palette, compose
+Command, merge and Settings palettes compose
 public ClearButton and Close parts inside the search flex row. A scoped static
 Close position prevents the sticky Input/Clear/Refresh row from covering its
 pointer target. Verify pointer Close with empty/nonempty queries and Clear
 reset before changing that geometry.
 
-Standalone rollback Settings uses the same published Mux renderer as the
-normal shell. Shortcuts uses the same search-row composition and public
-CommandPalette collection parts.
 The controlled Input explicitly dismisses on Escape outside IME composition;
 the RC SearchField can otherwise intercept the key without updating the leaf
-query. Verify nonempty search, native Escape, and native Close in both rollback
-variants. Backup import uses public `FileTrigger`; verify invalid/oversize
-files, a valid preview, and selecting the same file again after reopening.
+query. Verify nonempty search, native Escape, and native Close in each palette.
+Settings backup import uses a file input; verify invalid and oversize files, a
+valid preview, and selecting the same file again after reopening.
 
 ## Workspace picker category focus
 

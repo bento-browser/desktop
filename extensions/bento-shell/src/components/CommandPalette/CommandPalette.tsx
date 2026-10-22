@@ -13,7 +13,14 @@
 // Commands are computed from current tabs + workspaces + a static list. No
 // persistence — command history is a future enhancement.
 
-import { useCallback, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import {
   CommandPalette as MuxCommandPalette,
   useCommandPalette,
@@ -42,6 +49,7 @@ import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
 import './CommandPalette.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
+import { SETTINGS_INDEX } from './settingsIndex';
 
 export interface CommandPaletteProps {
   /** Invoked whenever the palette is dismissed (Esc, backdrop click, or
@@ -49,9 +57,11 @@ export interface CommandPaletteProps {
    * outer container level — for the chrome overlay version, parent will
    * postMessage to the chrome process to hide the frame. */
   onClose: () => void;
+  /** Search text to start with (for stories; the page itself starts empty). */
+  initialQuery?: string;
 }
 
-type CommandSection = 'Navigation' | 'Workspaces' | 'Tabs' | 'Panels' | 'Actions';
+type CommandSection = 'Navigation' | 'Settings' | 'Workspaces' | 'Tabs' | 'Panels' | 'Actions';
 
 interface BentoCommand extends CommandPaletteCommand {
   id: string;
@@ -68,6 +78,11 @@ function signalOpenSettings(privacy = false): void {
   sendChromeTitle(
     `${privacy ? 'BENTO_OPEN_SETTINGS_PRIVACY' : 'BENTO_OPEN_SETTINGS'}_${Date.now()}`,
   );
+}
+
+/** Opens the Settings palette at one setting (`id` is a root row of that palette). */
+function signalOpenSettingAt(id: string): void {
+  sendChromeTitle(`BENTO_OPEN_SETTING:${id}:${Date.now()}`);
 }
 
 function signalOpenMergePalette(): void {
@@ -94,7 +109,7 @@ function resultLabel(count: number): string {
   return `${count} ${count === 1 ? 'result' : 'results'}`;
 }
 
-function useCommands(): BentoCommand[] {
+function useCommands(query: string): BentoCommand[] {
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   const tabs = useTabsStore(
     useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((t) => !!t)),
@@ -105,6 +120,7 @@ function useCommands(): BentoCommand[] {
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   // A private window has one temporary workspace and merges nothing in.
   const isPrivate = usePrivateWindow();
+  const searching = query.trim() !== '';
   const panelEntries = useMemo(
     () =>
       Array.from(panelsByWorkspace.entries()).flatMap(([workspaceId, ids]) =>
@@ -138,6 +154,23 @@ function useCommands(): BentoCommand[] {
       keywords: ['privacy', 'dashboard', 'site controls'],
       action: () => signalOpenSettings(true),
     });
+
+    // Settings: only while searching, so the empty palette stays short. Labels only; the
+    // Settings palette shows the values.
+    if (searching) {
+      for (const entry of SETTINGS_INDEX) {
+        if (isPrivate && entry.regularOnly) continue;
+        cmds.push({
+          id: `settings-index:${entry.id}`,
+          title: entry.label,
+          subtitle: `${entry.group} in Bento Settings.`,
+          group: 'Settings',
+          icon: commandIcon(SettingsIcon),
+          keywords: entry.keywords,
+          action: () => signalOpenSettingAt(entry.id),
+        });
+      }
+    }
 
     // Workspaces
     if (!isPrivate) {
@@ -315,10 +348,19 @@ function useCommands(): BentoCommand[] {
     });
 
     return cmds;
-  }, [workspaces, tabs, panelEntries, activeTabId, activeWorkspaceId, windowId, isPrivate]);
+  }, [
+    workspaces,
+    tabs,
+    panelEntries,
+    activeTabId,
+    activeWorkspaceId,
+    windowId,
+    isPrivate,
+    searching,
+  ]);
 }
 
-export default function CommandPalette({ onClose }: CommandPaletteProps) {
+export default function CommandPalette({ onClose, initialQuery = '' }: CommandPaletteProps) {
   // CommandPalette.Root is permanently open inside this component — the
   // chrome host overlay's visibility is what actually shows/hides the
   // palette. Keeping open=true means: (a) no remount on each show, so
@@ -329,9 +371,12 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   const close = () => {
     onClose();
   };
-  const commands = useCommands();
+  const [query, setQuery] = useState(initialQuery);
+  const commands = useCommands(query);
   const palette = useCommandPalette<BentoCommand>({
     commands,
+    query,
+    onQueryChange: setQuery,
     close,
   });
   const footerText = resultLabel(palette.filteredCommands.length);

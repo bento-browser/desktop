@@ -797,25 +797,26 @@ one title, `<prefix>_<ts>`, through `sendChromeTitle`. It does not wait for
 persistence (SettingsStore writes `storage.local` before it publishes the snapshot).
 The page holds no finish state (see the pitfall below). The two prefixes:
 
-| Action         | Prefix (`bridge/useWelcome.ts`)                        | Chrome (`bento-welcome-frame` title handler)          |
-| -------------- | ------------------------------------------------------ | ----------------------------------------------------- |
-| Start browsing | `WELCOME_CLOSE_PREFIX` (`BENTO_CLOSE_WELCOME`)         | `hideWelcome()`                                       |
-| Open Settings  | `WELCOME_OPEN_SETTINGS_PREFIX` (`BENTO_OPEN_SETTINGS`) | `hideWelcome()`, then `void openBentoSettings(false)` |
+| Action         | Prefix (`bridge/useWelcome.ts`)                        | Chrome (`bento-welcome-frame` title handler)  |
+| -------------- | ------------------------------------------------------ | --------------------------------------------- |
+| Start browsing | `WELCOME_CLOSE_PREFIX` (`BENTO_CLOSE_WELCOME`)         | `hideWelcome()`                               |
+| Open Settings  | `WELCOME_OPEN_SETTINGS_PREFIX` (`BENTO_OPEN_SETTINGS`) | `hideWelcome()`, then `showSettingsPalette()` |
 
 `BENTO_OPEN_SETTINGS_` is the mount script's `SETTINGS_OPEN_PREFIX`, the same title
 the command palette's Settings command sends; the welcome handler reuses it and adds
 no constant. It does not start with `BENTO_OPEN_WELCOME`, so the route order in the
-handler cannot shadow it. `openBentoSettings(false)` selects an existing
-`about:settings` tab or opens `about:settings#bento`.
+handler cannot shadow it. `showSettingsPalette()` opens the Settings palette overlay
+over this window (it was a Settings tab before the palette).
 
 Pitfall: send one title, and keep the repeat guard in chrome. Title IPC is
 last-write-wins per frame, so a close title followed by a Settings title (or the
 reverse) lets chrome miss one of them. Open Settings therefore carries no separate
 close signal: the page has already marked onboarding finished, and the handler hides
 the overlay itself. The overlay fades for a moment, so a second click would send a
-second Settings title; chrome would call `openBentoSettings` before the first
-navigation commits, still see `about:blank`, and add a second tab. The handler
-therefore opens Settings only while `isWelcomeShowing(host)` holds (the host is
+second Settings title; with the Settings tab that second title added a second tab
+(chrome called the opener before the first navigation committed and still saw
+`about:blank`), and the guard stays so a double click opens Settings once. The
+handler therefore opens Settings only while `isWelcomeShowing(host)` holds (the host is
 visible and its opacity is not `0`): `hideWelcome()` sets opacity `0` at once and
 hides the host after the fade, and `showWelcome()` sets it back to `1`. A page-side
 "already finished" flag does not work here. The welcome document stays mounted, so a
@@ -841,7 +842,7 @@ reopen (`hasRequestedOpenRef` is already set), and the Step indicator is hidden 
 because step 0 shows none.
 `WelcomeSurfaces.test.ts` checks the helper's effect order and that the mount script
 still routes the prefix through the showing guard to `hideWelcome()` then
-`openBentoSettings(false)`; `scripts/overlay-surfaces.test.mjs` checks
+`showSettingsPalette()`; `scripts/overlay-surfaces.test.mjs` checks
 `isWelcomeShowing` through hide, fade and reopen.
 
 ## Manual verification

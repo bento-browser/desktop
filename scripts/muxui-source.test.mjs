@@ -7,13 +7,10 @@ import zlib from 'node:zlib';
 
 import { main as bentoBuild } from './bento-build.mjs';
 import { assertShellMuxSource, readZipEntry, stagedBrowserDir } from './muxui-source.mjs';
-import { ROLLBACK_VARIANTS } from './rollback-variants.mjs';
 
 const STAMP_ENTRY = 'chrome/browser/builtin-addons/bento-shell/dist/muxui-source.json';
 const npm = '{"source":"npm","version":"0.1.0-rc.1"}';
 const local = '{"source":"local"}';
-const rollback = (variant) => JSON.stringify({ source: 'rollback', variant });
-const [variantA, variantB] = ROLLBACK_VARIANTS;
 
 /** A minimal zip with stored or deflated entries, like omni.ja's layout. */
 function zip(entries, { deflate = false } = {}) {
@@ -111,39 +108,28 @@ test('readZipEntry reads stored and deflated entries and reports absent ones', (
 
 test('the staged application is checked inside omni.ja on every platform layout', () => {
   for (const layout of ['mac', 'other']) {
-    const check = (stamp, variant, options) =>
-      assertShellMuxSource(
-        stagedBrowserDir(stagedApp(tempDir(), layout, staged(stamp), options)),
-        variant,
-      );
-    assert.doesNotThrow(() => check(npm, undefined));
-    assert.doesNotThrow(() => check(npm, undefined, { deflate: true }));
-    assert.throws(() => check(local, undefined), /"source":"local"/);
-    assert.throws(() => check(undefined, undefined), /omni\.ja!.*is missing/);
-    assert.doesNotThrow(() => check(rollback(variantA), variantA));
-    assert.throws(() => check(rollback(variantB), variantA), new RegExp(`expected ${variantA}`));
-    assert.throws(() => check(npm, variantA), new RegExp(`expected ${variantA}`));
-    assert.throws(() => check(rollback(variantA), undefined), /expected the published npm/);
-    assert.throws(
-      () => check(rollback('not-a-rollback-variant'), 'not-a-rollback-variant'),
-      /not a rollback variant/,
-    );
+    const check = (stamp, options) =>
+      assertShellMuxSource(stagedBrowserDir(stagedApp(tempDir(), layout, staged(stamp), options)));
+    assert.doesNotThrow(() => check(npm));
+    assert.doesNotThrow(() => check(npm, { deflate: true }));
+    assert.throws(() => check(local), /"source":"local"/);
+    assert.throws(() => check(undefined), /omni\.ja!.*is missing/);
   }
 });
 
 test('omni.ja is authoritative over loose files beside it', () => {
   const application = stagedApp(tempDir(), 'other', staged(local));
   write(path.join(application, 'browser', ...STAMP_ENTRY.split('/')), npm);
-  assert.throws(() => assertShellMuxSource(stagedBrowserDir(application), undefined), /local/);
+  assert.throws(() => assertShellMuxSource(stagedBrowserDir(application)), /local/);
 });
 
 test('without omni.ja the loose chrome tree is checked', () => {
   const browser = path.join(tempDir(), 'bin', 'browser');
-  assert.throws(() => assertShellMuxSource(browser, undefined), /is missing/);
+  assert.throws(() => assertShellMuxSource(browser), /is missing/);
   write(path.join(browser, ...STAMP_ENTRY.split('/')), local);
-  assert.throws(() => assertShellMuxSource(browser, undefined), /local/);
+  assert.throws(() => assertShellMuxSource(browser), /local/);
   write(path.join(browser, ...STAMP_ENTRY.split('/')), npm);
-  assert.doesNotThrow(() => assertShellMuxSource(browser, undefined));
+  assert.doesNotThrow(() => assertShellMuxSource(browser));
 });
 
 /** A repo root for `bento-build package` with an npm source copy and an objdir stamp. */
@@ -167,55 +153,14 @@ function packageFixture(objdirStamp) {
   return root;
 }
 
-async function withVariant(variant, body) {
-  const previous = process.env.BENTO_RELEASE_VARIANT;
-  if (variant === undefined) delete process.env.BENTO_RELEASE_VARIANT;
-  else process.env.BENTO_RELEASE_VARIANT = variant;
-  try {
-    await body();
-  } finally {
-    if (previous === undefined) delete process.env.BENTO_RELEASE_VARIANT;
-    else process.env.BENTO_RELEASE_VARIANT = previous;
-  }
-}
-
 test('bento-build package rejects a local objdir even when the source copy says npm', async () => {
-  await withVariant(undefined, async () => {
-    await assert.rejects(bentoBuild(['package'], packageFixture(local)), /"source":"local"/);
-    await assert.rejects(bentoBuild(['package'], packageFixture(undefined)), /is missing/);
-    await assert.rejects(
-      bentoBuild(['package'], packageFixture(rollback(variantA))),
-      /expected the published npm/,
-    );
-    // An npm objdir passes the early check; the fixture has no scripts/mach-raw.sh, so
-    // the next step (mach package) fails instead of the stamp check.
-    await assert.rejects(bentoBuild(['package'], packageFixture(npm)), (error) => {
-      assert.doesNotMatch(error.message, /muxui-source/);
-      return true;
-    });
+  await assert.rejects(bentoBuild(['package'], packageFixture(local)), /"source":"local"/);
+  await assert.rejects(bentoBuild(['package'], packageFixture(undefined)), /is missing/);
+  // An npm objdir passes the early check; the fixture has no scripts/mach-raw.sh, so
+  // the next step (mach package) fails instead of the stamp check.
+  await assert.rejects(bentoBuild(['package'], packageFixture(npm)), (error) => {
+    assert.doesNotMatch(error.message, /muxui-source/);
+    return true;
   });
 });
 
-test('bento-build package checks the rollback variant against its own stamp', async () => {
-  await withVariant(variantA, async () => {
-    await assert.rejects(
-      bentoBuild(['package'], packageFixture(npm)),
-      new RegExp(`expected ${variantA}`),
-    );
-    await assert.rejects(bentoBuild(['package'], packageFixture(undefined)), /is missing/);
-    await assert.rejects(
-      bentoBuild(['package'], packageFixture(rollback(variantB))),
-      new RegExp(`expected ${variantA}`),
-    );
-    await assert.rejects(bentoBuild(['package'], packageFixture(rollback(variantA))), (error) => {
-      assert.doesNotMatch(error.message, /muxui-source/);
-      return true;
-    });
-  });
-  await withVariant('not-a-rollback-variant', async () => {
-    await assert.rejects(
-      bentoBuild(['package'], packageFixture(rollback('not-a-rollback-variant'))),
-      /not a rollback variant/,
-    );
-  });
-});

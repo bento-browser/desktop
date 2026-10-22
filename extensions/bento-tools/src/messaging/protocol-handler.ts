@@ -27,22 +27,17 @@ import type { PanelRestoreLocation } from '../panels/PanelLayout';
 import { livePanelIds } from '../panels/PanelPromotion';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
-import type { BackupStore } from '../backup/BackupStore';
+import {
+  shellPortCaller,
+  type SettingsDomainService,
+} from '../settings-domain/SettingsDomainService';
 import {
   clearDevtoolsPanelMarker,
   clearPanelMarker,
   setDevtoolsPanelMarker,
 } from '../panels/SessionMarker';
-import { validateExportSchema } from '../backup/ExportSchema';
-import { executeImport } from '../backup/ImportExecutor';
 import { searchAddressResults } from '../search/AddressSearch';
-import {
-  applyAdvancedSetting,
-  applyPrivacyLevel,
-  readPrivacySnapshot,
-  readSearchEnginesSnapshot,
-  setDefaultSearchEngine,
-} from '../privacy/ProtectionLevels';
+import { readPrivacySnapshot, readSearchEnginesSnapshot } from '../privacy/ProtectionLevels';
 import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
 import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
 import { normalizeExternalSession } from '../externalMerge/normalizeExternalSession';
@@ -810,11 +805,12 @@ export interface HandlerContext {
   pinnedPanels: PinnedPanelsStore;
   tabFolders: TabFolderStore;
   savedPanels: SavedPanelsStore;
-  backup: BackupStore;
   send: (event: Event) => void;
   /** Broadcast cross-document UI events to every connected shell document.
    * Falls back to `send` in tests and non-background callers. */
   broadcast?: (event: Event) => void;
+  /** Shared settings, privacy and search mutations (validation, serialization, change notices). */
+  settingsDomain: SettingsDomainService;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
@@ -885,10 +881,9 @@ function replyToSource(ctx: HandlerContext, event: Event): void {
 }
 
 /** Actions a private window never performs: they would create, switch, move or store
- * something that outlives the window (workspaces, folders, pins, backups and merges). */
+ * something that outlives the window (workspaces, folders, pins and merges). */
 const PRIVATE_WINDOW_REFUSED_PREFIXES = [
   'workspace/',
-  'backup/',
   'externalMerge/',
   'tabFolder/',
   'pinnedPanel/',
@@ -1472,19 +1467,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ? splitWindowLocalSettings(action.changes).rest
           : action.changes;
       if (Object.keys(changes).length === 0) return;
-      void ctx.settings
-        .update(changes)
+      // The full shell settings set (welcome, sidebar controls), unlike the overlay's editable one.
+      void ctx.settingsDomain
+        .updateSettings(changes)
         .catch((err) => console.warn('[bento-tools] settings/update persistence failed:', err));
       return;
     }
     case 'settings/reset':
       void (async () => {
         try {
-          const committed = await ctx.settings.reset();
-          await Promise.allSettled([
-            applyPrivacyLevel(committed.settings.privacyProtectionLevel),
-            setDefaultSearchEngine(committed.settings.defaultSearchEngine),
-          ]);
+          await ctx.settingsDomain.reset(crypto.randomUUID(), shellPortCaller(ctx.sourceWindowId));
           await Promise.all([emitPrivacySnapshot(ctx), emitSearchEnginesSnapshot(ctx)]);
         } catch (err) {
           console.warn('[bento-tools] settings/reset persistence failed:', err);
@@ -1784,7 +1776,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // only the source window's own workspace is searched.
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
-      ctx.panels.setGroupRatioIn(wsId, action.groupId, action.ratio);
+      ctx.panels.setGroupRatio(wsId, action.groupId, action.ratio);
       return;
     }
     case 'pinnedPanel/add': {
@@ -2008,19 +2000,20 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void emitSearchEnginesSnapshot(ctx);
       return;
     case 'privacy/setProtectionLevel':
-      void applyPrivacyLevel(action.level)
-        .then(() => ctx.settings.update({ privacyProtectionLevel: action.level }))
+      void ctx.settingsDomain
+        .setProtectionLevel(action.level)
         .catch((err) => console.warn('[bento-tools] privacy/setProtectionLevel failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setAdvanced':
-      void applyAdvancedSetting(action.key, action.value)
+      void ctx.settingsDomain
+        .setAdvanced(action.key, action.value)
         .catch((err) => console.warn('[bento-tools] privacy/setAdvanced failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setDefaultSearchEngine':
-      void setDefaultSearchEngine(action.id)
-        .then(() => ctx.settings.update({ defaultSearchEngine: action.id }))
+      void ctx.settingsDomain
+        .setSearchEngine(action.id)
         .catch((err) => console.warn('[bento-tools] privacy/setDefaultSearchEngine failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
@@ -2168,92 +2161,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         code: 'cancelled',
         message: EXTERNAL_MERGE_CANCELLED_MESSAGE,
       });
-      return;
-    case 'backup/export':
-      void (async () => {
-        try {
-          const data = await ctx.backup.collectSnapshot(action.workspaceIds);
-          const json = JSON.stringify(data, null, 2);
-          const date = new Date().toISOString().slice(0, 10);
-          ctx.send({ type: 'backup/exportReady', json, filename: `bento-backup-${date}.json` });
-        } catch (err) {
-          console.warn('[bento-tools] backup/export failed:', err);
-        }
-      })();
-      return;
-    case 'backup/import': {
-      const validated = validateExportSchema(action.data);
-      if (!validated) {
-        ctx.send({ type: 'backup/importError', message: 'Invalid export file format.' });
-        return;
-      }
-      if (ctx.sourceWindowId === null) {
-        ctx.send({ type: 'backup/importError', message: 'Source window is unavailable.' });
-        return;
-      }
-      void (async () => {
-        try {
-          const summary = await executeImport(validated, action.options, {
-            workspaces: ctx.workspaces,
-            tabs: ctx.tabs,
-            panels: ctx.panels,
-            pinnedPanels: ctx.pinnedPanels,
-            settings: ctx.settings,
-            savedPanels: ctx.savedPanels,
-            targetWindowId: ctx.sourceWindowId!,
-          });
-          ctx.send({ type: 'backup/importComplete', summary });
-        } catch (err) {
-          console.warn('[bento-tools] backup/import failed:', err);
-          ctx.send({ type: 'backup/importError', message: String(err) });
-        }
-      })();
-      return;
-    }
-    case 'backup/requestList':
-      void (async () => {
-        const backups = await ctx.backup.listBackups();
-        ctx.send({ type: 'backup/list', backups });
-      })();
-      return;
-    case 'backup/restore':
-      if (ctx.sourceWindowId === null) {
-        ctx.send({ type: 'backup/importError', message: 'Source window is unavailable.' });
-        return;
-      }
-      void (async () => {
-        try {
-          const data = await ctx.backup.getBackupData(action.backupId);
-          if (!data) {
-            ctx.send({ type: 'backup/importError', message: 'Backup not found.' });
-            return;
-          }
-          const summary = await executeImport(
-            data,
-            { importSettings: false, importSavedPanels: false, replaceExisting: false },
-            {
-              workspaces: ctx.workspaces,
-              tabs: ctx.tabs,
-              panels: ctx.panels,
-              pinnedPanels: ctx.pinnedPanels,
-              settings: ctx.settings,
-              savedPanels: ctx.savedPanels,
-              targetWindowId: ctx.sourceWindowId!,
-            },
-          );
-          ctx.send({ type: 'backup/importComplete', summary });
-        } catch (err) {
-          console.warn('[bento-tools] backup/restore failed:', err);
-          ctx.send({ type: 'backup/importError', message: String(err) });
-        }
-      })();
-      return;
-    case 'backup/delete':
-      void (async () => {
-        await ctx.backup.deleteBackup(action.backupId);
-        const backups = await ctx.backup.listBackups();
-        ctx.send({ type: 'backup/list', backups });
-      })();
       return;
     default: {
       const _exhaustive: never = action;

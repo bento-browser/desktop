@@ -1199,12 +1199,8 @@ workspaces.
 - Actions that name a group or slot rather than a tab cannot be checked by that guard, so
   the handler searches only the source window's own workspace: `panelLayout/setGroupRatio`
   (and the other layout actions, which already pass the window's workspace) never finds a
-  group of another window's or a private window's workspace (`PanelStore.setGroupRatioIn`
-  takes the workspace id). Two signatures keep a legacy call shape only because
-  `rollback/legacy-source` is compiled against the live tools modules by
-  `pnpm run rollback:check`: `setDevtoolsPanelMarker(tabId)` (the workspace id is optional)
-  and `PanelStore.setGroupRatio(groupId, ratio)` (every workspace); live code passes the
-  workspace and uses `setGroupRatioIn`. Drop both with the rollback builds.
+  group of another window's or a private window's workspace (`PanelStore.setGroupRatio`
+  takes the workspace id).
 - A private tab that goes away is a removal for its window, also when it moved to another
   private window. `dropRemovedTabFromPanels` (`panels/RemovedTab.ts`) removes it from every
   workspace's panels and publishes each affected workspace through the audience helper,
@@ -1812,8 +1808,7 @@ workspaces.
   now `__workspaceFadeCleanupFrame`. A new switch, `clearWorkspaceFadeClasses` and
   the cancel all go through `cancelWorkspaceFadeCleanup`, which cancels the frame
   and the timer, and the frame callback clears any timer before it starts one.
-  The archived mount script carries the same code. Covered by
-  `scripts/mount-motion.test.mjs` and `scripts/rollback-motion.test.mjs`.
+  Covered by `scripts/mount-motion.test.mjs`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
   `WorkspaceStore`.

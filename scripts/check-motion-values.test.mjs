@@ -252,7 +252,7 @@ test('scriptViolations reads strings after a template literal with nested expres
   );
 });
 
-test('scannedFiles covers shell, chrome and rollback and skips generated CSS', () => {
+test('scannedFiles covers shell and chrome and skips generated CSS', () => {
   const root = mkdtempSync(join(tmpdir(), 'check-motion-values-'));
   try {
     const bad = '.a { transition: opacity 200ms ease; }\n';
@@ -264,7 +264,6 @@ test('scannedFiles covers shell, chrome and rollback and skips generated CSS', (
       'src/browser/base/content/bento-chrome-theme.css': true,
       'src/browser/base/content/bento-chrome-tokens.css': false,
       'src/browser/base/content/bento-chrome-themes/dark.css': false,
-      'rollback/legacy-source/extensions/bento-shell/src/features/Settings/Settings.css': true,
     };
     for (const file of Object.keys(files)) {
       mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -274,8 +273,6 @@ test('scannedFiles covers shell, chrome and rollback and skips generated CSS', (
       'extensions/bento-shell/src/App.tsx': "el.style.transition = 'opacity 500ms ease';\n",
       'extensions/bento-shell/src/App.test.tsx': "el.style.transition = 'opacity 500ms ease';\n",
       'src/browser/base/content/bento-shell-mount.js':
-        "x.style.transition = 'opacity 0.18s ease';\n",
-      'rollback/legacy-source/src/browser/base/content/bento-shell-mount.js':
         "x.style.transition = 'opacity 0.18s ease';\n",
     })) {
       mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -288,7 +285,6 @@ test('scannedFiles covers shell, chrome and rollback and skips generated CSS', (
         .map(([file]) => file),
       'extensions/bento-shell/src/App.tsx',
       'src/browser/base/content/bento-shell-mount.js',
-      'rollback/legacy-source/src/browser/base/content/bento-shell-mount.js',
     ].sort();
     assert.deepEqual(
       scannedFiles(root)

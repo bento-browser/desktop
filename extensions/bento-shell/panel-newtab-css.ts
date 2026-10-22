@@ -1,9 +1,7 @@
 // public/panel-newtab.html is a plain page that must not link the shared Mux
 // stylesheet. `cssCodeSplit: false` folds every Vite-processed stylesheet into
 // that one sheet, so this page's CSS is bundled on its own and emitted beside
-// the page. Shared by vite.config.ts and the archived rollback config
-// (rollback/legacy-source/extensions/bento-shell/vite.config.ts), which pass
-// their own build target.
+// the page.
 //
 // Font files are left as relative URLs: the page reuses the Inter file the Mux
 // stylesheet already makes the build emit into assets/ (woff2-fonts.ts converts

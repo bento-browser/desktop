@@ -71,13 +71,10 @@ test('themeIdsInSelector reads quoted and bare theme attribute tests', () => {
   assert.deepEqual(themeIdsInSelector(':root'), []);
 });
 
-function generate(extraArgs = [], env = {}) {
+function generate() {
   const directory = mkdtempSync(join(tmpdir(), 'bento-chrome-tokens-'));
   const output = join(directory, 'bento-chrome-tokens.css');
-  execFileSync(process.execPath, [GENERATOR, '--output', output, ...extraArgs], {
-    env: { ...process.env, BENTO_RELEASE_VARIANT: '', ...env },
-    stdio: 'pipe',
-  });
+  execFileSync(process.execPath, [GENERATOR, '--output', output], { stdio: 'pipe' });
   return {
     directory,
     base: readFileSync(output, 'utf8'),
@@ -182,19 +179,6 @@ test('chrome reads shell-sized lengths at the shell root font size', () => {
   }
 });
 
-test('the archived rollback sheet keeps the rem form of the rail width', () => {
-  const { directory, base } = generate(['--monolithic']);
-  try {
-    assert.doesNotMatch(base, /Shell-sized lengths/);
-    assert.match(
-      base,
-      /--bento-tab-strip-width-collapsed: calc\(\s*var\(--bento-sidebar-collapsed-control-size\)/,
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
 test('chrome theme sheets are native, unlayered, and scoped to one theme each', () => {
   const { directory, themesDir } = generate();
   try {
@@ -234,22 +218,6 @@ test('regenerating prunes sheets for removed themes', () => {
     assert.ok(files.includes('notes.txt'));
   } finally {
     rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test('monolithic builds fold every theme into the base sheet (archived rollback mount)', () => {
-  for (const [args, env] of [
-    [['--monolithic'], {}],
-    [[], { BENTO_RELEASE_VARIANT: 'rollback-final-r2' }],
-  ]) {
-    const { directory, base } = generate(args, env);
-    try {
-      for (const id of shellThemeIds) {
-        assert.ok(base.includes(`data-bento-theme='${id}'`), `monolithic base must carry ${id}`);
-      }
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
   }
 });
 

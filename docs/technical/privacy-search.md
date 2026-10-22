@@ -36,8 +36,7 @@ privileged surface that normal WebExtension APIs cannot provide:
 - default search engine reads/writes through Firefox `SearchService`;
 - `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
   handshake (see "Add-panel grant" below). It is not a privacy operation; it
-  lives here because this experiment is present in every shipped tools manifest,
-  including the rollback variants.
+  lives here because this experiment is present in every shipped tools manifest.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
@@ -112,55 +111,185 @@ Firefox persists the choice, and once Start browsing sets `welcomeSeen` nothing 
 applied at boot. `settings/reset` applies `ddg` unconditionally and returns
 `welcomeSeen` to false, so a reset profile matches a fresh one.
 
-Native Bento Settings is registered by
-`patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
-Firefox `SettingGroupManager` controls and a generated observer protocol to the
-tools-owned `browser.bentoNativePreferences` experiment. The canonical contract
-is `extensions/_shared/native-preferences-contract.json`; generated TypeScript,
-raw-script, Firefox ESM, and fixture artifacts must pass
-`pnpm native-protocol:check:all`. The experiment derives the source window and
-private state from the system-principal Settings document, and the tools service
-binds each resumable session to that window, audience, contract hash, and direct
-parent-process attestation. Settings persistence is awaited before publication.
-Setting-group Fluent messages must provide a `.label` attribute rather than a
-message value. `moz-fieldset` localizes `label`, `description`, and `ariaLabel`;
-a message value makes Fluent replace its light-DOM contents and deletes every
-rendered `setting-control`, leaving a correctly titled but empty card.
-The pane title message provides both a value for the native navigation button
-and a `.heading` attribute for `moz-page-header`; omitting `.heading` leaves the
-page icon visible with an empty heading.
-All Bento dropdowns remain `moz-select` controls but opt into its Firefox-owned
-`panel-list` rendering path with `force-panel-list`. This bypasses the macOS
-native select picker, which does not open reliably for these controls when the
-Settings document is hosted in Bento's panel layout, while preserving the
-standard `moz-select` value/change API used by the custom Bento settings model.
-The `bento-range-control`, `bento-size-list`, `bento-backup-manager`, and
-`bento-shortcut-list` elements remain Bento controller boundaries, but their
-visible controls are composed from Firefox `moz-slider`, `moz-input-number`,
-`moz-button`, `moz-input-search`, `moz-box-group`, and `moz-box-item`
-components. Bento owns value synchronization, persistence, filtering, backup
-operations, and stable occurrence identities; Firefox owns the rendered form,
-list, focus, action, and reorder affordances. Native component labels use
-Fluent `.label` attributes, while dynamic row text is assigned through the
-component properties. Chrome-bound title signals must not be written twice in
-one synchronous handler because the later title replaces the earlier one
-before the shell-frame title handler reads it.
+Settings, privacy, search and backup operations run in one transport-free
+service, `extensions/bento-tools/src/settings-domain/SettingsDomainService.ts`.
+It owns payload validation, the private-window policy, serialization through
+`BentoMutationCoordinator`, the durable operation records
+(`OperationRegistry`, key `bento.nativeOperations.v1`), the graph journal for
+imports and restores (`GraphOperationJournal`, keys `bento.graphOperation.v1`,
+`bento.graphOperation.sources.v1`, `bento.graphPublication.v1`), import
+validation tokens, the revision counter, and the change notices. Two callers
+share it, so a change cannot behave differently by the way it arrived:
 
-`bento-size-list` names its native `moz-box-group[type="reorderable-list"]`
-with a `label[is="moz-label"]`. Firefox supplies drag reordering and
-Ctrl+Shift+ArrowUp/ArrowDown keyboard reordering through that group. Each row
-contains a `moz-input-number` and one `moz-button[type="destructive"]` Remove
-action. Rows intentionally have no numbered `moz-box-item` label because their
-position changes when reordered; each number input keeps the unnumbered
-accessible name “Panel size.” Separate Move up and Move down buttons would
-duplicate the native list affordance and must not be added back.
+- The overlay transport (`settings-domain/SettingsClientTransport.ts`) accepts
+  `settings-client/request` messages (`extensions/_shared/settings-client-protocol.ts`)
+  that the shell background relays on the authenticated tools port. The
+  `caller` block (`documentId`, `windowId`, `isPrivate`) is derived in chrome,
+  never by the document; tools only checks that the window exists
+  (`caller_unbound` otherwise). The answer is a `settings/result` posted on that
+  port only, never through the broadcast set. The shell background sends these
+  requests for the Settings palette (`bridge/settingsRelay.ts`, see
+  [shell-chrome-bridge.md](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay)).
+- The ordinary shell-port handlers (`settings/update`, `settings/reset`,
+  `privacy/setProtectionLevel`, `privacy/setAdvanced`,
+  `privacy/setDefaultSearchEngine`) call the service's typed mutations. A reset
+  from that port gets a registry record owned by `shell-port`.
 
-The main `setting-pane[data-category="paneBento"]` is substantially longer than
-Firefox's other native panes. Keep its native `setting-group` cards continuously
-rendered. Applying `content-visibility: auto` to these groups causes Gecko to
-show large blank regions while scrolling before the skipped cards are painted.
-Do not restore that containment optimization; scrolling must preserve section
-visibility even if all native groups participate in layout and paint.
+Two entry points validate settings differently on purpose. The overlay
+`settings/update` accepts exactly the editable inventory
+(`validateSettingsChanges` over `EDITABLE_SETTING_RULES` in
+`extensions/_shared/settings-rules.ts`, which also holds the advanced privacy rules
+and the request limits), while the ordinary action keeps the full shell set
+that welcome (`welcomeSeen`) and the sidebar (`sidebarHidden`,
+`sidebarCollapsed`) write. Both call the same `updateSettings`, which takes the
+`settings` slot of the coordinator and writes through `SettingsStore`.
+
+After any privacy, search, reset or settings-applying import, the service
+broadcasts `privacy/changed` (a full `PrivacySettings`) and
+`searchEngines/changed` to every shell document. Settings changes keep their
+existing `settings/changed` broadcast from `SettingsStore`.
+
+Durable operations (`settings/reset`, `backup/importValidated`,
+`backup/restore`, `backup/delete`) follow one lifecycle in `#runOperation`:
+reserve (ownership, kind and payload hash are checked, and a repeat of the same
+operation id replays the retained result), then run the effect once. Sources an
+effect needs, the import validation token and the stored backup, are resolved
+inside the effect, so a replay never reads them. The record ends `succeeded`,
+`partial` (a live effect failed: privacy or search for a reset, an import or a
+recovered import; `components` names the failed ones and `reconcileComponents`
+lists them) or `failed` (every component failed). `components` is final for
+every kind; `phase` is the progress indicator while it runs.
+
+Ownership of a durable operation is the caller's `ownerId`. For the overlay it is
+the browser session id and the window id (`window:<sessionId>:<windowId>`). Chrome
+supplies both in the `caller` block: the BentoShellBus hub mints the session id (a
+UUID) when its parent-process module loads and stamps it on every upward record, so
+it survives a reload of the tools or shell extensions and changes only when the
+browser restarts. A reloaded Settings document, or a reloaded tools background, in
+the same window therefore reads its predecessor's status, and `snapshot/get` lists
+the window's running and recently finished operations (`pendingOperations`, ten
+minutes; `noticeAcknowledged: true` once a document reported the end) for it to
+resume polling. Records of another owner, such as the `shell-port` reset, are never
+readable through the overlay. Window ids repeat across browser sessions, which is why
+the session id is part of the key. `recoveredOperationNotices` lists only records
+recovery or startup settlement closed (`recovered: true`) and not yet acknowledged.
+
+Backup operations, `recovery/acknowledgeNotice` and `settings/reset` are refused
+to a private caller (`private_window_forbidden`; `isPrivateForbiddenOperation`),
+`snapshot/get` omits the backup domain and the notices for one, and
+`operation/status` hides backup records from it. A private caller's
+`settings/update` keeps its other keys but drops the window-local ones
+(`WINDOW_LOCAL_SETTING_KEYS`): the private window's colour mode lives in the shell
+background and is never saved. The UI hiding of those rows is presentation only.
+
+Manual verification surface: the Settings palette (app menu, Bento Settings: change a
+setting and a protection level, export, import, reset). The domain's behavior is
+covered by `settings-domain/*.test.ts`. At startup tools also deletes the retired
+`bento.nativeSessions.v1` key (`retiredStorage.ts`); `bento.nativeOperations.v1`
+keeps its name because stored records live there.
+
+### Settings palette (shell side)
+
+The Settings palette is Bento's only settings surface (it replaced the native
+`about:preferences#bento` pane). Chrome hosts it as the
+`settings-palette` overlay ([overlay-documents.md](overlay-documents.md)); the app
+menu, the command palette's Open Settings and Privacy commands and the welcome Open
+Settings button open it. It is a staged quick pick on the public Mux `CommandPalette`
+parts, and it is split so each piece is testable without the browser:
+
+- `extensions/bento-shell/src/components/SettingsPalette/` is presentational. It takes a
+  `SettingsPaletteView` (loading, error or a `SettingsPaletteModel`) and a
+  `SettingsPaletteActions` object and keeps only navigation state: a stack of stages
+  (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
+  search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
+  compares the bounds with `_shared/settings-rules.ts`), and `rows.ts` turns the
+  model and a stage into rows, each carrying an intent, so what every stage shows is
+  asserted in `rows.test.ts` and the component only renders and dispatches them.
+- `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
+  over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
+  `requestId`, rejects a non-durable request after 15 s, and follows a durable operation
+  (`settings/reset`, `backup/importValidated`, `backup/restore`, `backup/delete`) by its
+  own result and by polling `operation/status`. A status record tools does not know
+  means the request was lost on the way, so the original is sent again under the same
+  operation id (tools replays it). `resume` follows the `pendingOperations` of a
+  `snapshot/get` so a reloaded document finds what a previous one left running.
+- `settingsStore.ts` is the store over that client: `snapshot/get` for every domain on
+  each show, `settings/changed`, `privacy/changed` and `searchEngines/changed` applied
+  as they arrive, one `pending` count per write key, a `notice` for the latest failure
+  and the import preview. The private-window state is read from the snapshot: tools
+  omits the `backup` domain for a private caller, so `isPrivate` is `backup ===
+undefined`, and the palette then shows no backup rows or automatic-backup
+  preferences. A backup file is refused before sending (`That file is too large to
+import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, escaped
+  into the request message, it is longer than the relay actor carries
+  (`RELAY_UP_MAX_CHARS` in `settings-palette/relayLimit.ts`, 22 MiB, equal to `MAX_MESSAGE_CHARS` in
+  `BentoShellBusChild.sys.mjs`; a test keeps the two equal). The actor limit counts the
+  serialized message, in which JSON escaping doubles a pretty-printed backup, so the
+  limit is sized for two times the backup limit. An export travels the other way, which
+  has no limit.
+- Published values (`settings`, `privacy`, `search`) are applied by ticket. Every write
+  and every snapshot takes the next ticket when it is sent, a change notice counts as
+  the newest ticket sent so far, and an answer applies only to the fields it is newer
+  than. A snapshot collected before a write or notice therefore cannot replace the newer
+  value, a stale write answer cannot replace a notice, and the answers of two quick
+  writes arriving out of order leave the one sent last. A reset takes its ticket when it
+  is sent and applies the state it returns through it, so a change that landed while it
+  ran is kept. A change notice that arrives before the first snapshot has made a model is
+  buffered with the ticket count it arrived at, and the first snapshot yields to the
+  notices that came in after it was asked for.
+- Operations that ended while the document could not see them are reported once. After
+  each snapshot the store takes the `pendingOperations` that are finished and not
+  `noticeAcknowledged`, plus the `recoveredOperationNotices`, reads each with
+  `operation/status`, shows the outcome in the footer notice ("The import did not
+  finish. Bento restarted first. ..." or "The restore finished.") and sends
+  `recovery/acknowledgeNotice`. An operation this document ran itself is concluded the
+  same way when its run ends (shown only when it did not succeed), and nothing is
+  reported while the document has a durable run of its own in flight.
+- An outcome is acknowledged only once it was on screen. The store is told when the
+  palette is shown or hidden (`actions.setVisible`, called from the show and hide events
+  ahead of React, and `false` when the document loads: it loads hidden). An outcome that
+  ends while hidden, a failure or a success, is kept unacknowledged and shown ("The
+  import finished.", "The restore did not finish. ...") by the next show, which first
+  clears the old notice itself: the palette component no longer clears it on a show, since
+  that ran after the store had reported and erased it. A document reloaded before that
+  show finds the unacknowledged operation again in its snapshot.
+- `relayTransport.ts` is the only file that knows how Settings traffic is shaped on the
+  BentoShellBus relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
+  strings, built on `bridge/shellBus.ts`). It sends `settings-hello` until acknowledged,
+  holds requests until then (for at most the client deadline) and posts each request as
+  `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
+  notices as `event`. The background side is `bridge/settingsRelay.ts`.
+- `useShowSignal.ts` listens for chrome's `bento-settings-show` and `bento-settings-hide`
+  events (see overlay-documents.md). A hide bumps `hideToken`, which makes the palette put
+  back an unfinished number edit and stop its live-apply timer at once (chrome hides the
+  overlay when another overlay opens, on Esc and on an outside click, and the document
+  stays loaded; waiting for the next show would let that revert overwrite a value saved
+  meanwhile from another window). Each show bumps `openToken` (the palette returns to the stages
+  and search text `resolveSettingsTarget` gives for the show's `target`: the root, the
+  protection level list for the privacy link, or the setting a command palette result
+  named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
+  so the first show is never lost.
+
+Editor stages (a number or a workspace name typed in the search field) behave as
+follows. A valid number applies live after 180 ms without typing (and at once for an
+arrow-key preset), Enter keeps it, Esc and dismissal put back the value the stage
+started with, and an invalid draft is shown with its reason and never sent. They do not
+share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,
+because the field holds the value being typed.
+
+Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories under
+"Settings palette") each mock step renders in dark and light. In Bento: open Settings
+from the app menu, the command palette (Open Settings, and Privacy for the protection
+level list) and the welcome dialog; the keyboard model works (first row focused on
+open, arrows move, Enter runs, Esc goes back one stage and closes from the first list; with
+an import preview showing, the first Esc dismisses the preview and the second leaves
+Backups);
+a number edit applies live and reverts on Esc; a change in one window shows in another
+window's open palette. In a private window the palette has no backup, merge or reset
+rows, the Bento color mode row changes only that window and is not saved, and other
+settings save for the profile. Reset closes the palette and onboarding opens again.
+Export lands in the download directory; Import shows what the file holds before it
+changes anything.
 
 The About pane's `updates` setting group is hidden whenever
 `AppConstants.MOZ_UPDATER` is false, which is every Bento build while
@@ -184,8 +313,8 @@ confirm only the support group renders and that searching "update" shows no
 Updates text; see the "About Pane Updates Group" entry in
 `docs/firefox-core-touchpoints.md`.
 
-The native Keyboard shortcuts control is a read-only searchable catalogue. The
-Keyboard shortcuts group also writes
+The Keyboard shortcuts list of the Settings palette is a read-only searchable
+catalogue. The sidebar shortcut behavior row writes
 `BentoSettings.sidebarShortcutBehavior` through `settings/update`; chrome reads
 that value from the `BENTO_PANELS` title payload to decide whether Cmd/Ctrl+S
 targets the collapsed rail or the hidden sidebar state with edge-hover reveal.
@@ -242,6 +371,53 @@ Use a dev build on a throwaway profile; the tools extension must be running.
    an engine that Firefox ships an icon for means the pipeline failed silently
    (see the pitfalls below).
 
+## Settings Palette Pitfalls
+
+- Mux `CommandPalette.Input` runs its own `onKeyDown` first and skips the list's
+  arrow and Enter handling when the event is default-prevented. The palette uses that
+  for editor stages (arrows step presets, Enter keeps the value) and handles Escape
+  there with `preventDefault` and `stopPropagation`, or the modal's own Escape closes
+  the whole palette instead of going back one stage.
+- Esc is one step (`escapeOutcome` in `stageStack.ts`): it clears a search, else dismisses
+  an import preview, else goes back one stage, else closes from the root. An import
+  preview is a state of the Backups stage, not a pushed stage, so a plain "pop" left
+  Backups for the root and dropped the preview's file; `escapeNavigation.test.ts`
+  walks every stack the rows can push and expects one stage per Esc. A new pushed
+  stage needs no change there; new in-stage state that Esc should leave first does.
+- The list is a flex column under the dialog's `max-height` (84vh), so a row with
+  `min-block-size: 0` shrinks instead of letting the list scroll, and the focused
+  protection level's detail text (312 px for Standard) is drawn over the rows below it
+  (a 256 px row seen in Bento, with the dialog at 482 px). Rows and sections keep
+  `flex-shrink: 0`; the "3 Protection level (short window)" story holds the dialog to
+  30rem to show it.
+- The Mux `ListBox` forwards its props to the React Aria list box, whose `autoFocus`
+  takes `'first'`; the DOM attribute type only has a boolean, so it is passed as a plain
+  props object (`FOCUS_FIRST_ROW`). Without it nothing is focused on open, Enter does
+  nothing, and the main palette's Enter-runs-the-first-result workaround would be
+  needed. The list is remounted with `key={stageKey}` on each stage so focus starts on
+  the first row; it does not return to the row a stage was opened from.
+- A replayed durable request that is still running answers with the status record, not
+  the final result. The client reads `state` and keeps polling instead of treating any
+  `ok` result as done (`readDurableOutcome`).
+- Static rows (explanations, the Custom protection level) are `disabled` Mux items, so
+  keyboard navigation skips them; the palette restyles `[data-info]` so they do not
+  look disabled.
+- An intent of type `confirm` runs its operation at once (the last row of the confirm stage
+  carries it); a row that should ask first must `push` the confirm stage. The stored
+  backup's Restore and Delete rows once carried `confirm` and restored on the first
+  click, which only a runtime pass showed (`rows.test.ts` now asserts the push).
+- The overlay is created on first use, so the first show happens on the readiness
+  announcement: `useOverlayReadySignal('settings-palette')` must stay after the effect
+  that listens for `bento-settings-show` (`useShowSignal`), or chrome's first show is
+  sent to nobody and the palette opens on a stale first list.
+- A private window's Settings document must not edit the saved colour mode: tools
+  drops `uiColorMode` from a private caller's update and the shell background keeps the
+  window's own value (`bridge/settingsRelay.ts`). Reading the snapshot without that
+  projection would show the saved value in the row.
+- Mux has no `--muxui-semantic-color-error-N` token (only `-fg`). Danger text uses
+  `--muxui-semantic-action-danger-foreground` and invalid text
+  `--muxui-semantic-feedback-invalid-content`.
+
 ## Privacy Pitfalls
 
 - `SettingsStore` stores only deltas from its defaults (`#persistAndPublish`
@@ -277,6 +453,58 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   global, add it to that list; `scripts/bento-privacy-security.test.mjs` loads
   `api.js` in a scope that has only what the file imports, so a missing one fails
   the icon tests.
+- Do not send the ordinary `settings/update` through the editable-inventory
+  validator: welcome writes `welcomeSeen` and the sidebar controls write
+  `sidebarHidden` and `sidebarCollapsed`, none of which the Settings surface
+  edits. Share `SettingsDomainService.updateSettings`, not the validator.
+- A durable operation resolves nothing before it is reserved. The validation token
+  was once deleted before the reservation (and a stored backup read before it), so
+  a retry with the same operation id, the normal answer to a lost reply, failed
+  with an internal error or `not_found` instead of replaying. Keep ownership, the
+  payload-hash check and the replay lookup ahead of any source lookup.
+- Map failures to the shared catalogue (`SettingsError`). Oversize files and
+  exports, unreadable or invalid files, and bad or spent tokens used to reach the
+  client as `internal_error` because the service matched error text against a
+  list that did not contain them. `conflict` (same operation id, different
+  payload) stays in the catalogue as non-retryable.
+- A live effect that does not stick makes the operation `partial`, never
+  `succeeded`. `executeImport` reports the failed privacy or search components
+  through `onLiveEffectFailures` (it used to fold them into
+  `summary.settingsApplied=false`, and the wrapper still recorded `succeeded`), and
+  the recovery path in `GraphOperationJournal.ts` does the same when it re-applies
+  settings after a restart.
+- Settle what a restart cut off. A reservation is persisted before the effect
+  runs and before the journal exists, so a restart can leave a `reserved` or
+  `running` record of any kind (a reset, a delete, an import that never reached its
+  journal) that nothing would ever finish. `SettingsDomainService` calls
+  `OperationRegistry.settleInterrupted` once startup recovery has run; it fails them
+  as `backend_restarted` and leaves the record a surviving journal still covers
+  to `GraphOperationRecovery`.
+- When recovery can only record a `partial` outcome it must release the journal.
+  The terminal record used to stay, and `GraphOperationJournal.begin` then refused
+  every other import or restore with `graph_reserved`, also after restarts. A
+  terminal journal an earlier build left behind is cleared on the next startup.
+- Window ids are unique only within one browser session. Never key a retained
+  operation on the window id alone; the overlay owner key includes the browser session
+  id the BentoShellBus hub mints. It was once a UUID drawn per tools run, so a reload of
+  tools during an import changed the owner while the window survived: the document got
+  `operation_not_owned` and a snapshot could not rediscover its record.
+- The relay actor's limit counts the serialized message. A limit on the raw file text
+  once let a 7.1 million character backup through the UI check as a 14 million
+  character message that the actor dropped without an answer, and exports between about
+  8 and 10 MiB could not be imported. Keep `RELAY_UP_MAX_CHARS` at twice the backup
+  limit plus headroom, and size any new upward payload by its escaped length.
+- A size list action (Move up, Move down, Remove) keeps the stage on its entry until
+  tools saved the new order (`sizeIntents.ts`): moving the stage first left the actions
+  on the neighbour after a refused move, so Remove could delete it, and a second press
+  before the answer reordered a stale list. A second action while one waits is dropped,
+  and so is anything that names an entry while the list is saved (`Edit size`, opening an
+  entry's actions): Edit size entered during a move, saved as 340, once rewrote the
+  neighbour that landed on its index. A size edited live counts as saving the list too.
+- Show and Hide are sent to the Settings document in order. A message the frame could not
+  take yet is retried, and a retry of an older one is dropped once a newer Show or Hide
+  was sent (`settingsLifecycleSeq` in the mount script): a delayed Hide landed after the
+  Show that came later and cancelled the editor session it had just begun.
 - Do not accept blob URLs other than `blob:system/<uuid>`, and do not widen the
   other schemes to make an icon appear: the experiment runs with the system
   principal, so what it fetches has to stay an explicit list.

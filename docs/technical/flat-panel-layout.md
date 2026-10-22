@@ -69,7 +69,7 @@ Top-level panel resizing:
 - Panel corner radius path: `BentoSettings.panelCornerRadiusPx` defaults to 12
   (the stylesheet's `--bento-panel-corner-radius` starts at the same 12px, so there is
   no jump before the setting arrives; keep the two in step with `DEFAULT_SETTINGS`
-  and the `defaultValue` in `patches/core-ui/15-bento-native-preferences.patch`).
+  and the `defaultValue` of `panelCornerRadiusPx` in `settingsCatalog.ts`).
   Stored values survive: the settings store keeps only overrides from the default,
   so a profile that never changed the slider follows the new default and one that
   did keeps its value. Settings writes

@@ -294,20 +294,21 @@ adds its entry, and its id in the mount probe list, in the same change.
   background of each. If a future Firefox deactivates panel docShells again,
   repeat that check first.
 - `Services.scriptloader.loadSubScript` rejects `moz-extension:`, `file:` and
-  `jar:` URLs in Firefox 157 unless the caller passes `allowUnsafeURL: true`.
-  The `bento-native-preferences` experiment loads two extension scripts, so it
-  uses `loadSubScriptWithOptions(url, { target, allowUnsafeURL: true })`; without
-  it `bento-tools` fails to start ("Trying to load untrusted URI").
+  `jar:` URLs in Firefox 157 unless the caller passes `allowUnsafeURL: true`
+  (`loadSubScriptWithOptions(url, { target, allowUnsafeURL: true })`). No Bento
+  experiment loads extension scripts that way now; a new one that does needs the
+  option, or `bento-tools` fails to start ("Trying to load untrusted URI").
 - Firefox 157 delivers `resize` events from in-process `about:` pages (Settings)
   to the chrome window's bubbling `resize` listener. `attachWindowResizePerfMode`
   ignores events whose `target` is not the window. Without that guard, freezing a
   Settings browser at its rounded geometry resized the page, the page fired
   `resize`, and the freeze and thaw cycle re-ran every 300 ms; `moz-select`'s
   `panel-list` hides itself on any `resize`, so Settings dropdowns closed as soon
-  as they opened. Manual check: open `about:preferences#bento`, confirm the
-  browser element has no `bento-settings-about-live-resize-frozen` mutations
-  while idle, click a `moz-select` (it must stay open; Escape closes it), and
-  resize the window (the attribute must appear and clear once).
+  as they opened. Manual check: open `about:preferences`, confirm the browser
+  element has no `bento-settings-about-live-resize-frozen` mutations while idle,
+  click a `moz-select` such as the default search engine (it must stay open;
+  Escape closes it), and resize the window (the attribute must appear and clear
+  once).
 - Closing a tab that has a beforeunload prompt. In Firefox 157 the prompt is a
   content dialog in the tab's own `TabDialogBox` (`getContentDialogManager()`),
   not a tab-modal dialog, so Marionette's alert commands do not see it and
@@ -643,7 +644,7 @@ rule). Chrome bridge: none. Persistence: none. Pitfalls:
   (`--bento-rail-width: round(var(--bento-tab-strip-width-collapsed), 1px)`, measured by the
   same expression in `sidebarRailWidth()`). The generated `--bento-tab-strip-width-collapsed`
   token (51.8px) is unchanged: it comes from the token generator and is asserted by
-  `theme-sheets.test.mjs` and the rollback sheet.
+  `theme-sheets.test.mjs`.
 - Snapping alone was not enough. With the margins, the rail rounding and a `scrollend`
   handler that settled the strip on a whole `scrollLeft`, a user-resized expanded sidebar
   still left the defect visible in the main panel plus one side panel at 2x: with the

@@ -73,10 +73,6 @@ them each alias computes to nothing. about:logins and megalist set both statical
 `preferences.js` (on the mount script's `bento-ui-color-mode` notification, and when the
 page becomes visible or focused).
 
-`--monolithic`, also selected by `BENTO_RELEASE_VARIANT=rollback-final-r2`, folds
-every theme back into the base sheet. The archived rollback mount script links
-only that file.
-
 The Bento token layer supplies product-specific dimensions and surfaces. The
 generated preset index supplies the old short aliases used by existing Bento
 CSS and native chrome. The aliases are derived from public Mux declarations,
@@ -120,8 +116,7 @@ references through the generated sheet, converts every rem to px at the sheet's
 `--font-size-root`, and writes `calc(32px + 9.9px + 9.9px)`. The source stays the one
 in `bento-tokens.css`, and a token that is missing, declared with different values, or
 given a `var()` fallback stops the generator. The block sits after the layered
-declaration, and unlayered rules win over layers. The monolithic (rollback) sheet
-omits it because its archived mount script ships as it was. Pin the leaves a chrome
+declaration, and unlayered rules win over layers. Pin the leaves a chrome
 formula is built from, not every derived token: the trailer's grid and base widths
 are px sums of the pinned button, gap, padding and select tokens, so chrome computes
 them at the shell's size without being listed. Add a token to the list when chrome

@@ -14,17 +14,26 @@
 // BroadcastChannel, which works inside the private partition.
 
 import type { Event, WireAction } from '@shared/protocol';
+import type { SettingsRequestBody, SettingsResult } from '@shared/settings-client-protocol';
 
 export const BUS_CHANNEL_NAME = 'bento-shell-bus';
 
-/** Document to background. */
+/** Document to background. `settings-hello` and `settings-request` come only from the
+ * Settings overlay, in any window (see bridge/settingsRelay.ts); every other document
+ * speaks `hello` and `action`, and only in private windows. */
 export type BusUp =
-  { kind: 'hello'; helloId: string } | { kind: 'action'; action: WireAction | { type: string } };
+  | { kind: 'hello'; helloId: string }
+  | { kind: 'action'; action: WireAction | { type: string } }
+  | { kind: 'settings-hello'; helloId: string }
+  | { kind: 'settings-request'; request: SettingsRequestBody };
 
 /** Background to document. `replayFor` marks a cached replay for one joiner; an
- * `ack` answers a `hello` once the relay is ready for the document. */
+ * `ack` answers a `hello` or `settings-hello` once the relay is ready for the document.
+ * `settings-result` answers one `settings-request`, and only the document that asked. */
 export type BusDown =
-  { kind: 'event'; event: Event; replayFor?: string } | { kind: 'ack'; helloId: string };
+  | { kind: 'event'; event: Event; replayFor?: string }
+  | { kind: 'ack'; helloId: string }
+  | { kind: 'settings-result'; result: SettingsResult };
 
 export interface ShellBusTransport {
   post(message: BusUp): void;
