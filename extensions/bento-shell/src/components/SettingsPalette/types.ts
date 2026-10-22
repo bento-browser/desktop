@@ -60,4 +60,7 @@ export interface SettingsPaletteActions {
   /** Reloads the snapshot (also the retry after a failed load). */
   refresh(): void;
   clearNotice(): void;
+  /** Tells the store whether the palette is on screen. A show clears the notice and then reports
+   * the operations that ended while it was hidden; those are acknowledged only once shown. */
+  setVisible(visible: boolean): void;
 }

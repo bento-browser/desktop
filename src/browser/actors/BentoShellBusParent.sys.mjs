@@ -23,8 +23,13 @@
 
 const SHELL_ADDON_ID = 'bento-shell@bento.app';
 // Messages that arrive before the shell background listens (its first start,
-// a dev reload) wait here, bounded.
+// a dev reload) wait here, bounded by count and by the total length of the
+// document messages: a Settings import is a single message of up to the child
+// actor's 22 Mi characters, so the length budget holds one of those with 2 Mi
+// to spare, and a second large message pushes the oldest out instead of both
+// piling up while nothing listens.
 const MAX_BACKLOG = 128;
+const MAX_BACKLOG_CHARS = 24 * 1024 * 1024;
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -36,7 +41,8 @@ const SESSION_ID = Services.uuid.generateUUID().toString().slice(1, -1);
 
 const documents = new Map();
 const upListeners = new Set();
-let backlog = [];
+let backlog = []; // { record, chars }
+let backlogChars = 0;
 
 function windowIdOf(win) {
   try {
@@ -56,11 +62,17 @@ function describeWindow(win) {
   return { windowId, isPrivate: lazy.PrivateBrowsingUtils.isWindowPrivate(win) };
 }
 
-function emitUp(record) {
+// `chars` is the length of the document message the record carries (0 for a
+// record chrome raised itself), counted against the backlog budget.
+function emitUp(record, chars = 0) {
   record = { ...record, sessionId: SESSION_ID };
   if (upListeners.size === 0) {
-    backlog.push(record);
-    if (backlog.length > MAX_BACKLOG) backlog.shift();
+    if (chars > MAX_BACKLOG_CHARS) return;
+    backlog.push({ record, chars });
+    backlogChars += chars;
+    while (backlog.length > MAX_BACKLOG || backlogChars > MAX_BACKLOG_CHARS) {
+      backlogChars -= backlog.shift().chars;
+    }
     return;
   }
   for (const listener of [...upListeners]) {
@@ -76,8 +88,9 @@ export const BentoShellBusHub = {
   /** Registers the single consumer of upward messages and hands it the backlog. */
   onUp(listener) {
     upListeners.add(listener);
-    const pending = backlog;
+    const pending = backlog.map((entry) => entry.record);
     backlog = [];
+    backlogChars = 0;
     for (const record of pending) {
       try {
         listener(record);
@@ -143,7 +156,7 @@ export class BentoShellBusParent extends JSWindowActorParent {
       this.#documentId = Services.uuid.generateUUID().toString().slice(1, -1);
       documents.set(this.#documentId, this);
     }
-    emitUp({ documentId: this.#documentId, ...info, message: parsed });
+    emitUp({ documentId: this.#documentId, ...info, message: parsed }, message.data.length);
   }
 
   sendDown(message) {

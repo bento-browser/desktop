@@ -19,14 +19,37 @@ export interface SizeRunnerDeps {
   update(changes: Partial<EditableSettings>): Promise<boolean>;
 }
 
-/** Runs one size action. Resolves true when the new list was saved, false when it was refused
- * or another size action was still waiting for its answer (this one is dropped, not queued:
- * it was chosen from a list that is about to change). */
+/** The key `settings/update` is tracked under in `SettingsPaletteModel.pending`. */
+const SIZES_KEY = 'customPanelSizes';
+
+/** Whether an intent reads or rewrites the size list: the actions themselves, and entering the
+ * stage of one entry (its index is only good for the list it was built from). */
+export function touchesSizeList(intent: Intent): boolean {
+  if (intent.type === 'addSize' || intent.type === 'moveSize' || intent.type === 'removeSize') {
+    return true;
+  }
+  return (
+    intent.type === 'push' &&
+    (intent.stage.kind === 'sizeActions' || intent.stage.kind === 'sizeEdit')
+  );
+}
+
+/** Whether `intent` has to be ignored because the list is still being saved. */
+export function waitsForSave(intent: Intent, runner: { isBusy(): boolean }): boolean {
+  return touchesSizeList(intent) && runner.isBusy();
+}
+
+/** Runs one size action. `run` resolves true when the new list was saved, false when it was
+ * refused or the list was still being saved (this one is dropped, not queued: it was chosen from
+ * a list that is about to change). `isBusy` says so, for the intents that must wait the same way:
+ * `Edit size` entered during a move would edit whichever entry lands on its index. */
 export function createSizeRunner({ model, update }: SizeRunnerDeps) {
   let busy = false;
-  return async function run(intent: SizeIntent): Promise<boolean> {
+  // Another write to the list also counts: a size being edited live is applied the same way.
+  const isBusy = () => busy || (model()?.pending.has(SIZES_KEY) ?? false);
+  async function run(intent: SizeIntent): Promise<boolean> {
     const current = model();
-    if (busy || !current) return false;
+    if (isBusy() || !current) return false;
     const sizes = current.settings.customPanelSizes;
     busy = true;
     try {
@@ -46,7 +69,8 @@ export function createSizeRunner({ model, update }: SizeRunnerDeps) {
     } finally {
       busy = false;
     }
-  };
+  }
+  return { run, isBusy };
 }
 
 /** The stack once `intent` was saved: Move shows the actions of the entry at its new place,

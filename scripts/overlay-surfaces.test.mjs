@@ -454,6 +454,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
   const script = `"use strict";
     ${CONSTANTS.map(extractConst).join('\n')}
     let mergePaletteOpenSeq = 0;
+    let settingsLifecycleSeq = 0;
     let addrbarOpenSeq = 0;
     let pendingAddrbarReveal = null;
     let pendingMenuContextId = null;
@@ -1069,6 +1070,68 @@ test('hiding the Settings palette tells its document, however it is dismissed', 
   world.advance(1000);
   assert.equal(world.isShown('settings-palette'), false);
   assert.equal(world.settingsHides().length, 2, 'opening the command palette hides it with a hide');
+});
+
+test('a Hide that waited for the frame does not land after the Show that came later', () => {
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.showSettingsPalette();
+  const mm = world.frame('settings-palette').messageManager;
+  const send = mm.sendAsyncMessage;
+  assert.equal(world.settingsHides().length, 0);
+
+  // The frame cannot take a message for a moment: the Hide waits, and the next Show goes first.
+  mm.sendAsyncMessage = undefined;
+  world.hideSettingsPalette();
+  mm.sendAsyncMessage = send;
+  world.showSettingsPalette('privacy:level');
+  world.advance(2000);
+  assert.deepEqual(world.settingsHides(), [], 'the older Hide is dropped, not sent after the Show');
+  assert.deepEqual(world.settingsShows().at(-1), { target: 'privacy:level' });
+});
+
+test('a Show that waited for the frame does not land after the Hide that came later', () => {
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.showSettingsPalette();
+  const mm = world.frame('settings-palette').messageManager;
+  const send = mm.sendAsyncMessage;
+  const shows = world.settingsShows().length;
+
+  mm.sendAsyncMessage = undefined;
+  world.showSettingsPalette('privacy:level');
+  mm.sendAsyncMessage = send;
+  world.hideSettingsPalette();
+  world.advance(2000);
+  assert.equal(world.settingsShows().length, shows, 'the older Show is dropped');
+  assert.equal(world.settingsHides().length, 1);
+});
+
+test('a Hide before the first Show reached the frame still ends that Show', () => {
+  const world = makeWorld();
+  world.showSettingsPalette();
+  const mm = world.frame('settings-palette').messageManager;
+  const send = mm.sendAsyncMessage;
+  mm.sendAsyncMessage = undefined;
+  world.ready('settings-palette');
+  world.hideSettingsPalette();
+  mm.sendAsyncMessage = send;
+  world.advance(2000);
+  assert.deepEqual(world.settingsShows(), [], 'the Show that was still waiting is dropped');
+  assert.deepEqual(world.settingsHides(), [], 'nothing was shown, so there is nothing to hide');
+});
+
+test('a retried Hide is still sent when no Show came after it', () => {
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.showSettingsPalette();
+  const mm = world.frame('settings-palette').messageManager;
+  const send = mm.sendAsyncMessage;
+  mm.sendAsyncMessage = undefined;
+  world.hideSettingsPalette();
+  mm.sendAsyncMessage = send;
+  world.advance(500);
+  assert.equal(world.settingsHides().length, 1);
 });
 
 test('the Settings frame script turns the hide message into the document event', () => {

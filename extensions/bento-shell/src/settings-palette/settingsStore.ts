@@ -106,9 +106,21 @@ export function createSettingsPaletteStore(
   // while it was away is never replaced by the older picture it brings back.
   let tickets = 0;
   const shown: Record<Versioned, number> = { settings: 0, privacy: 0, search: 0 };
+  // Change notices that arrive before the first snapshot has made a model have nowhere to go.
+  // They wait here with the ticket count they arrived at, and the first snapshot yields to the
+  // ones that arrived after it was asked for.
+  const early: {
+    change: Partial<Pick<SettingsPaletteModel, Versioned>>;
+    at: Partial<Record<Versioned, number>>;
+  } = { change: {}, at: {} };
   // Durable operations this document has reported or is already handling, by id.
   const handled = new Set<string>();
   let durableRuns = 0;
+  // Whether the palette is on screen. Chrome keeps the document loaded while it is hidden, and
+  // an outcome is only reported (and acknowledged in tools) when someone could see it: one that
+  // ends while hidden waits in `unseen` for the next show.
+  let visible = true;
+  const unseen = new Map<string, { outcome: DurableOutcome; notice: string | null }>();
 
   function patch(change: Partial<SettingsPaletteModel>): void {
     store.setState(({ view }) =>
@@ -119,7 +131,15 @@ export function createSettingsPaletteStore(
   /** Patches the model with the answer to request `ticket` (a change notice has none and always
    * applies). Published fields a newer value already holds are left as they are. */
   function patchPublished(change: Partial<SettingsPaletteModel>, ticket?: number): void {
-    if (!model()) return;
+    if (!model()) {
+      if (ticket !== undefined) return;
+      for (const field of VERSIONED) {
+        if (!(field in change)) continue;
+        Object.assign(early.change, { [field]: change[field] });
+        early.at[field] = tickets;
+      }
+      return;
+    }
     const fresh = { ...change };
     for (const field of VERSIONED) {
       if (!(field in fresh)) continue;
@@ -171,20 +191,34 @@ export function createSettingsPaletteStore(
   function applySnapshot(snapshot: SettingsSnapshot, ticket: number): void {
     if (!snapshot.settings) throw new Error('snapshot without settings');
     const previous = model();
-    const newer = (field: Versioned) => previous !== null && ticket <= shown[field];
+    // Newer than the snapshot: held by the model, or (before there is one) a notice that came in
+    // after the snapshot was asked for.
+    const newer = (field: Versioned) =>
+      previous ? ticket <= shown[field] : ticket <= (early.at[field] ?? 0);
     const next: SettingsPaletteModel = {
       isPrivate: snapshot.backup === undefined,
-      settings: previous && newer('settings') ? previous.settings : snapshot.settings,
-      privacy: previous && newer('privacy') ? previous.privacy : (snapshot.privacy ?? null),
-      search: previous && newer('search') ? previous.search : (snapshot.search ?? null),
+      settings: newer('settings')
+        ? (previous?.settings ?? early.change.settings ?? snapshot.settings)
+        : snapshot.settings,
+      privacy: newer('privacy')
+        ? (previous?.privacy ?? early.change.privacy ?? null)
+        : (snapshot.privacy ?? null),
+      search: newer('search')
+        ? (previous?.search ?? early.change.search ?? null)
+        : (snapshot.search ?? null),
       backup: snapshot.backup ?? null,
       pending: previous?.pending ?? new Set(),
       notice: previous?.notice ?? null,
       importPreview: previous?.importPreview ?? null,
     };
-    for (const field of VERSIONED) if (!newer(field)) shown[field] = Math.max(shown[field], ticket);
+    for (const field of VERSIONED) {
+      shown[field] = Math.max(shown[field], newer(field) ? (early.at[field] ?? 0) : ticket);
+    }
+    early.change = {};
+    early.at = {};
     store.setState({ view: { kind: 'ready', model: next } });
     client.resume(snapshot.pendingOperations);
+    showUnseen();
     void reportFinished(finishedOperations(snapshot));
   }
 
@@ -218,10 +252,34 @@ export function createSettingsPaletteStore(
       .catch(() => undefined);
   }
 
+  /** How an operation ended, for a palette that may be hidden. Returns the sentence to show now:
+   * on screen the outcome is reported and acknowledged here; hidden, it is kept (and left
+   * unacknowledged, so a reload would still find it) for the next show. */
+  function takeOutcome(outcome: DurableOutcome, late: boolean): string | null {
+    if (!visible) {
+      handled.add(outcome.operationId);
+      unseen.set(outcome.operationId, { outcome, notice: outcomeNotice(outcome, true) });
+      return null;
+    }
+    conclude(outcome);
+    return outcomeNotice(outcome, late);
+  }
+
+  /** Puts the outcomes kept while hidden on screen, once there is a model to show them in. */
+  function showUnseen(): void {
+    if (!visible || unseen.size === 0 || !model()) return;
+    const notices: string[] = [];
+    for (const { outcome, notice } of unseen.values()) {
+      if (notice) notices.push(notice);
+      conclude(outcome);
+    }
+    unseen.clear();
+    if (notices.length > 0) patch({ notice: notices.join(' ') });
+  }
+
   /** What a durable operation's end means for the mirror and the notice. */
   function settleDurable(outcome: DurableOutcome, late = false): boolean {
-    conclude(outcome);
-    const notice = outcomeNotice(outcome, late);
+    const notice = takeOutcome(outcome, late);
     if (notice) patch({ notice });
     return outcome.state === 'succeeded';
   }
@@ -261,9 +319,8 @@ export function createSettingsPaletteStore(
           handled.delete(operationId); // Not finished after all; a later snapshot looks again.
           continue;
         }
-        const notice = outcomeNotice(outcome, true);
+        const notice = takeOutcome(outcome, true);
         if (notice) notices.push(notice);
-        conclude(outcome);
       } catch {
         handled.delete(operationId);
       }
@@ -277,16 +334,18 @@ export function createSettingsPaletteStore(
     key: string,
     operation: O,
     payload: SettingsPayloads[O],
-    hooks: { after?: (outcome: DurableOutcome) => void; finish?: () => void } = {},
+    hooks: { after?: (outcome: DurableOutcome, ticket: number) => void; finish?: () => void } = {},
   ): Promise<boolean> {
     // One at a time per key: a second activation while it runs would start it again.
     if (inFlight.has(key)) return false;
     begin(key);
     durableRuns += 1;
+    // Taken when the operation is sent: what it returns is no newer than that.
+    const ticket = ++tickets;
     try {
       const outcome = await client.run(operation, payload);
       const done = settleDurable(outcome);
-      hooks.after?.(outcome);
+      hooks.after?.(outcome, ticket);
       return done;
     } catch (error) {
       patch({ notice: describeSettingsError(error) });
@@ -357,9 +416,9 @@ export function createSettingsPaletteStore(
         'settings/reset',
         { confirm: true },
         {
-          after(outcome) {
+          after(outcome, ticket) {
             const reset = readResetResult(outcome.result);
-            if (reset) patchPublished(reset);
+            if (reset) patchPublished(reset, ticket);
             else void refresh();
           },
         },
@@ -435,6 +494,13 @@ export function createSettingsPaletteStore(
     openMergePalette: () => host.openMergePalette(),
     refresh: () => void refresh(),
     clearNotice: () => patch({ notice: null }),
+    setVisible(next) {
+      visible = next;
+      if (!next) return;
+      // A show starts clean; what ended while hidden is then the only notice left.
+      patch({ notice: null });
+      showUnseen();
+    },
   };
 
   return {

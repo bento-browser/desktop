@@ -915,8 +915,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   not a browser restart. The child actor forwards an upward message of up to 22 MiB
   (`MAX_MESSAGE_CHARS`, equal to `RELAY_UP_MAX_CHARS` in
   `extensions/bento-shell/src/settings-palette/relayLimit.ts`): it counts the serialized message,
-  in which JSON escaping doubles a 10 MiB backup import. `scripts/shell-bus-actors.test.mjs`
-  runs both actor modules against stubs.
+  in which JSON escaping doubles a 10 MiB backup import. The hub's backlog (records that
+  arrive before the shell background listens) is bounded by count (128) and by 24 Mi
+  characters of document messages, so one maximal import fits and several large ones
+  cannot pile up. `scripts/shell-bus-actors.test.mjs` runs both actor modules against stubs.
 - Vanilla Firefox surface touched or depended on: `ChromeUtils.registerWindowActor`
   with `allFrames`, `matches: moz-extension://*/*` and a `wantUntrusted` DOM event;
   `JSWindowActorParent.manager.documentURI` and
@@ -976,7 +978,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `{target}` (a row id or null), so no channel is involved; hiding the overlay sends
   the same way a `BentoSettingsPaletteHide` message that dispatches a
   `bento-settings-hide` event, so the document can put back an unfinished live edit
-  and stop its timer at once. The overlay opens
+  and stop its timer at once. Show and Hide share a generation counter in the mount
+  script: a retry of an older message is dropped once a newer one was sent, so a delayed
+  Hide cannot land after a later Show. The overlay opens
   Firefox's own search settings (`about:preferences#search`, through
   `gBrowser.addTrustedTab` or the open Settings tab) for adding engines. Firefox's
   own Settings page has no Bento category any more (the native pane and its patch

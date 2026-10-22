@@ -53,7 +53,7 @@ test('the child actor drops a message past its limit, and anything that is not a
 // Shared, so two module loads mint different ids like two browser runs would.
 let uuids = 0;
 
-function loadParent() {
+function loadParent({ listen = true } = {}) {
   const window = {
     closed: false,
     document: { documentElement: { getAttribute: () => 'navigator:browser' } },
@@ -78,7 +78,8 @@ function loadParent() {
   );
   const win = Object.assign(window, { id: 4, private: false });
   const records = [];
-  Hub.onUp((record) => records.push(record));
+  const attach = () => Hub.onUp((record) => records.push(record));
+  if (listen) attach();
   const actorFor = (chromeWindow) => {
     const actor = new Parent();
     actor.manager = { documentURI: { scheme: 'moz-extension', host: 'shell-host' } };
@@ -86,7 +87,7 @@ function loadParent() {
     actor.sendAsyncMessage = () => {};
     return actor;
   };
-  return { Hub, win, records, actorFor };
+  return { Hub, win, records, actorFor, attach };
 }
 
 test('the hub stamps every upward record with one session id for the browser run', () => {
@@ -127,4 +128,64 @@ test('a page cannot supply the session id, and a restarted browser has a new one
   const second = loadParent();
   second.Hub.postFromChrome(second.win, { type: 'menu/open' });
   assert.notEqual(second.records[0].sessionId, first.records[0].sessionId);
+});
+
+// A document message the child actor would forward: a settings request carrying `chars` of text.
+const requestOf = (chars, id = 'r') =>
+  JSON.stringify({
+    kind: 'settings-request',
+    request: { requestId: id, payload: { json: 'x'.repeat(chars) } },
+  });
+
+test('the backlog keeps one maximal Settings import while nothing listens', () => {
+  const { win, records, actorFor, attach } = loadParent({ listen: false });
+  const actor = actorFor(win);
+  // The largest message the child actor forwards: 22 Mi characters.
+  const biggest = requestOf(22 * MiB - 200, 'big');
+  assert.ok(biggest.length <= 22 * MiB);
+  actor.receiveMessage({ name: 'BentoShellBus:Up', data: biggest });
+  attach();
+  assert.deepEqual(
+    records.map((record) => record.message.request.requestId),
+    ['big'],
+  );
+});
+
+test('many large queued messages cannot accumulate: the oldest give way to the newest', () => {
+  const { win, records, actorFor, attach } = loadParent({ listen: false });
+  const actor = actorFor(win);
+  for (let i = 0; i < 8; i += 1) {
+    actor.receiveMessage({ name: 'BentoShellBus:Up', data: requestOf(10 * MiB, `m${i}`) });
+  }
+  attach();
+  // 24 Mi of budget holds two 10 Mi messages.
+  assert.deepEqual(
+    records.map((record) => record.message.request.requestId),
+    ['m6', 'm7'],
+  );
+});
+
+test('the count limit of 128 still holds, newest first, with a large message queued', () => {
+  const { Hub, win, records, actorFor, attach } = loadParent({ listen: false });
+  const actor = actorFor(win);
+  actor.receiveMessage({ name: 'BentoShellBus:Up', data: requestOf(5 * MiB, 'large') });
+  for (let i = 0; i < 200; i += 1) Hub.postFromChrome(win, { type: 'menu/open', n: i });
+  attach();
+  // 128 records at most, the newest ones: the large message was the oldest.
+  assert.equal(records.length, 128);
+  assert.equal(records.at(-1).message.n, 199);
+  assert.ok(records.every((record) => record.message.request === undefined));
+});
+
+test('the budget starts over once a listener took the backlog', () => {
+  const { win, records, actorFor, attach } = loadParent({ listen: false });
+  const actor = actorFor(win);
+  actor.receiveMessage({ name: 'BentoShellBus:Up', data: requestOf(20 * MiB, 'first') });
+  attach();
+  // Listening now: records are delivered directly and never counted.
+  actor.receiveMessage({ name: 'BentoShellBus:Up', data: requestOf(20 * MiB, 'second') });
+  assert.deepEqual(
+    records.map((record) => record.message.request.requestId),
+    ['first', 'second'],
+  );
 });

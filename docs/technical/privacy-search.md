@@ -232,15 +232,27 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   the newest ticket sent so far, and an answer applies only to the fields it is newer
   than. A snapshot collected before a write or notice therefore cannot replace the newer
   value, a stale write answer cannot replace a notice, and the answers of two quick
-  writes arriving out of order leave the one sent last.
+  writes arriving out of order leave the one sent last. A reset takes its ticket when it
+  is sent and applies the state it returns through it, so a change that landed while it
+  ran is kept. A change notice that arrives before the first snapshot has made a model is
+  buffered with the ticket count it arrived at, and the first snapshot yields to the
+  notices that came in after it was asked for.
 - Operations that ended while the document could not see them are reported once. After
   each snapshot the store takes the `pendingOperations` that are finished and not
   `noticeAcknowledged`, plus the `recoveredOperationNotices`, reads each with
   `operation/status`, shows the outcome in the footer notice ("The import did not
   finish. Bento restarted first. ..." or "The restore finished.") and sends
   `recovery/acknowledgeNotice`. An operation this document ran itself is concluded the
-  same way when its run ends (acknowledged, shown only when it did not succeed), and
-  nothing is reported while the document has a durable run of its own in flight.
+  same way when its run ends (shown only when it did not succeed), and nothing is
+  reported while the document has a durable run of its own in flight.
+- An outcome is acknowledged only once it was on screen. The store is told when the
+  palette is shown or hidden (`actions.setVisible`, called from the show and hide events
+  ahead of React, and `false` when the document loads: it loads hidden). An outcome that
+  ends while hidden, a failure or a success, is kept unacknowledged and shown ("The
+  import finished.", "The restore did not finish. ...") by the next show, which first
+  clears the old notice itself: the palette component no longer clears it on a show, since
+  that ran after the store had reported and erased it. A document reloaded before that
+  show finds the unacknowledged operation again in its snapshot.
 - `relayTransport.ts` is the only file that knows how Settings traffic is shaped on the
   BentoShellBus relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
   strings, built on `bridge/shellBus.ts`). It sends `settings-hello` until acknowledged,
@@ -471,7 +483,14 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - A size list action (Move up, Move down, Remove) keeps the stage on its entry until
   tools saved the new order (`sizeIntents.ts`): moving the stage first left the actions
   on the neighbour after a refused move, so Remove could delete it, and a second press
-  before the answer reordered a stale list. A second action while one waits is dropped.
+  before the answer reordered a stale list. A second action while one waits is dropped,
+  and so is anything that names an entry while the list is saved (`Edit size`, opening an
+  entry's actions): Edit size entered during a move, saved as 340, once rewrote the
+  neighbour that landed on its index. A size edited live counts as saving the list too.
+- Show and Hide are sent to the Settings document in order. A message the frame could not
+  take yet is retried, and a retry of an older one is dropped once a newer Show or Hide
+  was sent (`settingsLifecycleSeq` in the mount script): a delayed Hide landed after the
+  Show that came later and cancelled the editor session it had just begun.
 - Do not accept blob URLs other than `blob:system/<uuid>`, and do not widen the
   other schemes to make an icon appear: the experiment runs with the system
   principal, so what it fetches has to stay an explicit list.

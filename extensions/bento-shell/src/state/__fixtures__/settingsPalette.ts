@@ -158,6 +158,7 @@ export const NOOP_ACTIONS: SettingsPaletteActions = {
   openMergePalette: () => {},
   refresh: () => {},
   clearNotice: () => {},
+  setVisible: () => {},
 };
 
 /** A model and actions that edit a local copy of `initial`. */
@@ -236,6 +237,7 @@ export function useFakeSettingsPalette(initial: SettingsPaletteModel): {
         return true;
       },
       clearNotice: () => patch({ notice: null }),
+      setVisible: () => {},
     };
   }, []);
   return { view: { kind: 'ready', model }, actions };

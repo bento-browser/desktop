@@ -48,20 +48,28 @@ export function listenForVisibility(
   };
 }
 
-/** `refresh` runs on mount and on each show. */
-export function useShowSignal(refresh: () => void): ShowState {
+/** `refresh` runs on mount and on each show. `setVisible` hears of each show and hide first, ahead
+ * of React and of the snapshot a show asks for. */
+export function useShowSignal(
+  refresh: () => void,
+  setVisible: (visible: boolean) => void,
+): ShowState {
   const [state, setState] = useState<ShowState>({ openToken: 0, hideToken: 0, ...ROOT_TARGET });
 
   useEffect(() => {
     refresh();
     return listenForVisibility(window, {
       onShow: (target) => {
+        setVisible(true);
         setState((current) => ({ ...current, openToken: current.openToken + 1, ...target }));
         refresh();
       },
-      onHide: () => setState((current) => ({ ...current, hideToken: current.hideToken + 1 })),
+      onHide: () => {
+        setVisible(false);
+        setState((current) => ({ ...current, hideToken: current.hideToken + 1 }));
+      },
     });
-  }, [refresh]);
+  }, [refresh, setVisible]);
 
   return state;
 }
