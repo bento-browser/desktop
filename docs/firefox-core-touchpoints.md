@@ -889,18 +889,28 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Files or patches:
   - `src/browser/actors/BentoShellBusChild.sys.mjs` and
     `BentoShellBusParent.sys.mjs`
-  - `src/browser/actors/BentoShellDocumentRegistry.sys.mjs` (the parent-process
-    shell document registry the chrome-bridge experiment and the mount script
-    import; it lived in the native pane patch until that patch was removed)
   - `patches/chrome-layout/04-bento-key-actors.patch` (a second
     `FINAL_TARGET_FILES.actors` block in `browser/actors/moz.build` that lists the
-    bus actors and the registry module beside the sorted list)
+    bus actors beside the sorted list)
   - `src/browser/base/content/bento-shell-mount.js` (`registerShellBusActor`,
     `postShellActionThroughBusHub`, the `bentoPrivate` hash flag in `setFrameSrc`)
   - `extensions/bento-shell/src/experiments/chrome-bridge/` and the tracked
     `extensions/bento-shell/experiments/chrome-bridge/` (`bentoChrome.onBusMessage`,
     `bentoChrome.postToDocument`), `extensions/bento-shell/manifest.json` (version
-    0.0.4)
+    0.0.5)
+- Document registry removal (2026-10-22): `BentoShellDocumentRegistry.sys.mjs` is
+  gone, with the experiment's `bindBackground`, `listDocuments`, `getRebindProofs`,
+  `ackRebindGeneration`, `noteLifecycle`, `invalidateDocument` and `onDocument*`
+  events, the shell background's `shell-client/*` handshake and targeted per-document
+  channel, `GraphPublicationCoordinator` and the sidebar's `useGraphStore`. The mount
+  imported the registry as `resource://app/actors/...` while the experiment imported
+  `resource:///actors/...`, so they held two module instances: documents registered
+  in one and the experiment read the other, which was always empty, and nothing behind
+  the registry ever ran. Measured on the 158.0 dev build with a throwaway profile:
+  the `resource://app/` instance listed the sidebar, the `resource:///` instance
+  listed none and held the only background binding. The shell manifest version was
+  bumped because the experiment schema lost functions and events. `bento-tools`
+  deletes the retired `bento.graphPublication.v1` storage key at startup.
 - Bento functionality: shell documents in a private window reach the shell
   background through a JSWindowActor pair and a parent-process hub, because
   `BroadcastChannel` is partitioned by `privateBrowsingId`. The actor attaches to
@@ -927,7 +937,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `PrivateBrowsingUtils.isWindowPrivate`; the `resource:///actors/` mapping of
   `FINAL_TARGET_FILES.actors` (the mount, the experiment and the registration must
   use this exact spelling, since `resource://app/actors/` loads a second module
-  instance); `BroadcastChannel`'s `privateBrowsingId` partition (the reason for the
+  instance, which is how the removed document registry split in two); `BroadcastChannel`'s `privateBrowsingId` partition (the reason for the
   relay, observed on 158.0).
 - Why this cannot stay extension-only: an extension page has no way to reach a
   background in another privacy partition, and the overlay documents have no
@@ -1068,7 +1078,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   (see Native Bento Preferences (removed)); 23 patches remain. Its only shared
   file with a later patch was `browser/actors/moz.build`, which
   `chrome-layout/04` now edits alone (a second `FINAL_TARGET_FILES.actors` block
-  that also lists `BentoShellDocumentRegistry.sys.mjs`); `core-ui/12` precedes it
+  that lists the shell bus actors); `core-ui/12` precedes it
   and is unchanged. The series applied in order with `git apply
 --ignore-space-change --ignore-whitespace` to the pristine 158.0 files it
   touches; the source-import CI job and `pnpm run firefox:patches:check` replay the
@@ -1482,14 +1492,10 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   `moz-select` and `test_moz_select_panel.html` edits),
   `extensions/_shared/native-preferences-contract.json` with its generated
   copies, and `extensions/bento-tools/experiments/bento-native-preferences/**`.
-  Kept: `patches/core-ui/12-center-native-preferences.patch` (entry above), and
-  the parent-process document registry, now the overlay file
-  `src/browser/actors/BentoShellDocumentRegistry.sys.mjs` with its
-  `FINAL_TARGET_FILES.actors` entry in
-  `patches/chrome-layout/04-bento-key-actors.patch` (the Shell Bus Relay entry),
-  at the same `resource:///actors/` URL. The registry lost
-  `getCurrentBootAttestation`; bento-tools now numbers its own run for
-  durable-operation ownership.
+  Kept: `patches/core-ui/12-center-native-preferences.patch` (entry above). The
+  parent-process document registry that survived this removal was itself removed
+  later the same day (see the Shell Bus Relay entry); bento-tools numbers its own
+  run for durable-operation ownership.
 - Bento functionality: none; Bento's settings live in the Settings palette
   (entry above). `bento-tools` deletes the retired `bento.nativeSessions.v1`
   storage key at startup and keeps `bento.nativeOperations.v1`, the durable
@@ -1506,12 +1512,11 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 - Why this exists: the Settings palette replaced the pane, and the pane's
   observer bridge and the rollback builds that guarded its removal were retired
   together.
-- Firefox update risk: none from the pane. The registry module is a plain system
-  module that depends on `Services.uuid` only.
+- Firefox update risk: none from the pane.
 - Regression checks for future updates: patch replay passes with the pane patch
   absent; `about:preferences` shows no Bento category; the Browser Console shows
   no `[bento-compat] missing` line and no error from
-  `resource:///actors/BentoShellDocumentRegistry.sys.mjs`; the Settings palette
+  `resource:///actors/BentoShellBusParent.sys.mjs`; the Settings palette
   opens and applies a change in a regular and a private window.
 - Rollback or migration notes: the rollback builds (`rollback/legacy-source`,
   `scripts/build-rollback-variant.mjs`) were removed with the pane. Restoring the
@@ -2668,7 +2673,7 @@ below is generated; edit the registry, then run
 | `migration-wizard #resource-type-list` | source (engine only) | Resource checkbox list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-type-list` | `browser/components/migration/content/migration-wizard.mjs:89` |
 | `migration-wizard .resource-progress` | source (engine only) | Progress list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress` | `browser/components/migration/content/migration-wizard.mjs:129` |
 | `migration-wizard .resource-progress-group` | source (engine only) | Progress rows the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress-group` | `browser/components/migration/content/migration-wizard.mjs:130` |
-| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) and the shell document registry sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module and the registry are imported by the mount, the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellDocumentRegistry` | `browser/actors/moz.build:92` |
+| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
 | `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `JSWindowActorParent.manager` | source (engine only) | The BentoShellBus parent actor reads its WindowGlobalParent to check which document a relayed message comes from. | `src/browser/actors/BentoShellBusParent.sys.mjs#manager` | `dom/chrome-webidl/JSWindowActor.webidl:26` |
 | `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |

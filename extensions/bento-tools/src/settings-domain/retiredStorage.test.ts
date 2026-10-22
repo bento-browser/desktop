@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { removeRetiredSettingsStorage } from './retiredStorage';
 
 describe('removeRetiredSettingsStorage', () => {
-  it('removes the native session key and leaves the operation records', async () => {
+  it('removes the retired keys and leaves the operation records', async () => {
     const storage: Record<string, unknown> = {
       'bento.nativeSessions.v1': { version: 1, sessions: [] },
+      'bento.graphPublication.v1': { publicationId: 'publication-1', tabs: [] },
       'bento.nativeOperations.v1': { version: 1, records: [] },
+      'bento.graphOperation.v1': { version: 1 },
     };
     vi.stubGlobal('browser', {
       storage: {
@@ -17,7 +19,7 @@ describe('removeRetiredSettingsStorage', () => {
       },
     });
     await removeRetiredSettingsStorage();
-    expect(Object.keys(storage)).toEqual(['bento.nativeOperations.v1']);
+    expect(Object.keys(storage)).toEqual(['bento.nativeOperations.v1', 'bento.graphOperation.v1']);
     vi.unstubAllGlobals();
   });
 

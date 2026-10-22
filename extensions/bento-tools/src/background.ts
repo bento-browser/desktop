@@ -66,8 +66,6 @@ import { OperationRegistry } from './settings-domain/OperationRegistry';
 import { removeRetiredSettingsStorage } from './settings-domain/retiredStorage';
 import { GraphOperationJournal, GraphOperationRecovery } from './replacement/GraphOperationJournal';
 import { PrivacyMutationService } from './privacy/PrivacyMutationService';
-import { GraphPublicationCoordinator } from './replacement/GraphPublicationCoordinator';
-import { isShellClientMessage } from '@shared/shell-client-protocol';
 import {
   audienceMessage,
   partitionTabDeltas,
@@ -106,16 +104,6 @@ const graphRecovery = new GraphOperationRecovery({
   settings,
   savedPanels,
   privacyMutations,
-});
-const backendInstanceId = crypto.randomUUID();
-const graphPublications = new GraphPublicationCoordinator({
-  backendInstanceId,
-  workspaces,
-  tabs,
-  panels,
-  pinnedPanels,
-  tabFolders,
-  savedPanels,
 });
 
 tabs.onDeltas(() => mutationCoordinator.noteExternalGraphChange());
@@ -1282,7 +1270,6 @@ const settingsDomain = new SettingsDomainService({
   journal: graphJournal,
   recovery: graphRecovery,
   privacyMutations,
-  graphPublications,
   broadcast: broadcastEvent,
 });
 // Windows the shell may claim as a source: shell actions and Settings requests both check them.
@@ -2364,7 +2351,6 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onMessage.addListener((message: unknown) => {
-    if (isShellClientMessage(message) && graphPublications.handle(port, message)) return;
     // Settings results go back on this port only, never through the broadcast set.
     const claimed = settingsClient.handle(message, (result) => {
       try {
@@ -2381,7 +2367,6 @@ browser.runtime.onConnectExternal.addListener((port) => {
   });
 
   port.onDisconnect.addListener(() => {
-    graphPublications.disconnect(port);
     connectedPorts.delete(port);
     unsubTabs();
     unsubWorkspaces();

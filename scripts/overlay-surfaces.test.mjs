@@ -1329,7 +1329,6 @@ test("a private window's sidebar frame carries chrome's root font size; others d
         documentElement: {},
       },
       getComputedStyle: () => ({ fontSize }),
-      registerBentoShellDocument: () => ({ mountToken: 'm', clientInstanceId: 'c' }),
       getBentoSidebarAddressBridgeToken: () => 'token',
       setFrameSrc: (_id, _path, _attempt, extra) => stamped.push(extra.bentoChromeRem),
       window: {},
@@ -1367,7 +1366,6 @@ test('a private window whose chrome sheets are still loading stamps the font siz
   const sandbox = {
     document: doc,
     getComputedStyle: () => ({ fontSize }),
-    registerBentoShellDocument: () => ({ mountToken: 'm', clientInstanceId: 'c' }),
     getBentoSidebarAddressBridgeToken: () => 'token',
     setFrameSrc: (_id, _path, _attempt, extra) => stamped.push(extra.bentoChromeRem),
     window: { addEventListener: (type, fn) => listeners.push({ type, fn }) },

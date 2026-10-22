@@ -24,8 +24,6 @@ import { useWorkspaceFolders } from './state/tabFolders';
 import { useUiStore } from './state/ui';
 import { usePrivateWindow } from './state/privateWindow';
 import type { UiColorModePref } from '@shared/protocol';
-import type { ToolsToShellTargeted } from '@shared/shell-client-protocol';
-import { applyGraphProjection } from './state/graph';
 import { BentoIcon } from './components/primitives/BentoIcon';
 import { Row } from './components/primitives/BentoRow';
 import { MergeProgressCard } from './components/MergeProgressCard/MergeProgressCard';
@@ -144,46 +142,6 @@ export function App() {
   // workspace theme through the same BENTO_PANELS payload that carries
   // uiColorMode, so first-paint theme/color updates stay atomic.
   useWorkspaceTheme();
-  useEffect(() => {
-    const hash = location.hash.startsWith('#') ? location.hash.slice(1) : location.hash;
-    const params = new URLSearchParams(hash);
-    const mountToken = params.get('bentoMountToken');
-    const clientInstanceId = params.get('bentoClientInstanceId');
-    if (!mountToken || !clientInstanceId || windowId === null) return;
-    const documentChannel = new BroadcastChannel(`bento-shell-doc:${mountToken}`);
-    documentChannel.addEventListener('message', (message) => {
-      const data = message.data as { type?: string; envelope?: ToolsToShellTargeted } | undefined;
-      const envelope = data?.envelope;
-      if (
-        data?.type !== 'document/targeted' ||
-        !envelope ||
-        envelope.targetClientInstanceId !== clientInstanceId ||
-        envelope.expectedWindowId !== windowId ||
-        envelope.expectedRole !== 'primary'
-      ) {
-        return;
-      }
-      const disposition = applyGraphProjection(envelope.event, windowId);
-      if (disposition === 'resync-required') return;
-      const event = envelope.event;
-      sendChromeTitle(
-        `BENTO_GRAPH_COMMIT:${event.backendInstanceId}:${event.publicationId}:${event.graphRevision}`,
-      );
-      let attempts = 0;
-      const acknowledge = () => {
-        documentChannel.postMessage({
-          type: 'document/graph-applied',
-          backendInstanceId: event.backendInstanceId,
-          publicationId: event.publicationId,
-          graphRevision: event.graphRevision,
-        });
-        attempts += 1;
-        if (attempts < 5) setTimeout(acknowledge, 50);
-      };
-      setTimeout(acknowledge, 50);
-    });
-    return () => documentChannel.close();
-  }, [windowId]);
   // First-run welcome trigger. The settings snapshot lands a moment after
   // the tools port connects; once it does and welcomeSeen=false, signal
   // chrome to show the welcome overlay (chrome-mounted, full-window scrim

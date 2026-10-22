@@ -4,11 +4,11 @@ Date: Wed, 24 Jun 2026 19:23:28 +1000
 Subject: [PATCH] Register Bento key actors
 
 ---
- browser/actors/moz.build | 10 ++++++++++
- 1 file changed, 10 insertions(+)
+ browser/actors/moz.build | 9 +++++++++
+ 1 file changed, 9 insertions(+)
 
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 04f4e98640b569fdf84894275456b66f6123e3e5..ba891e16624cbe8c6fbf5c9cae2ca67527a39596 100644
+index 04f4e98640b569fdf84894275456b66f6123e3e5..fad1ccc533856c073987645292edce655742bf19 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
 @@ -100,6 +100,8 @@ FINAL_TARGET_FILES.actors += [
@@ -20,16 +20,15 @@ index 04f4e98640b569fdf84894275456b66f6123e3e5..ba891e16624cbe8c6fbf5c9cae2ca675
      "BlockedSiteChild.sys.mjs",
      "BlockedSiteParent.sys.mjs",
      "BrowserProcessChild.sys.mjs",
-@@ -144,6 +146,14 @@ FINAL_TARGET_FILES.actors += [
+@@ -144,6 +146,13 @@ FINAL_TARGET_FILES.actors += [
      "WebRTCParent.sys.mjs",
  ]
  
-+# The shell bus relay (see BentoShellBusParent.sys.mjs) and the shell document
-+# registry. A separate block so the sorted list above stays untouched.
++# The shell bus relay (see BentoShellBusParent.sys.mjs). A separate block so the
++# sorted list above stays untouched.
 +FINAL_TARGET_FILES.actors += [
 +    "BentoShellBusChild.sys.mjs",
 +    "BentoShellBusParent.sys.mjs",
-+    "BentoShellDocumentRegistry.sys.mjs",
 +]
 +
  BROWSER_CHROME_MANIFESTS += [
