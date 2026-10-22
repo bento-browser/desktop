@@ -56,6 +56,70 @@ Opening any of the command palette, workspace palette, merge palette or Settings
 dismisses the others. See [session-merge-backups.md](session-merge-backups.md) for the other
 open paths.
 
+Settings opened from the command palette (the Open Settings and Privacy commands, a
+Settings result) carries `origin: 'palette'` in its show message: `handlePaletteFrameTitle`
+and `handleSettingsTargetTitle` pass it to `showSettingsPalette(target, origin)`, and every
+other opener (app menu, onboarding) passes none. The Settings document then starts its path
+with "Command palette" and enables Back at its first list. That Back, or the path's
+"Command palette" button, writes `BENTO_SETTINGS_BACK_TO_PALETTE_<ts>` (constant kept equal
+to the mount script's `SETTINGS_BACK_TO_PALETTE_PREFIX` by `settings-palette/titles.test.ts`);
+the settings-frame title handler calls `showPalette()`, which dismisses Settings. The command
+palette document stays loaded, so it shows with the query it had.
+
+### Row highlight
+
+The command palette and the Settings palette share one highlight
+(`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
+own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
+(transform and block-size on the Mux `interaction` pair) to the row holding the virtual
+focus. The hook only measures: a `MutationObserver` on `data-focused` writes the row's box
+into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
+popup's enter transform does not skew it. Pointer hover moves that same focus through React
+Aria's `shouldFocusOnHover` (passed as a props object, `FOCUS_ON_HOVER`), so the pointer
+and the keyboard never show two highlights. Its colour is `--bento-palette-highlight-bg`
+(two steps above Mux's item focus fill, both modes).
+
+Pitfalls:
+
+- React Aria moves focus on hover only when its last input modality is the pointer, and it
+  learns that from `pointermove`, which arrives after the `pointerover` that starts the hover:
+  the first row entered after a key press took no focus. The hook dispatches a synthetic
+  `pointermove` on the document from a capturing `pointerover` listener so the modality is
+  known first. Remove that shim and the first hover after typing shows no highlight.
+- Rows must sit above the slab (`position: relative`, also the section headings), or the
+  slab covers their text while it slides past.
+- The slab is measured, not CSS-positioned from a row: a stage that keeps no focus of its
+  own (the number editor) follows `[data-current]` instead (`useRowHighlight`'s selector),
+  and the Settings list is remounted per stage and per show so its first placement is
+  instant.
+
+### Esc: chrome sees the key first
+
+Pitfall: the parent process receives the key events of a remote overlay `<browser>`
+before its document does, with the `<browser>` element as `event.target`. The chrome-level
+Esc listener (`attachPaletteEscListener`) runs in the capture phase, so an overlay whose
+document handles its own Esc must be skipped there, or chrome consumes the key and hides the
+overlay from every stage. The menu overlay already did this ("a menu that was delivered
+handles its own Esc"); the Settings palette did not, and Esc closed Settings from the
+second stage, from a number editor and from a command palette result, although its footer
+said "Esc back". Chrome now takes Esc for the Settings host only for an open still waiting
+for its document, or when the event's target is not `bento-settings-palette-frame`
+(focus left elsewhere in the window); otherwise it returns and the document steps back or
+clears a search, and closes from its first list.
+
+How to test it: key events sent inside the content process (a frame script, `content`
+`dispatchEvent`) skip the chrome listener and cannot show this. Send the key from the
+parent (Marionette `WebDriver:PerformActions` in the chrome context, or
+`windowUtils.sendKeyEvent` in the chrome window) with the overlay frame focused, and log
+`event.target.id` from a capturing window listener. `scripts/overlay-surfaces.test.mjs`
+covers the listener with the frame id as the target.
+
+Inside the Settings document the Esc handler is a capturing `keydown` listener on the
+window, not an `onKeyDown` on the field: the focus can be on Back, a path button, Close or
+Clear, and React Aria's own Esc handling on the modal would close the dialog from any of
+them. It calls `stopPropagation` so neither that nor the SearchField's Esc (which clears
+its value) runs.
+
 ## Sidebar Tab And Panel Search
 
 `extensions/bento-shell/src/components/TabList/TabList.tsx` owns the inline

@@ -260,7 +260,9 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
   notices as `event`. The background side is `bridge/settingsRelay.ts`.
 - `useShowSignal.ts` listens for chrome's `bento-settings-show` and `bento-settings-hide`
-  events (see overlay-documents.md). A hide bumps `hideToken`, which makes the palette put
+  events (see overlay-documents.md). A show also carries who opened Settings (`origin`
+  'palette' for the command palette): `main.tsx` then gives the palette `onBackToPalette`,
+  and its path starts with "Command palette". A hide bumps `hideToken`, which makes the palette put
   back an unfinished number edit and stop its live-apply timer at once (chrome hides the
   overlay when another overlay opens, on Esc and on an outside click, and the document
   stays loaded; waiting for the next show would let that revert overwrite a value saved
@@ -375,27 +377,45 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 
 - Mux `CommandPalette.Input` runs its own `onKeyDown` first and skips the list's
   arrow and Enter handling when the event is default-prevented. The palette uses that
-  for editor stages (arrows step presets, Enter keeps the value) and handles Escape
-  there with `preventDefault` and `stopPropagation`, or the modal's own Escape closes
-  the whole palette instead of going back one stage.
+  for editor stages (arrows step presets, Enter keeps the value). Escape is not handled
+  there but by a capturing `keydown` listener on the window (`preventDefault` and
+  `stopPropagation`), because the focus can be on Back, a path button, Close or Clear, and
+  the modal's own Escape would close the whole palette instead of going back one stage.
+  Chrome must not consume that key first: see "Esc: chrome sees the key first" in
+  [palettes-and-address-bar.md](palettes-and-address-bar.md#esc-chrome-sees-the-key-first).
+- Tab never left the field because the SearchField gives every button inside it
+  `tabindex="-1"` (React Aria's `excludeFromTabOrder` through its button context), Clear
+  and Close included. Back, the path and Close live in a nav row above the field, outside
+  it, and Clear opts back in with `excludeFromTabOrder: false` (`CLEAR_IN_TAB_ORDER`). The
+  tab order is the DOM order: Back (disabled at the first list), the path buttons, Close,
+  the field, Clear. The main command palette still has the old layout, so its Clear and
+  Close are not reachable by Tab.
+- A list opens on a chosen row (the row that opened the page when going back, the current
+  choice of a list of choices) by mounting with that row selected: React Aria focuses the
+  first selected row on mount. `StageList` drops the selection a frame later; leaving it would
+  stop `onAction` from running on press (a toggle-mode list with a selection makes a press a
+  selection change).
+- A path button's click moves the DOM focus to the button and blurs the field, which clears
+  the list's virtual focus; `goToDepth` puts the focus back on the field.
 - Esc is one step (`escapeOutcome` in `stageStack.ts`): it clears a search, else dismisses
   an import preview, else goes back one stage, else closes from the root. An import
   preview is a state of the Backups stage, not a pushed stage, so a plain "pop" left
   Backups for the root and dropped the preview's file; `escapeNavigation.test.ts`
   walks every stack the rows can push and expects one stage per Esc. A new pushed
   stage needs no change there; new in-stage state that Esc should leave first does.
-- The list is a flex column under the dialog's `max-height` (84vh), so a row with
+- The popup is the command palette's size (37.5rem by 30rem, fixed height). The list is a
+  flex column under it, so a row with
   `min-block-size: 0` shrinks instead of letting the list scroll, and the focused
   protection level's detail text (312 px for Standard) is drawn over the rows below it
   (a 256 px row seen in Bento, with the dialog at 482 px). Rows and sections keep
-  `flex-shrink: 0`; the "3 Protection level (short window)" story holds the dialog to
-  30rem to show it.
+  `flex-shrink: 0`, so the list scrolls instead.
 - The Mux `ListBox` forwards its props to the React Aria list box, whose `autoFocus`
   takes `'first'`; the DOM attribute type only has a boolean, so it is passed as a plain
   props object (`FOCUS_FIRST_ROW`). Without it nothing is focused on open, Enter does
   nothing, and the main palette's Enter-runs-the-first-result workaround would be
-  needed. The list is remounted with `key={stageKey}` on each stage so focus starts on
-  the first row; it does not return to the row a stage was opened from.
+  needed. The list is remounted per stage and per show (`StageList`, keyed by the show,
+  the view and `stageKey`), so focus starts on the first row unless the stage names one (see
+  the selection seeding above).
 - A replayed durable request that is still running answers with the status record, not
   the final result. The client reads `state` and keeps polling instead of treating any
   `ok` result as done (`readDurableOutcome`).
