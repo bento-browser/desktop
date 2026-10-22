@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readPanelMarker, setPanelMarker } from './SessionMarker';
+import { readPanelMarker, setDevtoolsPanelMarker, setPanelMarker } from './SessionMarker';
 
 describe('panel session markers', () => {
   beforeEach(() => {
@@ -61,5 +61,25 @@ describe('panel session markers', () => {
 
     expect(marker?.workspaceId).toBe('ws');
     expect(marker?.panelKey).toBeUndefined();
+  });
+
+  it('writes no marker for a private window panel, whoever asks', async () => {
+    await setPanelMarker(900, 'private:abc', { rootIndex: 0 });
+    await setDevtoolsPanelMarker(900, 'private:abc');
+
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+
+  it('still marks a DevTools panel of a regular workspace', async () => {
+    await setDevtoolsPanelMarker(42, 'ws');
+
+    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(42, 'bento.isDevtoolsPanel', '1');
+  });
+
+  // The archived rollback source calls it with the tab alone and has no private windows.
+  it('keeps the one-argument call of the archived rollback source marking the panel', async () => {
+    await setDevtoolsPanelMarker(42);
+
+    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(42, 'bento.isDevtoolsPanel', '1');
   });
 });

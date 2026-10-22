@@ -382,6 +382,21 @@ elements, five states, no difference between a light and a dark page. Contrast i
 read from the computed colours, not the token names (the card's numbers are in
 [technical/session-merge-backups.md](technical/session-merge-backups.md)).
 
+### Inverted block without a scope
+
+A block that must read as the opposite of the page (the Private band in a private
+window's sidebar, `components/PrivateBand`) does not need the scope above when it is one
+flat fill: `background-color: var(--muxui-semantic-color-neutral-90)` with
+`color: var(--muxui-semantic-color-neutral-90-fg)` is light on a dark page and dark on a
+light one, because the step and its paired foreground both follow the page's mode.
+Mux `Text` sets its own colour, so the text parts reset it with `color: inherit`; the
+Mux `Button` keeps its press state and keyboard activation while the rule drops its box,
+radius and fill. The Button's focus ring is an outer `box-shadow`, which clips on a block
+that spans its frame, so the rule redraws it inset from `--muxui-semantic-focus-inner`,
+`--muxui-semantic-focus-ring` and `--bento-focus-ring-width`. A Mux `Popover` is a strong
+(inverted) surface by default; a note that opens from such a block overrides it to the
+raised surface and default content colour so the block stays the only inverted element.
+
 ### Welcome dialog and selectable tiles
 
 The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,
@@ -786,6 +801,10 @@ the strip's edge wipes over it. It animates only `translate` and `opacity`, keye
   switcher chevron, Search, row buttons and audio controls, an open search field,
   sidebar cards) leave on the `dismiss` pair in a collapse and return on `state` in an
   expand, after `calc()` 0.3 of the spring duration (titles after 0.15).
+- A private window's band takes no part in the moves and fades: its glyph's start inset
+  (rail width minus glyph size, halved, from tokens) is the same in both layouts, and its
+  text keeps full opacity and starts at the rail's edge, so the strip's edge clips and
+  reveals it. Only its slot's stacking is lifted for the phase.
 - Staggers are `calc()` fractions of the spring duration in units of 1/32: the
   switcher 0, the address bar and the list 1, New 2, then the rows from 3 by their
   visible position (capped at 11, so the last collapse move ends by 0.95 of the

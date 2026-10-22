@@ -8,6 +8,11 @@
         "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
       },
       {
+        "name": "onBusMessage",
+        "type": "function",
+        "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
+      },
+      {
         "name": "onDocumentChanged",
         "type": "function",
         "parameters": [{ "name": "record", "type": "object", "additionalProperties": true }]
@@ -33,6 +38,15 @@
         "parameters": [{ "name": "generation", "type": "integer" }]
       },
       { "name": "listDocuments", "type": "function", "async": true, "parameters": [] },
+      {
+        "name": "postToDocument",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "documentId", "type": "string" },
+          { "name": "message", "type": "object", "additionalProperties": true }
+        ]
+      },
       {
         "name": "noteLifecycle",
         "type": "function",

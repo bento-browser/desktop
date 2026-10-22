@@ -5,6 +5,7 @@ import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
   return {
     tabs: {
+      isPrivate: vi.fn(() => false),
       markClosing: vi.fn().mockResolvedValue(undefined),
       unmarkClosing: vi.fn().mockResolvedValue(undefined),
       assignWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -15,6 +16,7 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
     workspaces: {
       getActiveId: vi.fn().mockReturnValue('ws-1'),
       has: vi.fn().mockReturnValue(true),
+      hasForWindow: vi.fn().mockReturnValue(true),
     },
     settings: {},
     panels: {
@@ -110,6 +112,7 @@ describe('protocol handler panel close', () => {
   it('promotes the leftmost panel before closing the active final sidebar tab', async () => {
     const ctx = createCloseContext({
       tabs: {
+        isPrivate: vi.fn(() => false),
         markClosing: vi.fn().mockResolvedValue(undefined),
         snapshot: vi.fn().mockReturnValue([
           { id: 10, windowId: 1, workspaceId: 'ws-1', active: true },
@@ -230,6 +233,7 @@ describe('protocol handler close that Firefox does not commit', () => {
       workspaces: {
         getActiveId: vi.fn().mockReturnValue('ws-2'),
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
       } as unknown as HandlerContext['workspaces'],
       tabs: {
         markClosing: vi.fn().mockResolvedValue(undefined),
@@ -271,6 +275,7 @@ describe('protocol handler close that Firefox does not commit', () => {
         workspaces: {
           getActiveId: vi.fn((windowId: number) => shown[windowId] ?? null),
           has: vi.fn().mockReturnValue(true),
+          hasForWindow: vi.fn().mockReturnValue(true),
         } as unknown as HandlerContext['workspaces'],
         tabs: {
           markClosing: vi.fn().mockResolvedValue(undefined),
@@ -341,6 +346,7 @@ describe('protocol handler close that Firefox does not commit', () => {
       workspaces: {
         getActiveId: vi.fn().mockReturnValue('ws-1'),
         has: vi.fn((id: string) => id !== 'ws-gone'),
+        hasForWindow: vi.fn((id: string) => id !== 'ws-gone'),
       } as unknown as HandlerContext['workspaces'],
       tabs: {
         markClosing: vi.fn().mockResolvedValue(undefined),
@@ -422,8 +428,10 @@ describe('protocol handler close that Firefox does not commit', () => {
       workspaces: {
         getActiveId: vi.fn().mockReturnValue('ws-1'),
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
       } as unknown as HandlerContext['workspaces'],
       tabs: {
+        isPrivate: vi.fn(() => false),
         markClosing: vi.fn().mockResolvedValue(undefined),
         unmarkClosing: vi.fn().mockResolvedValue(undefined),
         assignWorkspace: vi.fn().mockResolvedValue(undefined),
@@ -434,6 +442,7 @@ describe('protocol handler close that Firefox does not commit', () => {
       } as unknown as HandlerContext['tabs'],
       pinnedPanels: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
       } as unknown as HandlerContext['pinnedPanels'],
       panels: {
         findWorkspacesContainingTab: vi.fn().mockReturnValue(['ws-1']),
@@ -538,6 +547,7 @@ describe('protocol handler workspace delete', () => {
     const ctx = createCloseContext({
       workspaces: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(options.owner),
         delete: vi.fn(() => order.push('delete')),
         flush: vi.fn(async () => {
@@ -950,6 +960,7 @@ describe('protocol handler devtools panels', () => {
         setWidth: vi.fn(),
       } as unknown as HandlerContext['panels'],
       tabs: {
+        isPrivate: vi.fn(() => false),
         assignWorkspaceEagerly: vi.fn(),
       } as unknown as HandlerContext['tabs'],
     });
@@ -994,10 +1005,12 @@ describe('protocol handler batch tab workspace moves', () => {
     const ctx = {
       tabs: {
         snapshot: vi.fn(() => Array.from(tabState.values())),
+        isPrivate: vi.fn(() => false),
         assignWorkspace,
       },
       workspaces: {
         has: vi.fn((id: string) => id === 'ws-new' || id === 'ws-old'),
+        hasForWindow: vi.fn((id: string) => id === 'ws-new' || id === 'ws-old'),
         snapshot: vi.fn(() => ({
           workspaces: [{ id: 'ws-old', name: 'Personal', createdAt: 1 }],
           activeId: 'ws-old',
@@ -1047,6 +1060,7 @@ describe('protocol handler batch tab workspace moves', () => {
     const ctx = {
       tabs: {
         snapshot: vi.fn(() => Array.from(tabState.values())),
+        isPrivate: vi.fn(() => false),
         assignWorkspace: vi.fn(async (id: number, workspaceId: string) => {
           const tab = tabState.get(id);
           if (tab) tab.workspaceId = workspaceId;
@@ -1054,6 +1068,7 @@ describe('protocol handler batch tab workspace moves', () => {
       },
       workspaces: {
         has: vi.fn((id: string) => id === 'ws-new' || id === 'ws-old'),
+        hasForWindow: vi.fn((id: string) => id === 'ws-new' || id === 'ws-old'),
         snapshot: vi.fn(() => ({
           workspaces: [
             { id: 'ws-old', name: 'Personal', createdAt: 1 },
@@ -1106,6 +1121,7 @@ describe('protocol handler tab folders', () => {
     }));
     const ctx = {
       tabs: {
+        isPrivate: vi.fn(() => false),
         snapshot: vi.fn(() => [
           { id: 1, workspaceId: 'ws-1', pinned: false },
           { id: 2, workspaceId: 'ws-1', pinned: true },
@@ -1204,6 +1220,7 @@ describe('protocol handler tab folders', () => {
       },
       workspaces: {
         has: vi.fn((id: string) => id === 'ws-1' || id === 'ws-2'),
+        hasForWindow: vi.fn((id: string) => id === 'ws-1' || id === 'ws-2'),
         getActiveId: vi.fn(() => 'ws-1'),
         snapshot: vi.fn(() => ({
           workspaces: [
@@ -1259,6 +1276,7 @@ describe('protocol handler tab folders', () => {
     const setFolder = vi.fn().mockResolvedValue(undefined);
     const ctx = {
       tabs: {
+        isPrivate: vi.fn(() => false),
         snapshot: vi.fn(() => [{ id: 1, workspaceId: 'ws-1', pinned: true }]),
         setFolder,
       },
@@ -1316,6 +1334,7 @@ describe('protocol handler pinned panels', () => {
     const ctx = {
       workspaces: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
       },
       panels: {
         findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue(['ws-1']),
@@ -1324,7 +1343,7 @@ describe('protocol handler pinned panels', () => {
       pinnedPanels: {
         add,
       },
-      tabs: {},
+      tabs: { isPrivate: vi.fn(() => false) },
       settings: {},
       tabFolders: {},
       savedPanels: {},
@@ -1351,6 +1370,7 @@ describe('protocol handler command palette navigation', () => {
         removeTabValue: vi.fn().mockResolvedValue(undefined),
       },
       tabs: {
+        isPrivate: vi.fn(() => false),
         get: vi.fn().mockResolvedValue({ id: 42 }),
         update: vi.fn().mockResolvedValue({ id: 42 }),
       },
@@ -1392,6 +1412,7 @@ describe('protocol handler command palette navigation', () => {
     const ctx = createCloseContext({
       workspaces: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(null),
         activate: vi.fn().mockReturnValue('noop'),
       } as unknown as HandlerContext['workspaces'],
@@ -1431,10 +1452,12 @@ describe('protocol handler pinned panels', () => {
   it('coalesces repeated opens for the same URL-backed pin', async () => {
     const ctx = createCloseContext({
       tabs: {
+        isPrivate: vi.fn(() => false),
         assignWorkspaceEagerly: vi.fn(),
       } as unknown as HandlerContext['tabs'],
       workspaces: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(null),
         activate: vi.fn().mockReturnValue('noop'),
       } as unknown as HandlerContext['workspaces'],
@@ -1484,10 +1507,12 @@ describe('protocol handler pinned panels', () => {
     };
     const ctx = createCloseContext({
       tabs: {
+        isPrivate: vi.fn(() => false),
         assignWorkspaceEagerly: vi.fn(),
       } as unknown as HandlerContext['tabs'],
       workspaces: {
         has: vi.fn().mockReturnValue(true),
+        hasForWindow: vi.fn().mockReturnValue(true),
         findOwningWindow: vi.fn().mockReturnValue(null),
         activate: vi.fn().mockReturnValue('activated'),
       } as unknown as HandlerContext['workspaces'],

@@ -206,8 +206,12 @@ else
 
   APP_ACTORS_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/actors"
   BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"
+  # Content-process actors are real files, never symlinks: the content sandbox cannot follow a
+  # link out of the app bundle into src/browser/actors. One line per file in src/browser/actors.
   copy_content_actor BentoKeyChild.sys.mjs
   copy_content_actor BentoKeyParent.sys.mjs
+  copy_content_actor BentoShellBusChild.sys.mjs
+  copy_content_actor BentoShellBusParent.sys.mjs
 fi
 
 echo "sync-symlinks: finished"
