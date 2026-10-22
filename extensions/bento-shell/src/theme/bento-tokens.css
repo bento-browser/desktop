@@ -148,6 +148,11 @@
     --bento-merge-card-dismiss-room: var(--muxui-control-size-sm);
     --bento-merge-card-rail-size: 2.25rem;
     --bento-merge-card-rail-ring-size: 1.375rem;
+    /* Private window band (components/PrivateBand), in the place of the workspace switcher:
+       its height, and the width of the note it opens. Its colours are the Mux neutral step
+       and paired foreground, which invert with the page's mode. */
+    --bento-private-band-height: 3.25rem;
+    --bento-private-note-width: 14.5rem;
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;

@@ -5,6 +5,11 @@
 // background.ts holds the actual port to bento-tools and relays events
 // both ways through 'bento-shell-bus'.
 //
+// Documents in a private window cannot use that channel (Firefox partitions
+// BroadcastChannel by privateBrowsingId), so the transport is chosen from the
+// `#bentoPrivate=1` hash flag: the BentoShellBus relay there, the channel here.
+// See bridge/shellBus.ts and docs/technical/shell-chrome-bridge.md.
+//
 // Per-window awareness: each shell document lives in a <browser> hosted
 // by a specific chrome window. The chrome script (bento-shell-mount.js)
 // resolves THAT window's WebExtension windowId via the authoritative
@@ -51,16 +56,33 @@ import { useAddressBarStore } from '../state/addressBar';
 import { useSearchEnginesStore } from '../state/searchEngines';
 import { usePanelFocusStore } from '../state/panelFocus';
 import { useExternalMergeStore } from '../state/externalMerge';
+import { WINDOW_LOCAL_SETTING_KEYS } from '@shared/windowLocalSettings';
 import { resolveThemeId } from '../theme/presets';
 import { sendChromeTitle } from './chromeTitle';
-import { readWindowIdFromHash } from './windowId';
-
-const CHANNEL_NAME = 'bento-shell-bus';
+import {
+  BUS_CHANNEL_NAME,
+  createChannelTransport,
+  createRelayTransport,
+  isDocumentLocalAction,
+  sendHelloUntilAcknowledged,
+  type BusDown,
+  type ShellBusTransport,
+} from './shellBus';
+import { readPrivateFromHash, readWindowIdFromHash } from './windowId';
 
 type PanelsSyncEvent = Extract<Event, { type: 'panels/sync' }>;
 
 interface BusState {
-  channel: BroadcastChannel | null;
+  /** Link to the shell background: BroadcastChannel in a regular window, the
+   * BentoShellBus relay in a private one (see shellBus.ts). */
+  bus: ShellBusTransport | null;
+  /** Private window only: plain BroadcastChannel for document-local actions
+   * ('menu/open', 'ui/*'), which work inside the private partition. */
+  localChannel: BroadcastChannel | null;
+  /** Whether the hosting window is private (`#bentoPrivate=1`). */
+  isPrivate: boolean;
+  /** Private window only: the relay answered this document's hello. */
+  acknowledged: boolean;
   ready: boolean;
   /** Whether this shell entry should translate panel/show + panel/hide
    * events into the chrome-script `BENTO_SIDE_PANEL:...` document.title
@@ -95,15 +117,24 @@ interface BusState {
    * had hydrated. Re-forwarded by forwardPendingPanelsToChrome once the
    * missing input arrives, whichever order the events come in. */
   pendingPanelsSync: Map<string, PanelsSyncEvent>;
+  /** Sidebar of a private window only: the panels/sync last written to chrome,
+   * without its scroll hint. A private window's own sidebar or colour change never
+   * reaches tools, so tools does not re-fire panels/sync for it; this is sent again
+   * with the new values instead. */
+  lastPanelsForChrome: PanelsSyncEvent | null;
 }
 
 const state: BusState = {
-  channel: null,
+  bus: null,
+  localChannel: null,
+  isPrivate: readPrivateFromHash(),
+  acknowledged: false,
   ready: false,
   sidePanelTitleBridge: false,
   windowId: readWindowIdFromHash(),
   helloId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   pendingPanelsSync: new Map(),
+  lastPanelsForChrome: null,
 };
 const subscribers = new Set<() => void>();
 
@@ -252,6 +283,12 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
       payload.scrollToPanelReveal = 'right-edge';
     }
   }
+  if (state.isPrivate) {
+    const resendable = { ...event };
+    delete resendable.scrollToPanelTabId;
+    delete resendable.scrollToPanelReveal;
+    state.lastPanelsForChrome = resendable;
+  }
   const json = JSON.stringify(payload);
   // btoa needs latin1; encodeURIComponent first to handle multibyte.
   const b64 = btoa(unescape(encodeURIComponent(json)));
@@ -272,18 +309,23 @@ function forwardPendingPanelsToChrome(): void {
 }
 
 function ensureConnection(): void {
-  if (state.channel) return;
+  if (state.bus) return;
   if (typeof BroadcastChannel === 'undefined') {
     console.warn('[bento-shell document] no BroadcastChannel — skipping');
     return;
   }
 
-  const channel = new BroadcastChannel(CHANNEL_NAME);
-  state.channel = channel;
+  const bus = state.isPrivate ? createRelayTransport() : createChannelTransport();
+  state.bus = bus;
+  if (state.isPrivate) state.localChannel = new BroadcastChannel(BUS_CHANNEL_NAME);
 
-  channel.addEventListener('message', (msg) => {
-    const { data } = msg;
-    if (!data || data.kind !== 'event') return;
+  bus.subscribe((data: BusDown) => {
+    if (!data) return;
+    if (data.kind === 'ack') {
+      if (data.helloId === state.helloId) state.acknowledged = true;
+      return;
+    }
+    if (data.kind !== 'event') return;
     // The background replays cached state per `hello`. Documents that did
     // not say hello already hold it, so only the joiner applies the replay.
     const isReplay = typeof data.replayFor === 'string';
@@ -328,7 +370,8 @@ function ensureConnection(): void {
         forwardPendingPanelsToChrome();
         return;
       case 'settings/snapshot':
-      case 'settings/changed':
+      case 'settings/changed': {
+        const before = useSettingsStore.getState().current;
         useSettingsStore.getState().apply(event.settings);
         // uiColorMode is delivered to chrome via the BENTO_PANELS title-
         // IPC payload (the panels/sync handler below includes it). We
@@ -345,7 +388,18 @@ function ensureConnection(): void {
         // before its first settings snapshot; that payload is pending and
         // goes out again now.
         forwardPendingPanelsToChrome();
+        // A private window's own change is the other case: it stays in the shell
+        // background, so there is no tools emit to carry it to chrome.
+        if (
+          state.isPrivate &&
+          state.lastPanelsForChrome &&
+          before &&
+          WINDOW_LOCAL_SETTING_KEYS.some((key) => before[key] !== event.settings[key])
+        ) {
+          forwardPanelsToChrome(state.lastPanelsForChrome);
+        }
         return;
+      }
       case 'panels/sync': {
         usePanelsStore.getState().apply(
           event.workspaceId,
@@ -467,7 +521,17 @@ function ensureConnection(): void {
 
   // Tell the background we're alive so it replays last booted + panels/sync
   // to this document only (tagged with helloId).
-  channel.postMessage({ kind: 'hello', helloId: state.helloId });
+  if (state.isPrivate) {
+    // The relay may not be up yet, so repeat the hello until it answers. The
+    // background owns the private window's shell/hello (it knows the window from
+    // chrome, and repeats it when tools reconnects), so none is sent from here.
+    sendHelloUntilAcknowledged(
+      () => bus.post({ kind: 'hello', helloId: state.helloId }),
+      () => state.acknowledged,
+    );
+    return;
+  }
+  bus.post({ kind: 'hello', helloId: state.helloId });
 
   // windowId was already captured synchronously from `?bentoWindowId=` at
   // module load. Send shell/hello so bento-tools logs the windowId for
@@ -531,5 +595,7 @@ export function dispatch(action: Action): void {
   ensureConnection();
   const wireAction: WireAction =
     state.windowId !== null ? { ...action, __windowId: state.windowId } : action;
-  state.channel?.postMessage({ kind: 'action', action: wireAction });
+  const message = { kind: 'action', action: wireAction } as const;
+  if (state.localChannel && isDocumentLocalAction(action)) state.localChannel.postMessage(message);
+  else state.bus?.post(message);
 }

@@ -16,6 +16,8 @@
 //
 // Mirrors the TabRegistry's WORKSPACE_SESSION_KEY pattern.
 
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
+
 const PANEL_SESSION_KEY = 'bento.isPanel';
 const DEVTOOLS_PANEL_SESSION_KEY = 'bento.isDevtoolsPanel';
 const SESSION_READ_RETRY_DELAY_MS = 50;
@@ -34,6 +36,8 @@ export async function setPanelMarker(
   workspaceId: string,
   marker: { rootIndex: number; containingRootNodeId?: string; panelKey?: string },
 ): Promise<void> {
+  // A private window's panels are never remembered.
+  if (isEphemeralWorkspaceId(workspaceId)) return;
   try {
     await browser.sessions.setTabValue(
       tabId,
@@ -60,7 +64,8 @@ export async function clearPanelMarker(tabId: number): Promise<void> {
   }
 }
 
-export async function setDevtoolsPanelMarker(tabId: number): Promise<void> {
+export async function setDevtoolsPanelMarker(tabId: number, workspaceId: string): Promise<void> {
+  if (isEphemeralWorkspaceId(workspaceId)) return;
   try {
     await browser.sessions.setTabValue(tabId, DEVTOOLS_PANEL_SESSION_KEY, '1');
   } catch (err) {

@@ -382,6 +382,21 @@ elements, five states, no difference between a light and a dark page. Contrast i
 read from the computed colours, not the token names (the card's numbers are in
 [technical/session-merge-backups.md](technical/session-merge-backups.md)).
 
+### Inverted block without a scope
+
+A block that must read as the opposite of the page (the Private band in a private
+window's sidebar, `components/PrivateBand`) does not need the scope above when it is one
+flat fill: `background-color: var(--muxui-semantic-color-neutral-90)` with
+`color: var(--muxui-semantic-color-neutral-90-fg)` is light on a dark page and dark on a
+light one, because the step and its paired foreground both follow the page's mode.
+Mux `Text` sets its own colour, so the text parts reset it with `color: inherit`; the
+Mux `Button` keeps its press state and keyboard activation while the rule drops its box,
+radius and fill. The Button's focus ring is an outer `box-shadow`, which clips on a block
+that spans its frame, so the rule redraws it inset from `--muxui-semantic-focus-inner`,
+`--muxui-semantic-focus-ring` and `--bento-focus-ring-width`. A Mux `Popover` is a strong
+(inverted) surface by default; a note that opens from such a block overrides it to the
+raised surface and default content colour so the block stays the only inverted element.
+
 ### Welcome dialog and selectable tiles
 
 The onboarding overlay (`extensions/bento-shell/src/welcome/`) is one controlled,

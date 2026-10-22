@@ -4,8 +4,8 @@ Date: Wed, 24 Jun 2026 19:23:28 +1000
 Subject: [PATCH] Register Bento key actors
 
 ---
- browser/actors/moz.build | 2 ++
- 1 file changed, 2 insertions(+)
+ browser/actors/moz.build | 9 +++++++++
+ 1 file changed, 9 insertions(+)
 
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
 index 04f4e98640b569fdf84894275456b66f6123e3e5..fad1ccc533856c073987645292edce655742bf19 100644
@@ -20,6 +20,20 @@ index 04f4e98640b569fdf84894275456b66f6123e3e5..fad1ccc533856c073987645292edce65
      "BlockedSiteChild.sys.mjs",
      "BlockedSiteParent.sys.mjs",
      "BrowserProcessChild.sys.mjs",
+@@ -144,6 +146,13 @@ FINAL_TARGET_FILES.actors += [
+     "WebRTCParent.sys.mjs",
+ ]
+ 
++# The shell bus relay (see BentoShellBusParent.sys.mjs). A separate block so the
++# sorted list above stays untouched.
++FINAL_TARGET_FILES.actors += [
++    "BentoShellBusChild.sys.mjs",
++    "BentoShellBusParent.sys.mjs",
++]
++
+ BROWSER_CHROME_MANIFESTS += [
+     "test/browser/browser.toml",
+ ]
 -- 
 2.54.0 (Apple Git-157)
 

@@ -131,6 +131,11 @@
     background-color: var(--bento-brand-bg);
   }
 
+  /* A private window shows the Private band here, edge to edge. */
+  .bento-shell-app__workspace-switcher--private {
+    padding: 0;
+  }
+
   html[data-bento-collapsed='true'] .bento-shell-app__header,
   html[data-bento-collapsed='true'] .bento-shell-app__footer {
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);

@@ -36,6 +36,7 @@ import PanelRightCloseIcon from 'lucide-react/dist/esm/icons/panel-right-close';
 
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
+import { usePrivateWindow } from '../../state/privateWindow';
 import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
@@ -102,6 +103,8 @@ function useCommands(): BentoCommand[] {
   const activeTabId = useTabsStore((s) => s.activeId);
   const windowId = useCurrentWindowId();
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
+  // A private window has one temporary workspace and merges nothing in.
+  const isPrivate = usePrivateWindow();
   const panelEntries = useMemo(
     () =>
       Array.from(panelsByWorkspace.entries()).flatMap(([workspaceId, ids]) =>
@@ -137,36 +140,38 @@ function useCommands(): BentoCommand[] {
     });
 
     // Workspaces
-    workspaces.forEach((w, index) => {
-      const isActive = w.id === activeWorkspaceId;
+    if (!isPrivate) {
+      workspaces.forEach((w, index) => {
+        const isActive = w.id === activeWorkspaceId;
+        cmds.push({
+          id: `workspace:${w.id}`,
+          title: isActive ? `Current workspace: ${w.name}` : `Switch to ${w.name}`,
+          subtitle: isActive ? 'Active workspace.' : 'Activate this workspace.',
+          group: 'Workspaces',
+          icon: commandIcon(LayersIcon),
+          keywords: ['workspace', w.name, isActive ? 'active current' : 'switch'],
+          shortcut: workspaceShortcut(index),
+          meta: isActive ? 'Active' : undefined,
+          action: () => {
+            dispatch({ type: 'workspace/activate', id: w.id });
+          },
+        });
+      });
       cmds.push({
-        id: `workspace:${w.id}`,
-        title: isActive ? `Current workspace: ${w.name}` : `Switch to ${w.name}`,
-        subtitle: isActive ? 'Active workspace.' : 'Activate this workspace.',
+        id: 'workspace:new',
+        title: 'New workspace',
+        subtitle: `Create Workspace ${workspaces.length + 1}.`,
         group: 'Workspaces',
-        icon: commandIcon(LayersIcon),
-        keywords: ['workspace', w.name, isActive ? 'active current' : 'switch'],
-        shortcut: workspaceShortcut(index),
-        meta: isActive ? 'Active' : undefined,
+        icon: commandIcon(PlusIcon),
+        keywords: ['workspace', 'create', 'add'],
         action: () => {
-          dispatch({ type: 'workspace/activate', id: w.id });
+          dispatch({
+            type: 'workspace/create',
+            name: `Workspace ${workspaces.length + 1}`,
+          });
         },
       });
-    });
-    cmds.push({
-      id: 'workspace:new',
-      title: 'New workspace',
-      subtitle: `Create Workspace ${workspaces.length + 1}.`,
-      group: 'Workspaces',
-      icon: commandIcon(PlusIcon),
-      keywords: ['workspace', 'create', 'add'],
-      action: () => {
-        dispatch({
-          type: 'workspace/create',
-          name: `Workspace ${workspaces.length + 1}`,
-        });
-      },
-    });
+    }
 
     const panelWorkspaceById = new Map<number, string>();
     for (const entry of panelEntries) {
@@ -286,15 +291,17 @@ function useCommands(): BentoCommand[] {
         },
       });
     }
-    cmds.push({
-      id: 'action:merge-session',
-      title: 'Merge browser session',
-      subtitle: 'Import open tabs from another browser profile.',
-      group: 'Actions',
-      icon: commandIcon(MergeIcon),
-      keywords: ['import', 'merge', 'session', 'browser', 'profile', 'Chrome', 'Firefox'],
-      action: () => signalOpenMergePalette(),
-    });
+    if (!isPrivate) {
+      cmds.push({
+        id: 'action:merge-session',
+        title: 'Merge browser session',
+        subtitle: 'Import open tabs from another browser profile.',
+        group: 'Actions',
+        icon: commandIcon(MergeIcon),
+        keywords: ['import', 'merge', 'session', 'browser', 'profile', 'Chrome', 'Firefox'],
+        action: () => signalOpenMergePalette(),
+      });
+    }
     cmds.push({
       id: 'action:close-side-panels',
       title: 'Close all side panels',
@@ -308,7 +315,7 @@ function useCommands(): BentoCommand[] {
     });
 
     return cmds;
-  }, [workspaces, tabs, panelEntries, activeTabId, activeWorkspaceId, windowId]);
+  }, [workspaces, tabs, panelEntries, activeTabId, activeWorkspaceId, windowId, isPrivate]);
 }
 
 export default function CommandPalette({ onClose }: CommandPaletteProps) {

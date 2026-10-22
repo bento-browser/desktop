@@ -6,6 +6,7 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
+import type { AudienceEvent } from '@shared/shell-client-protocol';
 import type {
   Action,
   Event,
@@ -14,6 +15,8 @@ import type {
   PinnedPanelEntry,
   WireAction,
 } from '@shared/protocol';
+import { splitWindowLocalSettings } from '@shared/windowLocalSettings';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
@@ -458,12 +461,14 @@ function captureCloseUndo(ctx: HandlerContext, tabId: number): CloseUndo {
  */
 async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUndo): Promise<void> {
   await ctx.tabs.unmarkClosing(tabId);
-  const windowId = await tabWindowId(tabId);
-  const shownWorkspaceId = ctx.workspaces.getActiveId(windowId ?? ctx.sourceWindowId);
+  const windowId = (await tabWindowId(tabId)) ?? ctx.sourceWindowId;
+  const shownWorkspaceId = ctx.workspaces.getActiveId(windowId);
   const originalId = undo.workspaceId;
+  // A private window's Private workspace is not in the regular list, so existence is asked
+  // for the window the tab is in.
   if (
     originalId === undefined ||
-    !ctx.workspaces.has(originalId) ||
+    !ctx.workspaces.hasForWindow(originalId, windowId) ||
     shownWorkspaceId !== originalId
   ) {
     if (shownWorkspaceId) await ctx.tabs.assignWorkspace(tabId, shownWorkspaceId);
@@ -482,7 +487,7 @@ async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUnd
   );
   const restoredIn = undo.panels.filter(
     ({ workspaceId: panelWorkspaceId, location }) =>
-      ctx.workspaces.has(panelWorkspaceId) &&
+      ctx.workspaces.hasForWindow(panelWorkspaceId, windowId) &&
       ctx.panels.insertAtRestoreLocation(panelWorkspaceId, tabId, location),
   );
   if (restoredIn.length === 0) return;
@@ -837,6 +842,14 @@ export interface HandlerContext {
     tabId: number,
     windowId?: number | null,
   ) => void;
+  /** Sends an event to one audience of shell documents only (`send` reaches every
+   * document). Falls back to `send` where a context has no audiences. */
+  sendAudience?: (audience: AudienceEvent['audience'], event: Event) => void;
+  /** Brings a private window's Private workspace up to date for its documents:
+   * adopts the window's tabs into it and sends them their snapshots. */
+  syncPrivateWindow?: (windowId: number) => void;
+  /** Whether the window that sent the current action is a private window. */
+  sourceWindowPrivate?: boolean;
   /** WebExtension windowId of the chrome window whose shell document
    * dispatched the current action. Plumbed via the WireAction `__windowId`
    * envelope. Null for actions that arrived before the shell document
@@ -854,6 +867,115 @@ function emitToShellDocuments(ctx: HandlerContext, event: Event): void {
   (ctx.broadcast ?? ctx.send)(event);
 }
 
+/** The audience of the window that sent the current action. */
+function sourceAudience(ctx: HandlerContext): AudienceEvent['audience'] {
+  const windowId = ctx.sourceWindowId;
+  return ctx.sourceWindowPrivate === true && typeof windowId === 'number'
+    ? { privateWindowId: windowId }
+    : 'regular';
+}
+
+/** A reply that holds workspace-bound state goes only to the audience that asked:
+ * a regular window must not receive a private window's tabs or Private workspace,
+ * and a private window must not receive the regular workspaces. */
+function replyToSource(ctx: HandlerContext, event: Event): void {
+  const audience = sourceAudience(ctx);
+  if (ctx.sendAudience) ctx.sendAudience(audience, event);
+  else ctx.send(event);
+}
+
+/** Actions a private window never performs: they would create, switch, move or store
+ * something that outlives the window (workspaces, folders, pins, backups and merges). */
+const PRIVATE_WINDOW_REFUSED_PREFIXES = [
+  'workspace/',
+  'backup/',
+  'externalMerge/',
+  'tabFolder/',
+  'pinnedPanel/',
+] as const;
+const PRIVATE_WINDOW_REFUSED_TYPES = new Set<Action['type']>([
+  'tab/assignWorkspace',
+  'tabs/assignWorkspace',
+  'tabs/moveToNewWorkspace',
+  'tabs/setFolder',
+  'pinnedPanels/reorder',
+  // Bookmarks are shared with the regular windows and backups.
+  'savedPanels/save',
+  // Would reset the saved sidebar and colour mode the regular windows share.
+  'settings/reset',
+]);
+
+/** The tab ids an action that mutates panels, pins or folders names. A tab belongs to
+ * one window's workspace, so each must belong to the window that sent the action. */
+function namedTabIds(action: Action): number[] {
+  switch (action.type) {
+    case 'panel/add':
+    case 'panel/focus':
+    case 'panel/remove':
+    case 'panel/setWidth':
+    case 'panel/setHeaderHidden':
+      return [action.id];
+    case 'panel/addDevtools':
+      return action.forTabId === null
+        ? [action.tabId, action.inspectedTabId]
+        : [action.tabId, action.forTabId, action.inspectedTabId];
+    case 'panel/openAt':
+      return action.sourceTabId === null ? [] : [action.sourceTabId];
+    case 'panel/focusedChanged':
+      return action.tabId === null ? [] : [action.tabId];
+    case 'panelLayout/movePanel':
+    case 'panelLayout/subdivide':
+    case 'panelLayout/splitTopPanel':
+    case 'panelLayout/splitBottomPanel':
+    case 'panelLayout/breakOut':
+    case 'pinnedPanel/add':
+    case 'pinnedPanel/remove':
+    case 'pinnedPanel/open':
+    case 'pinnedPanel/close':
+    case 'pinnedPanel/activate':
+      return [action.tabId];
+    case 'tabs/setFolder':
+      return action.ids;
+    case 'tabFolder/create':
+      return action.tabIds;
+    default:
+      return [];
+  }
+}
+
+/**
+ * Whether the action would cross the private boundary. A private window may not
+ * switch to or create a workspace, nor store anything; a regular window may not move
+ * tabs into a Private workspace, and a private tab never leaves its window's Private
+ * workspace. A panel, pin or folder action names tabs by id, so the same rule is
+ * applied to those tabs: a regular window never names a private tab, and a private
+ * window names only tabs of its own. Refused actions are dropped without a reply.
+ */
+function crossesPrivateBoundary(action: Action, ctx: HandlerContext): boolean {
+  const named = namedTabIds(action);
+  if (ctx.sourceWindowPrivate === true) {
+    return (
+      PRIVATE_WINDOW_REFUSED_TYPES.has(action.type) ||
+      PRIVATE_WINDOW_REFUSED_PREFIXES.some((prefix) => action.type.startsWith(prefix)) ||
+      named.some((id) => ctx.tabs.privateWindowOfTab(id) !== ctx.sourceWindowId)
+    );
+  }
+  if (named.some((id) => ctx.tabs.isPrivate(id))) return true;
+  switch (action.type) {
+    case 'tab/assignWorkspace':
+      return isEphemeralWorkspaceId(action.workspaceId) || ctx.tabs.isPrivate(action.id);
+    case 'tabs/assignWorkspace':
+      return (
+        isEphemeralWorkspaceId(action.workspaceId) ||
+        action.ids.some((id) => ctx.tabs.isPrivate(id))
+      );
+    case 'tabs/moveToNewWorkspace':
+      return action.ids.some((id) => ctx.tabs.isPrivate(id));
+    default:
+      return false;
+  }
+}
+
 export function handle(wireAction: WireAction, ctx: HandlerContext): void {
   // Strip the routing envelope so the rest of the handler sees a clean
   // Action (existing exhaustive switch keeps working unchanged). The
@@ -861,6 +983,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
   // (background.ts) before invoking handle(), so this function doesn't
   // need to extract it; it just narrows the type back to Action.
   const action: Action = wireAction;
+  if (crossesPrivateBoundary(action, ctx)) {
+    console.warn('[bento-tools] refused across the private boundary:', action.type);
+    return;
+  }
   switch (action.type) {
     case 'ping':
       ctx.send({ type: 'pong', ts: Date.now() });
@@ -880,6 +1006,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // mode plumbing (which rides on panels/sync, which only fires for
       // a window with an active workspace).
       const wid = action.windowId;
+      if (typeof wid === 'number' && wid >= 0 && ctx.sourceWindowPrivate === true) {
+        // A private window never claims or creates a regular workspace. It has
+        // its own temporary Private workspace, made when the window appeared;
+        // this makes sure of it and gives the window's documents their state.
+        ctx.workspaces.ensurePrivate(wid);
+        ctx.syncPrivateWindow?.(wid);
+        return;
+      }
       if (typeof wid === 'number' && wid >= 0) {
         let picked = ctx.workspaces.assignAvailable(wid);
         if (!picked) {
@@ -892,11 +1026,22 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     }
-    case 'tabs/requestSnapshot':
-      ctx.send({ type: 'tabs/snapshot', tabs: ctx.tabs.snapshot() });
+    case 'tabs/requestSnapshot': {
+      const audience = sourceAudience(ctx);
+      replyToSource(ctx, {
+        type: 'tabs/snapshot',
+        tabs:
+          audience === 'regular'
+            ? ctx.tabs.snapshotRegular()
+            : ctx.tabs.snapshotPrivate(audience.privateWindowId),
+      });
       return;
+    }
     case 'tabFolders/requestSnapshot':
-      ctx.send({ type: 'tabFolders/snapshot', folders: ctx.tabFolders.snapshot() });
+      replyToSource(ctx, {
+        type: 'tabFolders/snapshot',
+        folders: sourceAudience(ctx) === 'regular' ? ctx.tabFolders.snapshot() : [],
+      });
       return;
     case 'tab/activate': {
       // Clear stale `bento.isPanel` marker if this tab isn't currently a
@@ -1248,13 +1393,22 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .catch((err) => console.warn('[bento-tools] tab/toggleMuted failed:', err));
       return;
     case 'workspaces/requestSnapshot': {
-      const snap = ctx.workspaces.snapshot();
-      ctx.send({
+      const audience = sourceAudience(ctx);
+      const snap =
+        audience === 'regular'
+          ? ctx.workspaces.snapshot()
+          : ctx.workspaces.snapshotForPrivateWindow(audience.privateWindowId);
+      replyToSource(ctx, {
         type: 'workspaces/snapshot',
         workspaces: snap.workspaces,
         activeId: snap.activeId,
         activeIdByWindow: snap.activeIdByWindow,
       });
+      // The Private workspace's panels reach its window only when asked for.
+      if (audience !== 'regular') {
+        const privateWorkspace = ctx.workspaces.privateWorkspaceOf(audience.privateWindowId);
+        if (privateWorkspace) ctx.emitPanelsSync(privateWorkspace.id);
+      }
       return;
     }
     case 'workspace/create':
@@ -1309,11 +1463,20 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'settings/requestSnapshot':
       ctx.send({ type: 'settings/snapshot', settings: ctx.settings.snapshot() });
       return;
-    case 'settings/update':
+    case 'settings/update': {
+      // A private window keeps its own sidebar and colour mode in the shell
+      // background and saves none of it. The relay already splits these off; this
+      // is the same rule for an update that reaches tools another way.
+      const changes =
+        ctx.sourceWindowPrivate === true
+          ? splitWindowLocalSettings(action.changes).rest
+          : action.changes;
+      if (Object.keys(changes).length === 0) return;
       void ctx.settings
-        .update(action.changes)
+        .update(changes)
         .catch((err) => console.warn('[bento-tools] settings/update persistence failed:', err));
       return;
+    }
     case 'settings/reset':
       void (async () => {
         try {
@@ -1348,13 +1511,13 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (!wsId) return;
       if (ctx.panels.addDevtoolsPanel(wsId, action.tabId, action.forTabId, action.inspectedTabId)) {
         ctx.tabs.assignWorkspaceEagerly(action.tabId, wsId);
-        void setDevtoolsPanelMarker(action.tabId);
+        void setDevtoolsPanelMarker(action.tabId, wsId);
         finishAddedPanel(ctx, wsId, action.tabId);
       }
       return;
     }
     case 'panel/focus': {
-      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (!ctx.workspaces.hasForWindow(action.workspaceId, ctx.sourceWindowId)) return;
       if (
         !ctx.panels.findWorkspacesContainingPanelOrSubPanel(action.id).includes(action.workspaceId)
       ) {
@@ -1465,7 +1628,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panel/focusedChanged':
-      ctx.send({
+      // Names a tab and a window, so it goes to the asking window's audience only.
+      replyToSource(ctx, {
         type: 'panel/focusedChanged',
         tabId: action.tabId,
         ...(typeof ctx.sourceWindowId === 'number' ? { windowId: ctx.sourceWindowId } : {}),
@@ -1537,7 +1701,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'panel/setStripScroll': {
-      if (!ctx.workspaces.has(action.workspaceId)) return;
+      if (!ctx.workspaces.hasForWindow(action.workspaceId, ctx.sourceWindowId)) return;
       ctx.panels.setStripScroll(action.workspaceId, action.scrollLeft);
       return;
     }
@@ -1818,7 +1982,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'pinnedPanels/requestSnapshot':
-      ctx.send({ type: 'pinnedPanels/snapshot', entries: ctx.pinnedPanels.entries() });
+      replyToSource(ctx, {
+        type: 'pinnedPanels/snapshot',
+        entries: sourceAudience(ctx) === 'regular' ? ctx.pinnedPanels.entries() : [],
+      });
       return;
     case 'savedPanels/save':
       // Fire-and-forget — SavedPanelsStore's onCreated listener picks
@@ -1857,10 +2024,10 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void (async () => {
         try {
           const results = await searchAddressResults(action.query, action.limit);
-          ctx.send({ type: 'addrbar/results', query: action.query, results });
+          replyToSource(ctx, { type: 'addrbar/results', query: action.query, results });
         } catch (err) {
           console.warn('[bento-tools] addrbar/query failed:', err);
-          ctx.send({ type: 'addrbar/results', query: action.query, results: [] });
+          replyToSource(ctx, { type: 'addrbar/results', query: action.query, results: [] });
         }
       })();
       return;

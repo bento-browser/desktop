@@ -7,6 +7,7 @@
 // (rides Firefox session restore, see §4.3) and hydrated on init.
 
 import type { TabDelta, TabSnapshot } from '@shared/protocol';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 
 type Listener = (deltas: TabDelta[]) => void;
 
@@ -146,6 +147,7 @@ export class TabRegistry {
   #pendingWorkspaceAssignments = new Map<number, string>();
   #pendingFolderAssignments = new Map<number, string>();
   #privateTabIds = new Set<number>();
+  #privateWindowByDelta = new WeakMap<TabDelta, number>();
   // Tabs `clearWorkspace` detached on purpose. SessionStore can copy the old
   // window's workspace value back onto them afterwards, so that value is stale,
   // not a restored assignment.
@@ -272,9 +274,12 @@ export class TabRegistry {
     if (tab.workspaceId === workspaceId && tab.folderId === options.preserveFolderId) return;
     this.#releasedTabIds.delete(id);
     try {
-      await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
-      if (options.preserveFolderId) {
-        await browser.sessions.setTabValue(id, FOLDER_SESSION_KEY, options.preserveFolderId);
+      // A private window's Private workspace is never written to SessionStore.
+      if (!isEphemeralWorkspaceId(workspaceId)) {
+        await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
+        if (options.preserveFolderId) {
+          await browser.sessions.setTabValue(id, FOLDER_SESSION_KEY, options.preserveFolderId);
+        }
       }
     } catch (err) {
       console.warn('[bento-tools] sessions.setTabValue failed:', id, err);
@@ -407,11 +412,14 @@ export class TabRegistry {
     const tab = this.#tabs.get(id);
     if (!tab) return;
     const customTitle = title.trim();
-    try {
-      await browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, customTitle);
-    } catch (err) {
-      console.warn('[bento-tools] sessions.setTabValue custom title failed:', id, err);
-      return;
+    // A private tab's name stays in memory: nothing of it may reach the session store.
+    if (!this.#privateTabIds.has(id)) {
+      try {
+        await browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, customTitle);
+      } catch (err) {
+        console.warn('[bento-tools] sessions.setTabValue custom title failed:', id, err);
+        return;
+      }
     }
     const next = customTitle.length > 0 ? customTitle : undefined;
     if (tab.customTitle === next) return;
@@ -471,6 +479,7 @@ export class TabRegistry {
     } else {
       this.#pendingWorkspaceAssignments.set(id, workspaceId);
     }
+    if (isEphemeralWorkspaceId(workspaceId)) return true;
     try {
       await browser.sessions.setTabValue(id, WORKSPACE_SESSION_KEY, workspaceId);
       return true;
@@ -548,8 +557,32 @@ export class TabRegistry {
     return Array.from(this.#tabs.values()).sort((a, b) => a.index - b.index);
   }
 
+  /** What documents of regular windows may see: no private-window tab. */
+  snapshotRegular(): TabSnapshot[] {
+    return this.snapshot().filter((tab) => !this.#privateTabIds.has(tab.id));
+  }
+
+  /** What one private window's documents see: that window's private tabs. */
+  snapshotPrivate(windowId: number): TabSnapshot[] {
+    return this.snapshot().filter(
+      (tab) => this.#privateTabIds.has(tab.id) && tab.windowId === windowId,
+    );
+  }
+
+  /** The private window a queued delta is about, or undefined for a regular
+   * tab. Decided when the delta was queued: by the time listeners run, a
+   * removed tab is already forgotten. */
+  privateWindowOf(delta: TabDelta): number | undefined {
+    return this.#privateWindowByDelta.get(delta);
+  }
+
   isPrivate(id: number): boolean {
     return this.#privateTabIds.has(id);
+  }
+
+  /** The private window a private tab is in, or undefined for a regular or unknown tab. */
+  privateWindowOfTab(id: number): number | undefined {
+    return this.#privateTabIds.has(id) ? this.#tabs.get(id)?.windowId : undefined;
   }
 
   onDeltas(listener: Listener): () => void {
@@ -698,9 +731,11 @@ export class TabRegistry {
     }
     if (urlChanged && customTitleMatchesPageIdentity(existing)) {
       changes.customTitle = undefined;
-      void browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, '').catch((err) => {
-        console.warn('[bento-tools] custom title clear on navigation failed:', id, err);
-      });
+      if (!this.#privateTabIds.has(id)) {
+        void browser.sessions.setTabValue(id, CUSTOM_TITLE_SESSION_KEY, '').catch((err) => {
+          console.warn('[bento-tools] custom title clear on navigation failed:', id, err);
+        });
+      }
     }
     if (Object.keys(changes).length === 0) return;
     Object.assign(existing, changes);
@@ -738,6 +773,7 @@ export class TabRegistry {
         }
       }
     }
+    const privateWindowId = this.#privateTabIds.has(id) ? this.#tabs.get(id)?.windowId : undefined;
     this.#pendingWorkspaceAssignments.delete(id);
     this.#pendingFolderAssignments.delete(id);
     this.#closingTabIds.delete(id);
@@ -747,7 +783,7 @@ export class TabRegistry {
     this.#releasedTabIds.delete(id);
     this.#activeReads.delete(id);
     if (!this.#tabs.delete(id)) return;
-    this.#enqueue({ kind: 'removed', id });
+    this.#enqueue({ kind: 'removed', id }, privateWindowId);
   };
 
   #onActivated = (info: browser.tabs._OnActivatedActiveInfo) => {
@@ -804,13 +840,21 @@ export class TabRegistry {
     const t = this.#tabs.get(id);
     if (!t) return;
     if (t.windowId === info.newWindowId && t.index === info.newPosition) return;
+    const fromWindowId = t.windowId;
     t.windowId = info.newWindowId;
     t.index = info.newPosition;
-    this.#enqueue({
-      kind: 'updated',
-      id,
-      changes: { windowId: info.newWindowId, index: info.newPosition },
-    });
+    if (this.#privateTabIds.has(id) && fromWindowId !== info.newWindowId) {
+      // Two private windows share nothing: the old window's documents must drop the tab and
+      // the new window's must learn it whole (an update about an unknown tab is ignored).
+      this.#enqueue({ kind: 'removed', id }, fromWindowId);
+      this.#enqueue({ kind: 'created', tab: { ...t } }, info.newWindowId);
+    } else {
+      this.#enqueue({
+        kind: 'updated',
+        id,
+        changes: { windowId: info.newWindowId, index: info.newPosition },
+      });
+    }
     void this.#syncActive(id);
   };
 
@@ -841,7 +885,16 @@ export class TabRegistry {
     return read;
   }
 
-  #enqueue(delta: TabDelta): void {
+  #privateWindowFor(delta: TabDelta): number | undefined {
+    const id = delta.kind === 'created' ? delta.tab.id : delta.id;
+    if (!this.#privateTabIds.has(id)) return undefined;
+    if (delta.kind === 'created') return delta.tab.windowId;
+    if (delta.kind === 'activated') return delta.windowId;
+    return this.#tabs.get(id)?.windowId;
+  }
+
+  #enqueue(delta: TabDelta, privateWindowId = this.#privateWindowFor(delta)): void {
+    if (privateWindowId !== undefined) this.#privateWindowByDelta.set(delta, privateWindowId);
     this.#pending.push(delta);
     if (this.#flushScheduled) return;
     this.#flushScheduled = true;

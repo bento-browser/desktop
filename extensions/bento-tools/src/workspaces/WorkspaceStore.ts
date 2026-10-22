@@ -8,9 +8,12 @@
 
 import type { Workspace, WorkspaceDelta } from '@shared/protocol';
 import { Persistence, load } from './Persistence';
+import { PRIVATE_WORKSPACE_NAME, makePrivateWorkspaceId } from './ephemeral';
 
 /** A listener may return a promise for work it starts, which `flush()` waits for. */
 type Listener = (deltas: WorkspaceDelta[]) => unknown;
+/** Receives the deltas of one private window's temporary workspace. */
+type PrivateListener = (windowId: number, deltas: WorkspaceDelta[]) => void;
 
 const DEFAULT_WORKSPACE_NAME = 'Personal';
 
@@ -56,6 +59,12 @@ export class WorkspaceStore {
   #flushScheduled = false;
   #listeners = new Set<Listener>();
   #persistence = new Persistence();
+  /** Each private window's temporary "Private" workspace. Kept apart from
+   * #workspaces on purpose: every loop over #workspaces (snapshot, persistence,
+   * fallback and replacement picks, ownership) is then regular-only by
+   * construction. Never persisted, never listed to another window. */
+  #privateByWindow = new Map<number, Workspace>();
+  #privateListeners = new Set<PrivateListener>();
 
   async init(): Promise<void> {
     const persisted = await load();
@@ -220,6 +229,8 @@ export class WorkspaceStore {
    * behaviour as today, no isolation check applies. */
   getActiveId(windowId?: number | null): string | null {
     if (typeof windowId === 'number') {
+      const privateWorkspace = this.#privateByWindow.get(windowId);
+      if (privateWorkspace) return privateWorkspace.id;
       const perWindow = this.#activeIdByWindow.get(windowId);
       if (perWindow !== undefined) return perWindow;
       // Per-window not assigned. Use the global fallback only if no
@@ -241,7 +252,31 @@ export class WorkspaceStore {
     return Object.fromEntries(this.#activeIdByWindow.entries());
   }
 
+  /** Every workspace some window is showing: the global fallback, each window's
+   * active workspace and each private window's temporary one. A change that reaches
+   * chrome through `panels/sync` (settings, saved panels) must re-fire it for all of
+   * them, or a private window's chrome keeps the old value. */
+  shownWorkspaceIds(): Set<string> {
+    const ids = new Set<string>();
+    if (this.#lastGlobalActiveId) ids.add(this.#lastGlobalActiveId);
+    for (const id of this.#activeIdByWindow.values()) ids.add(id);
+    for (const workspace of this.#privateByWindow.values()) ids.add(workspace.id);
+    return ids;
+  }
+
+  /** A regular workspace. Workspace mutations (rename, delete, activate, assign) use this:
+   * they are regular-only by rule, and a Private workspace is never one. */
   has(id: string): boolean {
+    return this.#workspaces.has(id);
+  }
+
+  /** Whether `id` is a workspace the window may operate in. A private window has exactly
+   * its own Private workspace; any other window the regular ones. Panel operations (focus,
+   * scroll, restoring a panel) ask this, because a Private workspace is not in `has`. */
+  hasForWindow(id: string, windowId: number | null | undefined): boolean {
+    if (typeof windowId === 'number' && this.#privateByWindow.has(windowId)) {
+      return this.#privateByWindow.get(windowId)?.id === id;
+    }
     return this.#workspaces.has(id);
   }
 
@@ -257,6 +292,9 @@ export class WorkspaceStore {
   ): Workspace {
     if (options.id && this.#workspaces.has(options.id)) {
       throw new Error(`Workspace already exists: ${options.id}`);
+    }
+    if (typeof windowId === 'number' && this.#privateByWindow.has(windowId)) {
+      throw new Error('A private window cannot create workspaces');
     }
     const w: Workspace = {
       id: options.id ?? makeId(),
@@ -396,7 +434,10 @@ export class WorkspaceStore {
    * that case; `'activated'` on a real activation; `'noop'` when the
    * requested workspace was already active for this window. */
   activate(id: string, windowId?: number | null): 'activated' | 'conflict' | 'noop' {
+    // A private window keeps its Private workspace, and no regular window can
+    // reach it: the private map is not consulted here, only #workspaces.
     if (!this.#workspaces.has(id)) return 'noop';
+    if (typeof windowId === 'number' && this.#privateByWindow.has(windowId)) return 'noop';
     if (typeof windowId === 'number') {
       if (this.#activeIdByWindow.get(windowId) === id) return 'noop';
       // Cross-window conflict — another window already owns this
@@ -430,6 +471,7 @@ export class WorkspaceStore {
    *   2. Then the workspaces in createdAt order.
    */
   assignAvailable(windowId: number): string | null {
+    if (this.#privateByWindow.has(windowId)) return null;
     if (this.#activeIdByWindow.has(windowId)) {
       return this.#activeIdByWindow.get(windowId) ?? null;
     }
@@ -451,6 +493,76 @@ export class WorkspaceStore {
       if (picked) return picked;
     }
     return null;
+  }
+
+  /** The window's temporary Private workspace, created on first use. It holds
+   * only that window's tabs, lives in memory, and is gone when the window
+   * closes (`forgetPrivateWindow`). A private window never claims or creates a
+   * regular workspace. */
+  ensurePrivate(windowId: number): Workspace {
+    const existing = this.#privateByWindow.get(windowId);
+    if (existing) return existing;
+    const workspace: Workspace = {
+      id: makePrivateWorkspaceId(),
+      name: PRIVATE_WORKSPACE_NAME,
+      createdAt: Date.now(),
+      private: true,
+    };
+    this.#privateByWindow.set(windowId, workspace);
+    this.#emitPrivate(windowId, [
+      { kind: 'created', workspace },
+      { kind: 'activated', id: workspace.id, windowId },
+    ]);
+    return workspace;
+  }
+
+  privateWorkspaceOf(windowId: number): Workspace | undefined {
+    return this.#privateByWindow.get(windowId);
+  }
+
+  isPrivateWindow(windowId: number | null | undefined): boolean {
+    return typeof windowId === 'number' && this.#privateByWindow.has(windowId);
+  }
+
+  privateWindowIds(): number[] {
+    return Array.from(this.#privateByWindow.keys());
+  }
+
+  /** The private window a Private workspace belongs to, or null. */
+  privateWindowOf(workspaceId: string): number | null {
+    for (const [windowId, workspace] of this.#privateByWindow) {
+      if (workspace.id === workspaceId) return windowId;
+    }
+    return null;
+  }
+
+  /** Discards the window's Private workspace (the window closed). Returns it so
+   * the caller can drop what it held. */
+  forgetPrivateWindow(windowId: number): Workspace | undefined {
+    const workspace = this.#privateByWindow.get(windowId);
+    if (!workspace) return undefined;
+    this.#privateByWindow.delete(windowId);
+    this.#emitPrivate(windowId, [{ kind: 'removed', id: workspace.id }]);
+    return workspace;
+  }
+
+  /** What a private window's documents see: its own Private workspace only. */
+  snapshotForPrivateWindow(windowId: number): ReturnType<WorkspaceStore['snapshot']> {
+    const workspace = this.#privateByWindow.get(windowId);
+    return {
+      workspaces: workspace ? [workspace] : [],
+      activeId: null,
+      activeIdByWindow: workspace ? { [windowId]: workspace.id } : {},
+    };
+  }
+
+  onPrivateDeltas(listener: PrivateListener): () => void {
+    this.#privateListeners.add(listener);
+    return () => this.#privateListeners.delete(listener);
+  }
+
+  #emitPrivate(windowId: number, deltas: WorkspaceDelta[]): void {
+    for (const listener of this.#privateListeners) listener(windowId, deltas);
   }
 
   /** Called by background.ts when a window's port disconnects (the chrome
