@@ -1,10 +1,10 @@
 // Audiences for events sent to the shell documents (see AudienceEvent in
-// @shared/shell-client-protocol): the shell background fans an event out to the
+// @shared/audience-event): the shell background fans an event out to the
 // documents of regular windows, or to the private documents of one window, so a
 // private window's tabs and Private workspace never reach a regular document.
 
 import type { TabDelta } from '@shared/protocol';
-import type { AudienceEvent } from '@shared/shell-client-protocol';
+import type { AudienceEvent } from '@shared/audience-event';
 import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 
 export type Audience = AudienceEvent['audience'];

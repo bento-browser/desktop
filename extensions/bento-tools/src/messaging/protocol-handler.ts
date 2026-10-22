@@ -6,7 +6,7 @@
 // the browser.sessions wrapper exists; until then it's a no-op stub so the
 // type union stays exhaustive.
 
-import type { AudienceEvent } from '@shared/shell-client-protocol';
+import type { AudienceEvent } from '@shared/audience-event';
 import type {
   Action,
   Event,

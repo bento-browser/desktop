@@ -1,5 +1,9 @@
-/** Storage keys written by builds that shipped the native Settings page, now unused. */
-const RETIRED_KEYS = ['bento.nativeSessions.v1'];
+/**
+ * Storage keys written by builds that shipped the native Settings page
+ * (`bento.nativeSessions.v1`) or the graph publication coordinator
+ * (`bento.graphPublication.v1`, a tab snapshot that a crash could leave behind), now unused.
+ */
+const RETIRED_KEYS = ['bento.nativeSessions.v1', 'bento.graphPublication.v1'];
 
 /** Drops the retired keys; a failure is only logged because nothing reads them any more. */
 export async function removeRetiredSettingsStorage(): Promise<void> {

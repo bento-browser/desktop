@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BentoExportSchema } from '@shared/protocol';
 import { OperationRegistry } from '../settings-domain/OperationRegistry';
-import { GraphOperationJournal, GraphOperationRecovery } from './GraphOperationJournal';
+import {
+  GraphOperationJournal,
+  GraphOperationRecovery,
+  type GraphOperationPhase,
+} from './GraphOperationJournal';
 
 const OWNER = 'owner';
 
@@ -153,6 +157,27 @@ describe('GraphOperationRecovery', () => {
     expect(record?.components.every((c) => c.state === 'failed')).toBe(true);
     expect(journal.current()).toBeNull();
   });
+
+  // Builds that ran the retired graph publication coordinator persisted these two phases.
+  it.each(['publishing', 'awaiting-acks'])(
+    'records a partial outcome for a journal an earlier build left in %s',
+    async (retiredPhase) => {
+      const id = crypto.randomUUID();
+      await operations.init();
+      await startOperation(id);
+      await journal.update(id, { phase: retiredPhase as GraphOperationPhase });
+
+      await recovery().bootstrap();
+
+      expect(operations.getOwned(id, OWNER)).toMatchObject({
+        state: 'partial',
+        errorCode: 'backend_restarted',
+        reconcileComponents: ['graphPersistence'],
+        recovered: true,
+      });
+      expect(journal.current()).toBeNull();
+    },
+  );
 
   describe('after publication', () => {
     const source = exportFile({ privacyProtectionLevel: 'hardened', defaultSearchEngine: 'ddg' });

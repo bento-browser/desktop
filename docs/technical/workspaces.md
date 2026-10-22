@@ -1146,8 +1146,7 @@ workspaces.
   one predicate every persistence boundary asks: `WorkspaceStore` (never in
   `snapshot()` or `persistCurrentState`), `panels/Persistence.ts` (layouts, main
   widths, strip scroll), `tabFolders/Persistence.ts`, `pinnedPanels/Persistence.ts`,
-  `PanelMarkerSync.sync`, `parkTabsForClosingWindow`, the graph publication's
-  folders, and `TabRegistry.assignWorkspace*` (no `bento.workspaceId` session value).
+  `PanelMarkerSync.sync`, `parkTabsForClosingWindow`, and `TabRegistry.assignWorkspace*` (no `bento.workspaceId` session value).
   Window values (`bento.activeWorkspaceId`) are never written for a private window.
 - Membership: a private tab is never assigned like a regular one (ordinary assignment
   and adoption skip it). It joins its window's Private workspace in memory when it is
