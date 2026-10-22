@@ -1,0 +1,6 @@
+/* Story-only: a short window. The dialog is capped at 84vh; a small overlay (about 30rem of
+ * dialog) leaves less room than the focused protection level needs, so the list has to scroll
+ * and no row may shrink. */
+html[data-settings-story-short-window] .muxui-command-palette__popup {
+  max-height: 30rem;
+}

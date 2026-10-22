@@ -407,6 +407,15 @@ describe('stage chrome', () => {
     );
   });
 
+  it('tells Backups that Esc cancels a waiting import before it goes back', () => {
+    const waiting: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      importPreview: { fileName: 'b.json', validationToken: 't', preview: FIXTURE_IMPORT_PREVIEW },
+    };
+    expect(footerFor({ kind: 'backups' }, REGULAR_MODEL, 4).hints.at(-1)).toBe('Esc back');
+    expect(footerFor({ kind: 'backups' }, waiting, 4).hints.at(-1)).toBe('Esc cancel import');
+  });
+
   it('shows only a retry while the snapshot is missing', () => {
     expect(statusRows({ kind: 'loading' })).toHaveLength(1);
     const failed = statusRows({ kind: 'error', message: 'No answer' });

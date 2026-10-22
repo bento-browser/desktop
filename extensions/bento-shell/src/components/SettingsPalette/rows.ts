@@ -873,7 +873,14 @@ export function footerFor(stage: Stage, model: SettingsPaletteModel, rowCount: n
     case 'shortcuts':
       return { hints: [move, 'Esc back'], status: plural(rowCount, 'shortcut') };
     case 'backups':
-      return { hints: [move, 'Enter run or open row', 'Esc back'] };
+      // An import preview waits on this stage: Esc dismisses it before it leaves the stage.
+      return {
+        hints: [
+          move,
+          'Enter run or open row',
+          model.importPreview ? 'Esc cancel import' : 'Esc back',
+        ],
+      };
     case 'backupRow':
       return { hints: [move, 'Enter run', 'Esc back'] };
     case 'confirm':

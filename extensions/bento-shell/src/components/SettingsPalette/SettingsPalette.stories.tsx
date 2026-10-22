@@ -3,7 +3,7 @@
 // toggles, editors and stages work in the story. `useFakeSettingsPalette` stands in for the
 // tools connection; nothing here touches the relay.
 
-import type { ComponentProps } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import {
   IMPORT_PREVIEW_MODEL,
   PRIVATE_MODEL,
@@ -13,6 +13,7 @@ import {
 import type { SettingsPaletteModel } from './types';
 import SettingsPalette from './SettingsPalette';
 import type { Stage } from './stageStack';
+import './SettingsPalette.stories.css';
 
 /** The story has no host to hide it; a close request is counted on <body> for inspection. */
 const onClose = () => {
@@ -56,6 +57,18 @@ NumberStage.storyName = '2 Number (panel corner radius)';
 /** Step 3: protection level with the focused level's benefits and caveats. */
 export const ProtectionLevel = () => <Story stages={at({ kind: 'protection' })} />;
 ProtectionLevel.storyName = '3 Protection level';
+
+/** Step 3 in a short window: the longest level (Standard, 312 px of rows) does not fit, so
+ * the list scrolls and its rows keep their height instead of drawing over each other. */
+export const ProtectionLevelShortWindow = () => {
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-settings-story-short-window', '');
+    return () => root.removeAttribute('data-settings-story-short-window');
+  }, []);
+  return <Story stages={at({ kind: 'protection' })} />;
+};
+ProtectionLevelShortWindow.storyName = '3 Protection level (short window)';
 
 /** Step 3b: search engines with a link to Firefox's search settings. */
 export const SearchEngine = () => <Story stages={at({ kind: 'search' })} />;

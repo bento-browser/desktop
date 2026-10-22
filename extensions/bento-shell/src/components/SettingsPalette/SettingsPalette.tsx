@@ -48,6 +48,7 @@ import { createSizeRunner, stackAfterSizeChange, waitsForSave } from './sizeInte
 import {
   crumbPrefix,
   crumbsFor,
+  escapeOutcome,
   initialStack,
   isEditorStage,
   popStage,
@@ -332,10 +333,22 @@ export default function SettingsPalette({
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      // One Esc clears a search first, then goes back a stage, then closes from the root.
-      if (!editing && query !== '') setQuery('');
-      else if (stack.length > 1) back();
-      else close();
+      // One Esc is one step: clear a search, dismiss an import preview, go back a stage, or
+      // close from the root.
+      switch (escapeOutcome(stack, { query, importPreview: model?.importPreview != null })) {
+        case 'clearQuery':
+          setQuery('');
+          break;
+        case 'cancelImport':
+          actions.cancelImport();
+          break;
+        case 'back':
+          back();
+          break;
+        case 'close':
+          close();
+          break;
+      }
       return;
     }
     if (!editing) return;

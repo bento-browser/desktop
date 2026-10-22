@@ -281,7 +281,9 @@ Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories
 "Settings palette") each mock step renders in dark and light. In Bento: open Settings
 from the app menu, the command palette (Open Settings, and Privacy for the protection
 level list) and the welcome dialog; the keyboard model works (first row focused on
-open, arrows move, Enter runs, Esc goes back one stage and closes from the first list);
+open, arrows move, Enter runs, Esc goes back one stage and closes from the first list; with
+an import preview showing, the first Esc dismisses the preview and the second leaves
+Backups);
 a number edit applies live and reverts on Esc; a change in one window shows in another
 window's open palette. In a private window the palette has no backup, merge or reset
 rows, the Bento color mode row changes only that window and is not saved, and other
@@ -376,6 +378,18 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   for editor stages (arrows step presets, Enter keeps the value) and handles Escape
   there with `preventDefault` and `stopPropagation`, or the modal's own Escape closes
   the whole palette instead of going back one stage.
+- Esc is one step (`escapeOutcome` in `stageStack.ts`): it clears a search, else dismisses
+  an import preview, else goes back one stage, else closes from the root. An import
+  preview is a state of the Backups stage, not a pushed stage, so a plain "pop" left
+  Backups for the root and dropped the preview's file; `escapeNavigation.test.ts`
+  walks every stack the rows can push and expects one stage per Esc. A new pushed
+  stage needs no change there; new in-stage state that Esc should leave first does.
+- The list is a flex column under the dialog's `max-height` (84vh), so a row with
+  `min-block-size: 0` shrinks instead of letting the list scroll, and the focused
+  protection level's detail text (312 px for Standard) is drawn over the rows below it
+  (a 256 px row seen in Bento, with the dialog at 482 px). Rows and sections keep
+  `flex-shrink: 0`; the "3 Protection level (short window)" story holds the dialog to
+  30rem to show it.
 - The Mux `ListBox` forwards its props to the React Aria list box, whose `autoFocus`
   takes `'first'`; the DOM attribute type only has a boolean, so it is passed as a plain
   props object (`FOCUS_FIRST_ROW`). Without it nothing is focused on open, Enter does
