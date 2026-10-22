@@ -26,6 +26,8 @@ const PARTS = {
   main: '.bento-shell-app__main',
   pinned: '.bento-pinned-panels',
   avatar: '.bento-workspace-switcher__avatar-frame',
+  // A private window's band glyph, which the Private band shows in the avatar's place.
+  privateIcon: '.bento-private-band__icon',
   region: '.bento-shell-app__list-region',
   newIcon: '.bento-tab-list__new-action-button svg',
   scroller: '.bento-tab-list-pane__scroller',
@@ -39,7 +41,16 @@ const PARTS = {
 type Part = keyof typeof PARTS;
 
 /** Single elements that carry their own offset (rows read theirs from the root). */
-const SINGLES = ['main', 'pinned', 'avatar', 'region', 'newIcon', 'scroller', 'viewport'] as const;
+const SINGLES = [
+  'main',
+  'pinned',
+  'avatar',
+  'privateIcon',
+  'region',
+  'newIcon',
+  'scroller',
+  'viewport',
+] as const;
 type Single = (typeof SINGLES)[number];
 type Offset = [number, number];
 
@@ -299,6 +310,7 @@ export function createRailTransitionDom(
         main,
         pinned: [-px(pinnedWidth), 0],
         avatar: minus(d('avatar'), main),
+        privateIcon: minus(d('privateIcon'), main),
         region: minus(region, main),
         newIcon: minus(d('newIcon'), region),
         scroller: minus(scroller, region),
