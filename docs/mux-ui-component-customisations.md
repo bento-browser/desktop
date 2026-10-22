@@ -171,30 +171,66 @@ composition before handling that key.
 
 The Settings palette (`components/SettingsPalette`) is a staged quick pick on the same
 CommandPalette parts and adds these customisations. Its popup is a sibling of the Root,
-so its width rule finds it through the dialog
-(`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads
-`--bento-settings-palette-width` and `--bento-settings-palette-max-inline`; the height is
-the list's, up to the Mux popup limit. A row is a Mux `Item` with a title, an `ItemMeta`
-value and a trailing icon; its state is carried by data attributes (`data-info` for a
-static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
-flight, `data-separated`, `data-detail`, `data-current` for the preset that matches the
-typed number) so the rules stay scoped to `.bento-settings-palette__item`. Static rows
+so its size rule finds it through the dialog
+(`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads the
+command palette's `--bento-command-palette-width`, `-height` and the two max tokens: the
+same size, fixed height, on every list. Above the search field a nav row holds a Mux
+`IconButton` (Back, `ghost`, `sm`), the path and `CommandPalette.Close`; the path is a `nav`
+with an `ol` of Mux `Button`s (`ghost`, `sm`, one per ancestor) and a plain `span`
+(`aria-current="page"`) for the current page. Mux `Breadcrumbs` is not used because it
+makes a link only of an item that has an `href`, and these levels are actions. Close sits in
+the nav row, outside the SearchField, which gives every button inside it `tabindex="-1"`;
+Clear stays in the field and opts back into the tab order (exception below). A row is a Mux `Item` with a title, an optional note beside it
+(`.bento-settings-palette__note`: Current, Min, Default, Max), a spacer, then an `ItemMeta`
+value or a switch, and a trailing icon; its state is carried by data attributes (`data-info`
+for a static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
+flight, `data-switch` for a row that shows a switch, `data-separated`, `data-detail`,
+`data-current` for the preset that matches the typed number) so the rules stay scoped to
+`.bento-settings-palette__item`. The switch is Mux `SwitchField` (`Root`, `Button`,
+`Thumb`, `size="sm"`) in an `aria-hidden`, `inert` wrapper: a picture of the state, the row
+is the control, and the row keeps On or Off in its text value. The root `Switch` was tried and
+dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Settings entry,
+where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
 A protection level carries its benefits and caveats inside the item and shows them
 only under `[data-focused]`. In an editor stage the Input hugs its value (an inline
 `inline-size` in `ch`, the one inline dimension) and the unit and bounds sit around it in
 the search field. Danger text uses `--muxui-semantic-action-danger-foreground`, invalid
 text `--muxui-semantic-feedback-invalid-content` and the warning mark
-`--muxui-semantic-status-warning`; Bento adds no colour or motion of its own, and a
-pending row dims and ends in an ellipsis rather than animating.
+`--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than
+animating (a switch row shows its target state instead). A stage change slides the list in
+from the side it came from with one keyframe animation on the `reveal` pair
+(`bento-settings-stage-forward` and `-back`, a `--muxui-semantic-layout-inset-large` offset;
+none under reduced motion). The Settings palette and the command palette share one row
+highlight (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): the rows paint
+no fill (focused, hovered, pressed and selected rows are transparent under
+`.bento-row-highlight`) and one slab, the list's `::before`, moves to the focused row. Its
+box is written into `--bento-row-highlight-*` properties by the hook; it transitions
+`transform`, block and inline size, colour and opacity on the Mux `interaction` pair (the
+first placement and a stage change are instant, since the list is new), and its colour is
+`--bento-palette-highlight-bg` (neutral-26, pressed neutral-30; Mux's own item focus fill is
+neutral-14) in `bento-tokens.css`.
 
-Recorded exception to the public-API rule: the Settings palette passes
-`autoFocus: 'first'` to `CommandPalette.ListBox` through a plain props object
-(`FOCUS_FIRST_ROW` in `SettingsPalette.tsx`) so each stage opens with its first row
-focused. `CommandPaletteListBoxProps` declares no focus strategy; the value reaches React
-Aria only because the part forwards its props. This is a permanent exception: Bento does
-not wait on a Mux prop for it. Keep it confined to that one props object, and replace it
-only if a pinned Mux version documents a focus strategy on `CommandPalette.ListBox`.
+Recorded exceptions to the public-API rule. Each reaches React Aria only because the Mux
+part forwards its props to it, is passed as a plain props object (the declarations do not
+list it), is permanent (Bento does not wait on a Mux prop for it) and is replaced only if a
+pinned Mux version documents the prop:
+
+- `autoFocus: 'first'` on `CommandPalette.ListBox` (`FOCUS_FIRST_ROW` in
+  `SettingsPalette.tsx`): each stage opens with its first row focused.
+- `selectionMode: 'single'` with `selectedKeys` on that list for one frame (`StageList`):
+  React Aria focuses the first selected row when the list mounts, which is how a stage opens
+  on the row that opened it or on the current choice. The selection is dropped at once; a
+  list left in single selection would not run `onAction` on press.
+- `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
+  (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
+  the keyboard and the pointer share the one highlight. React Aria only does this once its
+  last input was the pointer, which it learns from `pointermove`; the hook dispatches one
+  from a capturing `pointerover` listener so the first row entered after a key press takes
+  the focus too.
+- `excludeFromTabOrder: false` on `CommandPalette.ClearButton` in the Settings palette
+  (`CLEAR_IN_TAB_ORDER`): the SearchField's button context makes every button in it
+  `tabindex="-1"`, and Clear should be reachable by Tab.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
@@ -705,7 +741,7 @@ Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in 
 | Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                    | Default                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); one stated exception, the sidebar row hover highlight's slide between rows                                                                                                                                                                                                   | 120 ms, `ease`                                                   |
-| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                                                                                                                                                                                 | 150 ms, `ease`                                                   |
+| `interaction`    | The palettes' one row highlight sliding between rows (`RowHighlight.css`)                                                                                                                                                                                                                                                                                                                                       | 150 ms, `ease`                                                   |
 | `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
 | `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                           | 120 ms, `ease-in`                                                |
 | `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                                               | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |

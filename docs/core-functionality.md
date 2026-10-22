@@ -409,7 +409,9 @@ that tab in the main content slot, switching to its workspace first when needed.
 Choosing a panel switches to the panel's workspace, scrolls the panel strip to
 that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
-active states so mouse and keyboard navigation both have visible feedback. Rows
+active states so mouse and keyboard navigation both have visible feedback: one
+highlight slides between rows, and the pointer and the arrow keys move that same
+highlight, so there is never a second one. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an
@@ -758,13 +760,25 @@ Privacy command opens it on the protection level list, and a matching setting
 in the command palette's results opens it at that setting. It is a searchable list
 of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
 Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
-current value on each row. Enter flips a switch or opens a short list of
-choices. A number or name opens a value field with preset rows where they help;
-the value applies live while typing (panel corners move as you type), Enter
-keeps it, and Esc puts the previous value back. Esc steps back one list and
-closes the palette from the first one, and opening it again starts at the first
-list. Settings changed in one window appear in the Settings palette of every
-other window.
+current value on each row. Enter flips a switch (the row shows the new state at
+once and returns to the old one if the change cannot be saved) or opens a short
+list of choices, which opens on the current choice. A number or name opens a value
+field with preset rows where they help (Min, Default and Max sit beside the
+number); the value applies live while typing (panel corners move as you type),
+Enter keeps it, and Back or Esc puts the previous value back.
+
+Settings is the size of the command palette and keeps it on every list. A bar above
+the search field holds Back, the path to the current list (every level before it is
+a button that goes straight there) and Close. Esc, Back and Backspace in an empty
+field all step back one list; Esc first clears a search, and from the first list Esc
+closes the palette, and opening it again starts at the first list. When the command
+palette opened Settings (its Open Settings command or a Settings result), the path
+starts with "Command palette" and Back from the first list returns there, with the
+query it had; from the app menu or onboarding Back is unavailable on the first list.
+Going back lands on the row that opened the list, Tab cycles through Back, the path,
+Close and the field (and Clear while a search is typed), and the footer says what Esc
+does in the current state. A list slides in from the side it was reached from.
+Settings changed in one window appear in the Settings palette of every other window.
 
 The protection level list shows the current level and the benefits and caveats
 of Standard, Enhanced, and Hardened, so users can compare compatibility impact

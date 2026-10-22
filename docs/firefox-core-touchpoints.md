@@ -966,7 +966,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Settings Palette Overlay (mount script)
 
 - Status: Active
-- Last updated: 2026-10-22
+- Last updated: 2026-10-23
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js` (`settings-palette` overlay
     entry, `ensureOverlayHost` for `bento-settings-palette-host`,
@@ -987,7 +987,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   letters, digits, colon, dash and underscore up to 64 characters); chrome sends the document its show with a frame
   script (`BentoSettingsPaletteShow`, the same `loadFrameScript` and
   `sendAsyncMessage` the merge palette uses) that dispatches a DOM event carrying
-  `{target}` (a row id or null), so no channel is involved; hiding the overlay sends
+  `{target, origin}` (a row id or null, and `'palette'` when the command palette opened it
+  so the document can offer a way back; the document's back button writes
+  `BENTO_SETTINGS_BACK_TO_PALETTE_<ts>`, which shows the command palette again), so no channel is involved; hiding the overlay sends
   the same way a `BentoSettingsPaletteHide` message that dispatches a
   `bento-settings-hide` event, so the document can put back an unfinished live edit
   and stop its timer at once. Show and Hide share a generation counter in the mount
@@ -997,6 +999,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `gBrowser.addTrustedTab` or the open Settings tab) for adding engines. Firefox's
   own Settings page has no Bento category any more (the native pane and its patch
   were removed 2026-10-22).
+- Esc depends on one Firefox behavior, not a member: the parent process receives the key
+  events of a remote `<browser>` before its document, with the `<browser>` as
+  `event.target`. The capturing Esc listener (`attachPaletteEscListener`) therefore returns
+  for a key whose target is `bento-settings-palette-frame` and lets the document step back,
+  and consumes it only for an open waiting for its document or with focus elsewhere in the
+  window. If a Firefox update delivers such keys differently (a different target, or only
+  after the document), Esc would close Settings from every stage again or never reach
+  chrome.
 - Vanilla Firefox surface touched or depended on: `gBrowser.addTrustedTab`,
   `messageManager.loadFrameScript`/`sendAsyncMessage` (both already logged), the
   overlay manager and `afterMotion` of the mount script, and the BentoShellBus relay
@@ -1010,8 +1020,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Regression checks for future updates: open Settings from the app menu, the command
   palette (Open Settings and Privacy, and a Settings result such as typing
   "radius") and the welcome Open Settings button, in a regular and a private
-  window; confirm Esc steps back one list and closes from the
-  first; start a number edit, open the command palette without finishing it and
+  window; confirm Esc (sent from the parent, for example Marionette key actions in the chrome
+  context, not from inside the page) steps back one list and closes from the first, also when
+  the command palette opened Settings, and that Back from the first list returns to the
+  command palette with its query; start a number edit, open the command palette without finishing it and
   confirm the setting returns to its old value at once (hide message); confirm "Manage search engines" opens `about:preferences#search`; confirm
   the merge palette and the command palette close the Settings palette and the
   reverse.
