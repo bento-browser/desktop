@@ -22,6 +22,7 @@ import {
 } from './settingsClient';
 import type { BusUp } from '../bridge/shellBus';
 import { RELAY_UP_MAX_CHARS } from './relayLimit';
+import { rootRows } from '../components/SettingsPalette/rows';
 import { createSettingsPaletteStore, type SettingsPaletteHost } from './settingsStore';
 
 const snapshot = (overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot => ({
@@ -112,6 +113,7 @@ describe('loading', () => {
       settings: FIXTURE_SETTINGS,
       backup: FIXTURE_BACKUP,
       pending: new Set(),
+      pendingTargets: new Map(),
       notice: null,
     });
   });
@@ -220,6 +222,63 @@ describe('writes', () => {
     await expect(write).resolves.toBe(true);
     expect(model().pending.size).toBe(0);
     expect(model().settings.panelShadowsEnabled).toBe(false);
+  });
+
+  it('tracks what a switch write asked for until it ends, so a broadcast cannot flip it back', async () => {
+    const { palette, request, emit, load, model } = setup();
+    await load();
+    const shadows = () =>
+      rootRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
+    let finish!: (value: unknown) => void;
+    request.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const write = palette.actions.update({ panelShadowsEnabled: false });
+    expect(model().pendingTargets.get('panelShadowsEnabled')).toBe(false);
+    expect(shadows()).toBe(false);
+    // The change notice stores the new value before the reply: the switch stays where it is.
+    emit({
+      type: 'settings/changed',
+      settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false } as never,
+    });
+    expect(model().settings.panelShadowsEnabled).toBe(false);
+    expect(shadows()).toBe(false);
+    finish({ settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false }, durableRevision: 2 });
+    await write;
+    expect(model().pendingTargets.size).toBe(0);
+    expect(shadows()).toBe(false);
+  });
+
+  it('drops the target of a switch write that fails, so the switch shows the stored value', async () => {
+    const { palette, request, load, model } = setup();
+    await load();
+    const shadows = () =>
+      rootRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
+    let fail!: (error: unknown) => void;
+    request.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+    const write = palette.actions.update({ panelShadowsEnabled: false });
+    expect(shadows()).toBe(false);
+    fail(new SettingsClientError('busy', true));
+    await expect(write).resolves.toBe(false);
+    expect(model().pendingTargets.size).toBe(0);
+    expect(shadows()).toBe(true);
+  });
+
+  it('tracks an advanced privacy switch by its key, and no target for a choice or a number', async () => {
+    const { palette, request, load, model } = setup();
+    await load();
+    let finish!: (value: unknown) => void;
+    request.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const write = palette.actions.setAdvanced('remoteSafeBrowsingEnabled', true);
+    expect(model().pendingTargets.get('advanced:remoteSafeBrowsingEnabled')).toBe(true);
+    finish({ privacy: FIXTURE_PRIVACY, state: 'succeeded' });
+    await write;
+    expect(model().pendingTargets.size).toBe(0);
+
+    request.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const number = palette.actions.update({ panelCornerRadiusPx: 20 });
+    expect(model().pending.has('panelCornerRadiusPx')).toBe(true);
+    expect(model().pendingTargets.size).toBe(0);
+    finish({ settings: { ...FIXTURE_SETTINGS, panelCornerRadiusPx: 20 }, durableRevision: 3 });
+    await number;
   });
 
   it('keeps a key pending until the last of its overlapping writes ends', async () => {

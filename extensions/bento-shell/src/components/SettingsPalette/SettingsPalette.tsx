@@ -45,6 +45,7 @@ import {
   footerFor,
   isFilterable,
   rootRows,
+  rowAriaLabel,
   rowsForStage,
   searchableRows,
   stageLabel,
@@ -384,7 +385,9 @@ export default function SettingsPalette({
         back();
         break;
       case 'applyNumber':
-        editor.choose(intent.value);
+        // A click on a preset keeps it and leaves the stage, like Enter in the field. The arrows
+        // only preview (they step through `editor.step`), and Esc puts the old value back.
+        if (editor.keep(intent.value)) finishEdit();
         break;
       case 'link':
         if (intent.target === 'firefoxSearch') actions.openFirefoxSearchSettings();
@@ -548,6 +551,7 @@ export default function SettingsPalette({
       key={row.id}
       id={row.id}
       textValue={[row.label, row.note, row.value].filter(Boolean).join(' ')}
+      aria-label={rowAriaLabel(row)}
       disabled={row.info}
       onActivate={() => run(row.intent, row.id)}
       className="bento-settings-palette__item"

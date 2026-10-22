@@ -62,6 +62,29 @@ describe('createEditorSession', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('keeps a preset that was taken with a click, whether or not an arrow previewed it', () => {
+    const { session, update } = open();
+    expect(session.commit(5)).toBe(true);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenLastCalledWith({ panelCornerRadiusPx: 5 });
+    // Esc afterwards finds no session: the kept value is not put back to the starting one.
+    session.revert();
+    expect(update).toHaveBeenCalledTimes(1);
+
+    const previewed = open();
+    previewed.session.apply(8);
+    expect(previewed.session.commit(8)).toBe(true);
+    expect(previewed.update).toHaveBeenCalledTimes(1);
+    previewed.session.revert();
+    expect(previewed.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing for a click on the preset the stage started with', () => {
+    const { session, update } = open();
+    expect(session.commit(12)).toBe(true);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('puts back a size list entry edited live', () => {
     const model = modelWith({ customPanelSizes: [400, 500] });
     const update = vi.fn();

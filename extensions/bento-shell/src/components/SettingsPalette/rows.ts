@@ -118,10 +118,19 @@ function settingPending(model: SettingsPaletteModel, key: string): boolean {
 
 const NO_KEYWORDS: readonly string[] = [];
 
-/** What a switch shows: the stored state, or the one being written while a write is in flight
- * (a write that fails leaves the stored state, so the switch goes back). */
-function switchState(stored: boolean, pending: boolean): boolean {
-  return pending ? !stored : stored;
+/** What a switch shows: the state its write in flight asked for, else the stored one. The
+ * target is what was asked for, not the opposite of the latest stored value, so a change notice
+ * that stores the new value before the reply does not flip the switch back; a write that
+ * fails drops its target and leaves the stored state. */
+function switchState(stored: boolean, pending: boolean, target: boolean | undefined): boolean {
+  return pending && target !== undefined ? target : stored;
+}
+
+/** What assistive technology reads for a row. A switch row names its state, "Sleep idle tabs,
+ * On" (the switch itself is hidden from it), and follows the state the switch shows; any other
+ * row is named by its content. */
+export function rowAriaLabel(row: PaletteRow): string | undefined {
+  return row.switchOn === undefined ? undefined : `${row.label}, ${onOff(row.switchOn)}`;
 }
 
 function toggleRow(model: SettingsPaletteModel, group: string, key: BooleanSettingKey): PaletteRow {
@@ -132,7 +141,7 @@ function toggleRow(model: SettingsPaletteModel, group: string, key: BooleanSetti
     group,
     label: spec.label,
     value: onOff(model.settings[key]),
-    switchOn: switchState(model.settings[key], pending),
+    switchOn: switchState(model.settings[key], pending, model.pendingTargets.get(key)),
     pending,
     keywords: spec.keywords,
     intent: { type: 'toggle', key },
@@ -197,7 +206,11 @@ export function advancedRows(
       group,
       label: spec.label,
       value: onOff(value === true),
-      switchOn: switchState(value === true, pending),
+      switchOn: switchState(
+        value === true,
+        pending,
+        model.pendingTargets.get(`advanced:${spec.key}`),
+      ),
       pending,
       keywords: ['advanced privacy', ...spec.keywords],
       intent: { type: 'toggleAdvanced', key: spec.key, current: value === true },

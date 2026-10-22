@@ -15,6 +15,7 @@ import {
   formatBackupDate,
   isFilterable,
   rootRows,
+  rowAriaLabel,
   rowsForStage,
   searchableRows,
   stageLabel,
@@ -440,6 +441,7 @@ describe('stage chrome', () => {
     const writing: SettingsPaletteModel = {
       ...REGULAR_MODEL,
       pending: new Set(['panelShadowsEnabled']),
+      pendingTargets: new Map([['panelShadowsEnabled', !stored]]),
     };
     const during = rootRows(writing).find((row) => row.id === 'setting:panelShadowsEnabled');
     expect(during).toMatchObject({ switchOn: !stored, pending: true });
@@ -448,6 +450,59 @@ describe('stage chrome', () => {
     expect(
       rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelCornerRadiusPx'),
     ).not.toHaveProperty('switchOn');
+  });
+
+  it('keeps showing what the write asked for when the stored value already changed', () => {
+    // A change notice can store the new value before the reply: the switch is not flipped back.
+    const asked = !REGULAR_MODEL.settings.panelShadowsEnabled;
+    const broadcast: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      settings: { ...REGULAR_MODEL.settings, panelShadowsEnabled: asked },
+      pending: new Set(['panelShadowsEnabled']),
+      pendingTargets: new Map([['panelShadowsEnabled', asked]]),
+    };
+    expect(find(rootRows(broadcast), 'setting:panelShadowsEnabled').switchOn).toBe(asked);
+  });
+
+  it('shows the stored state once the write is over, and on a pending key with no target', () => {
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    // A failed write leaves the stored value and no target.
+    expect(find(rootRows(REGULAR_MODEL), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+    const noTarget: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['panelShadowsEnabled']),
+    };
+    expect(find(rootRows(noTarget), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+  });
+
+  it('follows the target of an advanced privacy switch too', () => {
+    const stored = find(advancedRows(REGULAR_MODEL), 'advanced:remoteSafeBrowsingEnabled');
+    const writing: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['advanced:remoteSafeBrowsingEnabled']),
+      pendingTargets: new Map([['advanced:remoteSafeBrowsingEnabled', !stored.switchOn]]),
+    };
+    expect(find(advancedRows(writing), 'advanced:remoteSafeBrowsingEnabled').switchOn).toBe(
+      !stored.switchOn,
+    );
+  });
+
+  it('names a switch row with its state, following the state the switch shows', () => {
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    const label = (model: SettingsPaletteModel) =>
+      rowAriaLabel(find(rootRows(model), 'setting:panelShadowsEnabled'));
+    expect(label(REGULAR_MODEL)).toBe(`Show panel shadows, ${stored ? 'On' : 'Off'}`);
+    expect(
+      label({
+        ...REGULAR_MODEL,
+        pending: new Set(['panelShadowsEnabled']),
+        pendingTargets: new Map([['panelShadowsEnabled', !stored]]),
+      }),
+    ).toBe(`Show panel shadows, ${stored ? 'Off' : 'On'}`);
+    // Any other row is named by its content.
+    expect(
+      rowAriaLabel(find(rootRows(REGULAR_MODEL), 'setting:panelCornerRadiusPx')),
+    ).toBeUndefined();
   });
 
   it('shows only a retry while the snapshot is missing', () => {

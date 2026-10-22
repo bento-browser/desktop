@@ -22,8 +22,9 @@ export interface StageEditor {
   type(text: string): void;
   /** Moves to the next or previous preset and applies it. */
   step(direction: 1 | -1): void;
-  /** Takes a preset row. */
-  choose(value: number): void;
+  /** Keeps a preset a click took: sends it if it differs from what the stage started with, and
+   * ends the edit so a later revert changes nothing. False when there is no edit. */
+  keep(value: number): boolean;
   /** Keeps the draft. False (and nothing sent) when it is not valid. */
   commit(): boolean;
   /** Drops the draft and puts back the value the stage started with. */
@@ -80,7 +81,7 @@ export function useStageEditor(
       if (next !== null) applyNow(next);
     },
 
-    choose: applyNow,
+    keep: (value) => session.commit(value),
 
     commit() {
       if (!check?.ok) return false;

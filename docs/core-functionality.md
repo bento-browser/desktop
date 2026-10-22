@@ -764,8 +764,9 @@ current value on each row. Enter flips a switch (the row shows the new state at
 once and returns to the old one if the change cannot be saved) or opens a short
 list of choices, which opens on the current choice. A number or name opens a value
 field with preset rows where they help (Min, Default and Max sit beside the
-number); the value applies live while typing (panel corners move as you type),
-Enter keeps it, and Back or Esc puts the previous value back.
+number); the value applies live while typing (panel corners move as you type) and
+while arrowing over the presets, Enter keeps it, clicking a preset keeps it and returns to
+the list, and Back or Esc puts the previous value back.
 
 Settings is the size of the command palette and keeps it on every list. A bar above
 the search field holds Back, the path to the current list (every level before it is
