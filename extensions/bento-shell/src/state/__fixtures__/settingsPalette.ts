@@ -122,6 +122,7 @@ export const REGULAR_MODEL: SettingsPaletteModel = {
   search: FIXTURE_SEARCH,
   backup: FIXTURE_BACKUP,
   pending: new Set(),
+  pendingTargets: new Map(),
   notice: null,
   importPreview: null,
 };

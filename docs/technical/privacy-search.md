@@ -215,8 +215,8 @@ parts, and it is split so each piece is testable without the browser:
   `snapshot/get` so a reloaded document finds what a previous one left running.
 - `settingsStore.ts` is the store over that client: `snapshot/get` for every domain on
   each show, `settings/changed`, `privacy/changed` and `searchEngines/changed` applied
-  as they arrive, one `pending` count per write key, a `notice` for the latest failure
-  and the import preview. The private-window state is read from the snapshot: tools
+  as they arrive, one `pending` count per write key with the on/off a switch write asked
+  for (`pendingTargets`), a `notice` for the latest failure and the import preview. The private-window state is read from the snapshot: tools
   omits the `backup` domain for a private caller, so `isPrivate` is `backup ===
 undefined`, and the palette then shows no backup rows or automatic-backup
   preferences. A backup file is refused before sending (`That file is too large to
@@ -393,6 +393,18 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   `excludeFromTabOrder: false` and an `onPressStart` that keeps the focus on the button for a
   key press. The tab order is the DOM order: in Settings Back (disabled at the first list), the
   path buttons, Close, the field, Clear; in the command palette the field, Clear, Close.
+- A switch row shows its state while a write is pending from the target the toggle asked
+  for (`pendingTargets`, kept until the write settles), not from the inverse of the stored
+  value: a `settings/changed` broadcast can update the stored value before the write's reply,
+  and inverting it then flipped the switch back for a moment. A failed write drops the target,
+  so the row returns to the stored value.
+- The On/Off switch inside a row is `aria-hidden` and inert, so the row's accessible name does
+  not include it. `rowAriaLabel` (`rows.ts`) sets the option's `aria-label` to the label and
+  the shown state ("Sleep idle tabs, On"), following the pending target. `textValue` only
+  drives type-ahead.
+- In a number stage a click on a preset keeps the value and leaves the stage
+  (`useStageEditor.keep`); the arrow keys only preview it (Esc puts the starting value back),
+  and Enter in the field commits the typed value.
 - A list opens on a chosen row (the row that opened the page when going back, the current
   choice of a list of choices) by mounting with that row selected: React Aria focuses the
   first selected row on mount. `StageList` drops the selection a frame later; leaving it would

@@ -192,7 +192,13 @@ FailedWrite.storyName = 'Failed write notice';
 
 export const PendingWrite = () => (
   <Story
-    model={{ ...REGULAR_MODEL, pending: new Set(['panelShadowsEnabled', 'tabSleepAfterMinutes']) }}
+    model={{
+      ...REGULAR_MODEL,
+      pending: new Set(['panelShadowsEnabled', 'tabSleepAfterMinutes']),
+      pendingTargets: new Map([
+        ['panelShadowsEnabled', !REGULAR_MODEL.settings.panelShadowsEnabled],
+      ]),
+    }}
   />
 );
 PendingWrite.storyName = 'Writes in flight';
