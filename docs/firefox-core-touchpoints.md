@@ -905,8 +905,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   channel, `GraphPublicationCoordinator` and the sidebar's `useGraphStore`. The mount
   imported the registry as `resource://app/actors/...` while the experiment imported
   `resource:///actors/...`, so they held two module instances: documents registered
-  in one and the experiment read the other, which was always empty, and nothing behind
-  the registry ever ran. Measured on the 158.0 dev build with a throwaway profile:
+  in one and the experiment read the other, which was always empty, so no document
+  was ever attached or delivered to. Imports and restores still ran the publication
+  bookkeeping for zero recipients: a tab read and three `bento.graphPublication.v1`
+  writes, which a crash mid-publish could leave behind. Measured on the 158.0 dev build with a throwaway profile:
   the `resource://app/` instance listed the sidebar, the `resource:///` instance
   listed none and held the only background binding. The shell manifest version was
   bumped because the experiment schema lost functions and events. `bento-tools`
