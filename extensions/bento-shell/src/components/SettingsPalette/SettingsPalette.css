@@ -80,6 +80,14 @@
 .muxui-command-palette__item.bento-settings-palette__item {
   gap: var(--muxui-semantic-layout-action-gap);
   min-block-size: 0;
+  /* A row keeps the height of its content. The list is a flex column under the dialog's
+   * max-height, and a shrinking row (its minimum is 0) would squash the focused protection
+   * level's detail text over the rows below instead of letting the list scroll. */
+  flex-shrink: 0;
+}
+
+.bento-settings-palette__section {
+  flex-shrink: 0;
 }
 
 .bento-settings-palette__item .bento-settings-palette__label {
