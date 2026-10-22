@@ -385,11 +385,14 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   [palettes-and-address-bar.md](palettes-and-address-bar.md#esc-chrome-sees-the-key-first).
 - Tab never left the field because the SearchField gives every button inside it
   `tabindex="-1"` (React Aria's `excludeFromTabOrder` through its button context), Clear
-  and Close included. Back, the path and Close live in a nav row above the field, outside
-  it, and Clear opts back in with `excludeFromTabOrder: false` (`CLEAR_IN_TAB_ORDER`). The
-  tab order is the DOM order: Back (disabled at the first list), the path buttons, Close,
-  the field, Clear. The main command palette still has the old layout, so its Clear and
-  Close are not reachable by Tab.
+  and Close included, and its press-start focuses the input, which also stopped Enter and
+  Space from activating such a button (focus left it before the key-up). In Settings, Back,
+  the path and Close live in a nav row above the field, outside it, and Clear stays in the
+  field. The command palette keeps Clear and Close in its field. Both use `IN_TAB_ORDER`
+  (`components/primitives/inTabOrder.ts`) on the buttons inside the field:
+  `excludeFromTabOrder: false` and an `onPressStart` that keeps the focus on the button for a
+  key press. The tab order is the DOM order: in Settings Back (disabled at the first list), the
+  path buttons, Close, the field, Clear; in the command palette the field, Clear, Close.
 - A list opens on a chosen row (the row that opened the page when going back, the current
   choice of a list of choices) by mounting with that row selected: React Aria focuses the
   first selected row on mount. `StageList` drops the selection a frame later; leaving it would

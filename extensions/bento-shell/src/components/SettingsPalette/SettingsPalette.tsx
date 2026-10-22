@@ -32,6 +32,7 @@ import SearchIcon from 'lucide-react/dist/esm/icons/search';
 import TriangleAlertIcon from 'lucide-react/dist/esm/icons/triangle-alert';
 
 import { BentoIcon } from '../primitives';
+import { IN_TAB_ORDER } from '../primitives/inTabOrder';
 import {
   FOCUS_ON_HOVER,
   ROW_HIGHLIGHT_CLASS,
@@ -137,11 +138,6 @@ function groupRows(rows: readonly PaletteRow[]): RowGroup[] {
 // React Aria list box, whose `autoFocus` takes a strategy; the DOM attribute type only has a
 // boolean, so it is passed as a plain props object.
 const FOCUS_FIRST_ROW: Record<string, unknown> = { autoFocus: 'first' };
-
-// The Clear button sits inside the SearchField, which tells every button in it to stay out of the
-// tab order. Clear is a control the keyboard should reach, so it opts back in, through a plain
-// props object because `ButtonPartProps` does not declare the React Aria prop.
-const CLEAR_IN_TAB_ORDER: Record<string, unknown> = { excludeFromTabOrder: false };
 
 /**
  * The list of one stage. React Aria focuses the first selected row when a list mounts, so the
@@ -751,7 +747,7 @@ export default function SettingsPalette({
                 <Palette.ClearButton
                   aria-label="Clear search"
                   onClick={() => setQuery('')}
-                  {...CLEAR_IN_TAB_ORDER}
+                  {...IN_TAB_ORDER}
                 />
               ) : null}
             </Palette.SearchField>

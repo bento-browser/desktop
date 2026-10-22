@@ -47,6 +47,7 @@ import { usePrivateWindow } from '../../state/privateWindow';
 import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
+import { IN_TAB_ORDER } from '../primitives/inTabOrder';
 import {
   FOCUS_ON_HOVER,
   ROW_HIGHLIGHT_CLASS,
@@ -459,11 +460,13 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
                 <MuxCommandPalette.ClearButton
                   aria-label="Clear search"
                   onClick={() => palette.setQuery('')}
+                  {...IN_TAB_ORDER}
                 />
               ) : null}
               <MuxCommandPalette.Close
                 aria-label="Close command palette"
                 className="bento-command-palette__close"
+                {...IN_TAB_ORDER}
               />
             </MuxCommandPalette.SearchField>
             <MuxCommandPalette.ListBox
