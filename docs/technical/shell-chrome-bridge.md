@@ -424,8 +424,10 @@ Pitfalls:
   was imported as `resource://app/actors/...` by the mount and as
   `resource:///actors/...` by the experiment: documents registered in one instance
   and the experiment read the other, which was always empty, so the document
-  handshake, the targeted per-document channel and graph publication never ran and
-  nothing failed, because every consumer treated an empty list as normal. To test a
+  handshake and the targeted per-document channel never ran and no document ever
+  received a graph publication. Nothing failed, because every consumer treated an
+  empty list as normal; imports and restores still ran the publication bookkeeping
+  (a tab read and three `bento.graphPublication.v1` writes) for zero recipients. To test a
   shared parent module, import it through both spellings in the Browser Toolbox
   Console and compare the two exports.
 - A content-process actor (`BentoKeyChild`, `BentoShellBusChild`, any new
