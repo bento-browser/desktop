@@ -564,6 +564,57 @@ describe('TabRegistry private windows', () => {
     expect(tabs.isPrivate(901)).toBe(false);
   });
 
+  // An update for a tab that init has queried but not yet stored (its session values are
+  // still being read) takes the create-on-unknown path. The delta's audience is fixed when
+  // it is queued, so the tab's privacy has to be known by then.
+  it('keeps the URL and title of a private tab off the regular audience when its update arrives during init', async () => {
+    const privateTab = makeTab({ id: 900, windowId: 9, incognito: true });
+    const listeners = stubTabsBrowser([makeTab({ id: 1, windowId: 1 }), privateTab]);
+    let release: () => void = () => {};
+    const gate = new Promise<undefined>((resolve) => (release = () => resolve(undefined)));
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(() => gate);
+    const tabs = new TabRegistry();
+    const batches: TabDelta[][] = [];
+    tabs.onDeltas((deltas) => batches.push(deltas));
+
+    const init = tabs.init();
+    await vi.waitFor(() => expect(browser.sessions.getTabValue).toHaveBeenCalled());
+    listeners.updated?.(
+      900,
+      {},
+      { ...privateTab, title: 'Secret title', url: 'https://private.example/secret' },
+    );
+    release();
+    await init;
+
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, batches.flat());
+    expect(JSON.stringify(regular)).not.toContain('private.example');
+    expect(JSON.stringify(regular)).not.toContain('Secret title');
+    expect(privateByWindow.get(9)).toEqual([
+      expect.objectContaining({
+        kind: 'created',
+        tab: expect.objectContaining({ id: 900, url: 'https://private.example/secret' }),
+      }),
+    ]);
+    expect(tabs.isPrivate(900)).toBe(true);
+  });
+
+  it('keeps a private tab that an update introduces off the regular audience', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.updated?.(
+      901,
+      {},
+      makeTab({ id: 901, windowId: 9, incognito: true, url: 'https://private.example/new' }),
+    );
+
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, batches.flat());
+    expect(regular).toEqual([]);
+    expect(privateByWindow.get(9)).toEqual([
+      expect.objectContaining({ kind: 'created', tab: expect.objectContaining({ id: 901 }) }),
+    ]);
+  });
+
   it('assigns a tab to a Private workspace in memory only', async () => {
     const { tabs, batches } = await registryWithTabs();
 

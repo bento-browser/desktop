@@ -666,12 +666,11 @@ export class PanelStore {
     return tabsToClose;
   }
 
-  setGroupRatio(groupId: string, ratio: number): void {
-    let changed = false;
-    for (const layout of this.#layoutByWorkspace.values()) {
-      if (setGroupRatio(layout, groupId, ratio)) changed = true;
-    }
-    if (changed) this.#flushPersist();
+  /** Sets a group's ratio in `workspaceId`'s layout only: a group id from another
+   * workspace (another window's, or a private window's) is not found and changes nothing. */
+  setGroupRatio(workspaceId: string, groupId: string, ratio: number): void {
+    const layout = this.#layoutByWorkspace.get(workspaceId);
+    if (layout && setGroupRatio(layout, groupId, ratio)) this.#flushPersist();
   }
 
   findWorkspacesContainingTab(tabId: number): string[] {
