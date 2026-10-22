@@ -1038,7 +1038,10 @@ reaches chrome later), and the choreography persists nothing.
   opaque layer above the header, with the New bar's own background off so the rising
   rows show under its lower padding; the footer stays above with a backdrop
   (`::before`, the rail footer's height, carrying the divider) that rises from the
-  expanded footer; the switcher's fill fades while the rail square fades in under the
+  expanded footer; a private window's band slot (`.bento-shell-app__workspace-switcher--private`)
+  is lifted to `z-index: 4` for the phase only, since the band keeps its solid fill and the
+  rising list region and folding address bar would otherwise paint over its lower edge (the
+  footer, also 4, comes later in the document); the switcher's fill fades while the rail square fades in under the
   moving avatar; the active row draws a cap the size of the rail square over a tail that
   retracts under it, clipped by the row; folder outlines and the pinned and folder band
   cross-fade to the rail square; the hover and action highlights are hidden. The
@@ -1200,8 +1203,12 @@ workspaces.
 - Actions that name a group or slot rather than a tab cannot be checked by that guard, so
   the handler searches only the source window's own workspace: `panelLayout/setGroupRatio`
   (and the other layout actions, which already pass the window's workspace) never finds a
-  group of another window's or a private window's workspace. `PanelStore.setGroupRatio`
-  takes the workspace id.
+  group of another window's or a private window's workspace (`PanelStore.setGroupRatioIn`
+  takes the workspace id). Two signatures keep a legacy call shape only because
+  `rollback/legacy-source` is compiled against the live tools modules by
+  `pnpm run rollback:check`: `setDevtoolsPanelMarker(tabId)` (the workspace id is optional)
+  and `PanelStore.setGroupRatio(groupId, ratio)` (every workspace); live code passes the
+  workspace and uses `setGroupRatioIn`. Drop both with the rollback builds.
 - A private tab that goes away is a removal for its window, also when it moved to another
   private window. `dropRemovedTabFromPanels` (`panels/RemovedTab.ts`) removes it from every
   workspace's panels and publishes each affected workspace through the audience helper,
