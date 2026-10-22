@@ -1340,9 +1340,14 @@ test('shell scripts act on the one selected object directory, never on every obj
     assert.equal(symlinks.status, 0, symlinks.stderr);
     for (const dir of [actors('obj-bento'), appActors('obj-bento')]) {
       for (const file of actorFiles) {
-        const target = path.join(dir, file);
-        assert.equal(fs.lstatSync(target).isSymbolicLink(), false, `${file} stays a symlink in ${dir}`);
-        assert.equal(fs.readFileSync(target, 'utf8'), `actor ${file}`);
+        // O_NOFOLLOW makes the open fail (ELOOP) on a leftover symlink, so one open both checks
+        // and reads the file instead of an lstat followed by a separate read.
+        const fd = fs.openSync(path.join(dir, file), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          assert.equal(fs.readFileSync(fd, 'utf8'), `actor ${file}`);
+        } finally {
+          fs.closeSync(fd);
+        }
       }
     }
     assert.equal(fs.existsSync(path.join(actors('obj-legacy'), 'BentoKeyChild.sys.mjs')), false);
