@@ -192,9 +192,9 @@ Recorded exception to the public-API rule: the Settings palette passes
 `autoFocus: 'first'` to `CommandPalette.ListBox` through a plain props object
 (`FOCUS_FIRST_ROW` in `SettingsPalette.tsx`) so each stage opens with its first row
 focused. `CommandPaletteListBoxProps` declares no focus strategy; the value reaches React
-Aria only because the part forwards its props. A documented focus-strategy prop is being
-added to Mux; replace the props object with it once the pinned Mux version ships it, and
-delete this paragraph.
+Aria only because the part forwards its props. This is a permanent exception: Bento does
+not wait on a Mux prop for it. Keep it confined to that one props object, and replace it
+only if a pinned Mux version documents a focus strategy on `CommandPalette.ListBox`.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and

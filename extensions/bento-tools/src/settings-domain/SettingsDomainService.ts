@@ -53,7 +53,6 @@ import {
   type GraphOperationJournal,
   type GraphOperationRecovery,
 } from '../replacement/GraphOperationJournal';
-import type { GraphPublicationCoordinator } from '../replacement/GraphPublicationCoordinator';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { TabRegistry } from '../tabs/TabRegistry';
@@ -119,7 +118,6 @@ export interface SettingsDomainContext {
   journal: GraphOperationJournal;
   recovery: GraphOperationRecovery;
   privacyMutations: PrivacyMutationService;
-  graphPublications: GraphPublicationCoordinator;
   /** Reaches every connected shell document. */
   broadcast(event: Event): void;
 }
@@ -857,15 +855,6 @@ export class SettingsDomainService {
             operation: {
               plannedWorkspaceIds,
               onPhase: async (phase) => {
-                if (phase === 'graph-published') {
-                  await this.#ctx.journal.update(operationId, { phase: 'publishing' });
-                  await this.#ctx.operations.update(operationId, { phase: 'publishing' });
-                  const publication = await this.#ctx.graphPublications.publishReplacement();
-                  await this.#ctx.journal.update(operationId, { phase: 'graph-published' });
-                  await this.#ctx.operations.update(operationId, { phase: 'graph-published' });
-                  await this.#ctx.graphPublications.complete(publication.publicationId);
-                  return;
-                }
                 await this.#ctx.journal.update(operationId, { phase: phase as never });
                 await this.#ctx.operations.update(operationId, { phase });
               },

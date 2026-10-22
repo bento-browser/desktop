@@ -171,10 +171,6 @@ async function createHarness(
     journal,
     recovery,
     privacyMutations,
-    graphPublications: {
-      publishReplacement: vi.fn(async () => ({ publicationId: 'publication-1' })),
-      complete: vi.fn(async () => undefined),
-    },
     broadcast,
   } as unknown as SettingsDomainContext;
   const service = new SettingsDomainService(ctx);

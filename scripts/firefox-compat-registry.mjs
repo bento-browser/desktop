@@ -2345,9 +2345,8 @@ export const MEMBERS = [
       'registerShellBusActor',
       'patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild',
       'patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild',
-      'patches/chrome-layout/04-bento-key-actors.patch#BentoShellDocumentRegistry',
     ],
-    use: 'Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) and the shell document registry sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module and the registry are imported by the mount, the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances.',
+    use: 'Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances.',
     at: [FF.actorsMozBuild, '^FINAL_TARGET_FILES\\.actors \\+= \\[', 92],
   },
 

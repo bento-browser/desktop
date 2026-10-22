@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Action, BentoSettings, Event } from '@shared/protocol';
-import type { AudienceEvent } from '@shared/shell-client-protocol';
+import type { AudienceEvent } from '@shared/audience-event';
 import { installFakeChromeTitle } from './fakeChromeTitle';
 
 function audienceEvent(audience: AudienceEvent['audience'], event: Event): AudienceEvent {
@@ -398,11 +398,6 @@ describe('shell bus bootstrap', () => {
       runtime: { connect: () => tools.port },
       commands: { onCommand: { addListener: () => {} } },
       bentoChrome: {
-        bindBackground: async () => ({ currentGeneration: 0 }),
-        listDocuments: async () => [],
-        onDocumentMounted: { addListener: () => {} },
-        onDocumentChanged: { addListener: () => {} },
-        onDocumentRemoved: { addListener: () => {} },
         onBusMessage: {
           addListener: (listener: (record: unknown) => void) => (relay.listener = listener),
         },

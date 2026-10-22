@@ -25,13 +25,9 @@
   window.__bentoShellMountInitialized = true;
 
   const ADDON_ID = 'bento-shell@bento.app';
-  const { BentoShellDocumentRegistry } = ChromeUtils.importESModule(
-    'resource://app/actors/BentoShellDocumentRegistry.sys.mjs',
-  );
   const { PrivateBrowsingUtils: BentoPrivateBrowsingUtils } = ChromeUtils.importESModule(
     'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
   );
-  let bentoShellRegistryRecord = null;
   const BENTO_PANEL_NEWTAB_PATH = '/dist/panel-newtab.html';
   const BENTO_WELCOME_STEP_ENV = 'BENTO_WELCOME_STEP';
   // Current post-import onboarding step (the Privacy step, index 4 in
@@ -1734,11 +1730,8 @@
       frame.style.backgroundColor = 'transparent';
       frame.style.setProperty('-moz-appearance', 'none');
     }
-    const registryRecord = registerBentoShellDocument();
     setFrameSrc('bento-shell-frame', '/dist/index.html', undefined, {
       bentoSidebarAddressBridgeToken: getBentoSidebarAddressBridgeToken(),
-      bentoMountToken: registryRecord?.mountToken,
-      bentoClientInstanceId: registryRecord?.clientInstanceId,
       bentoChromeRem: isPrivate ? chromeRemPx() : null,
     });
   }
@@ -3877,53 +3870,6 @@
   // chars; timestamp ensures repeated identical states still trigger
   // the title-change event.
   const PANELS_PREFIX = 'BENTO_PANELS:';
-  const GRAPH_COMMIT_PREFIX = 'BENTO_GRAPH_COMMIT:';
-
-  function handleGraphCommitTitle(rawTitle) {
-    const [, backendInstanceId, publicationId, revisionText] = rawTitle.split(':');
-    const graphRevision = Number(revisionText);
-    const record = registerBentoShellDocument();
-    if (
-      !record ||
-      !backendInstanceId ||
-      !publicationId ||
-      !Number.isSafeInteger(graphRevision)
-    ) {
-      return;
-    }
-    BentoShellDocumentRegistry.recordChromeApplied(record.mountToken, {
-      backendInstanceId,
-      publicationId,
-      graphRevision,
-    });
-  }
-
-  function registerBentoShellDocument() {
-    if (bentoShellRegistryRecord) return bentoShellRegistryRecord;
-    const browser = document.getElementById('bento-shell-frame');
-    const windowId = getChromeWindowId();
-    if (!browser || !Number.isInteger(windowId)) return null;
-    bentoShellRegistryRecord = BentoShellDocumentRegistry.registerDocument({
-      browser,
-      chromeWindow: window,
-      entryKind: 'sidebar',
-      role: 'primary',
-      windowId,
-      isPrivate: BentoPrivateBrowsingUtils.isWindowPrivate(window),
-    });
-    return bentoShellRegistryRecord;
-  }
-
-  window.addEventListener(
-    'unload',
-    () => {
-      if (bentoShellRegistryRecord) {
-        BentoShellDocumentRegistry.removeDocument(bentoShellRegistryRecord.mountToken);
-        bentoShellRegistryRecord = null;
-      }
-    },
-    { once: true },
-  );
 
   // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark|system>
   // The shell sets this on settings/changed; the active BENTO_PANELS
@@ -17330,8 +17276,6 @@
   // Each handler below is the body of the interval/rAF poller it replaced, and
   // lastSeen keeps the old per-frame dedupe of repeated titles.
   function attachPaletteCloseListener() {
-    registerBentoShellDocument();
-
     // Palette: CLOSE hides it; the SETTINGS prefixes open the Settings palette (the privacy one on
     // the protection level list, a command palette result at its setting), which dismisses it;
     // OPEN_MERGE_PALETTE opens the merge palette, which dismisses it too.
@@ -17404,7 +17348,6 @@
       else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
       else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
       else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
-      else if (title.startsWith(GRAPH_COMMIT_PREFIX)) handleGraphCommitTitle(title);
       else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
     };
 
