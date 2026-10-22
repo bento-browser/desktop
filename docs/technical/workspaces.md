@@ -787,7 +787,8 @@ slide. A toggle is the setting changing; every other payload repeats the same
 value and does nothing.
 
 The slide ("push") makes the sidebar and the page one strip. Layout changes once
-per toggle, only `transform` animates (nothing fades), and every slide (the host, the
+per toggle, only `transform` animates (the strip does not fade; the rail colour does,
+see "Rail colour" below), and every slide (the host, the
 shell frame, the page group, the bookmarks toolbar, the divider, Back/Forward/Reload and
 the band) runs on the Mux `reveal` role's spring pair: `--muxui-semantic-motion-reveal-transition-spring-duration`
 (400 ms) and `-spring-easing` (a sampled `linear()` curve, bounce 0, so no
@@ -837,6 +838,49 @@ names `show` except the shell-document ones below (a test keeps it that way).
   without side panels). It is a pseudo-element on the host, so it moves with the host on
   the compositor, and it lands where the shell's border is at the settle frame (the last
   pixel column of the rail, or of the expanded host), so nothing changes then.
+- Rail colour (collapse and expand only; hide and show switch at once). The rail is one
+  surface with the window controls and the gap around the page when the window has side
+  panels, so its colour is the toolbar's main colour (`--bento-toolbar-main-bg`, defined
+  once in `bento-tokens.css`, neutral-5 with no side panels, where nothing changes). Chrome:
+  `bento-sidebar-rail` on the root is the target state (the host is, or is sliding to, the
+  rail). `applyChromeSidebarCollapsed` sets it from the collapsed target: in
+  `startSidebarPush`, next to the `bento-sidebar-push` attribute and after the toolbar
+  commit's layout reads (so one style change carries both and every colour starts from where
+  it was), at the settle, and on the instant path. A hide leaves it for the settle, since the
+  sidebar leaves. `:root[bento-sidebar-rail]` makes `--bento-toolbar-sidebar-bg` the main
+  colour, which the window, `#browser` and `#appcontent` gradients read (they switch at once;
+  the host covers them) and `#bento-shell-host`'s background follows (`transition:
+background-color` on the spring pair while a collapse or expand runs). The toolbar
+  surfaces (`#navigator-toolbox`, `#TabsToolbar`, `#nav-bar`) read a registered `<color>`
+  property, `--bento-toolbar-left-bg` (`@property`, not inherited), because a gradient
+  stop cannot transition: it is `--bento-toolbar-sidebar-bg` and is transitioned on the same
+  pair, so the colour left of the split fades with the slide and only those elements
+  restyle per frame. The `#nav-bar::before` band takes it with `inherit` (it is created at
+  the push start, so a transition of its own would have nothing to start from) and follows
+  the toolbar's value. The chrome divider line (`#bento-sidebar-chrome-divider`) fades to
+  `transparent` in the rail look, and the host's edge line (`#bento-shell-host::after`)
+  fades out with a collapse and in with an expand through opacity animations (the
+  pseudo-element is created at the push start, so a transition could not start from the
+  other colour); both end states then have no line, and the shell's own right border is
+  transparent in the rail look (below), so nothing appears or vanishes at the settle.
+  Shell: the rail look is `--bento-brand-bg` (and `--bento-surface-hover-solid`, its
+  composite) re-pointed at `--bento-toolbar-main-bg` on `.bento-shell-app`, with the right
+  border transparent, when the phase is `collapse`, or `data-bento-collapsed='true'` and
+  the phase is not `expand` (app.css), so it follows the target like chrome (the shell
+  starts a collapse about 30 ms before chrome and chrome an expand about 30 ms before the
+  shell). The app, header, workspace switcher, list region (painted always, so it has a
+  colour to leave) and footer paint `--bento-brand-bg`, and `railTransition.css` declares
+  `transition: background-color` on the spring pair on them only while
+  `data-bento-rail-transition` is present, `measure` included: an expand drops
+  `data-bento-collapsed` in its measure step, and the colour must start leaving the rail in
+  that flush. Theme and mode changes happen without the attribute, so they stay instant.
+  The footer backdrop (`::before`, created at the phase start) takes `background-color:
+inherit` from the footer, which is what fades. The tab list band and the workspace
+  switcher square move to `--bento-rail-band-fill` and `--bento-rail-square-base` (neutral-18
+  with side panels, reset in `.bento-shell-app--no-side-panels` to neutral-12 and neutral-5,
+  the old values), constant rather than following the look: the rail band
+  (`::after` in a phase) and the square (`::before`) are the rail's own parts and must keep
+  their colour while they fade out in an expand.
 - The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
   `afterMotion` on the host's slide animation (never a copied duration): it reads the
   animation's computed duration and delay, 400 ms with the default tokens, and waits
@@ -1024,8 +1068,11 @@ Ladle: the story "App / Collapse choreography (chrome push)" reproduces the push
 clip and frame counter-translation on the same tokens, chrome starting after the shell's
 commit, settle on `afterMotion`), with slow motion, pinned panels, a folder, an active
 row and a long list; `dir=collapse|expand&t=<ms>` freezes a frame (the motion tokens are
-scaled 100x first, so no end timer fires while frozen), `state=rail`, `pinned=1` and
-`scroll=<px>` set up the other cases. In a Bento build, the checklist in
+scaled 100x first, so no end timer fires while frozen), `state=rail`, `pinned=1`,
+`panels=none` (no side panels: the rail stays on the brand background) and `scroll=<px>`
+set up the other cases. The story's window paints chrome's main colour around the page and
+reproduces the host's fading edge line, so the rail look and its fade are visible there;
+"App / Collapsed (narrow rail)" and "App / Collapsed, no side panels" are the static pair. In a Bento build, the checklist in
 [manual-regression-areas.md](manual-regression-areas.md) (the collapse choreography
 item) and the manual verification below.
 
@@ -1045,11 +1092,19 @@ position), Cmd+S again mid-slide in both directions, and ten quick presses; with
 reduced-motion setting on (no slide; in hide mode the hide, the show and the hover
 reveal are instant, with no rail slide over the page after the page has moved);
 collapse and expand with side panels open and with none (`bento-no-side-panels`): the
-shell's pixels do not move while the strip's right edge slides, nothing fades, a 1px
-line in the sidebar divider colour follows the edge (absent with no side panels), and
-the frame after the settle matches the last frame before it at the edge column (with a
-shell that reorganises during the slide, the rest of the sidebar too); hide and show are a
-plain slide (no clip, no line, no frame animation);
+shell's pixels do not move while the strip's right edge slides, the strip does not fade, a 1px
+line in the sidebar divider colour follows the edge (absent with no side panels) and fades
+out with a collapse and in with an expand, and the frame after the settle matches the last
+frame before it at the edge column (with a shell that reorganises during the slide, the
+rest of the sidebar too); hide and show are a plain slide (no clip, no line, no frame
+animation); the rail colour: with side panels, the collapsed rail, the window controls and
+the gap around the page are one colour with no line on the rail's right edge, the toolbar's
+left segment, the host, the divider and the edge line fade together with the slide (raise
+the spring tokens as above and read `--bento-toolbar-left-bg` and the shell's
+`.bento-shell-app` background at several `currentTime` values), the tab list band and the
+workspace switcher square are neutral-18, with no side panels the rail stays neutral-5 and
+nothing changes colour, and hide, show, boot, reduced motion and theme or mode changes switch
+the colour with no fade, in every theme, light and dark, and with contrast "more";
 to watch a push slowly, raise `--muxui-semantic-motion-reveal-transition-spring-duration`
 on the chrome root and on the shell's `<html>` (the plain `-reveal-duration` no longer
 moves it; the hover reveal's slide-over runs on the same token; scale the `state` and
@@ -1159,6 +1214,29 @@ partway, collapsed and expanded (the custom scrollbar matches the rail).
   duration makes the shell document drift against the edge. Without the clip the part of
   the document beyond the strip covers the page. The frame is not a layout box for the
   slide: it keeps the host's full width until the settle.
+- Do not flip `bento-sidebar-rail` before the push's layout reads or apart from the
+  `bento-sidebar-push` attribute, and do not key the colour on the settled
+  `bento-sidebar-collapsed` class: a collapse keeps the host wide until the slide ends and
+  an expand widens it at the start, so the settled class would switch the colour at the
+  wrong end. A flush between the reads and the two attributes also starts the fade from
+  the wrong value. The colour follows the target.
+- Do not transition a gradient stop, or `background-color` of an element a push creates:
+  the toolbar's colour is the registered `--bento-toolbar-left-bg` (non-inherited, so only
+  the toolbar surfaces restyle per frame; an inherited registered property would restyle the
+  whole chrome tree every frame of the slide), and the pseudo-elements the push creates
+  (`#nav-bar::before`, `#bento-shell-host::after`, the shell footer's `::before`) take
+  their colour from a parent that transitions (`inherit`) or run an opacity animation.
+  Declare the shell's colour transitions only under `[data-bento-rail-transition]`
+  (`measure` too), never on the elements always, or a theme change would fade.
+- The colour transition declares `transition` on `#navigator-toolbox`, `#TabsToolbar` and
+  `#nav-bar`, which replaces Firefox's own transition list there for the push. Keep
+  `#navigator-toolbox:not([fullscreenShouldAnimate])` in that selector: upstream's
+  `transition: 0.8s margin-top ease-out` on `[fullscreenShouldAnimate]` is the fullscreen
+  toolbox reveal, and pressing Cmd+S while it ran cancelled it and snapped the toolbox. Do
+  not widen the list of elements without checking what upstream transitions they carry.
+- Do not draw the rail's right edge line: `.bento-shell-app`'s border, the chrome divider
+  and the push edge line all go in the rail look (with side panels). Dropping only the
+  shell's border leaves the chrome divider, which paints the same pixel above it.
 - Do not bring back a host fade to hide the shell's layout switch (the old
   `.bento-sidebar-push-fade` and fade keyframes are gone). It only masked a shell that
   switched layout at the settle with the document in motion; the shell document now stays

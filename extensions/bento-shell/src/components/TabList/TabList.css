@@ -47,7 +47,7 @@
     height: calc(var(--bento-tab-row-height) + var(--space-3xs));
     padding-block-start: var(--space-3xs);
     padding-inline: var(--space-3xs);
-    background-color: var(--neutral-5);
+    background-color: var(--bento-brand-bg);
   }
 
   .bento-tab-list-pane__scroller {
@@ -142,9 +142,14 @@
   }
 
   /* The fill is a property so the collapse choreography's rail band
-     (sidebar/railTransition.css) paints the same colour. */
+     (sidebar/railTransition.css, which paints --bento-rail-band-fill) is the same colour
+     as the rail's own band. */
   .bento-tab-list__viewport--top-surface {
     --bento-tab-list-top-surface-fill: var(--neutral-12);
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list__viewport--top-surface {
+    --bento-tab-list-top-surface-fill: var(--bento-rail-band-fill);
   }
 
   .bento-tab-list__viewport--top-surface::before {

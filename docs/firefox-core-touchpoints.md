@@ -298,7 +298,8 @@ Use this shape for new or changed touchpoints:
   chrome attribute while keeping toolbar and window controls visible on the
   sidebar-matched background in no-panel view, and on the sidebar-matched
   background on the sidebar side of the divider plus neutral-14 on the
-  main-content side when panels are visible, and without Firefox's toolbox
+  main-content side when panels are visible (the same neutral-14 on both sides while the
+  sidebar is the collapsed rail), and without Firefox's toolbox
   bottom separator,
   extends the sidebar right divider through the native top toolbar,
   aligns Firefox's native Back/Forward/Reload control cluster with the Bento
@@ -1080,7 +1081,7 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `.bento-sidebar-push-page`, the `bento-sidebar-push-*` keyframes in this sheet),
   on the Mux reveal role's spring pair (400 ms, no overshoot; the hidden-sidebar
   edge-hover slide-over uses the same pair), and `#nav-bar::before` is used while it
-  runs. Nothing fades. Collapse and expand also keep the shell document still: the host
+  runs. The strip does not fade. Collapse and expand also keep the shell document still: the host
   `#bento-shell-host` (a XUL `vbox`) takes `overflow: clip`, the remote
   `<browser id="bento-shell-frame">` inside it gets an opposite `transform` animation on
   the host's timing (`bento-sidebar-push-frame-collapse` and `-frame-expand`), and a
@@ -1115,6 +1116,38 @@ rel="stylesheet">` load and error events on chrome documents, and the
   after a Firefox bump,
   re-read `browser-box.inc.xhtml` for added in-flow children of `#browser` and for
   any `::before` or `::after` rule on `#nav-bar`.
+- Rail colour (2026-10-22): the collapsed rail takes the toolbar's main colour (the shell's
+  rail look; chrome's `:root[bento-sidebar-rail]`, set by `applyChromeSidebarCollapsed`),
+  with no right edge line, and the colour fades with a collapse or expand. Firefox surface
+  depended on: a registered, non-inherited `<color>` custom property
+  (`@property --bento-toolbar-left-bg`) transitioning on `#navigator-toolbox`,
+  `#TabsToolbar` and `#nav-bar` and read by their gradients, `inherit` of it by the
+  generated `#nav-bar::before` (the band), `background-color` and opacity animation on the
+  `#bento-shell-host` XUL `vbox` and its `::after`, and the layered
+  `bento.chrome-theme` `#bento-shell-host { background-color: ... !important }` rule in
+  this sheet following the one in `bento-chrome-theme.css`. The push's `transition` on
+  `#navigator-toolbox`, `#TabsToolbar` and `#nav-bar` replaces whatever transition list
+  Firefox gives them for the 400 ms (an extension theme's `transition:
+var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme changes
+  during a push, and the `.browser-titlebar` inactive-window opacity fade on `#nav-bar`
+  only if the window loses or gains focus during one), so it skips `#navigator-toolbox[fullscreenShouldAnimate]`: upstream's
+  `transition: 0.8s margin-top ease-out` on that attribute (`browser-shared.css`, set by
+  `browser-fullScreenAndPointerLock.js`) is the fullscreen reveal, and replacing it
+  cancelled the animation and snapped the toolbox. That attribute selector is the one new
+  upstream dependency, recorded in the firefox-compat registry (engine-only entry). No
+  private Firefox member is added. Regression checks for future
+  updates: with side panels open, collapse and expand with Cmd+S (and raise the spring
+  duration token as above) and check that the toolbar segment left of the split, the
+  host's background, the divider line and the host's edge line all reach the main colour
+  or the sidebar colour together, with no snap at the settle; that the window controls
+  and the rail are one surface in the rail; with no side panels, that nothing changes
+  colour; that hide, show and a theme change switch at once; and that the toolbox's
+  fullscreen transition survives a push (enter fullscreen, press Cmd+S while the toolbox
+  slides: its `margin-top` animation keeps running to the end). After a Firefox bump,
+  confirm `@property` transitions still animate on these toolbar elements (check
+  `getComputedStyle($0).getPropertyValue('--bento-toolbar-left-bg')` mid-push), and
+  re-read any new `transition` or background rule on `#navigator-toolbox`, `#nav-bar` or
+  `#TabsToolbar` in the Firefox toolbar stylesheets.
 - Firefox 158.0 review (2026-10-14): `Loader::LoadStyleLink`,
   `LinkStyle::GetSheetForBindings` and `AppWindow::OnChromeLoaded` still exist;
   `Loader.cpp` changed only the stylesheet MIME-type diagnostic (`MimeNotCss`,
@@ -2342,6 +2375,7 @@ below is generated; edit the registry, then run
 | `tabpanels split-view-panel classes` | source (engine only) | Bento styles and cleans .split-view-panel, .split-view-panel-active and the column attribute. | `reconcilePanelsSplitView`, `forceMainOnlyChromeState` | `toolkit/content/widgets/tabbox.js:533` |
 | `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:607` |
 | `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule. | `src/browser/base/content/bento-shell-mount.css#split-view-footer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4114` |
+| `#navigator-toolbox[fullscreenShouldAnimate]` | source (engine only) | The sidebar push's colour transition on the toolbar surfaces replaces their transition list, so it skips #navigator-toolbox while Firefox's fullscreen reveal (`transition: 0.8s margin-top` on this attribute, set by browser-fullScreenAndPointerLock.js) runs. | `src/browser/base/content/bento-shell-mount.css#fullscreenShouldAnimate` | `browser/themes/shared/browser-shared.css:221` |
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3116` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:241` |
 | `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:237` |

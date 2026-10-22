@@ -34,6 +34,14 @@ When changing core functionality, manually verify at least the affected subset:
   Known snaps at the end of a collapse and the start of an expand: a multi-selected (not
   active) row's tint, an audible or muted row's favicon (the speaker control shifts it),
   an open sidebar search and a sidebar card fade instead of moving;
+- the rail colour (with side panels the collapsed rail takes the toolbar's colour: one
+  surface with the window controls and the gap around the page, no divider line on its right
+  edge; the colour and the lines fade with a collapse or expand on the same spring as the
+  slide, with no snap at either end, in the toolbar, the host and the shell; no side
+  panels keep neutral-5 throughout; the tab list band and the switcher square are
+  neutral-18 in the rail; hide, show, reduced motion, boot and theme changes are instant; the
+  hide-mode edge-hover rail takes the toolbar's colour too), in a light and a dark theme and
+  with contrast "more";
 - workspace switch with different panel sets;
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;

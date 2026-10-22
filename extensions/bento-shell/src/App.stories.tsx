@@ -16,7 +16,7 @@ import { App } from './App';
 import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
 import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';
-import { seedPanelsHydrated } from './state/__fixtures__/panels';
+import { seedPanelsByWorkspace, seedPanelsHydrated } from './state/__fixtures__/panels';
 import { seedTabFolders } from './state/__fixtures__/tabFolders';
 import { seedEmptyPinnedPanels } from './state/__fixtures__/pinnedPanels';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
@@ -34,6 +34,17 @@ import { makePinnedEntry, seedPinnedPanels } from './state/__fixtures__/pinnedPa
 import './sidebar/railTransition.stories.css';
 
 const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
+
+// Most windows have side panels, and the rail then takes the toolbar's colour (the rail
+// look in app.css). A window with none keeps the rail on the brand background, which is
+// the toolbar's colour there. One panel per workspace is enough to tell them apart.
+function seedSidePanels(workspaceIds: string[], present: boolean) {
+  if (present) {
+    seedPanelsByWorkspace(Object.fromEntries(workspaceIds.map((id) => [id, [1]])));
+  } else {
+    seedPanelsHydrated(workspaceIds);
+  }
+}
 
 function ShellFrame({
   children,
@@ -70,7 +81,7 @@ function ShellFrame({
 // stores are reset: a fresh shell has no address snapshot, no pinned panels and
 // no import running until the chrome bridge sends them, and these stores
 // outlive a story switch, so another story's data would otherwise stay.
-function seedShell(sidebarCollapsed: boolean) {
+function seedShell(sidebarCollapsed: boolean, sidePanels = true) {
   const workspaces = seedManyWorkspaces();
   seedTabsAcrossWorkspaces(
     [
@@ -81,7 +92,10 @@ function seedShell(sidebarCollapsed: boolean) {
     'w-work',
   );
   seedTabFolders([]);
-  seedPanelsHydrated(workspaces.map((w) => w.id));
+  seedSidePanels(
+    workspaces.map((w) => w.id),
+    sidePanels,
+  );
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
   useSidebarAddressStore.getState().reset();
   seedEmptyPinnedPanels();
@@ -117,6 +131,19 @@ export const Collapsed = () => {
 };
 
 Collapsed.storyName = 'Collapsed (narrow rail)';
+
+export const CollapsedNoSidePanels = () => {
+  useEffect(() => {
+    seedShell(true, false);
+  }, []);
+  return (
+    <ShellFrame width={COLLAPSED_SIDEBAR_WIDTH}>
+      <App />
+    </ShellFrame>
+  );
+};
+
+CollapsedNoSidePanels.storyName = 'Collapsed, no side panels (rail stays brand background)';
 
 export const CollapseToggle = () => {
   // Interactive demo. The App's collapse IconButton dispatches
@@ -162,7 +189,12 @@ CollapseToggle.storyName = 'Collapse toggle (interactive)';
 // of a collapse (afterMotion on the slide, as bento-shell-mount.js does). A toggle
 // mid-slide settles chrome at the end state and starts the new slide from there.
 //
+// The window around it is chrome's: the page area is the toolbar's main colour, the host
+// edge line fades with the colour change, and the rail look (app.css) and its fade
+// (railTransition.css) run on the App itself.
+//
 // URL hooks for screenshots (append to the story URL): state=rail starts collapsed,
+// panels=none removes the side panels (the rail stays on the brand background),
 // pinned=1 shows pinned panels, folder=long puts most tabs in the folder (its children
 // active and indented), ws=personal starts in the Personal workspace, switch=1 switches
 // to Personal while the frozen phase runs, scroll=<px> scrolls the list first, and
@@ -191,7 +223,12 @@ function scaleMotionTokens(scale: number) {
   }
 }
 
-function seedChoreography(collapsed: boolean, pinned: boolean, longFolder: boolean) {
+function seedChoreography(
+  collapsed: boolean,
+  pinned: boolean,
+  longFolder: boolean,
+  sidePanels: boolean,
+) {
   const workspaces = seedManyWorkspaces();
   const tabs = seedTabsAcrossWorkspaces(
     [
@@ -213,7 +250,10 @@ function seedChoreography(collapsed: boolean, pinned: boolean, longFolder: boole
   seedTabFolders([
     makeFolder({ id: 'folder-reading', workspaceId: 'w-work', name: 'Reading', order: 1 }),
   ]);
-  seedPanelsHydrated(workspaces.map((w) => w.id));
+  seedSidePanels(
+    workspaces.map((w) => w.id),
+    sidePanels,
+  );
   useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed: collapsed });
   useSidebarAddressStore.getState().reset();
   seedPinnedPanels(
@@ -247,7 +287,12 @@ export const CollapseChoreography = () => {
   const appliedCollapsed = useRef(startCollapsed);
 
   useEffect(() => {
-    seedChoreography(startCollapsed, pinned, params.get('folder') === 'long');
+    seedChoreography(
+      startCollapsed,
+      pinned,
+      params.get('folder') === 'long',
+      params.get('panels') !== 'none',
+    );
     if (params.get('ws') === 'personal') switchToPersonal();
     setRailWidth(measureRailWidth());
     const channel = new BroadcastChannel('bento-shell-bus');
