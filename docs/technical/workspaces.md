@@ -786,6 +786,11 @@ payload; `applyChromeSidebarCollapsed` in `bento-shell-mount.js` receives them a
 slide. A toggle is the setting changing; every other payload repeats the same
 value and does nothing.
 
+A private window does not use the saved values: its collapsed and hidden state (and
+its colour mode) are its own, held by the shell background and substituted into the
+settings its documents receive, so the same payload path applies them to that window
+only. See "Window-local sidebar state" in [shell-chrome-bridge.md](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay).
+
 The slide ("push") makes the sidebar and the page one strip. Layout changes once
 per toggle, only `transform` animates (the strip does not fade; the rail colour does,
 see "Rail colour" below), and every slide (the host, the
@@ -1118,6 +1123,112 @@ In a build,
 move away: the slide-over takes the spring duration each way, with no overshoot, and a
 re-hover mid-slide reverses it smoothly; cold start collapsed and expanded (no animation); a long tab list scrolled
 partway, collapsed and expanded (the custom scrollbar matches the rail).
+
+## Private window workspace
+
+Each private window has one temporary workspace named "Private". It exists to give
+the window's tabs an owner without letting a private window touch the persisted
+workspaces.
+
+- Source of truth: `WorkspaceStore.#privateByWindow` (`workspaces/WorkspaceStore.ts`).
+  It is a separate map on purpose, so every loop over the persisted workspaces
+  (snapshot, persistence, fallback and replacement picks, ownership) is regular-only
+  by construction. `ensurePrivate(windowId)` creates it, `forgetPrivateWindow` drops
+  it. It is created when tools first sees the window announced as private
+  (`createWindowRegistry`'s `onWindow` hook, before the window counts as live, so no
+  message for it is handled earlier) and again on the window's `shell/hello`; it is
+  discarded on `windows.onRemoved`. After a tools restart the next `shell/hello`
+  recreates it with a new id and the window's private tabs are adopted into it.
+- Id: `private:<uuid>`. `isEphemeralWorkspaceId` (`workspaces/ephemeral.ts`) is the
+  one predicate every persistence boundary asks: `WorkspaceStore` (never in
+  `snapshot()` or `persistCurrentState`), `panels/Persistence.ts` (layouts, main
+  widths, strip scroll), `tabFolders/Persistence.ts`, `pinnedPanels/Persistence.ts`,
+  `PanelMarkerSync.sync`, `parkTabsForClosingWindow`, the graph publication's
+  folders, and `TabRegistry.assignWorkspace*` (no `bento.workspaceId` session value).
+  Window values (`bento.activeWorkspaceId`) are never written for a private window.
+- Membership: a private tab is never assigned like a regular one (ordinary assignment
+  and adoption skip it). It joins its window's Private workspace in memory when it is
+  created, when the workspace is created (existing private tabs), and when it moves to
+  another private window (`browser.tabs.onAttached`).
+- Audiences: the Private workspace, its tabs and its `panels/sync` reach only that
+  window's documents; regular documents never see them, and a private window's lists
+  show only its own Private workspace (no pins or folders). Tools sends them wrapped
+  in an `AudienceEvent` (`messaging/audience.ts`; the tab delta batch is split with
+  `TabRegistry.privateWindowOf`, decided when the delta is queued because a removed tab
+  is already forgotten at delivery). Snapshot requests are answered to the audience
+  of the asking window.
+- Chrome-bound changes: chrome learns the sidebar collapse, colour mode and other
+  settings from the `BENTO_PANELS` payload of a `panels/sync`, so a settings or
+  saved-panels change re-fires `panels/sync` for `WorkspaceStore.shownWorkspaceIds()`
+  (the global fallback, each window's active workspace and each private window's
+  Private workspace). Walking `getActiveIdByWindow()` alone is regular-only and leaves a
+  private window's chrome on the old collapse state and colour mode (the sidebar frame
+  changes, the host does not). The sleep policy's protected panel tabs use the same set.
+- Audience of a `panels/sync` is decided before its reads await (`sendWorkspaceEvent` in
+  `messaging/audience.ts`) and checked again after: a private window can close while
+  `browser.tabs.get` is pending, which forgets its Private workspace, and a lookup after
+  the await would then call its panels regular and send their URLs and titles to every
+  regular window. An ephemeral workspace whose window is gone sends nothing.
+- A tab moved between two private windows (`TabRegistry.#onAttached`) is a `removed`
+  delta to the old window's documents and a full `created` to the new window's: each
+  keeps its own list, and an `updated` about an unknown tab is ignored.
+- Existence: `WorkspaceStore.has` is regular-only and stays so for workspace mutations;
+  `hasForWindow(id, windowId)` is what panel operations use (focus from the palette, strip
+  scroll, restoring a panel after a cancelled close prompt): a private window has exactly
+  its own Private workspace.
+- Session values: a private tab's name stays in memory (`TabRegistry.rename`, and the clear
+  on navigation), and `setPanelMarker` / `setDevtoolsPanelMarker` write nothing for an
+  ephemeral workspace, whoever calls them.
+- `panel/focusedChanged` names a tab and a window, so tools answers it to the asking
+  window's audience (`replyToSource`) and the shell background lists it among the
+  workspace-bound events, so one that arrives unwrapped is regular-only.
+- Refusals (`crossesPrivateBoundary` in `messaging/protocol-handler.ts`, dropped with
+  a warning): from a private window, anything under `workspace/`, `backup/`,
+  `externalMerge/`, `tabFolder/`, `pinnedPanel/`, plus `tab(s)/assignWorkspace`,
+  `tabs/moveToNewWorkspace`, `tabs/setFolder`, `pinnedPanels/reorder` and
+  `savedPanels/save` (the shared bookmarks and backups); from a regular
+  window, assigning a tab to a Private workspace or moving a private tab. Panel, pin and
+  folder actions also name tabs by id (`namedTabIds`): a regular window naming a private
+  tab is refused, and a private window naming a tab that is not in its own window (a
+  regular tab, another private window's, or an unknown id) is refused. A cross switch
+  is also refused by the store: `activate` is a no-op between a private window and any
+  regular workspace.
+- Close: the workspace, its panels and its remembered active tab are dropped; no
+  regular workspace's ownership or tabs change.
+- Manual verification: open a private window, check the sidebar lists the "Private"
+  workspace and its tabs, a regular window lists only its own workspaces, then close the
+  private window and confirm `browser.storage.local` (`bento.workspaces`, `bento.panels`,
+  `bento.tabFolders`, `bento.pinnedPanels`, `bento.parkedWorkspaceTabs`) holds no
+  `private:` id.
+- Sidebar UI ("Marked window"): `state/privateWindow.ts` `usePrivateWindow()` is true
+  when the document's frame URL carries `#bentoPrivate=1` (known before any snapshot) or
+  the window's active workspace has `private: true` (the same state Ladle seeds with
+  `seedPrivate()`). In `App.tsx` it swaps the workspace switcher for
+  `components/PrivateBand`, drops `PinnedPanels`, and removes `move-to-workspace`,
+  `move-selected-to-new-workspace` and `move-to-folder` from the tab context menu. The
+  command palette (`CommandPalette.tsx`) omits the Workspaces commands and "Merge browser
+  session". The mount script skips the panel header's "Pin this panel" button
+  (`BentoPrivateBrowsingUtils.isWindowPrivate(window)`). Nothing can reach the workspace
+  switcher, edit-workspace or theme picker overlays from a private window, and tools
+  refuses their actions regardless. The Private workspace has no `themeId`, so the
+  document and chrome resolve the Default theme.
+- `PrivateBand` is one Mux `Button` (the band) in a Mux `Popover` (the note,
+  `modal={false}`, `placement="bottom-start"`); the fill is the Mux neutral step 90 with
+  its paired `-fg`, which inverts with the page's mode without a theme scope, and the
+  note overrides the popover's own strong (inverted) surface with the raised one, so the
+  band stays the only inverted block. In the rail (`rail`, from the sidebar-collapsed
+  setting; the layout itself follows `html[data-bento-collapsed]`) the shell frame is
+  52 px wide and would clip a popover, so the note is the chrome-side rail tooltip
+  (`useRailTooltip`, `BENTO_RAIL_TOOLTIP`, see "Tooltip document" in
+  [overlay-documents.md](overlay-documents.md)) on hover and keyboard focus. The band's
+  text joins the collapse choreography's fade (`railTransition.css`).
+- Manual verification (expanded, note open, rail; dark and light): the band reads
+  "Private" over "Nothing here is saved." at the top of the sidebar; click it and the note
+  appears under it, Escape or a click outside closes it; collapse the sidebar and the band
+  is the glyph alone, hover it for 400 ms and the note shows beside the rail; no workspace
+  switcher, no pinned rail, no "Pin this panel" button on a side panel, and the tab menu
+  has no workspace or folder entries; the command palette has no "Switch to" or "New
+  workspace" rows; a regular window next to it is unchanged.
 
 ## Workspace pitfalls
 

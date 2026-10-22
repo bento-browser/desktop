@@ -61,6 +61,9 @@ export interface Workspace {
   /** Optional emoji or short string rendered in the workspace switcher. */
   icon?: string;
   createdAt: number;
+  /** The temporary Private workspace of one private window. It lives in memory
+   * only and is sent to that window's documents alone. */
+  private?: true;
 }
 
 export type WorkspaceDelta =

@@ -137,7 +137,10 @@ const FUNCTIONS = [
   'isEmbeddedImportVisible',
   'showChromeMenu',
   'hideChromeMenu',
+  'isDocumentLocalShellAction',
+  'postShellActionThroughBusHub',
   'dispatchShellAction',
+  'savePanelMenuItems',
   'dispatchAddrbarOpen',
   'dispatchMergePaletteLifecycle',
   'attachPaletteEscListener',
@@ -163,6 +166,8 @@ const CONSTANTS = [
 const EXPORTED = [
   'overlays',
   'menuOnSelectByContext',
+  'dispatchShellAction',
+  'savePanelMenuItems',
   'MOTION_UNAVAILABLE_CEILING_MS',
   'showPalette',
   'hidePalette',
@@ -279,7 +284,7 @@ const HOSTS = {
  * `fadeMs` is the opacity transition the stylesheet gives every overlay host (the Mux modal
  * role); 0 stands for reduced motion. An inline `transition: none` wins, as in CSS.
  */
-function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
+function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
   let clock = 1000;
   let nextTimer = 1;
   const timers = new Map();
@@ -303,6 +308,7 @@ function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
     },
   };
   const sent = [];
+  const hubPosts = [];
   const events = {
     navigations: [],
     scrim: new Set(),
@@ -392,6 +398,22 @@ function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
     hideOverlayToolbarScrim: (owner) => events.scrim.delete(owner),
     sendImportSourcesToWelcome: async () => {},
     getChromeWindowId: () => windowId,
+    // A private window's tools-bound actions go to the BentoShellBus hub instead of
+    // the frame script; the hub records what chrome posts to it.
+    BentoPrivateBrowsingUtils: { isWindowPrivate: () => privateWindow },
+    ChromeUtils: {
+      importESModule: (url) => {
+        assert.equal(url, 'resource:///actors/BentoShellBusParent.sys.mjs');
+        return {
+          BentoShellBusHub: {
+            postFromChrome: (win, message) => {
+              hubPosts.push({ win, message });
+              return true;
+            },
+          },
+        };
+      },
+    },
     computeAddrbarAnchoredPlacement: () => null,
     resolveClipboardUrlSuggestion: () => '',
     // The frame scripts' URLs only name what loadFrameScript loads.
@@ -473,6 +495,7 @@ function makeWorld({ windowId = 7, fadeMs = 180 } = {}) {
         .map((message) => message.data)
         .filter((data) => data.type === 'open'),
     shellActions: () => messages('BentoShellAction').map((message) => message.data),
+    hubPosts: () => plain(hubPosts.map(({ message }) => message)),
     menuOpens: () =>
       messages('BentoShellAction')
         .map((message) => message.data)
@@ -973,6 +996,96 @@ test('a failed window lookup leaves the id out, so receivers accept the message'
   world.showChromeMenu({ ...MENU });
   assert.equal(world.addrbarOpens()[0].windowId, null);
   assert.equal('__windowId' in world.menuOpens()[0], false);
+});
+
+// ─── A private window cannot reach the shell background over BroadcastChannel ──
+
+test('a private window posts tools-bound actions to the bus hub, not the frame script', () => {
+  const world = warmWorld({ windowId: 7, privateWindow: true });
+
+  assert.equal(
+    world.dispatchShellAction({ type: 'tab/openUrl', url: 'https://example.com' }),
+    true,
+  );
+
+  assert.deepEqual(world.hubPosts(), [
+    {
+      kind: 'action',
+      action: { type: 'tab/openUrl', url: 'https://example.com' },
+    },
+  ]);
+  assert.deepEqual(world.shellActions(), []);
+});
+
+test('a private window keeps menu/open and ui/* on the frame script, once', () => {
+  const world = warmWorld({ windowId: 7, privateWindow: true });
+
+  world.showChromeMenu({ ...MENU });
+  world.dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: 3 } });
+
+  assert.deepEqual(
+    world.shellActions().map((action) => action.type),
+    ['menu/open', 'ui/renameRequest'],
+  );
+  assert.deepEqual(world.hubPosts(), []);
+});
+
+test('the panel options menu offers Save panel in a regular window, and not in a private one', () => {
+  const regular = warmWorld({ windowId: 7 }).savePanelMenuItems();
+  const privateItems = warmWorld({ windowId: 7, privateWindow: true }).savePanelMenuItems();
+
+  assert.deepEqual(
+    Array.from(regular, (item) => item.id),
+    ['sep-save-panel', 'save-panel'],
+  );
+  assert.equal(privateItems.length, 0);
+});
+
+test('a regular window never uses the hub', () => {
+  const world = warmWorld({ windowId: 7 });
+
+  world.dispatchShellAction({ type: 'tab/openUrl', url: 'https://example.com' });
+
+  assert.equal(world.shellActions().length, 1);
+  assert.deepEqual(world.hubPosts(), []);
+});
+
+test("setFrameSrc marks a private window's frames with #bentoPrivate=1, and only those", () => {
+  const navigations = [];
+  const frame = { id: 'bento-palette-frame' };
+  const run = (privateWindow) => {
+    const sandbox = {
+      document: { getElementById: () => frame },
+      window: {},
+      console: { warn: () => {} },
+      setTimeout: () => {},
+      URLSearchParams,
+      Object,
+      String,
+      moz: (path) => `moz-extension://host${path}`,
+      getChromeWindowId: () => 7,
+      navigateChromeFrame: (_frame, url) => navigations.push(url),
+      BentoPrivateBrowsingUtils: { isWindowPrivate: () => privateWindow },
+      SET_FRAME_SRC_MAX_RETRIES: 20,
+      SET_FRAME_SRC_POLICY_RETRY_MIN_MS: 50,
+      SET_FRAME_SRC_POLICY_RETRY_MAX_MS: 2000,
+      SET_FRAME_SRC_POLICY_GIVE_UP_MS: 30000,
+      ADDON_ID: 'bento-shell@bento.app',
+    };
+    vm.runInNewContext(
+      `"use strict";${extractFunction('setFrameSrc')}\nsetFrameSrc('bento-palette-frame', '/dist/palette.html');`,
+      sandbox,
+      { filename: 'bento-shell-mount.js#setFrameSrc' },
+    );
+  };
+
+  run(true);
+  run(false);
+
+  assert.deepEqual(navigations, [
+    'moz-extension://host/dist/palette.html#bentoWindowId=7&bentoPrivate=1',
+    'moz-extension://host/dist/palette.html#bentoWindowId=7',
+  ]);
 });
 
 // ─── The hide waits for the fade the stylesheet configures ──────────────────

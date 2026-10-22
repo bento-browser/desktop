@@ -113,6 +113,24 @@ test('the real registry, its call sites, the probe list, and the docs table agre
   assert.deepEqual(checkDocs(registry), []);
 });
 
+test('every Firefox member the BentoShellBus actor reads is registered with the actor as a site', () => {
+  const actor = 'src/browser/actors/BentoShellBusParent.sys.mjs';
+  const source = fs.readFileSync(new URL(`../${actor}`, import.meta.url), 'utf8');
+  const members = {
+    manager: 'JSWindowActorParent.manager',
+    documentURI: 'WindowGlobalParent.documentURI',
+    getByID: 'WebExtensionPolicy.getByID',
+    mozExtensionHostname: 'WebExtensionPolicy.mozExtensionHostname',
+    topChromeWindow: 'CanonicalBrowsingContext.topChromeWindow',
+  };
+  for (const [token, id] of Object.entries(members)) {
+    assert.ok(source.includes(token), `the actor no longer reads ${token}: drop ${id}`);
+    const entry = registry.members.find((member) => member.id === id);
+    assert.ok(entry, `${id} is in the registry`);
+    assert.ok(entry.sites.includes(`${actor}#${token}`), `${id} names the actor as a site`);
+  }
+});
+
 test('the mount probe ids equal the registry entries marked R', () => {
   // The section runs in another realm; copy its entries before comparing.
   const mounted = Array.from(loadProbes().entries);

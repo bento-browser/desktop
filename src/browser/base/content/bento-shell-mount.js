@@ -1675,6 +1675,10 @@
     // within the same origin. The hash form sidesteps that entirely.
     const hashParams = new URLSearchParams();
     if (windowId !== null) hashParams.set('bentoWindowId', String(windowId));
+    // Documents in a private window talk to the shell background through the
+    // BentoShellBus actor; BroadcastChannel is partitioned away from it. The
+    // shell reads this flag in useToolsPort to pick its transport.
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) hashParams.set('bentoPrivate', '1');
     for (const [key, value] of Object.entries(extraHashParams || {})) {
       if (value !== null && value !== undefined && value !== '') {
         hashParams.set(key, String(value));
@@ -6527,6 +6531,16 @@
     }
   }
 
+  // The end of the panel options menu: Save panel, which bookmarks the panel's URL and title
+  // into the shared Saved panels folder. A private window saves nothing, so it has no such item.
+  function savePanelMenuItems() {
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return [];
+    return [
+      { id: 'sep-save-panel', kind: 'separator' },
+      { id: 'save-panel', label: 'Save panel' },
+    ];
+  }
+
   function setPanelPinButtonState(pinBtn, tabId) {
     if (!pinBtn || !Number.isFinite(tabId)) return;
     const isPinned = currentPinnedTabIdsInWorkspace.has(tabId);
@@ -6941,8 +6955,13 @@
       togglePanelPageBookmark(getActionBrowser(), bookmarkBtn);
     });
 
+    // A private window stores nothing, so it has no pinned panels to pin to.
     let pinBtn = null;
-    if (Number.isFinite(tabId) && !currentDevtoolsLinkByTabId.has(tabId)) {
+    if (
+      Number.isFinite(tabId) &&
+      !currentDevtoolsLinkByTabId.has(tabId) &&
+      !BentoPrivateBrowsingUtils.isWindowPrivate(window)
+    ) {
       pinBtn = makeHeaderButton('Pin this panel', ICONS.pin, () => {
         if (!currentWorkspaceId) return;
         const panelEl = pinBtn.closest?.('[data-bento-panel-tab-id]');
@@ -7032,8 +7051,7 @@
           { id: 'custom-widths', label: 'Custom panel widths', items: sizeItems },
           ...subdivisionItems,
           { id: 'hide-header', label: 'Hide header' },
-          { id: 'sep-save-panel', kind: 'separator' },
-          { id: 'save-panel', label: 'Save panel' },
+          ...savePanelMenuItems(),
         ];
         showChromeMenu({
           anchor: moreBtn.getBoundingClientRect(),
@@ -9304,10 +9322,36 @@
     };
   }
 
+  // 'menu/open' and 'ui/*' are consumed by other shell documents, never by
+  // tools, so they stay on the frame-script BroadcastChannel path (which works
+  // inside a private window's partition).
+  function isDocumentLocalShellAction(action) {
+    const type = action && action.type;
+    return typeof type === 'string' && (type === 'menu/open' || type.startsWith('ui/'));
+  }
+
+  // A private window's tools-bound actions cannot go over BroadcastChannel (it
+  // is partitioned away from the shell background), so they enter the
+  // BentoShellBus hub directly. The hub stamps the window identity from chrome.
+  function postShellActionThroughBusHub(wireAction) {
+    try {
+      const { BentoShellBusHub } = ChromeUtils.importESModule(
+        'resource:///actors/BentoShellBusParent.sys.mjs',
+      );
+      return BentoShellBusHub.postFromChrome(window, { kind: 'action', action: wireAction });
+    } catch (err) {
+      console.warn('[bento-shell-mount] private shell action relay failed:', err);
+      return false;
+    }
+  }
+
   function dispatchShellAction(action) {
     const shellFrame = document.getElementById('bento-shell-frame');
     if (!shellFrame) return false;
     try {
+      if (BentoPrivateBrowsingUtils.isWindowPrivate(window) && !isDocumentLocalShellAction(action)) {
+        return postShellActionThroughBusHub(action);
+      }
       const mm = shellFrame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') return false;
       if (!shellFrame._bentoShellActionScriptLoaded && typeof mm.loadFrameScript === 'function') {
@@ -18416,6 +18460,32 @@
     }
   }
 
+  // Shell bus relay — register the BentoShellBus JSWindowActor pair, once per
+  // process like BentoKey. Firefox partitions BroadcastChannel by
+  // privateBrowsingId, so shell documents in a private window cannot reach the
+  // shell background that way; the actor carries their bus traffic through the
+  // parent-process hub instead (BentoShellBusParent.sys.mjs). It attaches to
+  // every moz-extension document; the parent actor accepts only bento-shell
+  // documents hosted by a browser window. wantUntrusted is required because the
+  // 'bento-bus-up' event is dispatched by the page.
+  function registerShellBusActor() {
+    try {
+      ChromeUtils.registerWindowActor('BentoShellBus', {
+        parent: { esModuleURI: 'resource:///actors/BentoShellBusParent.sys.mjs' },
+        child: {
+          esModuleURI: 'resource:///actors/BentoShellBusChild.sys.mjs',
+          events: { 'bento-bus-up': { capture: true, wantUntrusted: true } },
+        },
+        allFrames: true,
+        matches: ['moz-extension://*/*'],
+      });
+    } catch (err) {
+      if (err?.name !== 'NotSupportedError' && !String(err).includes('NS_ERROR_NOT_AVAILABLE')) {
+        console.warn('[bento-shell-mount] registerShellBusActor failed:', err);
+      }
+    }
+  }
+
   // Listen for the CustomEvent dispatched by BentoKeyParent.
   // navigatePanels is closure-private, so the actor can't call it
   // directly — the event is the bridge.
@@ -18655,6 +18725,7 @@
   attachPanelAcceleratorListener();
   attachWindowResizePerfMode();
   registerContentKeyActor();
+  registerShellBusActor();
   attachContentKeyBridgeListener();
   attachPanelFocusTracker();
   attachRestoredPinnedTabUnload();

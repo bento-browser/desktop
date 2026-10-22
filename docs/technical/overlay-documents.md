@@ -210,6 +210,18 @@ merge palette. Chrome stamps `windowId` in `dispatchAddrbarOpen` and
 `dispatchMergePaletteLifecycle` and the frame scripts forward it;
 `dispatchShellAction` already stamped `__windowId`.
 
+### Transport in private windows
+
+The buses in the table above are `BroadcastChannel`s between chrome frame scripts
+and overlay documents, and between documents. All of them stay on a plain
+`BroadcastChannel`, which works inside a private window's partition (a frame script's
+`content.BroadcastChannel` is created in the document's own partition). Only traffic
+with the shell background, which lives in the regular partition, changes: overlay
+documents of a private window talk to it through the `BentoShellBus` relay (see
+[Private windows: the BentoShellBus relay](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay)).
+Overlay documents have no `browser` API, so the relay is also the only way for them to
+reach the background in any window.
+
 ## Menu-open state of the sidebar New button
 
 The New menu is a chrome menu overlay request (`BENTO_SIDEBAR_CONTEXT_MENU`, see

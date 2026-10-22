@@ -1,4 +1,5 @@
 import type { PanelStore } from './PanelStore';
+import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 import {
   clearDevtoolsPanelMarker,
   clearPanelMarker,
@@ -77,11 +78,13 @@ export function createPanelMarkerSync(panels: MarkerPanels): PanelMarkerSync {
       }
     },
     sync(workspaceId) {
+      // A private window's Private workspace leaves no session marker.
+      if (isEphemeralWorkspaceId(workspaceId)) return;
       if (hasUnappliedEntries(workspaceId)) return;
       for (const tabId of panels.getVisiblePanelIds(workspaceId)) {
         if (panels.isDevtoolsPanel(workspaceId, tabId)) {
           void clearPanelMarker(tabId);
-          void setDevtoolsPanelMarker(tabId);
+          void setDevtoolsPanelMarker(tabId, workspaceId);
           continue;
         }
         void clearDevtoolsPanelMarker(tabId);

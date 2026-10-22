@@ -54,6 +54,15 @@ export function seedLongName(): Workspace[] {
   return workspaces;
 }
 
+/** A private window's only workspace: the temporary one tools makes for it. */
+export function seedPrivate(): Workspace[] {
+  const workspaces: Workspace[] = [
+    makeWorkspace({ id: 'private:fixture', name: 'Private', private: true, createdAt: 1 }),
+  ];
+  seedWorkspaces(workspaces, 'private:fixture');
+  return workspaces;
+}
+
 export function seedEmpty(): void {
   seedWorkspaces([], null);
 }

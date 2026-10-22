@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TabDelta } from '@shared/protocol';
 import { TabRegistry } from './TabRegistry';
+import { partitionTabDeltas } from '../messaging/audience';
 
 interface TabListeners {
   created?: (tab: browser.tabs.Tab) => void;
@@ -512,5 +513,137 @@ describe('TabRegistry URL snapshots', () => {
       windowId: 7,
       tabs: [expect.objectContaining({ id: 1, url: 'https://closing.example/' })],
     });
+  });
+});
+
+describe('TabRegistry private windows', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function registryWithTabs() {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 1, windowId: 1 }),
+      makeTab({ id: 900, windowId: 9, incognito: true }),
+    ]);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    const batches: TabDelta[][] = [];
+    tabs.onDeltas((deltas) => batches.push(deltas));
+    return { listeners, tabs, batches };
+  }
+
+  it('lists regular and private tabs apart', async () => {
+    const { tabs } = await registryWithTabs();
+
+    expect(tabs.snapshotRegular().map((tab) => tab.id)).toEqual([1]);
+    expect(tabs.snapshotPrivate(9).map((tab) => tab.id)).toEqual([900]);
+    expect(tabs.snapshotPrivate(1)).toEqual([]);
+  });
+
+  it('names the private window of a delta, including a removal after the tab is forgotten', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.created?.(makeTab({ id: 901, windowId: 9, incognito: true }));
+    listeners.created?.(makeTab({ id: 2, windowId: 1 }));
+    listeners.removed?.(901, { windowId: 9, isWindowClosing: false });
+    listeners.removed?.(2, { windowId: 1, isWindowClosing: false });
+
+    const deltas = batches.flat();
+    const windows = deltas.map((delta) => [
+      delta.kind,
+      delta.kind === 'created' ? delta.tab.id : delta.id,
+      tabs.privateWindowOf(delta),
+    ]);
+    expect(windows).toEqual([
+      ['created', 901, 9],
+      ['created', 2, undefined],
+      ['removed', 901, 9],
+      ['removed', 2, undefined],
+    ]);
+    expect(tabs.isPrivate(901)).toBe(false);
+  });
+
+  it('assigns a tab to a Private workspace in memory only', async () => {
+    const { tabs, batches } = await registryWithTabs();
+
+    await tabs.assignWorkspace(900, 'private:abc');
+    await expect(tabs.assignWorkspaceEagerly(900, 'private:abc')).resolves.toBe(true);
+
+    expect(tabs.snapshotPrivate(9)[0]?.workspaceId).toBe('private:abc');
+    expect(batches.flat()).toContainEqual({
+      kind: 'updated',
+      id: 900,
+      changes: { workspaceId: 'private:abc' },
+    });
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+  it('moves a private tab between two private windows: the old one drops it, the new one learns it whole', async () => {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 900, windowId: 9, incognito: true }),
+      makeTab({ id: 1000, windowId: 10, incognito: true, index: 0 }),
+    ]);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    const batches: TabDelta[][] = [];
+    tabs.onDeltas((deltas) => batches.push(deltas));
+
+    listeners.attached?.(900, { newWindowId: 10, newPosition: 1 });
+
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, batches.flat());
+    expect(regular).toEqual([]);
+    expect(privateByWindow.get(9)).toEqual([{ kind: 'removed', id: 900 }]);
+    expect(privateByWindow.get(10)).toEqual([
+      { kind: 'created', tab: expect.objectContaining({ id: 900, windowId: 10, index: 1 }) },
+    ]);
+    expect(tabs.snapshotPrivate(9)).toEqual([]);
+    expect(tabs.snapshotPrivate(10).map((tab) => tab.id)).toEqual([1000, 900]);
+  });
+
+  it('keeps a private tab name in memory: nothing reaches the session store', async () => {
+    const { tabs, batches } = await registryWithTabs();
+
+    await tabs.rename(900, '  Online banking ');
+    await tabs.rename(1, 'Reading list');
+
+    expect(tabs.snapshotPrivate(9)[0]?.customTitle).toBe('Online banking');
+    expect(batches.flat()).toContainEqual({
+      kind: 'updated',
+      id: 900,
+      changes: { customTitle: 'Online banking' },
+    });
+    // A regular tab's name is remembered by the session store.
+    expect(browser.sessions.setTabValue).toHaveBeenCalledTimes(1);
+    expect(browser.sessions.setTabValue).toHaveBeenCalledWith(
+      1,
+      'bento.customTitle',
+      'Reading list',
+    );
+  });
+
+  it('does not write the cleared name of a private tab that navigates', async () => {
+    const { listeners, tabs } = await registryWithTabs();
+    await tabs.rename(900, 'Imported title');
+    listeners.updated?.(
+      900,
+      { title: 'Imported title', url: 'https://one.example/' } as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({
+        id: 900,
+        windowId: 9,
+        incognito: true,
+        title: 'Imported title',
+        url: 'https://one.example/',
+      }),
+    );
+    await tabs.rename(900, 'https://one.example/');
+
+    listeners.updated?.(
+      900,
+      { url: 'https://two.example/' } as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({ id: 900, windowId: 9, incognito: true, title: 'Two', url: 'https://two.example/' }),
+    );
+
+    expect(tabs.snapshotPrivate(9)[0]?.customTitle).toBeUndefined();
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
   });
 });

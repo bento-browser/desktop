@@ -6,6 +6,10 @@ const { BentoShellDocumentRegistry } = ChromeUtils.importESModule(
   'resource:///actors/BentoShellDocumentRegistry.sys.mjs',
 );
 
+const { BentoShellBusHub } = ChromeUtils.importESModule(
+  'resource:///actors/BentoShellBusParent.sys.mjs',
+);
+
 function registryEvent(context, name, add, remove) {
   return new ExtensionCommon.EventManager({
     context,
@@ -29,6 +33,19 @@ this.bentoChrome = class extends ExtensionAPI {
         listDocuments: () => BentoShellDocumentRegistry.listDocuments(),
         noteLifecycle: (details) => BentoShellDocumentRegistry.noteLifecycle(details),
         invalidateDocument: (details) => BentoShellDocumentRegistry.invalidateDocument(details),
+        // Shell bus relay (BentoShellBusParent.sys.mjs): upward messages from
+        // documents the BroadcastChannel cannot reach, and targeted replies.
+        onBusMessage: new ExtensionCommon.EventManager({
+          context,
+          name: 'bentoChrome.onBusMessage',
+          register: (fire) => {
+            const listener = (record) => void fire.async(record);
+            BentoShellBusHub.onUp(listener);
+            return () => BentoShellBusHub.offUp(listener);
+          },
+        }).api(),
+        postToDocument: (documentId, message) =>
+          BentoShellBusHub.postToDocument(documentId, message),
         onDocumentMounted: registryEvent(
           context,
           'onDocumentMounted',

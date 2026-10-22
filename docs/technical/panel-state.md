@@ -254,9 +254,13 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
   incognito tabs when it resolves URLs, and omits private panels, pins, and
   layout slots; it does not copy stored state. Data written by earlier builds is
-  not scrubbed. The `shell/hello` handler has no private check, so a private
-  window whose shell sends it claims an unclaimed workspace or creates a
-  default-named one in `bento.workspaces` (a name, not browsing data).
+  not scrubbed. A private window's `shell/hello` never claims
+  or creates a regular workspace: tools gives the window its own temporary Private
+  workspace in memory (see [workspaces.md](workspaces.md#private-window-workspace)),
+  and every store that writes to `storage.local` or SessionStore drops its id
+  (`isEphemeralWorkspaceId`): panel layouts, widths and strip scroll positions,
+  tab folders, pinned panels, parked workspaces, panel session markers and tab
+  session values.
 - Do not call `persistCurrentState` from a high-frequency listener. Panel URL
   changes used to flush the whole graph on every event (one `tabs.get` per panel
   plus two or three storage calls each); they now use

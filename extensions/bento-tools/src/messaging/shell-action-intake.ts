@@ -7,10 +7,15 @@
 import { parseWireAction } from '@shared/wire-action';
 import type { Action } from '@shared/protocol';
 
+interface WindowInfo {
+  id?: number;
+  incognito?: boolean;
+}
+
 interface WindowsApi {
-  get(windowId: number): Promise<unknown>;
-  getAll(): Promise<Array<{ id?: number }>>;
-  onCreated: { addListener(listener: (window: { id?: number }) => void): void };
+  get(windowId: number): Promise<WindowInfo>;
+  getAll(): Promise<WindowInfo[]>;
+  onCreated: { addListener(listener: (window: WindowInfo) => void): void };
   onRemoved: { addListener(listener: (windowId: number) => void): void };
 }
 
@@ -42,6 +47,10 @@ const WINDOW_ANNOUNCE_TIMEOUT_MS = 20_000;
 export function createWindowRegistry(
   api: WindowsApi,
   announceTimeoutMs = WINDOW_ANNOUNCE_TIMEOUT_MS,
+  /** Runs for every window the registry learns of, before it counts as live, so a
+   * message for the window is never handled before the caller has seen the window
+   * (a private window gets its Private workspace first). */
+  onWindow: (window: WindowInfo) => void = () => {},
 ) {
   const live = new Set<number>();
   const removed = new Set<number>();
@@ -52,6 +61,7 @@ export function createWindowRegistry(
   };
   api.onCreated.addListener((window) => {
     if (typeof window.id !== 'number' || removed.has(window.id)) return;
+    onWindow(window);
     live.add(window.id);
     wake(window.id);
   });
@@ -65,7 +75,9 @@ export function createWindowRegistry(
     .getAll()
     .then((windows) => {
       for (const window of windows) {
-        if (typeof window.id === 'number' && !removed.has(window.id)) live.add(window.id);
+        if (typeof window.id !== 'number' || removed.has(window.id)) continue;
+        onWindow(window);
+        live.add(window.id);
       }
     })
     .catch(() => undefined);
@@ -96,12 +108,14 @@ export function createWindowRegistry(
       if (!live.has(windowId) && !removed.has(windowId)) await announced(windowId);
       if (live.has(windowId)) return true;
       if (removed.has(windowId)) return false;
+      let found: WindowInfo;
       try {
-        await api.get(windowId);
+        found = await api.get(windowId);
       } catch {
         return false;
       }
       if (removed.has(windowId)) return false;
+      onWindow({ ...found, id: windowId });
       live.add(windowId);
       return true;
     },

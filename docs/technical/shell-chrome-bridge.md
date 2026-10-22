@@ -195,9 +195,11 @@ are separate: waiting for the policy does not consume window id retries.
 All shell documents in all windows (the 12 entries that call `initToolsPort()`:
 sidebar, address bar, panel trailer, workspace switcher, edit workspace,
 confirm, welcome, menu, workspace palette, merge palette, palette, panel
-navigator tooltip) share one
+navigator tooltip) in regular windows share one
 `BroadcastChannel('bento-shell-bus')`. `bento-shell/src/background.ts` owns the
-only port to `bento-tools` and relays events and actions both ways.
+only port to `bento-tools` and relays events and actions both ways. Documents in
+private windows cannot use that channel; see
+[Private windows: the BentoShellBus relay](#private-windows-the-bentoshellbus-relay).
 
 - Live boot: when the port connects, `bento-tools` sends `tools/booted`, then
   the six snapshots (tabs, workspaces, settings, pinnedPanels, tabFolders,
@@ -286,6 +288,129 @@ Bus bootstrap pitfalls:
   broadcasts, requests carry no correlation id, and `savedPanels/snapshot` is
   also emitted unsolicited, so matching replies to requesters by order would
   mis-tag broadcasts. Targeting needs a request id in `Action` and `Event`.
+
+## Private windows: the BentoShellBus relay
+
+Firefox partitions `BroadcastChannel` by `privateBrowsingId`, even for one
+extension origin. A shell document in a private window therefore never reaches the
+(regular) shell background over `bento-shell-bus`: the sidebar stayed at
+"connecting...", the palette showed no workspace data and the merge palette never
+listed sources. Two private windows do share one partition, so the channel still
+works between documents of private windows.
+
+Private windows use a relay; regular windows keep the `BroadcastChannel` hot path
+unchanged.
+
+- Transport choice: `setFrameSrc` stamps `#bentoPrivate=1` on every frame URL of a
+  private window. `bridge/useToolsPort.ts` reads it (`readPrivateFromHash`) and
+  picks its transport in `bridge/shellBus.ts`: `createChannelTransport` or
+  `createRelayTransport`.
+- Actor pair `BentoShellBus` (`src/browser/actors/BentoShellBusChild.sys.mjs`,
+  `BentoShellBusParent.sys.mjs`), registered once per process by
+  `registerShellBusActor` in the mount, on `moz-extension://*/*` with the DOM event
+  `bento-bus-up` (`capture`, `wantUntrusted`: the page dispatches it, and Firefox
+  defaults `wantUntrusted` to false). The child moves JSON strings only: the
+  document hands one to the child as the `detail` of a `bento-bus-up`
+  `CustomEvent`, and messages back arrive as `bento-bus-down`. No content object
+  crosses the boundary.
+- Identity comes from chrome. The parent actor accepts only a document whose URI
+  host is the bento-shell extension's and whose top browsing context is hosted by a
+  `navigator:browser` window (`browsingContext.top.topChromeWindow`;
+  `embedderElement.ownerGlobal` is null for these frames). It derives the window id
+  (`windowTracker.getId`) and privacy (`PrivateBrowsingUtils.isWindowPrivate`)
+  there and mints a `documentId` per document. The page supplies only the message.
+- Hub: the parent module exports `BentoShellBusHub` (up listener, backlog of 128
+  messages while nothing listens, `postToDocument`, `postFromChrome`). The
+  chrome-bridge experiment exposes it as `bentoChrome.onBusMessage` and
+  `bentoChrome.postToDocument(documentId, message)`, in both copies
+  (`src/experiments/chrome-bridge/` and the tracked `experiments/chrome-bridge/`,
+  copied by `vite.config.ts`) plus `schema.json`. Every user of the hub imports it
+  as `resource:///actors/BentoShellBusParent.sys.mjs`, the URL the actor is
+  registered with: `resource://app/actors/...` loads a separate module instance
+  with its own state.
+- Handshake: the document repeats `hello` (250 ms doubling to 2 s) until the
+  background answers `{ kind: 'ack', helloId }`. The background owns a private
+  window's `shell/hello`: it sends one per window to tools, again whenever the tools
+  port reconnects, so a tools restart recreates the window's Private workspace. A
+  repeated `hello` is idempotent.
+- Background fan-out (`fanOutEvent` in `bento-shell/src/background.ts`) is where
+  audiences are enforced. Tools wraps workspace-bound events in an `audience/event`
+  envelope (`AudienceEvent` in `_shared/shell-client-protocol.ts`): `'regular'`
+  reaches the `BroadcastChannel` documents and the replay cache, `{ privateWindowId }`
+  reaches only that window's relay documents. A private document therefore receives
+  global events (settings, privacy, boot, saved panels) and its own window's state,
+  never the regular tabs, workspaces, panels, pins or folders, and never `backup/*`
+  or `externalMerge/*`. A workspace-bound event that arrives unwrapped is treated as
+  regular (`WORKSPACE_BOUND_EVENTS`, which includes `panel/focusedChanged`: it names a
+  tab and a window, and tools answers it to the asking window's audience). Regular
+  documents never see an event addressed to a private window.
+- Window-local sidebar state: a private window's sidebar collapse, hidden state and
+  colour mode (`WINDOW_LOCAL_SETTING_KEYS` in `_shared/windowLocalSettings.ts`) live
+  in the shell background's memory, one entry per private window
+  (`bridge/privateWindowSettings.ts`), and are never saved. A window's entry is made
+  at its first relay `hello` from the latest saved settings, so a new private window
+  starts from the regular values at that moment, and it is dropped when the window's
+  last relay document closes. `fanOutEvent` puts the window's entry over the saved
+  values in every `settings/snapshot` and `settings/changed` that goes to that
+  window's relay documents (`forWindow`). A `settings/update` that arrives through
+  the hub (Cmd+S raised by chrome, the collapse button, the footer colour control) is
+  split by `applyPrivateSettingsUpdate`: the window-local keys update the entry and
+  go as one `settings/changed` to that window's documents only, the remaining keys go
+  to tools as an ordinary update. Tools also drops the three keys from a private
+  source (`settings/update` in `protocol-handler.ts`) and refuses `settings/reset`
+  from one, so a page that bypasses the background cannot change the saved values.
+  Chrome learns the values through the `BENTO_PANELS` payload like in a regular
+  window; because tools never sees a private window's own change and so does not
+  re-fire `panels/sync`, the private sidebar re-sends its last forwarded
+  `panels/sync` (without the scroll hint) when one of the three values changes
+  (`lastPanelsForChrome` in `useToolsPort.ts`). Colour mode is also announced between
+  a window's own documents: `useFirefoxTheme` names the window in its
+  `resolved-color-mode` broadcast and, in a private window, reads and listens to a
+  per-window `resolved-color-mode@<id>` key, because all private windows share one
+  `BroadcastChannel` partition and one `localStorage`. The unscoped keys remain the
+  first-paint hint `boot.js` reads.
+- Identity of actions: for every message that arrives through the hub the background
+  overwrites `__windowId` (and a `shell/hello` payload window) with the hub's window
+  id. A window id the page puts in its URL hash or actions is ignored.
+- Document-local actions (`menu/open`, `ui/*`) stay on a plain `BroadcastChannel`
+  inside the private partition, in the document (`localChannel`) and in chrome's
+  `BentoShellAction` frame script. Only tools-bound actions use the relay. Chrome's
+  own `dispatchShellAction` in a private window posts those to the hub once
+  (`postShellActionThroughBusHub`), never per receiving frame.
+
+Pitfalls:
+
+- Do not create a `BroadcastChannel` in the shell background for private documents
+  or expect one document-level channel to reach it. `bento-shell-doc:<mountToken>`
+  (graph publication) has the same partition flaw; the coordinator publishes only to
+  regular documents, so private ones do not use it yet.
+- Do not import the hub through two URL spellings (see above), and do not read
+  `embedderElement.ownerGlobal` in the actor.
+- Do not send a private window's workspace-bound state with `send`: tools wraps it
+  (`messaging/audience.ts`), and the fan-out is the only place that decides the
+  audience.
+- A relay document that never says hello gets nothing; the retry loop is the only
+  recovery for an actor that attached after the document's first `bento-bus-up`.
+- Do not send a private window's sidebar or colour change to tools, or read those
+  three values from the unsubstituted saved settings in a private document. A
+  background reload (Alt+Shift+R in a dev build) drops the per-window entries; the
+  windows start again from the saved values.
+- The native Settings page changes the saved colour mode through the native
+  preferences bridge, not through `settings/update`, so it still changes the saved
+  value (and so the regular windows) even when opened from a private window; an open
+  private window keeps its own.
+
+Manual verification: open a private window, then in the Browser Toolbox Console
+import `resource:///actors/BentoShellBusParent.sys.mjs` and attach a listener with
+`BentoShellBusHub.onUp`: each private document's `hello` shows `isPrivate: true` and
+the window's id; the same list for a regular window's documents shows nothing,
+because regular windows do not use the relay.
+
+Window-local sidebar state: with two private windows and a regular window open,
+collapse the sidebar and switch the colour mode in one of them (Cmd+S, the collapse
+button, the footer colour control). Only that window changes; the others do not,
+and after quitting the saved settings (`browser.storage.local`, `settings` key of
+bento-tools) hold only what regular windows set.
 
 ## Title IPC pitfalls
 

@@ -18,7 +18,15 @@
 import type { Action, Event } from '@shared/protocol';
 import { SHELL_TOOLS_PORT } from '@shared/protocol';
 import type { ShellClientToTools } from '@shared/shell-client-protocol';
-import { isTargetedShellEvent } from '@shared/shell-client-protocol';
+import {
+  isAudienceEvent,
+  isTargetedShellEvent,
+  type AudienceEvent,
+} from '@shared/shell-client-protocol';
+import { splitWindowLocalSettings } from '@shared/windowLocalSettings';
+import { PrivateWindowSettings } from './bridge/privateWindowSettings';
+import type { BusDown } from './bridge/shellBus';
+import { isDocumentLocalAction } from './bridge/shellBus';
 
 const CHANNEL_NAME = 'bento-shell-bus';
 const RECONNECT_BASE_MS = 200;
@@ -39,11 +47,23 @@ interface BentoChromeEvent<T> {
   addListener(listener: (value: T) => void): void;
 }
 
+/** One upward message from the BentoShellBus hub. Window id and privacy come
+ * from the chrome window hosting the document, never from the page. `documentId`
+ * is null for an action raised by chrome itself. */
+interface BentoChromeBusMessage {
+  documentId: string | null;
+  windowId: number;
+  isPrivate: boolean;
+  message: unknown;
+}
+
 interface BentoChromeAPI {
   bindBackground(details: { newBackgroundInstanceId: string }): Promise<{
     currentGeneration: number;
   }>;
   listDocuments(): Promise<BentoChromeDocument[]>;
+  onBusMessage: BentoChromeEvent<BentoChromeBusMessage>;
+  postToDocument(documentId: string, message: BusDown): Promise<boolean>;
   onDocumentMounted: BentoChromeEvent<BentoChromeDocument>;
   onDocumentChanged: BentoChromeEvent<BentoChromeDocument>;
   onDocumentRemoved: BentoChromeEvent<BentoChromeDocument>;
@@ -219,6 +239,202 @@ function pruneRemovedWorkspaces(event: Event): void {
   }
 }
 
+// ---- Event fan-out and the private-window relay ----------------------------
+//
+// Documents in regular windows hear the bus over BroadcastChannel. Documents in
+// private windows (BroadcastChannel is partitioned away from this page) hear it
+// through the BentoShellBus relay, one targeted message per document. Every
+// tools event leaves through fanOutEvent, which is where audiences are enforced:
+// - a regular document never receives an event addressed to a private window;
+// - a private document receives global events (settings, boot, saved panels,
+//   search results) and events addressed to its own window, nothing bound to the
+//   regular workspaces;
+// - backup/* and externalMerge/* never reach a private document;
+// - a private window sees the settings with its own sidebar collapse, hidden state
+//   and colour mode over the saved ones (see PrivateWindowSettings).
+
+/** Events tied to the regular workspaces. Tools wraps them in an audience; one
+ * that arrives unwrapped is treated as regular so it can never reach a private
+ * document. */
+const WORKSPACE_BOUND_EVENTS = new Set<Event['type']>([
+  'tabs/snapshot',
+  'tabs/changed',
+  'workspaces/snapshot',
+  'workspaces/changed',
+  'panels/sync',
+  // Names a tab and a window, so it is as private as the workspace that holds them.
+  'panel/focusedChanged',
+  'pinnedPanels/snapshot',
+  'pinnedPanels/changed',
+  'tabFolders/snapshot',
+  'tabFolders/changed',
+]);
+
+/** Private-window documents that said hello, by hub document id. */
+const relayDocuments = new Map<string, { windowId: number }>();
+/** Private windows whose shell/hello already went to the current tools port. */
+const toolsHelloSent = new Set<number>();
+/** Each private window's own sidebar collapse, hidden state and colour mode. */
+const privateSettings = new PrivateWindowSettings();
+
+function isWithheldFromPrivateDocuments(event: Event): boolean {
+  return event.type.startsWith('backup/') || event.type.startsWith('externalMerge/');
+}
+
+function privateWindowIds(): Set<number> {
+  return new Set(Array.from(relayDocuments.values(), (document) => document.windowId));
+}
+
+/** Drops a closed private document; the last one of a window takes the window's
+ * own settings and hello record with it. */
+function forgetRelayDocument(documentId: string): void {
+  const document = relayDocuments.get(documentId);
+  if (!document) return;
+  relayDocuments.delete(documentId);
+  if (privateWindowIds().has(document.windowId)) return;
+  toolsHelloSent.delete(document.windowId);
+  privateSettings.close(document.windowId);
+}
+
+function postToRelayDocument(documentId: string, message: BusDown): void {
+  void bentoChrome
+    .postToDocument(documentId, message)
+    .then((delivered) => {
+      if (!delivered) forgetRelayDocument(documentId);
+    })
+    .catch((error: unknown) => {
+      console.warn('[bento-shell] relay delivery failed:', error);
+    });
+}
+
+function fanOutEvent(event: Event, audience: AudienceEvent['audience'] | 'all'): void {
+  const effective =
+    audience === 'all' && WORKSPACE_BOUND_EVENTS.has(event.type) ? 'regular' : audience;
+  if (effective === 'all' && event.type === 'tools/booted') lastBooted = event;
+  if (event.type === 'settings/snapshot' || event.type === 'settings/changed') {
+    privateSettings.saved(event.settings);
+  }
+  if (effective === 'regular') {
+    if (event.type === 'panels/sync') lastPanelsSyncByWorkspace.set(event.workspaceId, event);
+    pruneRemovedWorkspaces(event);
+  }
+  if (effective === 'all' || effective === 'regular') {
+    channel.postMessage({ kind: 'event', event });
+  }
+  if (effective === 'regular' || isWithheldFromPrivateDocuments(event)) return;
+  for (const [documentId, document] of relayDocuments) {
+    if (effective !== 'all' && document.windowId !== effective.privateWindowId) continue;
+    postToRelayDocument(documentId, {
+      kind: 'event',
+      event: forWindow(event, document.windowId),
+    });
+  }
+}
+
+/** A settings event as a private window sees it: its own values over the saved ones. */
+function forWindow(event: Event, windowId: number): Event {
+  if (event.type !== 'settings/snapshot' && event.type !== 'settings/changed') return event;
+  const settings = privateSettings.view(windowId, event.settings);
+  return settings ? { ...event, settings } : event;
+}
+
+/** A private window changed its own sidebar or colour mode: only that window's
+ * documents hear it, and nothing is saved. Whatever else the update carried goes on
+ * to tools as an ordinary settings update. */
+function applyPrivateSettingsUpdate(windowId: number, action: object): void {
+  const { changes } = action as { changes?: Parameters<typeof splitWindowLocalSettings>[0] };
+  if (!changes || typeof changes !== 'object') return;
+  const { local, rest } = splitWindowLocalSettings(changes);
+  if (Object.keys(local).length > 0) {
+    const settings = privateSettings.update(windowId, local);
+    if (settings) {
+      for (const [documentId, document] of relayDocuments) {
+        if (document.windowId !== windowId) continue;
+        postToRelayDocument(documentId, {
+          kind: 'event',
+          event: { type: 'settings/changed', settings },
+        });
+      }
+    }
+  }
+  if (Object.keys(rest).length > 0) {
+    forwardActionToTools({ ...action, changes: rest, __windowId: windowId });
+  }
+}
+
+function forwardActionToTools(action: object): void {
+  const actionType = (action as { type?: string }).type;
+  if (!toolsPort) {
+    console.warn('[bento-shell] action dropped — tools port not connected:', actionType);
+    return;
+  }
+  try {
+    toolsPort.postMessage(action as Action);
+  } catch (err) {
+    console.warn('[bento-shell] forward to tools failed:', err);
+  }
+}
+
+/** Tells tools a private window exists so it creates the window's Private
+ * workspace. Sent once per tools port; the window id is the hub's. */
+function sendPrivateWindowHello(windowId: number): void {
+  if (!toolsPort || toolsHelloSent.has(windowId)) return;
+  toolsHelloSent.add(windowId);
+  forwardActionToTools({ type: 'shell/hello', windowId, __windowId: windowId });
+}
+
+function handleRelayHello(documentId: string, windowId: number, helloId: unknown): void {
+  if (typeof helloId !== 'string') return;
+  relayDocuments.set(documentId, { windowId });
+  privateSettings.open(windowId);
+  postToRelayDocument(documentId, { kind: 'ack', helloId });
+  // Same bootstrap as the BroadcastChannel hello, minus what is bound to the
+  // regular workspaces: the joiner asks tools for its own window's state when it
+  // sees the replayed boot.
+  if (lastBooted) {
+    postToRelayDocument(documentId, {
+      kind: 'event',
+      event: lastBooted as Event,
+      replayFor: helloId,
+    });
+  }
+  sendPrivateWindowHello(windowId);
+}
+
+function handleBusMessage({
+  documentId,
+  windowId,
+  isPrivate,
+  message,
+}: BentoChromeBusMessage): void {
+  // Only private windows use the relay for the bus today; regular windows keep
+  // the BroadcastChannel path.
+  if (!isPrivate || !message || typeof message !== 'object') return;
+  const data = message as { kind?: unknown; helloId?: unknown; action?: unknown };
+  if (data.kind === 'hello' && documentId) {
+    handleRelayHello(documentId, windowId, data.helloId);
+    return;
+  }
+  if (data.kind === 'document-closed' && documentId) {
+    forgetRelayDocument(documentId);
+    return;
+  }
+  if (data.kind === 'action' && data.action && typeof data.action === 'object') {
+    const action = data.action as { type?: unknown };
+    if (typeof action.type !== 'string' || isDocumentLocalAction(action)) return;
+    if (action.type === 'settings/update') {
+      applyPrivateSettingsUpdate(windowId, data.action);
+      return;
+    }
+    // The window is whatever chrome says; a field the page set is overwritten.
+    const stamped: Record<string, unknown> = { ...action, __windowId: windowId };
+    if (action.type === 'shell/hello') stamped.windowId = windowId;
+    forwardActionToTools(stamped);
+  }
+}
+
+bentoChrome.onBusMessage.addListener(handleBusMessage);
+
 function scheduleReconnect(): void {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
@@ -257,22 +473,21 @@ function connectTools(): void {
       });
       return;
     }
-    const event = message as Event;
     if (!firstMessageReceived) {
       firstMessageReceived = true;
       reconnectDelay = RECONNECT_BASE_MS; // reset backoff on healthy port
     }
-    if (event.type === 'tools/booted') lastBooted = event;
-    if (event.type === 'panels/sync') {
-      lastPanelsSyncByWorkspace.set(event.workspaceId, event);
-    }
-    pruneRemovedWorkspaces(event);
-    channel.postMessage({ kind: 'event', event });
+    if (isAudienceEvent(message)) fanOutEvent(message.event, message.audience);
+    else fanOutEvent(message as Event, 'all');
   });
 
   for (const binding of documentChannels.values()) {
     registerDocumentWithTools(binding.record);
   }
+  // A tools restart forgot every private window's Private workspace; a live
+  // tools/booted does not make the documents say hello again.
+  toolsHelloSent.clear();
+  for (const windowId of privateWindowIds()) sendPrivateWindowHello(windowId);
 
   port.onDisconnect.addListener(() => {
     if (toolsPort === port) toolsPort = null;
@@ -307,17 +522,8 @@ channel.addEventListener('message', (msg) => {
     // kebab menu open. The Action protocol union doesn't include
     // these intentionally; treat anything matching the prefix as
     // bus-only.
-    const actionType = (data.action as { type?: string } | undefined)?.type;
-    if (actionType === 'menu/open' || actionType?.startsWith('ui/')) return;
-    if (!toolsPort) {
-      console.warn('[bento-shell] action dropped — tools port not connected:', actionType);
-      return;
-    }
-    try {
-      toolsPort.postMessage(data.action as Action);
-    } catch (err) {
-      console.warn('[bento-shell] forward to tools failed:', err);
-    }
+    if (isDocumentLocalAction((data.action ?? {}) as { type?: unknown })) return;
+    forwardActionToTools(data.action as Action);
     return;
   }
 

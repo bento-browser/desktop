@@ -884,6 +884,60 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   longer accepted by current builds. Rollback variants carry the same grant
   handshake (see `docs/settings-consolidation-rollback.md`).
 
+### Shell Bus Relay (BentoShellBus Actor)
+
+- Status: Active
+- Last updated: 2026-10-22
+- Files or patches:
+  - `src/browser/actors/BentoShellBusChild.sys.mjs` and
+    `BentoShellBusParent.sys.mjs`
+  - `patches/chrome-layout/04-bento-key-actors.patch` (a second
+    `FINAL_TARGET_FILES.actors` block in `browser/actors/moz.build`, so patch
+    `core-ui/15`, which edits the sorted list, still applies)
+  - `src/browser/base/content/bento-shell-mount.js` (`registerShellBusActor`,
+    `postShellActionThroughBusHub`, the `bentoPrivate` hash flag in `setFrameSrc`)
+  - `extensions/bento-shell/src/experiments/chrome-bridge/` and the tracked
+    `extensions/bento-shell/experiments/chrome-bridge/` (`bentoChrome.onBusMessage`,
+    `bentoChrome.postToDocument`), `extensions/bento-shell/manifest.json` (version
+    0.0.4)
+- Bento functionality: shell documents in a private window reach the shell
+  background through a JSWindowActor pair and a parent-process hub, because
+  `BroadcastChannel` is partitioned by `privateBrowsingId`. The actor attaches to
+  every bento-shell extension frame in every window; today only private-window
+  documents use it for the bus (regular windows keep `BroadcastChannel`), and it is
+  the transport the Settings overlay reuses. The parent derives the document's
+  window id and privacy from the hosting chrome window; the page supplies only a
+  JSON string. Chrome posts a private window's tools-bound actions straight into the
+  hub.
+- Vanilla Firefox surface touched or depended on: `ChromeUtils.registerWindowActor`
+  with `allFrames`, `matches: moz-extension://*/*` and a `wantUntrusted` DOM event;
+  `JSWindowActorParent.manager.documentURI` and
+  `browsingContext.top.topChromeWindow`; `WebExtensionPolicy.getByID(...)
+.mozExtensionHostname`; `Management.global.windowTracker.getId` and
+  `PrivateBrowsingUtils.isWindowPrivate`; the `resource:///actors/` mapping of
+  `FINAL_TARGET_FILES.actors` (the mount, the experiment and the registration must
+  use this exact spelling, since `resource://app/actors/` loads a second module
+  instance); `BroadcastChannel`'s `privateBrowsingId` partition (the reason for the
+  relay, observed on 158.0).
+- Why this cannot stay extension-only: an extension page has no way to reach a
+  background in another privacy partition, and the overlay documents have no
+  `browser` API. A privileged actor with chrome-derived identity is the smallest
+  surface that carries messages across.
+- Firefox update risk: a change that attaches `topChromeWindow` differently, makes
+  `BroadcastChannel` share one partition (the relay then becomes unnecessary but
+  harmless), a rename of `documentURI` on `WindowGlobalParent`, or a different
+  default for `wantUntrusted` events would leave private windows at "connecting...".
+- Regression checks for future updates: open a private window and confirm its
+  sidebar shows the "Private" workspace and its tabs, the palette lists them, and a
+  regular window's workspace list never shows "Private"; in the Browser Toolbox
+  Console import `resource:///actors/BentoShellBusParent.sys.mjs`, attach
+  `BentoShellBusHub.onUp`, and confirm each private document's hello reports
+  `isPrivate: true` and its window id; confirm no `[BentoShellBus]` warning appears.
+- Rollback or migration notes: removing the actor leaves private windows without a
+  working shell (the pre-existing state); the patch hunk is independent of the key
+  actors. The shell manifest version was bumped because the experiment API gained
+  functions.
+
 ### Search Engine Icons (bento-privacy Experiment)
 
 - Status: Active
@@ -2509,12 +2563,12 @@ below is generated; edit the registry, then run
 | `resource:///modules/ExtensionsUI.sys.mjs` | module (runtime) | Bento re-subscribes ExtensionsUI to the permission-prompt topics when startup missed them. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:65` |
 | `ExtensionsUI observer topics` | source (engine only) | The four webextension-*-prompt topics ExtensionsUI observes; Bento adds the observer for each if missing. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:73` |
 | `moz-src:///browser/components/sessionstore/SessionStore.sys.mjs` | module (runtime) | Workspace assignment is stored as a custom tab value. | `getSessionStore` | `browser/components/sessionstore/SessionStore.sys.mjs:9114` |
-| `resource://gre/modules/Extension.sys.mjs` | module (runtime) | Management.global.windowTracker resolves the WebExtension window id of a chrome window. | `getChromeWindowId` | `toolkit/components/extensions/Extension.sys.mjs:171` |
+| `resource://gre/modules/Extension.sys.mjs` | module (runtime) | Management.global.windowTracker resolves the WebExtension window id of a chrome window. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/Extension.sys.mjs:171` |
 | `resource://gre/modules/ExtensionParent.sys.mjs` | module (runtime) | ExtensionParent.apiManager.global.tabTracker maps WebExtension tab ids to tab elements. | `getTabTracker`, `getBentoTabTracker` | `toolkit/components/extensions/ExtensionParent.sys.mjs:2564` |
 | `apiManager.global.{tabTracker,windowTracker}` | source (engine only) | ext-browser.js publishes the trackers on the extension API global; Bento reads them from there. | `getTabTracker`, `getBentoTabTracker`, `getChromeWindowId` | `browser/components/extensions/parent/ext-browser.js:787` |
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
-| `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
+| `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
 | `windowManager.getWrapper` | source (engine only) | The native preferences experiment resolves the chrome window that hosts a Settings page through extension.windowManager and reads wrapper.id to authorize the request against a live browser window; a window the extension cannot access has no wrapper. | `extensions/bento-tools/experiments/bento-native-preferences/api.js#validateDocumentSubject` | `toolkit/components/extensions/parent/ext-tabs-base.js:2443` |
 | `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
@@ -2594,14 +2648,18 @@ below is generated; edit the registry, then run
 | `AsyncSetting.disabled` | source (engine only) | Disables the control while the Bento model is unavailable. | `patches/core-ui/15-bento-native-preferences.patch#async disabled()` | `toolkit/content/preferences/AsyncSetting.mjs:88` |
 | `AsyncSetting.visible` | source (engine only) | Hides the control for settings that do not apply. | `patches/core-ui/15-bento-native-preferences.patch#async visible()` | `toolkit/content/preferences/AsyncSetting.mjs:97` |
 | `AsyncSetting.getControlConfig` | source (engine only) | Supplies the default search engine options to the control. | `patches/core-ui/15-bento-native-preferences.patch#getControlConfig` | `toolkit/content/preferences/AsyncSetting.mjs:107` |
-| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. | `registerContentKeyActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild` | `browser/actors/moz.build:92` |
+| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block, so patch core-ui/15 keeps applying to the sorted list; the parent module is imported by the mount, the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
 | `chrome://global/content/preferences/Preferences.mjs` | source (engine only) | Bento settings are Preferences settings; registered in toolkit/content/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#Preferences.mjs` | `toolkit/content/jar.mn:69` |
 | `Preferences.addSetting` | source (engine only) | Registers each Bento setting with the Preferences framework. | `patches/core-ui/15-bento-native-preferences.patch#addSetting` | `toolkit/content/preferences/Preferences.mjs:100` |
 | `Preferences.AsyncSetting` | source (engine only) | Base class of Bento settings that read and write through the extension bridge. | `patches/core-ui/15-bento-native-preferences.patch#AsyncSetting` | `toolkit/content/preferences/Preferences.mjs:435` |
 | `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:50` |
 | `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
 | `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:242` |
-| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. The Bento Settings page (patch 15) also reads it on each click of Merge browser session and dispatches BentoOpenMergePalette on that window, which the mount script answers by opening the merge palette there. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `patches/core-ui/15-bento-native-preferences.patch#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
+| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. The Bento Settings page (patch 15) also reads it on each click of Merge browser session and dispatches BentoOpenMergePalette on that window, which the mount script answers by opening the merge palette there. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `patches/core-ui/15-bento-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
+| `JSWindowActorParent.manager` | source (engine only) | The BentoShellBus parent actor reads its WindowGlobalParent to check which document a relayed message comes from. | `src/browser/actors/BentoShellBusParent.sys.mjs#manager` | `dom/chrome-webidl/JSWindowActor.webidl:26` |
+| `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
+| `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |
+| `WebExtensionPolicy.mozExtensionHostname` | source (engine only) | The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped. | `src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname` | `dom/chrome-webidl/WebExtensionPolicy.webidl:31` |
 | `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:728` |
 | `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:115` |
 | `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:121` |

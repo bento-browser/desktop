@@ -15,7 +15,10 @@ import { App } from './App';
 // order statement in theme/muxui.css, whatever order the imports run in.
 import './app.css';
 import { seedTabsAcrossWorkspaces } from './state/__fixtures__/tabs';
-import { seedMany as seedManyWorkspaces } from './state/__fixtures__/workspaces';
+import {
+  seedMany as seedManyWorkspaces,
+  seedPrivate as seedPrivateWorkspace,
+} from './state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from './state/__fixtures__/panels';
 import { seedTabFolders } from './state/__fixtures__/tabFolders';
 import { seedEmptyPinnedPanels } from './state/__fixtures__/pinnedPanels';
@@ -144,6 +147,60 @@ export const CollapsedNoSidePanels = () => {
 };
 
 CollapsedNoSidePanels.storyName = 'Collapsed, no side panels (rail stays brand background)';
+
+// A private window: the Private band instead of the workspace switcher, one temporary
+// workspace, no pinned panels. The workspace's `private` flag is what marks the window
+// here; the real shell also reads the #bentoPrivate=1 hash its frames carry.
+function seedPrivateWindow(sidebarCollapsed: boolean, tabCount: number) {
+  const [workspace] = seedPrivateWorkspace();
+  seedTabsAcrossWorkspaces([{ workspaceId: workspace!.id, count: tabCount }], workspace!.id);
+  seedTabFolders([]);
+  seedSidePanels([workspace!.id], true);
+  useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, sidebarCollapsed });
+  useSidebarAddressStore.getState().reset();
+  seedEmptyPinnedPanels();
+  useExternalMergeStore.setState(useExternalMergeStore.getInitialState());
+  markToolsBootedForStory();
+}
+
+export const PrivateWindow = () => {
+  useEffect(() => {
+    seedPrivateWindow(false, 4);
+  }, []);
+  return (
+    <ShellFrame>
+      <App />
+    </ShellFrame>
+  );
+};
+
+PrivateWindow.storyName = 'Private window';
+
+export const PrivateWindowEmpty = () => {
+  useEffect(() => {
+    seedPrivateWindow(false, 1);
+  }, []);
+  return (
+    <ShellFrame>
+      <App />
+    </ShellFrame>
+  );
+};
+
+PrivateWindowEmpty.storyName = 'Private window, one new tab';
+
+export const PrivateWindowCollapsed = () => {
+  useEffect(() => {
+    seedPrivateWindow(true, 4);
+  }, []);
+  return (
+    <ShellFrame width={COLLAPSED_SIDEBAR_WIDTH}>
+      <App />
+    </ShellFrame>
+  );
+};
+
+PrivateWindowCollapsed.storyName = 'Private window (narrow rail)';
 
 export const CollapseToggle = () => {
   // Interactive demo. The App's collapse IconButton dispatches

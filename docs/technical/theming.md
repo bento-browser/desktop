@@ -93,6 +93,10 @@ UI color mode flow:
 
 - `BentoSettings.uiColorMode` is the source for shell and chrome UI mode. It
   accepts `light`, `dark`, and `system`; `system` is the user-facing Auto mode.
+  A private window has its own mode, held in memory and never saved (see
+  [Window-local sidebar state](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay));
+  `useFirefoxTheme` therefore scopes the resolved-mode broadcast and its
+  `resolved-color-mode` storage key to the window in a private window.
 - `useFirefoxTheme.ts` resolves `system` against
   `(prefers-color-scheme: dark)`, updates shell `<html data-color-mode>` with
   the resolved `light`/`dark` value, and mirrors the stored preference to
