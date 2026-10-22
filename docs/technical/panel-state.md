@@ -249,10 +249,10 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   (`TabRegistry.isPrivate`, valid only while the closing listeners run). The
   other `storage.local` writers in `bento-tools` were audited and hold no tab
   data: workspaces, tab folders (user-chosen names), settings, durable-operation
-  records, graph journal state (ids and hashes plus the
-  backup JSON being restored), and the graph publication (already filtered by
-  `tab.incognito`). `BackupStore` builds each snapshot from live state, skips
-  incognito tabs when it resolves URLs, and omits private panels, pins, and
+  records, and graph journal state (ids and hashes plus the backup JSON being
+  restored). A retired graph publication snapshot of tabs (`bento.graphPublication.v1`)
+  is deleted at startup (`retiredStorage.ts`). `BackupStore` builds each snapshot from
+  live state, skips incognito tabs when it resolves URLs, and omits private panels, pins, and
   layout slots; it does not copy stored state. Data written by earlier builds is
   not scrubbed. A private window's `shell/hello` never claims
   or creates a regular workspace: tools gives the window its own temporary Private

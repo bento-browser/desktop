@@ -28,8 +28,6 @@ export type GraphOperationPhase =
   | 'relocating'
   | 'proving'
   | 'cleaning-old'
-  | 'publishing'
-  | 'awaiting-acks'
   | 'graph-published'
   | 'applying-saved-panels'
   | 'applying-settings'

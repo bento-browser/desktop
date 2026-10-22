@@ -172,7 +172,6 @@ describe('parseWireAction: malformed messages', () => {
       { type: 'tab/explode' },
       { type: 'ui/renameRequest' },
       { type: 'menu/open' },
-      { type: 'shell-client/heartbeat' },
       { type: 'toString' },
       { type: 'constructor' },
       { type: '__proto__' },

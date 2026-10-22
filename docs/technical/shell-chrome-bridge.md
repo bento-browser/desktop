@@ -341,7 +341,7 @@ window (see "The Settings overlay on the relay" below).
   repeated `hello` is idempotent.
 - Background fan-out (`fanOutEvent` in `bento-shell/src/background.ts`) is where
   audiences are enforced. Tools wraps workspace-bound events in an `audience/event`
-  envelope (`AudienceEvent` in `_shared/shell-client-protocol.ts`): `'regular'`
+  envelope (`AudienceEvent` in `_shared/audience-event.ts`): `'regular'`
   reaches the `BroadcastChannel` documents and the replay cache, `{ privateWindowId }`
   reaches only that window's relay documents. A private document therefore receives
   global events (settings, privacy, boot, saved panels) and its own window's state,
@@ -418,11 +418,18 @@ Pitfalls:
   makes tools create the window's Private workspace. A regular document's relay
   traffic is ignored unless it is a Settings message.
 - Do not create a `BroadcastChannel` in the shell background for private documents
-  or expect one document-level channel to reach it. `bento-shell-doc:<mountToken>`
-  (graph publication) has the same partition flaw; the coordinator publishes only to
-  regular documents, so private ones do not use it yet.
+  or expect one document-level channel to reach it.
 - Do not import the hub through two URL spellings (see above), and do not read
-  `embedderElement.ownerGlobal` in the actor.
+  `embedderElement.ownerGlobal` in the actor. The removed shell document registry
+  was imported as `resource://app/actors/...` by the mount and as
+  `resource:///actors/...` by the experiment: documents registered in one instance
+  and the experiment read the other, which was always empty, so the document
+  handshake and the targeted per-document channel never ran and no document ever
+  received a graph publication. Nothing failed, because every consumer treated an
+  empty list as normal; imports and restores still ran the publication bookkeeping
+  (a tab read and three `bento.graphPublication.v1` writes) for zero recipients. To test a
+  shared parent module, import it through both spellings in the Browser Toolbox
+  Console and compare the two exports.
 - A content-process actor (`BentoKeyChild`, `BentoShellBusChild`, any new
   `*Child.sys.mjs`) must be copied into the dev app as a real file, with its parent
   module beside it: add a `copy_content_actor` line in

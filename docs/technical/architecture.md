@@ -34,7 +34,7 @@ dispatches `Action` messages through `extensions/bento-shell/src/bridge/useTools
 stores are mirrors only.
 
 Port validation: `bento-tools` never trusts the `Action` type on the shell port.
-After `isAuthorizedShellPort` and the targeted `shell-client/*` handshake, every
+After `isAuthorizedShellPort`, every
 message goes through `createShellActionIntake`
 (`extensions/bento-tools/src/messaging/shell-action-intake.ts`) and
 `parseWireAction` (`extensions/_shared/wire-action.ts`):

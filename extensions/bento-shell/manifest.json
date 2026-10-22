@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Bento Shell",
   "short_name": "bento-shell",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Bento Browser UI shell — privileged built-in extension.",
   "hidden": true,
   "browser_specific_settings": {

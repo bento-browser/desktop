@@ -117,7 +117,7 @@ It owns payload validation, the private-window policy, serialization through
 `BentoMutationCoordinator`, the durable operation records
 (`OperationRegistry`, key `bento.nativeOperations.v1`), the graph journal for
 imports and restores (`GraphOperationJournal`, keys `bento.graphOperation.v1`,
-`bento.graphOperation.sources.v1`, `bento.graphPublication.v1`), import
+`bento.graphOperation.sources.v1`), import
 validation tokens, the revision counter, and the change notices. Two callers
 share it, so a change cannot behave differently by the way it arrived:
 
@@ -185,8 +185,8 @@ background and is never saved. The UI hiding of those rows is presentation only.
 Manual verification surface: the Settings palette (app menu, Bento Settings: change a
 setting and a protection level, export, import, reset). The domain's behavior is
 covered by `settings-domain/*.test.ts`. At startup tools also deletes the retired
-`bento.nativeSessions.v1` key (`retiredStorage.ts`); `bento.nativeOperations.v1`
-keeps its name because stored records live there.
+`bento.nativeSessions.v1` and `bento.graphPublication.v1` keys (`retiredStorage.ts`);
+`bento.nativeOperations.v1` keeps its name because stored records live there.
 
 ### Settings palette (shell side)
 
