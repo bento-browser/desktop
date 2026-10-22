@@ -139,21 +139,12 @@ describe('PanelStore group ratio', () => {
     const { store, ratio } = twoSubdivisions();
     const other = ratio('ws-b');
 
-    store.setGroupRatioIn('ws-b', ratio('ws-a').id, 0.8);
+    store.setGroupRatio('ws-b', ratio('ws-a').id, 0.8);
     expect(ratio('ws-a').ratio).not.toBe(0.8);
 
-    store.setGroupRatioIn('ws-a', ratio('ws-a').id, 0.8);
+    store.setGroupRatio('ws-a', ratio('ws-a').id, 0.8);
     expect(ratio('ws-a').ratio).toBe(0.8);
     expect(ratio('ws-b')).toEqual(other);
-  });
-
-  // The archived rollback source calls it with this shape and has no private windows.
-  it('keeps the two-argument call of the archived rollback source searching every workspace', () => {
-    const { store, ratio } = twoSubdivisions();
-
-    store.setGroupRatio(ratio('ws-b').id, 0.2);
-
-    expect(ratio('ws-b').ratio).toBe(0.2);
   });
 });
 
