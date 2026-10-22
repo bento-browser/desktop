@@ -29,6 +29,10 @@ import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BackupStore } from '../backup/BackupStore';
 import {
+  shellPortCaller,
+  type SettingsDomainService,
+} from '../settings-domain/SettingsDomainService';
+import {
   clearDevtoolsPanelMarker,
   clearPanelMarker,
   setDevtoolsPanelMarker,
@@ -36,13 +40,7 @@ import {
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 import { searchAddressResults } from '../search/AddressSearch';
-import {
-  applyAdvancedSetting,
-  applyPrivacyLevel,
-  readPrivacySnapshot,
-  readSearchEnginesSnapshot,
-  setDefaultSearchEngine,
-} from '../privacy/ProtectionLevels';
+import { readPrivacySnapshot, readSearchEnginesSnapshot } from '../privacy/ProtectionLevels';
 import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
 import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
 import { normalizeExternalSession } from '../externalMerge/normalizeExternalSession';
@@ -815,6 +813,8 @@ export interface HandlerContext {
   /** Broadcast cross-document UI events to every connected shell document.
    * Falls back to `send` in tests and non-background callers. */
   broadcast?: (event: Event) => void;
+  /** Shared settings, privacy and search mutations (validation, serialization, change notices). */
+  settingsDomain: SettingsDomainService;
   /** Resolve the active workspace's panel tabIds to {tabId, url} and
    * broadcast a panels/sync event. Lives on background.ts (it needs
    * broadcast access + browser.tabs.get for URL resolution); the handler
@@ -1472,19 +1472,16 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           ? splitWindowLocalSettings(action.changes).rest
           : action.changes;
       if (Object.keys(changes).length === 0) return;
-      void ctx.settings
-        .update(changes)
+      // The full shell settings set (welcome, sidebar controls), unlike the overlay's editable one.
+      void ctx.settingsDomain
+        .updateSettings(changes)
         .catch((err) => console.warn('[bento-tools] settings/update persistence failed:', err));
       return;
     }
     case 'settings/reset':
       void (async () => {
         try {
-          const committed = await ctx.settings.reset();
-          await Promise.allSettled([
-            applyPrivacyLevel(committed.settings.privacyProtectionLevel),
-            setDefaultSearchEngine(committed.settings.defaultSearchEngine),
-          ]);
+          await ctx.settingsDomain.reset(crypto.randomUUID(), shellPortCaller(ctx.sourceWindowId));
           await Promise.all([emitPrivacySnapshot(ctx), emitSearchEnginesSnapshot(ctx)]);
         } catch (err) {
           console.warn('[bento-tools] settings/reset persistence failed:', err);
@@ -2008,19 +2005,20 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void emitSearchEnginesSnapshot(ctx);
       return;
     case 'privacy/setProtectionLevel':
-      void applyPrivacyLevel(action.level)
-        .then(() => ctx.settings.update({ privacyProtectionLevel: action.level }))
+      void ctx.settingsDomain
+        .setProtectionLevel(action.level)
         .catch((err) => console.warn('[bento-tools] privacy/setProtectionLevel failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setAdvanced':
-      void applyAdvancedSetting(action.key, action.value)
+      void ctx.settingsDomain
+        .setAdvanced(action.key, action.value)
         .catch((err) => console.warn('[bento-tools] privacy/setAdvanced failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setDefaultSearchEngine':
-      void setDefaultSearchEngine(action.id)
-        .then(() => ctx.settings.update({ defaultSearchEngine: action.id }))
+      void ctx.settingsDomain
+        .setSearchEngine(action.id)
         .catch((err) => console.warn('[bento-tools] privacy/setDefaultSearchEngine failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;

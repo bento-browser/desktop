@@ -568,10 +568,8 @@ export type Action =
   | { type: 'panelLayout/removeVerticalGroup'; groupId: string; closeDelayMs?: number }
   | { type: 'panelLayout/setGroupRatio'; groupId: string; ratio: number }
   /** Ask tools to read the current privacy settings via browser.privacy.*
-   * and reply with a `privacy/snapshot` event. Sent on Privacy Dashboard
-   * mount; tools doesn't push privacy/changed deltas (settings rarely
-   * change without user action — the dashboard re-requests after any
-   * write it dispatches). */
+   * and reply with a `privacy/snapshot` event. Tools also broadcasts
+   * `privacy/changed` and `searchEngines/changed` after any mutation. */
   | { type: 'privacy/requestSnapshot' }
   | { type: 'privacy/setProtectionLevel'; level: SelectablePrivacyProtectionLevel }
   | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
@@ -918,6 +916,10 @@ export type Event =
     }
   | { type: 'privacy/snapshot'; privacy: PrivacySettings }
   | { type: 'searchEngines/snapshot'; snapshot: SearchEnginesSnapshot }
+  /** Broadcast after any privacy or search mutation (from any window or transport), so
+   * mirrors in other documents stay current. Same shapes as the snapshot events. */
+  | { type: 'privacy/changed'; privacy: PrivacySettings }
+  | { type: 'searchEngines/changed'; snapshot: SearchEnginesSnapshot }
   | { type: 'addrbar/results'; query: string; results: AddrResult[] }
   | { type: 'panel/focusedChanged'; tabId: number | null; windowId?: number }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }

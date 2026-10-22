@@ -33,6 +33,8 @@ async function createContext(sourceWindowId: number | null) {
     },
     workspaces,
     settings,
+    // The handler saves settings through the domain service; these are its two calls.
+    settingsDomain: { updateSettings: settings.update, reset: settings.reset },
     panels: { getVisiblePanelIds: vi.fn(() => []) },
     pinnedPanels: { entries: vi.fn(() => [{ tabId: 5 }]) },
     tabFolders: {

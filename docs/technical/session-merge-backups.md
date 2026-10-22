@@ -334,6 +334,29 @@ delete affordances. File selection stays in privileged Firefox UI, import files
 are capped at 10 MiB, and destructive/reset actions require native confirmation.
 Private sessions reject backup operations before storage lookup.
 
+Native and overlay backup operations run in `SettingsDomainService` (see
+[privacy-search.md](privacy-search.md)); the ordinary `backup/*` shell-port
+handlers remain until the native pane is removed, but nothing dispatches them and
+they lack the coordinator, size bounds, operation records and private-caller
+check. The service enforces the contract bounds (`backupFileBytes` for a file or
+an export in UTF-8 bytes, `workspaceCount` and `sourceIdCodeUnits` for the ids
+of a partial export) and answers `payload_too_large`, `schema_invalid` and
+`token_invalid`. A validation token is bound to the document and window that
+previewed the file, expires after five minutes, is single use, and a document
+keeps one at a time (a new preview replaces its earlier token; expired tokens
+are pruned on each preview). `importValidated` and `restore` consume the token or
+read the stored backup only after the operation is reserved, so retrying with the
+same operation id replays the retained result even when the token was spent or the
+backup has since been deleted. An import or restore stays `partial`, with the
+failed components in the retained result, when its privacy or search effect did
+not apply. If the process dies mid-import, `GraphOperationRecovery` rolls back
+before publication or finishes after it, and always clears the journal and the
+cached source file once it has recorded the outcome, so a later import is never
+refused with `graph_reserved`. Regression checks: restore a backup, delete it, and
+retry the same operation id (it replays); import a file whose settings carry a
+privacy level while the privacy API is failing (the operation is `partial`);
+kill the background mid-import and confirm the next import starts.
+
 Native Settings observer envelopes cross from Firefox chrome into the tools
 experiment, so the experiment normalizes the data-only envelope into its own
 realm before applying strict plain-object validation. Privileged Settings pages
