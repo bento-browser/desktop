@@ -25,6 +25,32 @@
 
   .bento-shell-app--no-side-panels {
     border-inline-end-color: transparent;
+    /* The toolbar next to it is the brand background, so the rail needs no re-tint:
+       the rail look below paints the brand background and the inset fills stay put. */
+    --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-5);
+    --bento-rail-band-fill: var(--muxui-semantic-color-neutral-12);
+    --bento-rail-square-base: var(--muxui-semantic-color-neutral-5);
+  }
+
+  /* The rail look: with side panels, the collapsed rail paints the toolbar's main colour
+     instead of the sidebar's (--bento-brand-bg on its surfaces), so it reads as one surface
+     with the window controls and the gap around the page, and drops its right edge line.
+     It applies in the rail (data-bento-collapsed, which follows the viewport width) and for
+     the length of a collapse, and not for the length of an expand, so the colour follows
+     the target: railTransition.css fades it on the reveal spring pair while a phase runs,
+     and the switch is instant otherwise (boot, reduced motion, hide and show). */
+  html:is(
+      [data-bento-rail-transition='collapse'],
+      [data-bento-collapsed='true']:not([data-bento-rail-transition='expand'])
+    )
+    .bento-shell-app {
+    --bento-brand-bg: var(--bento-toolbar-main-bg);
+    --bento-surface-hover-solid: color-mix(
+      in srgb,
+      var(--bento-brand-bg) 92%,
+      var(--muxui-semantic-color-neutral-90) 8%
+    );
+    border-inline-end-color: transparent;
   }
 
   .bento-shell-app__main {
@@ -65,7 +91,7 @@
     padding-block-start: var(--space-3xs);
     padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: var(--bento-sidebar-inline-padding);
-    background-color: var(--neutral-5);
+    background-color: var(--bento-brand-bg);
     /* Keep padding identical in expanded and collapsed modes so the
        header's vertical rhythm does not shift during sidebar toggles. */
   }
@@ -74,6 +100,9 @@
     padding-block: var(--space-2xs);
     padding-inline: var(--space-2xs);
     border-top: 1px solid var(--bento-sidebar-divider-color);
+    /* Painted so the collapse choreography's backdrop (railTransition.css) can take its
+       colour, and fade it, from this element. */
+    background-color: var(--bento-brand-bg);
     justify-content: flex-end;
     gap: var(--space-4xs) !important;
   }
@@ -85,6 +114,9 @@
     flex: 1 1 auto;
     min-height: 0;
     flex-direction: column;
+    /* Painted (the same as the app) so the rail look's colour change has a colour to start
+       from here, and the choreography can raise the list over the address bar. */
+    background-color: var(--bento-brand-bg);
   }
 
   .bento-shell-app__workspace-switcher {
@@ -96,7 +128,7 @@
     gap: var(--bento-sidebar-section-gap);
     padding-block: var(--space-3xs) 0;
     padding-inline: var(--bento-sidebar-inline-padding);
-    background-color: var(--neutral-5);
+    background-color: var(--bento-brand-bg);
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,

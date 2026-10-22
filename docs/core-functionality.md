@@ -421,7 +421,11 @@ mode, those same actions open the existing floating address/search fallback.
 `Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
 collapses the sidebar to the narrow rail or hides it from layout. Collapsing,
 expanding, hiding and showing slide the sidebar and the page together as one strip,
-with the toolbar controls and the divider moving with them; nothing fades. While the
+with the toolbar controls and the divider moving with them; the strip itself does not
+fade. In a window with side panels the collapsed rail takes the toolbar's colour, so the
+window controls, the rail and the gap around the page read as one surface with no divider
+line on the rail's right edge; the colour fades in and out with a collapse or expand and
+stays as it is without side panels. While the
 sidebar's edge moves on a collapse or expand, its contents reorganise in place, one
 after another from the top: the workspace avatar, the New button's plus and each tab's
 favicon move to their rail places, the address bar folds away under the rising tab

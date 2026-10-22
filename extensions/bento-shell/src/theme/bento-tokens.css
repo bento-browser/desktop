@@ -106,6 +106,18 @@
        data-color-mode through the public Mux mode projection. */
     --bento-brand-bg: var(--neutral-5);
 
+    /* The toolbar's main surface: the top toolbar and the gap around the page. The
+       collapsed rail takes it as well (the shell's rail look, chrome's rail-coloured
+       toolbar segment), so the window controls, the rail and the gap read as one
+       surface. A window with no side panels overrides it to the brand background. */
+    --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-14);
+    /* The rail's inset fills on that surface, one step further out so they keep their
+       contrast: the tab list band (the pinned and active tabs' top surface) and the base
+       the workspace switcher's square is tinted from. A window with no side panels keeps
+       the brand background in the rail, so the shell resets both there (app.css). */
+    --bento-rail-band-fill: var(--muxui-semantic-color-neutral-18);
+    --bento-rail-square-base: var(--muxui-semantic-color-neutral-18);
+
     /* Component dimensions */
     --bento-favicon-size: 1rem;
     --bento-command-palette-width: 37.5rem;

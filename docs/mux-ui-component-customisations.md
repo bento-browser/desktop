@@ -760,7 +760,12 @@ Pairs that must stay in lockstep use the same role: every part of the sidebar pu
 (the host, the shell frame's counter-translation, the page group, the bookmarks
 toolbar, the divider, Back/Forward/Reload and the band in `bento-shell-mount.css`, and
 the hidden sidebar's edge-hover slide-over that follows it) is the `reveal` spring pair
-(400 ms, no overshoot), with no fade in any direction; the workspace slide
+(400 ms, no overshoot), and the strip itself never fades. The rail colour is the one
+fade: in a collapse or expand the toolbar's sidebar-side colour (the registered
+`--bento-toolbar-left-bg`), the host's background, the chrome divider line (to transparent)
+and the host's edge line (opacity) run on the same pair, and the shell's rail-look
+backgrounds (`railTransition.css`, only while `data-bento-rail-transition` is present) do
+too; a hide, a show, boot, reduced motion and theme changes switch the colour at once. The workspace slide
 (`TabList.css`), the main panel width one-shot and the panel enter are `reveal` too.
 
 The sidebar collapse and expand choreography (`extensions/bento-shell/src/sidebar/railTransition.css`,

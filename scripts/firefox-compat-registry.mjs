@@ -75,6 +75,7 @@ const FF = {
   browserJs: 'browser/base/content/browser.js',
   browserInit: 'browser/base/content/browser-init.js',
   browserBox: 'browser/base/content/browser-box.inc.xhtml',
+  browserShared: 'browser/themes/shared/browser-shared.css',
   navigatorToolbox: 'browser/base/content/navigator-toolbox.inc.xhtml',
   contextMenuXhtml: 'browser/base/content/browser-context.inc.xhtml',
   popupset: 'browser/base/content/main-popupset.inc.xhtml',
@@ -319,6 +320,15 @@ export const MEMBERS = [
     sites: ['src/browser/base/content/bento-shell-mount.css#split-view-footer'],
     use: 'showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule.',
     at: [FF.tabbrowser, 'createXULElement\\("split-view-footer"\\)', 4114],
+  },
+  {
+    id: '#navigator-toolbox[fullscreenShouldAnimate]',
+    kind: 'source',
+    how: 'queries',
+    probe: 'E',
+    sites: ['src/browser/base/content/bento-shell-mount.css#fullscreenShouldAnimate'],
+    use: "The sidebar push's colour transition on the toolbar surfaces replaces their transition list, so it skips #navigator-toolbox while Firefox's fullscreen reveal (`transition: 0.8s margin-top` on this attribute, set by browser-fullScreenAndPointerLock.js) runs.",
+    at: [FF.browserShared, '&\\[fullscreenShouldAnimate\\] \\{\\s*transition: 0\\.8s margin-top', 221],
   },
   {
     id: '.browserContainer panel structure',

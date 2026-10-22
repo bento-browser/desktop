@@ -185,7 +185,11 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   /* The expanded and rail fills, also drawn by the collapse choreography
      (sidebar/railTransition.css), which cross-fades them. */
   --bento-workspace-switcher-fill: color-mix(in srgb, var(--color-60) 8%, transparent);
-  --bento-workspace-switcher-rail-fill: color-mix(in srgb, var(--color-60) 12%, var(--neutral-5));
+  --bento-workspace-switcher-rail-fill: color-mix(
+    in srgb,
+    var(--color-60) 12%,
+    var(--bento-rail-square-base)
+  );
   background-color: var(--bento-workspace-switcher-fill);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
