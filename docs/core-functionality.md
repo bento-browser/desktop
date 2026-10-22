@@ -253,7 +253,10 @@ A private window's sidebar is marked by an inverted block at the top, in the pla
 the workspace switcher: a mask glyph with "Private" over "Nothing here is saved."
 Activating it opens a short note ("Private window: Tabs and panels are not saved.
 Closing the window discards them."). In the collapsed rail the block is the glyph
-alone, and the note shows beside it on hover or keyboard focus. The window always uses
+alone, and the note shows beside it on hover or keyboard focus. The glyph stays where the
+rail centres it, so collapsing or expanding the sidebar does not move it: the text beside
+it is clipped away as the sidebar narrows and revealed as it widens, at full strength. The
+block starts level with the top of the main panels. The window always uses
 the default theme. It has no workspace switcher, no pinned panel rail, no "Edit this
 workspace", no theme picker, no "Pin this panel" or "Save panel" item, no workspace or folder
 entries in the tab menu, and its command palette lists no workspace commands and no

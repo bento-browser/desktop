@@ -67,6 +67,13 @@ export class FakeHead {
 
 export class FakeRoot {
   attributes = new Map<string, string>();
+  /** Inline custom properties, as set through `style.setProperty`. */
+  properties = new Map<string, string>();
+  style = {
+    setProperty: (name: string, value: string) => {
+      this.properties.set(name, value);
+    },
+  };
 
   setAttribute(name: string, value: string) {
     this.attributes.set(name, value);

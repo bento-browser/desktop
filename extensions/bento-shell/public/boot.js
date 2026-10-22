@@ -41,6 +41,18 @@
     stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'light',
   );
 
+  // Chrome stamps its root font size on a private window's sidebar frame (its rem is not the
+  // shell's), and the Private band's slot scales the panel-gutter token by it (--bento-panel-top-inset
+  // in bento-tokens.css) so the band starts level with the main panels from the first paint.
+  var chromeRem = new URLSearchParams(location.hash.slice(1)).get('bentoChromeRem');
+  if (chromeRem && /^[0-9]{1,2}(\.[0-9]{1,3})?$/.test(chromeRem) && Number(chromeRem) > 0) {
+    // 16 is the shell's root contract (1rem = 16px, --font-size-root).
+    document.documentElement.style.setProperty(
+      '--bento-chrome-rem-scale',
+      String(Number(chromeRem) / 16),
+    );
+  }
+
   // Lowercase words joined by single hyphens: no dots, slashes, or other path syntax.
   var themeId = localStorage.getItem('workspace-theme');
   var optOut =

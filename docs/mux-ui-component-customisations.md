@@ -788,19 +788,23 @@ the "Cascade" direction) runs inside that push while the shell document stays pu
 the strip's edge wipes over it. It animates only `translate` and `opacity`, keyed on
 `data-bento-rail-transition` on `<html>`:
 
-- Moves (the workspace avatar, the glyph of a private window's band, the list region and the scroller as it rises over the
+- Moves (the workspace avatar, the list region and the scroller as it rises over the
   address bar, the New plus, each tab and folder row and its favicon or icon, the
   active row's retracting tail, the pinned panel rail and the main column's shift, the
   footer buttons, and the footer backdrop that rises with the divider) are the `reveal`
   spring pair at `calc()` 0.6 of its duration, so a staggered move still ends inside
   the slide. A collapse moves to the measured rail places and holds them until the
   rail layout replaces it; an expand starts at them and moves back.
-- Fades (the workspace name, the private band's two text lines, the New label, row titles, the switcher's fill and the
+- Fades (the workspace name, the New label, row titles, the switcher's fill and the
   rail square that replaces it, folder outlines, the pinned and folder band, the
   address bar's fold, pinned panels) are the `state` pair. Trailing controls (the
   switcher chevron, Search, row buttons and audio controls, an open search field,
   sidebar cards) leave on the `dismiss` pair in a collapse and return on `state` in an
   expand, after `calc()` 0.3 of the spring duration (titles after 0.15).
+- A private window's band takes no part in the moves and fades: its glyph's start inset
+  (rail width minus glyph size, halved, from tokens) is the same in both layouts, and its
+  text keeps full opacity and starts at the rail's edge, so the strip's edge clips and
+  reveals it. Only its slot's stacking is lifted for the phase.
 - Staggers are `calc()` fractions of the spring duration in units of 1/32: the
   switcher 0, the address bar and the list 1, New 2, then the rows from 3 by their
   visible position (capped at 11, so the last collapse move ends by 0.95 of the

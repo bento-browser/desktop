@@ -131,9 +131,11 @@
     background-color: var(--bento-brand-bg);
   }
 
-  /* A private window shows the Private band here, edge to edge. */
+  /* A private window shows the Private band here, edge to edge, and starts level with the top
+     of the main panels (--bento-panel-top-inset: the panels' gutter token at chrome's rem, see
+     bento-tokens.css and boot.js). */
   .bento-shell-app__workspace-switcher--private {
-    padding: 0;
+    padding: var(--bento-panel-top-inset) 0 0;
   }
 
   html[data-bento-collapsed='true'] .bento-shell-app__header,
