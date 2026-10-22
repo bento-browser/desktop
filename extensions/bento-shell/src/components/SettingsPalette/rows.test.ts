@@ -84,6 +84,12 @@ describe('root rows', () => {
     expect(priv).toContain('Protection level');
   });
 
+  it('leaves out the reset in a private window, where tools refuses it', () => {
+    expect(rootRows(PRIVATE_MODEL).some((row) => row.id === 'reset:open')).toBe(false);
+    expect(searchableRows(PRIVATE_MODEL).some((row) => row.id === 'reset:open')).toBe(false);
+    expect(rootRows(REGULAR_MODEL).some((row) => row.id === 'reset:open')).toBe(true);
+  });
+
   it('marks a write in flight on its row', () => {
     const model: SettingsPaletteModel = {
       ...REGULAR_MODEL,
@@ -320,11 +326,18 @@ describe('backups', () => {
   it('opens restore and delete from a stored backup, each behind a confirmation', () => {
     const rows = rowsForStage({ kind: 'backupRow', backupId: 'b1', label: 'L' }, REGULAR_MODEL);
     expect(labels(rows)).toEqual(['Restore…', 'Delete…']);
+    // Neither row runs anything: each opens the confirm stage, whose last row runs it.
     expect(rows[0]!.intent).toEqual({
-      type: 'confirm',
-      action: { kind: 'restore', backupId: 'b1', label: 'L' },
+      type: 'push',
+      stage: { kind: 'confirm', action: { kind: 'restore', backupId: 'b1', label: 'L' } },
     });
-    expect(rows[1]).toMatchObject({ tone: 'danger' });
+    expect(rows[1]).toMatchObject({
+      tone: 'danger',
+      intent: {
+        type: 'push',
+        stage: { kind: 'confirm', action: { kind: 'delete', backupId: 'b1', label: 'L' } },
+      },
+    });
   });
 
   it('formats a backup date like the mock, in 24-hour local time', () => {

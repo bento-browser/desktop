@@ -12,9 +12,13 @@ places, and all of them end in the mount script's `showMergePalette()`
   document's title; the palette frame's title handler routes it to
   `showMergePalette()`, which dismisses the command palette first, and the
   palette's own close title that follows only hides an already hidden overlay;
-- the "Merge browser session" button in the "Backup and data" group of the native
-  Bento Settings page (patch 15, hidden in private windows like the neighbouring
-  backup buttons), which dispatches a `BentoOpenMergePalette` `CustomEvent` on
+- the "Merge browser session" row in the "Backup and data" group of the Settings
+  palette (hidden in private windows like the other backup rows): its document
+  writes `BENTO_OPEN_MERGE_PALETTE_<timestamp>` and the Settings frame's title handler
+  routes it to `showMergePalette()`, which dismisses the Settings palette; and the
+  button of the same name on the native Bento Settings page (patch 15, still
+  reachable by URL, hidden in private windows like the neighbouring backup buttons),
+  which dispatches a `BentoOpenMergePalette` `CustomEvent` on
   `window.browsingContext.topChromeWindow`, read at click time because a Settings
   tab keeps its document when moved to another window. The mount script of that
   window listens for the event, so the palette opens over the window that holds

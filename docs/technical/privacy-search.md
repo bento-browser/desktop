@@ -136,8 +136,9 @@ share it, so a change cannot behave differently by the way it arrived:
   `caller` block (`documentId`, `windowId`, `isPrivate`) is derived in chrome,
   never by the document; tools only checks that the window exists
   (`caller_unbound` otherwise). The answer is a `settings/result` posted on that
-  port only, never through the broadcast set. Nothing sends these requests until
-  the Settings overlay and the relay land.
+  port only, never through the broadcast set. The shell background sends these
+  requests for the Settings palette (`bridge/settingsRelay.ts`, see
+  [shell-chrome-bridge.md](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay)).
 - The ordinary shell-port handlers (`settings/update`, `settings/reset`,
   `privacy/setProtectionLevel`, `privacy/setAdvanced`,
   `privacy/setDefaultSearchEngine`) call the service's typed mutations. A reset
@@ -176,23 +177,26 @@ Window ids repeat across browser sessions, which is why the boot identity is par
 of the key. `recoveredOperationNotices` lists only records recovery or startup
 settlement closed (`recovered: true`).
 
-Backup operations and `recovery/acknowledgeNotice` are refused to a private
-caller (`private_window_forbidden`), `snapshot/get` omits the backup domain and
-the notices for one, and `operation/status` hides backup records from it. The
-UI hiding of backup actions is presentation only.
+Backup operations, `recovery/acknowledgeNotice` and `settings/reset` are refused
+to a private caller (`private_window_forbidden`; `isPrivateForbiddenOperation`),
+`snapshot/get` omits the backup domain and the notices for one, and
+`operation/status` hides backup records from it. A private caller's
+`settings/update` keeps its other keys but drops the window-local ones
+(`WINDOW_LOCAL_SETTING_KEYS`): the private window's colour mode lives in the shell
+background and is never saved. The UI hiding of those rows is presentation only.
 
-Manual verification surface: the native pane (open Settings, change a setting
-and a privacy level, reset, export, import with Replace) until the overlay
-replaces it. The overlay transport has no runtime consumer yet; its behavior is
-covered by `settings-domain/*.test.ts`.
+Manual verification surface: the Settings palette (app menu, Bento Settings: change a
+setting and a protection level, export, import, reset), and the native pane until it
+is removed. The domain's behavior is covered by `settings-domain/*.test.ts`.
 
 ### Settings palette (shell side)
 
-The Settings palette is the shell-side replacement for the native pane (the chrome
-frame, the relay attachment and the entry points come in later phases; until then
-`settings-palette.html` is built and nothing opens it). It is a staged quick pick on
-the public Mux `CommandPalette` parts, and it is split so each piece is testable
-without the browser:
+The Settings palette is the shell-side replacement for the native pane (the native
+pane stays reachable by URL until it is removed). Chrome hosts it as the
+`settings-palette` overlay ([overlay-documents.md](overlay-documents.md)); the app
+menu, the command palette's Open Settings and Privacy commands and the welcome Open
+Settings button open it. It is a staged quick pick on the public Mux `CommandPalette`
+parts, and it is split so each piece is testable without the browser:
 
 - `extensions/bento-shell/src/components/SettingsPalette/` is presentational. It takes a
   `SettingsPaletteView` (loading, error or a `SettingsPaletteModel`) and a
@@ -219,11 +223,16 @@ undefined`, and the palette then shows no backup rows or automatic-backup
   preferences. Files over 8 Mi characters are refused before sending because the relay
   actor drops a longer message (`BentoShellBusChild.sys.mjs`).
 - `relayTransport.ts` is the only file that knows how Settings traffic is shaped on the
-  private-window relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
-  strings). It sends `hello` until acknowledged, holds requests until then (for at most
-  the client deadline) and posts each request as a `settings/request` action. The relay
-  defines no Settings kind yet; the shapes are documented at the top of the file and
-  are the one thing to adjust when the relay branch and this one are joined.
+  BentoShellBus relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
+  strings, built on `bridge/shellBus.ts`). It sends `settings-hello` until acknowledged,
+  holds requests until then (for at most the client deadline) and posts each request as
+  `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
+  notices as `event`. The background side is `bridge/settingsRelay.ts`.
+- `useShowSignal.ts` listens for chrome's `bento-settings-show` event (see
+  overlay-documents.md): each show bumps `openToken` (the palette returns to
+  `initialStages`: the root, or the protection level list for the privacy link) and
+  refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
+  so the first show is never lost.
 
 Editor stages (a number or a workspace name typed in the search field) behave as
 follows. A valid number applies live after 180 ms without typing (and at once for an
@@ -232,11 +241,17 @@ started with, and an invalid draft is shown with its reason and never sent. They
 share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,
 because the field holds the value being typed.
 
-Manual verification (until the overlay is wired, in Ladle:
-`pnpm --filter @bento/shell ladle:serve`, stories under "Settings palette"): each mock
-step renders in dark and light, the keyboard model works (first row focused on open,
-arrows move, Enter runs, Esc goes back one stage and closes from the root), and a
-number edit reverts on Esc.
+Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories under
+"Settings palette") each mock step renders in dark and light. In Bento: open Settings
+from the app menu, the command palette (Open Settings, and Privacy for the protection
+level list) and the welcome dialog; the keyboard model works (first row focused on
+open, arrows move, Enter runs, Esc goes back one stage and closes from the first list);
+a number edit applies live and reverts on Esc; a change in one window shows in another
+window's open palette. In a private window the palette has no backup, merge or reset
+rows, the Bento color mode row changes only that window and is not saved, and other
+settings save for the profile. Reset closes the palette and onboarding opens again.
+Export lands in the download directory; Import shows what the file holds before it
+changes anything.
 
 Native Bento Settings is registered by
 `patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
@@ -387,6 +402,18 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - Static rows (explanations, the Custom protection level) are `disabled` Mux items, so
   keyboard navigation skips them; the palette restyles `[data-info]` so they do not
   look disabled.
+- An intent of type `confirm` runs its operation at once (the last row of the confirm stage
+  carries it); a row that should ask first must `push` the confirm stage. The stored
+  backup's Restore and Delete rows once carried `confirm` and restored on the first
+  click, which only a runtime pass showed (`rows.test.ts` now asserts the push).
+- The overlay is created on first use, so the first show happens on the readiness
+  announcement: `useOverlayReadySignal('settings-palette')` must stay after the effect
+  that listens for `bento-settings-show` (`useShowSignal`), or chrome's first show is
+  sent to nobody and the palette opens on a stale first list.
+- A private window's Settings document must not edit the saved colour mode: tools
+  drops `uiColorMode` from a private caller's update and the shell background keeps the
+  window's own value (`bridge/settingsRelay.ts`). Reading the snapshot without that
+  projection would show the saved value in the row.
 - Mux has no `--muxui-semantic-color-error-N` token (only `-fg`). Danger text uses
   `--muxui-semantic-action-danger-foreground` and invalid text
   `--muxui-semantic-feedback-invalid-content`.

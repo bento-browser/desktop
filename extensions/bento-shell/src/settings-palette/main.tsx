@@ -2,7 +2,7 @@
 // palette-class overlays; chrome owns its visibility and this document asks to be hidden with a
 // BENTO_CLOSE_SETTINGS_PALETTE title (see src/palette/main.tsx for why a title).
 //
-// Settings reach bento-tools through the private-window relay (`relayTransport.ts`), not the
+// Settings reach bento-tools through the BentoShellBus relay (`relayTransport.ts`), not the
 // shell bus, so the palette works in private windows too. The bus (`initToolsPort`) is only
 // joined for the theme mirrors.
 
@@ -21,6 +21,7 @@ import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort } from '../bridge/useToolsPort';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { useOverlayReadySignal } from '../bridge/overlayReady';
 import { createRelayTransport } from './relayTransport';
 import { createSettingsClient } from './settingsClient';
 import { createSettingsPaletteStore, type SettingsPaletteHost } from './settingsStore';
@@ -47,7 +48,7 @@ function saveFile(filename: string, text: string) {
 }
 
 const host: SettingsPaletteHost = {
-  // Chrome opens about:preferences#search and hides this overlay (wired with the overlay frame).
+  // Chrome opens about:preferences#search and hides this overlay.
   openFirefoxSearchSettings: () =>
     sendChromeTitle(`BENTO_OPEN_FIREFOX_SEARCH_SETTINGS_${Date.now()}`),
   openMergePalette: () => sendChromeTitle(`BENTO_OPEN_MERGE_PALETTE_${Date.now()}`),
@@ -64,11 +65,17 @@ function SettingsPaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const view = useStore(settings.store, (state) => state.view);
-  const openToken = useShowSignal(settings.actions.refresh);
-  // The readiness announcement (useOverlayReadySignal) is added with the chrome overlay entry:
-  // scripts/overlay-manager.test.mjs keeps OverlayName equal to the mount's overlay table.
+  const { openToken, initialStages } = useShowSignal(settings.actions.refresh);
+  // After the effect that listens for the show: chrome reveals the overlay on this announcement.
+  useOverlayReadySignal('settings-palette');
   return (
-    <SettingsPalette view={view} actions={settings.actions} onClose={close} openToken={openToken} />
+    <SettingsPalette
+      view={view}
+      actions={settings.actions}
+      onClose={close}
+      initialStages={initialStages}
+      openToken={openToken}
+    />
   );
 }
 

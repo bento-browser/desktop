@@ -23,8 +23,9 @@ import {
   isTargetedShellEvent,
   type AudienceEvent,
 } from '@shared/shell-client-protocol';
-import { splitWindowLocalSettings } from '@shared/windowLocalSettings';
+import { splitWindowLocalSettings, type WindowLocalSettings } from '@shared/windowLocalSettings';
 import { PrivateWindowSettings } from './bridge/privateWindowSettings';
+import { SettingsRelay } from './bridge/settingsRelay';
 import type { BusDown } from './bridge/shellBus';
 import { isDocumentLocalAction } from './bridge/shellBus';
 
@@ -276,6 +277,23 @@ const relayDocuments = new Map<string, { windowId: number }>();
 const toolsHelloSent = new Set<number>();
 /** Each private window's own sidebar collapse, hidden state and colour mode. */
 const privateSettings = new PrivateWindowSettings();
+/** The Settings overlay document of every window, regular or private. */
+const settingsRelay = new SettingsRelay({
+  instanceId: backgroundInstanceId,
+  toTools: (message) => {
+    if (!toolsPort) return false;
+    try {
+      toolsPort.postMessage(message);
+      return true;
+    } catch (error) {
+      console.warn('[bento-shell] settings request to tools failed:', error);
+      return false;
+    }
+  },
+  toDocument: (documentId, message) => bentoChrome.postToDocument(documentId, message),
+  privateSettings,
+  applyLocalSettings: applyWindowLocalSettings,
+});
 
 function isWithheldFromPrivateDocuments(event: Event): boolean {
   return event.type.startsWith('backup/') || event.type.startsWith('externalMerge/');
@@ -314,6 +332,8 @@ function fanOutEvent(event: Event, audience: AudienceEvent['audience'] | 'all'):
   if (event.type === 'settings/snapshot' || event.type === 'settings/changed') {
     privateSettings.saved(event.settings);
   }
+  // Global notices only: these three events are never addressed to one window.
+  if (effective === 'all') settingsRelay.notice(event);
   if (effective === 'regular') {
     if (event.type === 'panels/sync') lastPanelsSyncByWorkspace.set(event.workspaceId, event);
     pruneRemovedWorkspaces(event);
@@ -339,24 +359,25 @@ function forWindow(event: Event, windowId: number): Event {
 }
 
 /** A private window changed its own sidebar or colour mode: only that window's
- * documents hear it, and nothing is saved. Whatever else the update carried goes on
- * to tools as an ordinary settings update. */
+ * documents hear it (the sidebar and overlays, and its Settings document), and
+ * nothing is saved. */
+function applyWindowLocalSettings(windowId: number, local: Partial<WindowLocalSettings>): void {
+  const settings = privateSettings.update(windowId, local);
+  if (!settings) return;
+  const message: BusDown = { kind: 'event', event: { type: 'settings/changed', settings } };
+  for (const [documentId, document] of relayDocuments) {
+    if (document.windowId === windowId) postToRelayDocument(documentId, message);
+  }
+  settingsRelay.postToWindow(windowId, message);
+}
+
+/** A private window's own settings update from its sidebar: the window-local keys stay
+ * here. Whatever else the update carried goes on to tools as an ordinary settings update. */
 function applyPrivateSettingsUpdate(windowId: number, action: object): void {
   const { changes } = action as { changes?: Parameters<typeof splitWindowLocalSettings>[0] };
   if (!changes || typeof changes !== 'object') return;
   const { local, rest } = splitWindowLocalSettings(changes);
-  if (Object.keys(local).length > 0) {
-    const settings = privateSettings.update(windowId, local);
-    if (settings) {
-      for (const [documentId, document] of relayDocuments) {
-        if (document.windowId !== windowId) continue;
-        postToRelayDocument(documentId, {
-          kind: 'event',
-          event: { type: 'settings/changed', settings },
-        });
-      }
-    }
-  }
+  if (Object.keys(local).length > 0) applyWindowLocalSettings(windowId, local);
   if (Object.keys(rest).length > 0) {
     forwardActionToTools({ ...action, changes: rest, __windowId: windowId });
   }
@@ -407,10 +428,31 @@ function handleBusMessage({
   isPrivate,
   message,
 }: BentoChromeBusMessage): void {
-  // Only private windows use the relay for the bus today; regular windows keep
-  // the BroadcastChannel path.
-  if (!isPrivate || !message || typeof message !== 'object') return;
-  const data = message as { kind?: unknown; helloId?: unknown; action?: unknown };
+  if (!message || typeof message !== 'object') return;
+  const data = message as {
+    kind?: unknown;
+    helloId?: unknown;
+    action?: unknown;
+    request?: unknown;
+  };
+  // The Settings overlay uses the relay in every window; identity is the hub's.
+  if (documentId && data.kind === 'settings-hello') {
+    settingsRelay.hello(documentId, { windowId, isPrivate }, data.helloId);
+    return;
+  }
+  if (documentId && data.kind === 'settings-request') {
+    settingsRelay.request(documentId, { windowId, isPrivate }, data.request);
+    return;
+  }
+  if (documentId && data.kind === 'document-closed') {
+    const settingsDocument = settingsRelay.forget(documentId);
+    if (settingsDocument?.isPrivate && !privateWindowIds().has(settingsDocument.windowId)) {
+      privateSettings.close(settingsDocument.windowId);
+    }
+  }
+  // Apart from the Settings overlay, only private windows use the relay for the bus;
+  // regular windows keep the BroadcastChannel path.
+  if (!isPrivate) return;
   if (data.kind === 'hello' && documentId) {
     handleRelayHello(documentId, windowId, data.helloId);
     return;
@@ -477,6 +519,8 @@ function connectTools(): void {
       firstMessageReceived = true;
       reconnectDelay = RECONNECT_BASE_MS; // reset backoff on healthy port
     }
+    // A Settings answer belongs to the one document that asked, never to the fan-out.
+    if (settingsRelay.result(message)) return;
     if (isAudienceEvent(message)) fanOutEvent(message.event, message.audience);
     else fanOutEvent(message as Event, 'all');
   });
@@ -491,6 +535,7 @@ function connectTools(): void {
 
   port.onDisconnect.addListener(() => {
     if (toolsPort === port) toolsPort = null;
+    settingsRelay.dropPending();
     // Always retry. On fresh profiles tools may not be listening yet; on
     // long-running sessions it may have been reloaded via dev-reload.
     scheduleReconnect();

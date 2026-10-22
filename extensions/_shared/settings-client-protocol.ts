@@ -60,9 +60,17 @@ export function isDurableSettingsOperation(
   return (DURABLE_SETTINGS_OPERATIONS as readonly string[]).includes(operation);
 }
 
-/** Backup operations (and notice acknowledgement) are refused for private-window callers. */
+/**
+ * Refused for private-window callers: backups and their notices (a private window keeps nothing
+ * on disk) and the reset, which rewrites the whole profile and reopens the welcome flow in a
+ * regular window.
+ */
 export function isPrivateForbiddenOperation(operation: SettingsOperation): boolean {
-  return operation.startsWith('backup/') || operation === 'recovery/acknowledgeNotice';
+  return (
+    operation.startsWith('backup/') ||
+    operation === 'recovery/acknowledgeNotice' ||
+    operation === 'settings/reset'
+  );
 }
 
 /** Error codes with their `retryable` flag. */
@@ -125,6 +133,12 @@ export type SettingsResult =
       ok: false;
       error: { code: SettingsErrorCode; retryable: boolean };
     };
+
+/** The part of a request the document supplies; the shell background adds the caller. */
+export type SettingsRequestBody = Pick<
+  SettingsClientRequest,
+  'requestId' | 'operationId' | 'operation' | 'payload'
+>;
 
 export const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;

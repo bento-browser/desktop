@@ -99,6 +99,8 @@ const FUNCTIONS = [
   'isOverlayOpen',
   'dismissPalette',
   'dismissMergePalette',
+  'dismissWorkspacePalette',
+  'dismissSettingsPalette',
   'isPaletteVisible',
   'showPalette',
   'hidePalette',
@@ -111,6 +113,9 @@ const FUNCTIONS = [
   'showMergePalette',
   'hideMergePalette',
   'toggleMergePalette',
+  'isSettingsPaletteVisible',
+  'showSettingsPalette',
+  'hideSettingsPalette',
   'isAddrbarVisible',
   'nextAddrbarOpenId',
   'positionAddrbarHost',
@@ -143,6 +148,7 @@ const FUNCTIONS = [
   'savePanelMenuItems',
   'dispatchAddrbarOpen',
   'dispatchMergePaletteLifecycle',
+  'dispatchSettingsPaletteShow',
   'attachPaletteEscListener',
   'attachOutsideClickDismissListener',
 ];
@@ -180,6 +186,8 @@ const EXPORTED = [
   'showMergePalette',
   'hideMergePalette',
   'toggleMergePalette',
+  'showSettingsPalette',
+  'hideSettingsPalette',
   'showAddrbar',
   'hideAddrbar',
   'revealPendingAddrbar',
@@ -272,6 +280,7 @@ const HOSTS = {
   menu: { static: true },
   addrbar: {},
   'workspace-palette': {},
+  'settings-palette': {},
   'edit-workspace': {},
   welcome: {},
   'embedded-import': {},
@@ -381,6 +390,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     setBentoPaletteSrc: navigate('palette'),
     setBentoWorkspacePaletteSrc: navigate('workspace-palette'),
     setBentoMergePaletteSrc: navigate('merge-palette'),
+    setBentoSettingsPaletteSrc: navigate('settings-palette'),
     setBentoAddrbarSrc: navigate('addrbar'),
     setBentoConfirmSrc: navigate('confirm'),
     setBentoEditWorkspaceSrc: navigate('edit-workspace'),
@@ -420,6 +430,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     SHELL_ACTION_FRAME_SCRIPT_URL: 'shell-action',
     ADDRBAR_OPEN_FRAME_SCRIPT_URL: 'addrbar-open',
     MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL: 'merge-lifecycle',
+    SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL: 'settings-show',
   };
 
   const script = `"use strict";
@@ -494,6 +505,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
       messages('BentoMergePaletteLifecycle')
         .map((message) => message.data)
         .filter((data) => data.type === 'open'),
+    settingsShows: () => messages('BentoSettingsPaletteShow').map((message) => message.data),
     shellActions: () => messages('BentoShellAction').map((message) => message.data),
     hubPosts: () => plain(hubPosts.map(({ message }) => message)),
     menuOpens: () =>
@@ -962,6 +974,82 @@ test('a ready palette opens synchronously', () => {
   assert.deepEqual([...world.events.scrim], ['palette']);
 });
 
+// ─── Settings palette ────────────────────────────────────────────────────────
+
+test('a cold Settings palette open waits for its document, then shows and sends the show once', () => {
+  const world = makeWorld();
+  world.showSettingsPalette('protection');
+  assert.equal(world.overlays.hasPendingOpen('settings-palette'), true);
+  assert.equal(world.isShown('settings-palette'), false);
+  assert.deepEqual(
+    world.settingsShows(),
+    [],
+    'nothing is sent to a document that is not listening',
+  );
+
+  world.ready('settings-palette');
+  assert.equal(world.isShown('settings-palette'), true);
+  assert.deepEqual([...world.events.scrim], ['settings-palette']);
+  assert.deepEqual(world.settingsShows(), [{ stage: 'protection' }]);
+  assert.deepEqual(world.events.navigations, ['settings-palette']);
+
+  // Shown again (a link while it is open) sends another show, so the document returns to its start.
+  world.showSettingsPalette();
+  assert.deepEqual(world.settingsShows(), [{ stage: 'protection' }, { stage: null }]);
+});
+
+test('Esc cancels a cold Settings palette open, and hides a shown one', () => {
+  const world = makeWorld();
+  world.showSettingsPalette();
+  assert.equal(world.pressEscape(), true);
+  world.ready('settings-palette');
+  world.advance(10_000);
+  assert.equal(world.isShown('settings-palette'), false);
+  assert.deepEqual(world.settingsShows(), []);
+
+  const warm = warmWorld();
+  warm.ready('settings-palette');
+  warm.showSettingsPalette();
+  assert.equal(warm.isShown('settings-palette'), true);
+  assert.equal(warm.pressEscape(), true);
+  warm.advance(1000);
+  assert.equal(warm.isShown('settings-palette'), false);
+});
+
+test('the Settings palette and the other palettes dismiss each other when requested', () => {
+  const others = [
+    ['palette', (world) => world.showPalette()],
+    ['workspace-palette', (world) => world.showWorkspacePalette()],
+    ['merge-palette', (world) => world.showMergePalette()],
+  ];
+  for (const [id, openOther] of others) {
+    const world = warmWorld();
+    world.ready('settings-palette');
+    world.ready(id);
+
+    world.showSettingsPalette();
+    assert.equal(world.isShown('settings-palette'), true);
+    openOther(world);
+    world.advance(1000);
+    assert.equal(world.isShown('settings-palette'), false, `${id} closes the Settings palette`);
+    assert.equal(world.isShown(id), true);
+
+    world.showSettingsPalette();
+    world.advance(1000);
+    assert.equal(world.isShown(id), false, `the Settings palette closes ${id}`);
+    assert.equal(world.isShown('settings-palette'), true);
+  }
+});
+
+test('the address bar does not take the focus from a Settings palette waiting to open', () => {
+  const world = warmWorld();
+  world.showSettingsPalette();
+  world.showAddrbar('current');
+
+  assert.equal(world.addrbarOpens().length, 1);
+  assert.equal(world.addrbarOpens()[0].suppressFocus, true);
+});
+
 // ─── Chrome stamps the window on what it sends ──────────────────────────────
 
 test('the address bar open names the window it is for', () => {
@@ -1219,6 +1307,7 @@ test('with no fade (reduced motion) every hide completes at once', () => {
     ['palette', () => world.showPalette(), () => world.hidePalette()],
     ['workspace-palette', () => world.showWorkspacePalette(), () => world.hideWorkspacePalette()],
     ['merge-palette', () => world.showMergePalette(), () => world.hideMergePalette()],
+    ['settings-palette', () => world.showSettingsPalette(), () => world.hideSettingsPalette()],
     ['confirm', () => world.showConfirm(), () => world.hideConfirm()],
     ['edit-workspace', () => world.showEditWorkspace(), () => world.hideEditWorkspace()],
     ['welcome', () => world.showWelcome(), () => world.hideWelcome()],

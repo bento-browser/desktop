@@ -30,6 +30,7 @@ import {
   type SettingsUpdateResult,
   type ValidateImportResult,
 } from '@shared/settings-client-protocol';
+import { splitWindowLocalSettings } from '@shared/windowLocalSettings';
 import { validateExportSchema } from '../backup/ExportSchema';
 import { executeImport } from '../backup/ImportExecutor';
 import type { BackupStore } from '../backup/BackupStore';
@@ -423,7 +424,12 @@ export class SettingsDomainService {
         if (!exactKeys(payload, ['changes']) || !validateSettingsChanges(payload.changes)) {
           throw invalidPayload();
         }
-        return this.updateSettings(payload.changes as Partial<BentoSettings>);
+        const changes = payload.changes as Partial<BentoSettings>;
+        // A private window keeps its own colour mode in the shell background and never saves it;
+        // whatever else it changed is a normal profile-wide preference.
+        return this.updateSettings(
+          caller.isPrivate ? splitWindowLocalSettings(changes).rest : changes,
+        );
       }
       case 'settings/reset':
         if (!exactKeys(payload, ['confirm']) || payload.confirm !== true) throw invalidPayload();

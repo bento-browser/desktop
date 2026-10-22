@@ -1,29 +1,54 @@
-// Tells the palette when it was shown. The overlay document stays loaded while chrome hides it,
-// so every show has to start fresh from the document's side: back at the root with the latest
-// snapshot. Chrome will send an explicit open message when the overlay is wired in; until
-// then a document that turns visible again counts as a show, and gaining focus only refreshes
-// the snapshot (the user may have changed a setting elsewhere).
+// Tells the palette when chrome shows it. The overlay document stays loaded while chrome hides
+// it, so every show starts fresh: back at the root (or the stage a deep link names) with the
+// latest snapshot. Chrome sends the show once the document has announced readiness, as a
+// 'bento-settings-show' CustomEvent whose detail is a JSON string (a frame script dispatches it,
+// so it also reaches a private window's document).
 
 import { useEffect, useState } from 'react';
+import { initialStack, type Stage } from '../components/SettingsPalette/stageStack';
 
-/** Returns a number that changes on each show. `refresh` runs on mount, on each show and on focus. */
-export function useShowSignal(refresh: () => void): number {
-  const [shown, setShown] = useState(0);
+export const SETTINGS_SHOW_EVENT = 'bento-settings-show';
+
+/** The stages a deep link may open on. */
+const DEEP_LINK_STAGES: Record<string, Stage> = {
+  protection: { kind: 'protection' },
+};
+
+export interface ShowState {
+  /** Changes on every show. */
+  openToken: number;
+  /** The stages to start on, root first. */
+  initialStages: readonly Stage[];
+}
+
+/** The stages a show asks for: the root alone unless its detail names a known deep link. */
+export function stagesForShow(detail: unknown): readonly Stage[] {
+  try {
+    const { stage } = JSON.parse(String(detail)) as { stage?: unknown };
+    const known = typeof stage === 'string' ? DEEP_LINK_STAGES[stage] : undefined;
+    return initialStack(known);
+  } catch {
+    return initialStack();
+  }
+}
+
+/** `refresh` runs on mount and on each show. */
+export function useShowSignal(refresh: () => void): ShowState {
+  const [state, setState] = useState<ShowState>(() => ({
+    openToken: 0,
+    initialStages: initialStack(),
+  }));
 
   useEffect(() => {
     refresh();
-    const onVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
-      setShown((count) => count + 1);
+    const onShow = (event: Event) => {
+      const initialStages = stagesForShow((event as CustomEvent).detail);
+      setState((current) => ({ openToken: current.openToken + 1, initialStages }));
       refresh();
     };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', refresh);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', refresh);
-    };
+    window.addEventListener(SETTINGS_SHOW_EVENT, onShow);
+    return () => window.removeEventListener(SETTINGS_SHOW_EVENT, onShow);
   }, [refresh]);
 
-  return shown;
+  return state;
 }

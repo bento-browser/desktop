@@ -364,6 +364,7 @@ describe('SettingsDomainService', () => {
       ['backup/restore', { backupId: 'b1' }],
       ['backup/delete', { backupId: 'b1', confirm: true }],
       ['recovery/acknowledgeNotice', { operationId: uuid() }],
+      ['settings/reset', { confirm: true }],
     ];
 
     it.each(forbidden)(
@@ -378,7 +379,9 @@ describe('SettingsDomainService', () => {
               operation,
               payload,
               caller,
-              operation.startsWith('backup/') ? uuid() : undefined,
+              operation.startsWith('backup/') || operation === 'settings/reset'
+                ? uuid()
+                : undefined,
             ),
           ),
         ).resolves.toBe('private_window_forbidden');
@@ -412,6 +415,33 @@ describe('SettingsDomainService', () => {
       await expect(
         run(h, 'privacy/setProtectionLevel', { level: 'hardened' }, caller),
       ).resolves.toMatchObject({ state: 'succeeded' });
+    });
+
+    it("saves a private caller's other settings but keeps its colour mode out of the profile", async () => {
+      const h = await createHarness();
+      const caller = await overlay(h, { windowId: 2, isPrivate: true });
+      const before = h.settings.snapshot();
+      const result = (await run(
+        h,
+        'settings/update',
+        { changes: { uiColorMode: 'dark', panelShadowsEnabled: false } },
+        caller,
+      )) as { settings: typeof before };
+      expect(h.settings.snapshot().panelShadowsEnabled).toBe(false);
+      expect(h.settings.snapshot().uiColorMode).toBe(before.uiColorMode);
+      expect(result.settings.uiColorMode).toBe(before.uiColorMode);
+      // A colour mode alone changes nothing and still answers.
+      await expect(
+        run(h, 'settings/update', { changes: { uiColorMode: 'light' } }, caller),
+      ).resolves.toMatchObject({ settings: { uiColorMode: before.uiColorMode } });
+      expect(h.settings.snapshot().uiColorMode).toBe(before.uiColorMode);
+    });
+
+    it('saves the colour mode of a regular caller', async () => {
+      const h = await createHarness();
+      const caller = await overlay(h, { windowId: 1, isPrivate: false });
+      await run(h, 'settings/update', { changes: { uiColorMode: 'dark' } }, caller);
+      expect(h.settings.snapshot().uiColorMode).toBe('dark');
     });
 
     it('hides backup operation status from a private owner', async () => {

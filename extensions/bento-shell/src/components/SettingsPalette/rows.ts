@@ -316,25 +316,26 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
       },
     );
   }
-  rows.push(
-    {
-      id: 'shortcuts:open',
-      group: 'Keyboard shortcuts',
-      label: 'View keyboard shortcuts',
-      value: String(SHORTCUTS.length),
-      trail: '›',
-      keywords: ['shortcuts', 'keys', 'hotkeys'],
-      intent: { type: 'push', stage: { kind: 'shortcuts' } },
-    },
-    {
+  rows.push({
+    id: 'shortcuts:open',
+    group: 'Keyboard shortcuts',
+    label: 'View keyboard shortcuts',
+    value: String(SHORTCUTS.length),
+    trail: '›',
+    keywords: ['shortcuts', 'keys', 'hotkeys'],
+    intent: { type: 'push', stage: { kind: 'shortcuts' } },
+  });
+  // Tools refuses a reset from a private window: it rewrites the whole profile.
+  if (!model.isPrivate) {
+    rows.push({
       id: 'reset:open',
       group: 'Reset Bento',
       label: 'Reset Bento settings…',
       tone: 'danger',
       keywords: ['defaults', 'restore', 'welcome', 'onboarding'],
       intent: { type: 'push', stage: { kind: 'confirm', action: { kind: 'reset' } } },
-    },
-  );
+    });
+  }
   return rows;
 }
 
@@ -690,7 +691,10 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       group: label,
       label: 'Restore…',
       keywords: NO_KEYWORDS,
-      intent: { type: 'confirm', action: { kind: 'restore', backupId, label } },
+      intent: {
+        type: 'push',
+        stage: { kind: 'confirm', action: { kind: 'restore', backupId, label } },
+      },
     },
     {
       id: 'stored-action:delete',
@@ -698,7 +702,10 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       label: 'Delete…',
       tone: 'danger',
       keywords: NO_KEYWORDS,
-      intent: { type: 'confirm', action: { kind: 'delete', backupId, label } },
+      intent: {
+        type: 'push',
+        stage: { kind: 'confirm', action: { kind: 'delete', backupId, label } },
+      },
     },
   ];
 }

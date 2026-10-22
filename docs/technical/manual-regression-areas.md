@@ -126,8 +126,11 @@ When changing core functionality, manually verify at least the affected subset:
 - theme switch and sidebar footer UI light/dark/Auto switch;
 - the Firefox app menu from the sidebar footer button: "Bento Settings" sits
   directly above "Settings", once after repeated opens and in a second window;
-  arrow keys reach it, and Enter or a click opens or refocuses
-  `about:settings#bento` and closes the menu. The footer has no Settings button
+  arrow keys reach it, and Enter or a click opens the Settings palette over the
+  window and closes the menu; the command palette's Open Settings and Privacy
+  commands and the welcome Open Settings button open it too (Privacy on the
+  protection level list), in a regular and a private window, and the Settings
+  palette closes when the command, workspace or merge palette opens; The footer has no Settings button
   in the expanded or collapsed rail (details in
   [sidebar-native-surfaces.md](sidebar-native-surfaces.md));
 - the sidebar merge progress card: while a merge runs it floats over the end of
