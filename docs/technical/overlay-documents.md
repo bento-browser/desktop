@@ -25,6 +25,17 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                  | first use                  | None: a non-remote chrome page with no handshake, src set on every open (its `BENTO_EMBEDDED_IMPORT_READY` title only gates the onboarding handoff)         |
 | `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                           | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script (`content.postMessage` into this frame's own window), sent again on readiness           |
 
+The `settings-palette` document (`settings-palette.html`) is built, but chrome has no
+frame for it yet: the overlay manager entry, the readiness announcement (`OverlayName`
+and `useOverlayReadySignal`, kept equal to the mount's table by
+`scripts/overlay-manager.test.mjs`), the open routes (`BENTO_OPEN_SETTINGS_`,
+`BENTO_OPEN_SETTINGS_PRIVACY_`) and the relay attachment come with the chrome wiring.
+Its close title is `BENTO_CLOSE_SETTINGS_PALETTE_<ts>`, and it asks chrome to open the
+merge palette (`BENTO_OPEN_MERGE_PALETTE_<ts>`) and Firefox's search settings
+(`BENTO_OPEN_FIREFOX_SEARCH_SETTINGS_<ts>`, not handled by chrome yet). It talks to
+tools through the private-window relay, not the shell bus; see
+[privacy-search.md](privacy-search.md#settings-palette-shell-side).
+
 Source of truth: `bento-tools` and the shell mirrors are unchanged; overlay
 documents hold no persistent state. Chrome renderer path: the host `vbox`
 elements stay in the window from startup (they are cheap, and the workspace

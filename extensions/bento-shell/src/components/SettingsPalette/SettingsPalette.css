@@ -1,0 +1,242 @@
+/* Layer-2 component: SettingsPalette. Mux UI's CommandPalette styles are unlayered, so the
+ * sizing and row overrides here are unlayered with selectors scoped to this palette. */
+
+/* The popup is a sibling of the Root in the DOM, so it is found through its dialog. */
+.muxui-command-palette__popup:has(> .bento-settings-palette__dialog) {
+  width: min(var(--bento-settings-palette-width), var(--bento-settings-palette-max-inline));
+}
+
+.muxui-command-palette__dialog.bento-settings-palette__dialog,
+.muxui-command-palette__content.bento-settings-palette__content {
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.muxui-command-palette__listbox.bento-settings-palette__listbox {
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+}
+
+/* A real position for Clear and Close, so the input cannot cover them. */
+.muxui-command-palette__close.bento-settings-palette__close {
+  position: static;
+  flex: 0 0 auto;
+}
+
+/* The path in front of the field: 'Settings / Panel corner radius / '. */
+.bento-settings-palette__search-icon {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-60);
+}
+
+.bento-settings-palette__crumbs,
+.bento-settings-palette__unit,
+.bento-settings-palette__bounds {
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-small-size);
+  white-space: nowrap;
+}
+
+.bento-settings-palette__crumbs,
+.bento-settings-palette__unit {
+  flex: 0 0 auto;
+}
+
+.bento-settings-palette__crumb-current {
+  color: var(--muxui-semantic-color-neutral-90);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+/* The value being typed hugs its unit; the bounds sit at the far end. A search input in
+ * Chromium reserves room for its own clear button, which would clip the value (the palette
+ * has its own Clear); Firefox has no such area. */
+.muxui-command-palette__input.bento-settings-palette__input[data-editing] {
+  flex: 0 0 auto;
+  padding-inline: 0;
+}
+
+.bento-settings-palette__input[data-editing]::-webkit-search-cancel-button {
+  display: none;
+}
+
+.bento-settings-palette__bounds {
+  margin-inline-start: auto;
+}
+
+.bento-settings-palette__bounds[data-invalid] {
+  color: var(--muxui-semantic-feedback-invalid-content);
+}
+
+/* Rows: label left, value and the way on right. */
+.muxui-command-palette__popup .bento-settings-palette__heading {
+  padding-inline: var(--muxui-semantic-layout-inset-medium);
+  padding-block: var(--muxui-semantic-layout-inset-tiny);
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-small-size);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+.muxui-command-palette__item.bento-settings-palette__item {
+  gap: var(--muxui-semantic-layout-action-gap);
+  min-block-size: 0;
+}
+
+.bento-settings-palette__item .bento-settings-palette__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bento-settings-palette__item .bento-settings-palette__value {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-60);
+  font-family: inherit;
+  font-size: var(--muxui-semantic-typography-small-size);
+}
+
+.bento-settings-palette__trail {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-60);
+}
+
+/* Static rows (explanations, read-only values) look like rows but take no focus. */
+.bento-settings-palette__item[data-info] {
+  background-color: transparent;
+  color: var(--muxui-semantic-color-neutral-90);
+}
+
+.bento-settings-palette__item[data-tone='muted'] {
+  color: var(--muxui-semantic-color-neutral-60);
+}
+
+.bento-settings-palette__item[data-tone='danger'] .bento-settings-palette__label {
+  color: var(--muxui-semantic-action-danger-foreground);
+}
+
+.bento-settings-palette__item[data-tone='warning'] .muxui-command-palette__item-icon {
+  color: var(--muxui-semantic-status-warning);
+}
+
+.bento-settings-palette__item[data-separated] {
+  margin-block-start: var(--muxui-semantic-layout-inset-tiny);
+  border-block-start: 1px solid var(--muxui-semantic-color-neutral-18);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* A write in flight: the value dims and ends in an ellipsis, with no animation. */
+.bento-settings-palette__item[data-pending] .bento-settings-palette__value {
+  color: var(--muxui-semantic-color-neutral-50);
+}
+
+.bento-settings-palette__item[data-pending] .bento-settings-palette__value::after {
+  content: '…';
+}
+
+/* In an editor stage the list is a set of presets, not a focus target: the list keeps no
+ * focus of its own there (the arrows are handled by the field), so only the preset that
+ * matches the value is marked. */
+.bento-settings-palette__content[data-editing]
+  .bento-settings-palette__item[data-focused]:not([data-current]) {
+  background-color: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+
+/* The preset that matches the number being typed. */
+.bento-settings-palette__item[data-current] {
+  background-color: var(--muxui-item-focus-bg);
+  color: var(--muxui-item-focus-color);
+}
+
+.bento-settings-palette__radio,
+.bento-settings-palette__engine {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--bento-settings-palette-mark-size);
+  block-size: var(--bento-settings-palette-mark-size);
+  border: 1px solid currentcolor;
+}
+
+.bento-settings-palette__radio {
+  border-radius: 50%;
+}
+
+.bento-settings-palette__radio[data-on] {
+  background: radial-gradient(circle, currentcolor 0 36%, transparent 42%);
+}
+
+.bento-settings-palette__engine {
+  border-radius: var(--muxui-semantic-shape-radius-xs);
+  font-size: var(--muxui-semantic-typography-label-xs-font-size);
+  font-weight: var(--muxui-semantic-typography-label-weight);
+  line-height: 1;
+}
+
+/* Protection levels: the focused level shows what it adds and costs under its row. */
+.bento-settings-palette__item[data-detail] {
+  flex-wrap: wrap;
+}
+
+.bento-settings-palette__detail {
+  display: none;
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1 0 100%;
+  padding-block-end: var(--muxui-semantic-layout-inset-tight);
+  padding-inline-start: calc(
+    var(--bento-settings-palette-mark-size) + var(--muxui-semantic-layout-action-gap)
+  );
+  color: var(--muxui-semantic-color-neutral-70);
+  font-size: var(--muxui-semantic-typography-small-size);
+  white-space: normal;
+}
+
+.bento-settings-palette__item[data-focused] .bento-settings-palette__detail {
+  display: block;
+}
+
+.bento-settings-palette__detail :is(p, ul) {
+  margin: 0;
+}
+
+.bento-settings-palette__detail-heading {
+  margin-block-start: var(--muxui-semantic-layout-inset-tiny);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+.bento-settings-palette__detail ul {
+  padding-inline-start: var(--muxui-semantic-layout-inset-medium);
+  list-style-type: '+ ';
+}
+
+.bento-settings-palette__detail ul[data-kind='caveats'] {
+  list-style-type: '- ';
+}
+
+/* Footer: the key hints, a standing note or the latest failure first, a count at the end. */
+.bento-settings-palette__hints {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--muxui-semantic-layout-action-gap);
+}
+
+.bento-settings-palette__notice {
+  color: var(--muxui-semantic-color-neutral-90);
+}
+
+.bento-settings-palette__notice[data-kind='error'] {
+  /* A failure is a sentence of its own, above the key hints. */
+  flex: 1 0 100%;
+  color: var(--muxui-semantic-feedback-invalid-content);
+}
+
+.bento-settings-palette__status {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  white-space: nowrap;
+}

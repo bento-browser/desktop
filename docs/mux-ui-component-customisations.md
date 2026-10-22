@@ -247,6 +247,25 @@ handler closes the controlled dialog, since the RC SearchField can otherwise
 consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
+The Settings palette (`components/SettingsPalette`) is a staged quick pick on the same
+CommandPalette parts and adds these customisations. Its popup is a sibling of the Root,
+so its width rule finds it through the dialog
+(`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads
+`--bento-settings-palette-width` and `--bento-settings-palette-max-inline`; the height is
+the list's, up to the Mux popup limit. A row is a Mux `Item` with a title, an `ItemMeta`
+value and a trailing icon; its state is carried by data attributes (`data-info` for a
+static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
+flight, `data-separated`, `data-detail`, `data-current` for the preset that matches the
+typed number) so the rules stay scoped to `.bento-settings-palette__item`. Static rows
+are `disabled` items, which keyboard navigation skips, restyled so they read as text.
+A protection level carries its benefits and caveats inside the item and shows them
+only under `[data-focused]`. In an editor stage the Input hugs its value (an inline
+`inline-size` in `ch`, the one inline dimension) and the unit and bounds sit around it in
+the search field. Danger text uses `--muxui-semantic-action-danger-foreground`, invalid
+text `--muxui-semantic-feedback-invalid-content` and the warning mark
+`--muxui-semantic-status-warning`; Bento adds no colour or motion of its own, and a
+pending row dims and ends in an ellipsis rather than animating.
+
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
 declares the `bento` sublayer order (`bento.tokens`, `bento.fonts`,
