@@ -13,6 +13,10 @@
 // page supplies only the message, never its own routing identity. Downward
 // traffic goes back through postToDocument.
 //
+// Every upward record also carries `sessionId`, minted when this module loads, so it names one
+// browser run: window ids repeat across runs, and tools scopes a window's durable operations
+// to this pair, which survives a reload of tools or the shell background but not a restart.
+//
 // The actor attaches to every bento-shell extension frame in every window.
 // Regular windows keep their BroadcastChannel path; only private-window
 // documents and the Settings overlay use this one.
@@ -26,6 +30,9 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: 'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
 });
+
+// One browser run: the parent-process hub loads once and lives as long as the browser.
+const SESSION_ID = Services.uuid.generateUUID().toString().slice(1, -1);
 
 const documents = new Map();
 const upListeners = new Set();
@@ -50,6 +57,7 @@ function describeWindow(win) {
 }
 
 function emitUp(record) {
+  record = { ...record, sessionId: SESSION_ID };
   if (upListeners.size === 0) {
     backlog.push(record);
     if (backlog.length > MAX_BACKLOG) backlog.shift();

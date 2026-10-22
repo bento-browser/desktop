@@ -33,6 +33,8 @@ import type { BusDown } from './shellBus';
 export interface SettingsDocumentIdentity {
   windowId: number;
   isPrivate: boolean;
+  /** The browser run the hub minted; tools scopes a window's durable operations to it. */
+  sessionId: string;
 }
 
 export interface SettingsRelayDeps {
@@ -119,7 +121,12 @@ export class SettingsRelay {
     const sent = this.#deps.toTools({
       kind: 'settings-client/request',
       shellBackgroundInstanceId: this.#deps.instanceId,
-      caller: { documentId, windowId: identity.windowId, isPrivate: identity.isPrivate },
+      caller: {
+        documentId,
+        windowId: identity.windowId,
+        isPrivate: identity.isPrivate,
+        sessionId: identity.sessionId,
+      },
       requestId: wireId,
       ...(operationId === undefined ? {} : { operationId }),
       operation,

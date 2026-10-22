@@ -176,7 +176,6 @@ async function createHarness(
       complete: vi.fn(async () => undefined),
     },
     broadcast,
-    sessionId: 'session-1',
   } as unknown as SettingsDomainContext;
   const service = new SettingsDomainService(ctx);
   await service.ready();
@@ -196,12 +195,14 @@ async function createHarness(
 
 async function overlay(
   h: Harness,
-  options: { documentId?: string; windowId?: number; isPrivate?: boolean } = {},
+  options: { documentId?: string; windowId?: number; isPrivate?: boolean; sessionId?: string } = {},
 ): Promise<SettingsCaller> {
   return h.service.overlayCaller({
     documentId: options.documentId ?? 'doc-1',
     windowId: options.windowId ?? 1,
     isPrivate: options.isPrivate ?? false,
+    // The browser session chrome mints; the orphans below are owned by window 1 of this one.
+    sessionId: options.sessionId ?? 'session-1',
   });
 }
 
@@ -991,13 +992,49 @@ describe('SettingsDomainService', () => {
   });
 
   describe('operation ownership and rediscovery', () => {
-    it('scopes the owner to the tools session and the window', async () => {
+    it('scopes the owner to the browser session and the window', async () => {
       const h = await createHarness();
       const one = await overlay(h);
       expect((await overlay(h, { documentId: 'doc-9' })).ownerId).toBe(one.ownerId);
       expect((await overlay(h, { windowId: 2 })).ownerId).not.toBe(one.ownerId);
-      h.ctx.sessionId = 'session-2';
-      expect((await overlay(h)).ownerId).not.toBe(one.ownerId);
+      expect((await overlay(h, { sessionId: 'session-2' })).ownerId).not.toBe(one.ownerId);
+    });
+
+    it('keeps the owner across a reload of tools, which only the browser session may change', async () => {
+      // The operation was started by an earlier run of tools in the same browser session.
+      const operationId = uuid();
+      const h = await createHarness(async ({ operations }) => {
+        await operations.reserve({
+          operationId,
+          kind: 'backup/importValidated',
+          ownerClientInstanceId: 'window:browser-run-a:3',
+          targetWindowId: 3,
+          isPrivate: false,
+          payloadHash: 'd'.repeat(64),
+        });
+        await operations.update(operationId, { state: 'running', phase: 'running' });
+      });
+      const sameWindow = await overlay(h, { sessionId: 'browser-run-a', windowId: 3 });
+      expect(sameWindow.ownerId).toBe('window:browser-run-a:3');
+      await expect(run(h, 'operation/status', { operationId }, sameWindow)).resolves.toMatchObject({
+        operationId,
+        state: 'failed',
+        errorCode: 'backend_restarted',
+      });
+      const snapshot = (await run(h, 'snapshot/get', { domains: [] }, sameWindow)) as {
+        pendingOperations: Array<{ operationId: string }>;
+        recoveredOperationNotices: Array<{ operationId: string }>;
+      };
+      expect(snapshot.pendingOperations.map((entry) => entry.operationId)).toEqual([operationId]);
+      expect(snapshot.recoveredOperationNotices.map((entry) => entry.operationId)).toEqual([
+        operationId,
+      ]);
+
+      // A restarted browser has a new session, and window ids start over.
+      const restarted = await overlay(h, { sessionId: 'browser-run-b', windowId: 3 });
+      await expect(codeOf(run(h, 'operation/status', { operationId }, restarted))).resolves.toBe(
+        'operation_not_owned',
+      );
     });
 
     it("lets a reloaded document read its window's operation, and nobody else", async () => {
@@ -1016,9 +1053,10 @@ describe('SettingsDomainService', () => {
       ).resolves.toBe('operation_not_owned');
 
       // Window ids repeat across browser sessions: a new session cannot reach the old record.
-      h.ctx.sessionId = 'session-2';
       await expect(
-        codeOf(run(h, 'operation/status', { operationId }, await overlay(h))),
+        codeOf(
+          run(h, 'operation/status', { operationId }, await overlay(h, { sessionId: 'session-2' })),
+        ),
       ).resolves.toBe('operation_not_owned');
     });
 

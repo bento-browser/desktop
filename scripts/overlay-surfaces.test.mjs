@@ -22,6 +22,18 @@ const MOUNT = fs.readFileSync(
   'utf8',
 );
 
+/** The Settings palette's frame script source, as the string the mount script builds. */
+const SETTINGS_FRAME_SCRIPT_SRC = (() => {
+  const start = MOUNT.indexOf('const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC =');
+  const end = MOUNT.indexOf('const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL', start);
+  assert.ok(start !== -1 && end !== -1, 'the Settings frame script source is missing');
+  const expression = MOUNT.slice(start, end).replace(
+    'const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC =',
+    '',
+  );
+  return vm.runInNewContext(expression);
+})();
+
 // ─── Extraction ──────────────────────────────────────────────────────────────
 
 /** Index just past the bracket that closes the one opened at `open`. */
@@ -149,7 +161,9 @@ const FUNCTIONS = [
   'savePanelMenuItems',
   'dispatchAddrbarOpen',
   'dispatchMergePaletteLifecycle',
+  'sendSettingsPaletteMessage',
   'dispatchSettingsPaletteShow',
+  'dispatchSettingsPaletteHide',
   'attachPaletteEscListener',
   'attachOutsideClickDismissListener',
 ];
@@ -510,6 +524,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
         .map((message) => message.data)
         .filter((data) => data.type === 'open'),
     settingsShows: () => messages('BentoSettingsPaletteShow').map((message) => message.data),
+    settingsHides: () => messages('BentoSettingsPaletteHide').map((message) => message.data),
     shellActions: () => messages('BentoShellAction').map((message) => message.data),
     hubPosts: () => plain(hubPosts.map(({ message }) => message)),
     menuOpens: () =>
@@ -1033,6 +1048,53 @@ test('Esc cancels a cold Settings palette open, and hides a shown one', () => {
   assert.equal(warm.isShown('settings-palette'), false);
 });
 
+test('hiding the Settings palette tells its document, however it is dismissed', () => {
+  // Esc, the document's own close and another overlay opening all end in hideSettingsPalette, and
+  // each must stop a number edit's preview and timer in the document that stays loaded.
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.hideSettingsPalette();
+  assert.deepEqual(
+    world.settingsHides(),
+    [],
+    'a document that was never shown has nothing to revert',
+  );
+
+  world.showSettingsPalette();
+  assert.equal(world.pressEscape(), true);
+  assert.equal(world.settingsHides().length, 1);
+
+  world.showSettingsPalette();
+  world.showPalette();
+  world.advance(1000);
+  assert.equal(world.isShown('settings-palette'), false);
+  assert.equal(world.settingsHides().length, 2, 'opening the command palette hides it with a hide');
+});
+
+test('the Settings frame script turns the hide message into the document event', () => {
+  // The message listener names are the contract between the mount script and the document.
+  const listeners = new Map();
+  const events = [];
+  vm.runInNewContext(SETTINGS_FRAME_SCRIPT_SRC, {
+    addMessageListener: (name, handler) => listeners.set(name, handler),
+    content: {
+      CustomEvent: class {
+        constructor(type, init) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+      dispatchEvent: (event) => events.push({ type: event.type, detail: event.detail }),
+    },
+  });
+  listeners.get('BentoSettingsPaletteShow')({ data: { target: 'privacy:level' } });
+  listeners.get('BentoSettingsPaletteHide')({ data: {} });
+  assert.deepEqual(events, [
+    { type: 'bento-settings-show', detail: JSON.stringify({ target: 'privacy:level' }) },
+    { type: 'bento-settings-hide', detail: undefined },
+  ]);
+});
+
 test('the Settings palette and the other palettes dismiss each other when requested', () => {
   const others = [
     ['palette', (world) => world.showPalette()],
@@ -1227,7 +1289,7 @@ test("a private window's sidebar frame carries chrome's root font size; others d
   assert.deepEqual(stamped, [11, null, null]);
 });
 
-test("a private window whose chrome sheets are still loading stamps the font size only at load", () => {
+test('a private window whose chrome sheets are still loading stamps the font size only at load', () => {
   const stamped = [];
   const listeners = [];
   const link = { sheet: null };

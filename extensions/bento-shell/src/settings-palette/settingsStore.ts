@@ -5,9 +5,12 @@
 
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { SearchEnginesSnapshot } from '@shared/protocol';
+import { SETTINGS_LIMITS } from '@shared/settings-rules';
 import type {
   DurableSettingsOperation,
   EditableSettings,
+  PendingOperation,
+  RecoveredOperationNotice,
   SettingsDomain,
   SettingsPayloads,
   SettingsPrivacy,
@@ -20,7 +23,13 @@ import type {
   SettingsPaletteView,
 } from '../components/SettingsPalette/types';
 import { describeOutcome, describeSettingsError } from './errorCopy';
-import type { DurableOutcome, SettingsChangeEvent, SettingsClient } from './settingsClient';
+import { fitsRelayUp } from './relayLimit';
+import {
+  readDurableOutcome,
+  type DurableOutcome,
+  type SettingsChangeEvent,
+  type SettingsClient,
+} from './settingsClient';
 
 /** Effects that leave the document: chrome sentinels and the download of an export. */
 export interface SettingsPaletteHost {
@@ -33,10 +42,6 @@ export interface SettingsPaletteHost {
 // edits. They are assignable to the narrower model types, so they are stored as they come.
 
 const ALL_DOMAINS: SettingsDomain[] = ['settings', 'privacy', 'search', 'backup'];
-
-/** The relay carries at most 8 Mi characters per message (BentoShellBusChild.sys.mjs); a file
- * that would not fit is refused here instead of timing out. */
-export const MAX_IMPORT_FILE_CHARS = 8 * 1024 * 1024 - 4096;
 
 /** The state a finished reset leaves, when the retained result carries it. */
 function readResetResult(
@@ -76,6 +81,10 @@ export interface SettingsPaletteStore {
   dispose(): void;
 }
 
+/** The model fields that tools publishes and other windows can change under a request. */
+const VERSIONED = ['settings', 'privacy', 'search'] as const;
+type Versioned = (typeof VERSIONED)[number];
+
 const WHAT: Record<DurableSettingsOperation, string> = {
   'settings/reset': 'The reset',
   'backup/importValidated': 'The import',
@@ -90,11 +99,34 @@ export function createSettingsPaletteStore(
   const store = createStore<StoreState>(() => ({ view: { kind: 'loading' } }));
   const inFlight = new Map<string, number>();
   let refreshToken = 0;
+  // Every request that brings back a published value (a write, a snapshot) takes the next ticket
+  // when it is sent. `shown` is, per field, the newest ticket whose value the model holds, and a
+  // change notice counts as the newest ticket sent so far: it was sent after everything issued
+  // before it arrived. An answer applies only to fields it is newer than, so a value that landed
+  // while it was away is never replaced by the older picture it brings back.
+  let tickets = 0;
+  const shown: Record<Versioned, number> = { settings: 0, privacy: 0, search: 0 };
+  // Durable operations this document has reported or is already handling, by id.
+  const handled = new Set<string>();
+  let durableRuns = 0;
 
   function patch(change: Partial<SettingsPaletteModel>): void {
     store.setState(({ view }) =>
       view.kind === 'ready' ? { view: { kind: 'ready', model: { ...view.model, ...change } } } : {},
     );
+  }
+
+  /** Patches the model with the answer to request `ticket` (a change notice has none and always
+   * applies). Published fields a newer value already holds are left as they are. */
+  function patchPublished(change: Partial<SettingsPaletteModel>, ticket?: number): void {
+    if (!model()) return;
+    const fresh = { ...change };
+    for (const field of VERSIONED) {
+      if (!(field in fresh)) continue;
+      if (ticket !== undefined && ticket <= shown[field]) delete fresh[field];
+      else shown[field] = Math.max(shown[field], ticket ?? tickets);
+    }
+    patch(fresh);
   }
 
   function model(): SettingsPaletteModel | null {
@@ -121,9 +153,10 @@ export function createSettingsPaletteStore(
     apply: (result: T) => Partial<SettingsPaletteModel> | undefined,
   ): Promise<boolean> {
     begin(key);
+    const ticket = ++tickets;
     try {
       const change = apply(await run());
-      if (change) patch(change);
+      if (change) patchPublished(change, ticket);
       return true;
     } catch (error) {
       patch({ notice: describeSettingsError(error) });
@@ -133,28 +166,34 @@ export function createSettingsPaletteStore(
     }
   }
 
-  function applySnapshot(snapshot: SettingsSnapshot): void {
+  /** A field a newer value holds (a write or notice that landed while the snapshot was being
+   * collected) keeps that value. */
+  function applySnapshot(snapshot: SettingsSnapshot, ticket: number): void {
     if (!snapshot.settings) throw new Error('snapshot without settings');
     const previous = model();
+    const newer = (field: Versioned) => previous !== null && ticket <= shown[field];
     const next: SettingsPaletteModel = {
       isPrivate: snapshot.backup === undefined,
-      settings: snapshot.settings,
-      privacy: snapshot.privacy ?? null,
-      search: snapshot.search ?? null,
+      settings: previous && newer('settings') ? previous.settings : snapshot.settings,
+      privacy: previous && newer('privacy') ? previous.privacy : (snapshot.privacy ?? null),
+      search: previous && newer('search') ? previous.search : (snapshot.search ?? null),
       backup: snapshot.backup ?? null,
       pending: previous?.pending ?? new Set(),
       notice: previous?.notice ?? null,
       importPreview: previous?.importPreview ?? null,
     };
+    for (const field of VERSIONED) if (!newer(field)) shown[field] = Math.max(shown[field], ticket);
     store.setState({ view: { kind: 'ready', model: next } });
     client.resume(snapshot.pendingOperations);
+    void reportFinished(finishedOperations(snapshot));
   }
 
   async function refresh(): Promise<void> {
     const token = ++refreshToken;
+    const ticket = ++tickets;
     try {
       const snapshot = await client.request('snapshot/get', { domains: ALL_DOMAINS });
-      if (token === refreshToken) applySnapshot(snapshot);
+      if (token === refreshToken) applySnapshot(snapshot, ticket);
     } catch (error) {
       if (token !== refreshToken) return;
       const message = describeSettingsError(error);
@@ -163,11 +202,73 @@ export function createSettingsPaletteStore(
     }
   }
 
+  /** The sentence for how an operation ended, or null when the palette already shows it. A
+   * success is shown only for one that ended out of sight, while the palette was closed or
+   * reloading. */
+  function outcomeNotice(outcome: DurableOutcome, late: boolean): string | null {
+    if (outcome.state === 'succeeded') return late ? `${WHAT[outcome.kind]} finished.` : null;
+    return describeOutcome(outcome.state, outcome.errorCode, WHAT[outcome.kind]);
+  }
+
+  /** Marks an ended operation as reported, here and in tools, so a reload does not repeat it. */
+  function conclude(outcome: DurableOutcome): void {
+    handled.add(outcome.operationId);
+    void client
+      .request('recovery/acknowledgeNotice', { operationId: outcome.operationId })
+      .catch(() => undefined);
+  }
+
   /** What a durable operation's end means for the mirror and the notice. */
-  function settleDurable(outcome: DurableOutcome): boolean {
-    if (outcome.state === 'succeeded') return true;
-    patch({ notice: describeOutcome(outcome.state, outcome.errorCode, WHAT[outcome.kind]) });
-    return false;
+  function settleDurable(outcome: DurableOutcome, late = false): boolean {
+    conclude(outcome);
+    const notice = outcomeNotice(outcome, late);
+    if (notice) patch({ notice });
+    return outcome.state === 'succeeded';
+  }
+
+  /** Operations that ended without this document seeing them: finished while it was reloading,
+   * or cut short by a restart of tools, and not reported yet. Ones still running are followed
+   * by the client. */
+  function finishedOperations(
+    snapshot: SettingsSnapshot,
+  ): Array<Pick<PendingOperation, 'operationId' | 'kind'>> {
+    const found = new Map<string, Pick<PendingOperation, 'operationId' | 'kind'>>();
+    const unreported = (entry: Pick<PendingOperation, 'operationId'>) =>
+      !handled.has(entry.operationId);
+    for (const entry of snapshot.pendingOperations) {
+      const ended = entry.state !== 'reserved' && entry.state !== 'running';
+      if (ended && !entry.noticeAcknowledged && unreported(entry))
+        found.set(entry.operationId, entry);
+    }
+    const recovered: RecoveredOperationNotice[] = snapshot.recoveredOperationNotices ?? [];
+    for (const entry of recovered) if (unreported(entry)) found.set(entry.operationId, entry);
+    return [...found.values()];
+  }
+
+  /** Reports each of them once. One this document is running itself is left to that run. */
+  async function reportFinished(
+    operations: Array<Pick<PendingOperation, 'operationId' | 'kind'>>,
+  ): Promise<void> {
+    if (durableRuns > 0) return;
+    const notices: string[] = [];
+    for (const { operationId, kind } of operations) {
+      if (handled.has(operationId)) continue;
+      handled.add(operationId);
+      try {
+        const status = await client.request('operation/status', { operationId });
+        const outcome = readDurableOutcome(kind, operationId, status);
+        if (!outcome) {
+          handled.delete(operationId); // Not finished after all; a later snapshot looks again.
+          continue;
+        }
+        const notice = outcomeNotice(outcome, true);
+        if (notice) notices.push(notice);
+        conclude(outcome);
+      } catch {
+        handled.delete(operationId);
+      }
+    }
+    if (notices.length > 0) patch({ notice: notices.join(' ') });
   }
 
   /** Runs a durable operation to its end. `after` sees the outcome of a call that returned;
@@ -181,6 +282,7 @@ export function createSettingsPaletteStore(
     // One at a time per key: a second activation while it runs would start it again.
     if (inFlight.has(key)) return false;
     begin(key);
+    durableRuns += 1;
     try {
       const outcome = await client.run(operation, payload);
       const done = settleDurable(outcome);
@@ -190,6 +292,7 @@ export function createSettingsPaletteStore(
       patch({ notice: describeSettingsError(error) });
       return false;
     } finally {
+      durableRuns -= 1;
       hooks.finish?.();
       end(key);
     }
@@ -198,19 +301,19 @@ export function createSettingsPaletteStore(
   const offChange = client.onChange((event: SettingsChangeEvent) => {
     switch (event.type) {
       case 'settings/changed':
-        patch({ settings: event.settings });
+        patchPublished({ settings: event.settings });
         break;
       case 'privacy/changed':
-        patch({ privacy: event.privacy });
+        patchPublished({ privacy: event.privacy });
         break;
       case 'searchEngines/changed':
-        patch({ search: toSettingsSearch(event.snapshot) });
+        patchPublished({ search: toSettingsSearch(event.snapshot) });
         break;
     }
   });
 
   const offResumed = client.onResumed((outcome) => {
-    settleDurable(outcome);
+    settleDurable(outcome, true);
     void refresh();
   });
 
@@ -256,7 +359,7 @@ export function createSettingsPaletteStore(
         {
           after(outcome) {
             const reset = readResetResult(outcome.result);
-            if (reset) patch(reset);
+            if (reset) patchPublished(reset);
             else void refresh();
           },
         },
@@ -273,8 +376,10 @@ export function createSettingsPaletteStore(
       ),
 
     async pickImportFile(file) {
-      const json = await file.text();
-      if (json.length > MAX_IMPORT_FILE_CHARS) {
+      // The size tools accepts, then what the relay can carry once the text is escaped into a
+      // message: a file over either is refused here instead of timing out.
+      const json = file.size > SETTINGS_LIMITS.backupFileBytes ? null : await file.text();
+      if (json === null || !fitsRelayUp(json)) {
         patch({ notice: 'That file is too large to import.' });
         return false;
       }

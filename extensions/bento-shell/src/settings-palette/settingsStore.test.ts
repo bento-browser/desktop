@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { PendingOperation, SettingsSnapshot } from '@shared/settings-client-protocol';
+import { SETTINGS_LIMITS } from '@shared/settings-rules';
+import type {
+  PendingOperation,
+  RecoveredOperationNotice,
+  SettingsSnapshot,
+} from '@shared/settings-client-protocol';
 import {
   FIXTURE_BACKUP,
   FIXTURE_IMPORT_PREVIEW,
@@ -14,11 +20,9 @@ import {
   type SettingsChangeEvent,
   type SettingsClient,
 } from './settingsClient';
-import {
-  MAX_IMPORT_FILE_CHARS,
-  createSettingsPaletteStore,
-  type SettingsPaletteHost,
-} from './settingsStore';
+import type { BusUp } from '../bridge/shellBus';
+import { RELAY_UP_MAX_CHARS } from './relayLimit';
+import { createSettingsPaletteStore, type SettingsPaletteHost } from './settingsStore';
 
 const snapshot = (overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot => ({
   revision: 1,
@@ -31,7 +35,7 @@ const snapshot = (overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot =
 });
 
 function setup() {
-  const request = vi.fn();
+  const request = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => undefined);
   const run = vi.fn();
   const resume = vi.fn<(pending: readonly PendingOperation[]) => void>();
   let change: ((event: SettingsChangeEvent) => void) | undefined;
@@ -377,14 +381,86 @@ describe('reset and backups', () => {
     expect(model().notice).toContain('Choose the file again');
   });
 
-  it('refuses a file the relay could not carry, without asking tools', async () => {
-    const { palette, request, load, model } = setup();
-    await load();
-    const calls = request.mock.calls.length;
-    const big = new File(['x'.repeat(MAX_IMPORT_FILE_CHARS + 1)], 'big.json');
-    await expect(palette.actions.pickImportFile(big)).resolves.toBe(false);
-    expect(request.mock.calls).toHaveLength(calls);
-    expect(model().notice).toContain('too large');
+  describe('a backup file against the relay limit', () => {
+    const preview = { validationToken: 'tok', expiresAt: 1, preview: FIXTURE_IMPORT_PREVIEW };
+
+    // The message the document posts for a validate request, as bridge/shellBus.ts serializes it.
+    const upMessageLength = (json: string) => {
+      const message: BusUp = {
+        kind: 'settings-request',
+        request: {
+          requestId: 'a4f3c1b2-6f0e-4b52-9a39-0d1f6a3a9c11',
+          operation: 'backup/validateImport',
+          payload: { json },
+        },
+      };
+      return JSON.stringify(message).length;
+    };
+
+    it('keeps the actor limit equal to the relay limit the palette checks against', () => {
+      const actor = readFileSync(
+        new URL('../../../../src/browser/actors/BentoShellBusChild.sys.mjs', import.meta.url),
+        'utf8',
+      );
+      const match = /const MAX_MESSAGE_CHARS = (\d+) \* 1024 \* 1024;/.exec(actor);
+      expect(match, 'BentoShellBusChild.sys.mjs states its limit in MiB').not.toBeNull();
+      expect(Number(match![1]) * 1024 * 1024).toBe(RELAY_UP_MAX_CHARS);
+    });
+
+    it('lets the relay carry the largest backup tools accepts, quotes and newlines escaped', async () => {
+      // A pretty-printed backup is mostly quotes and newlines, which JSON escaping doubles.
+      const json = '"\n'
+        .repeat(SETTINGS_LIMITS.backupFileBytes / 3)
+        .padEnd(SETTINGS_LIMITS.backupFileBytes, '"');
+      expect(new TextEncoder().encode(json).length).toBe(SETTINGS_LIMITS.backupFileBytes);
+      expect(upMessageLength(json)).toBeLessThanOrEqual(RELAY_UP_MAX_CHARS);
+
+      const { palette, request, load } = setup();
+      await load();
+      request.mockResolvedValueOnce(preview);
+      await expect(palette.actions.pickImportFile(new File([json], 'big.json'))).resolves.toBe(
+        true,
+      );
+      expect(request).toHaveBeenLastCalledWith('backup/validateImport', { json });
+    });
+
+    it('accepts a file whose message is past the old 8 Mi limit but under the new one', async () => {
+      // A 7.1 million character file escaped to a message of over 14 million, which the old
+      // 8 Mi limit on the actor dropped without an answer.
+      const json = '{"k":"v"}\n'.repeat(646_000);
+      expect(json.length).toBeLessThan(8 * 1024 * 1024);
+      const { palette, request, load } = setup();
+      await load();
+      request.mockResolvedValueOnce(preview);
+      await expect(palette.actions.pickImportFile(new File([json], 'b.json'))).resolves.toBe(true);
+      expect(upMessageLength(json)).toBeGreaterThan(8 * 1024 * 1024);
+    });
+
+    it('refuses a file past the backup size without reading it or asking tools', async () => {
+      const { palette, request, load, model } = setup();
+      await load();
+      const calls = request.mock.calls.length;
+      const big = new File(['x'.repeat(SETTINGS_LIMITS.backupFileBytes + 1)], 'big.json');
+      const read = vi.spyOn(big, 'text');
+      await expect(palette.actions.pickImportFile(big)).resolves.toBe(false);
+      expect(read).not.toHaveBeenCalled();
+      expect(request.mock.calls).toHaveLength(calls);
+      expect(model().notice).toContain('too large');
+    });
+
+    it('refuses a file under the backup size whose escaped message the relay would drop', async () => {
+      // Control characters escape to six characters each.
+      const json = '\u0001'.repeat(SETTINGS_LIMITS.backupFileBytes);
+      expect(upMessageLength(json)).toBeGreaterThan(RELAY_UP_MAX_CHARS);
+      const { palette, request, load, model } = setup();
+      await load();
+      const calls = request.mock.calls.length;
+      await expect(palette.actions.pickImportFile(new File([json], 'odd.json'))).resolves.toBe(
+        false,
+      );
+      expect(request.mock.calls).toHaveLength(calls);
+      expect(model().notice).toContain('too large');
+    });
   });
 
   it('restores and deletes with durable operations and reloads the snapshot', async () => {
@@ -418,5 +494,243 @@ describe('reset and backups', () => {
     palette.actions.openMergePalette();
     expect(host.openFirefoxSearchSettings).toHaveBeenCalledOnce();
     expect(host.openMergePalette).toHaveBeenCalledOnce();
+  });
+});
+
+describe('older answers never replace newer values', () => {
+  const radius = (value: number) => ({ ...FIXTURE_SETTINGS, panelCornerRadiusPx: value });
+  const deferred = <T>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  };
+
+  it('keeps a value a change notice delivered while the snapshot was being collected', async () => {
+    const { palette, request, emit, load, model } = setup();
+    await load();
+    const late = deferred<SettingsSnapshot>();
+    request.mockReturnValueOnce(late.promise);
+    palette.actions.refresh();
+    emit({ type: 'settings/changed', settings: radius(24) as never });
+    // The snapshot was read before that change: its settings are the older picture, but its
+    // privacy and search were not touched by anything since.
+    late.resolve(
+      snapshot({
+        settings: radius(6),
+        privacy: { ...FIXTURE_PRIVACY, protectionLevel: 'hardened' } as never,
+      }),
+    );
+    await vi.waitFor(() => expect(model().privacy?.protectionLevel).toBe('hardened'));
+    expect(model().settings.panelCornerRadiusPx).toBe(24);
+  });
+
+  it('keeps the answer of a write that came back while the snapshot was being collected', async () => {
+    const { palette, request, load, model } = setup();
+    await load();
+    const late = deferred<SettingsSnapshot>();
+    request.mockReturnValueOnce(late.promise);
+    palette.actions.refresh();
+    request.mockResolvedValueOnce({ settings: radius(30), durableRevision: 2 });
+    await palette.actions.update({ panelCornerRadiusPx: 30 });
+    late.resolve(snapshot({ settings: radius(6) }));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    await Promise.resolve();
+    expect(model().settings.panelCornerRadiusPx).toBe(30);
+  });
+
+  it('keeps a notice that landed before the answer of an earlier write', async () => {
+    const { palette, request, emit, load, model } = setup();
+    await load();
+    const answer = deferred<unknown>();
+    request.mockReturnValueOnce(answer.promise);
+    const write = palette.actions.update({ panelCornerRadiusPx: 12 });
+    emit({ type: 'settings/changed', settings: radius(40) as never });
+    answer.resolve({ settings: radius(12), durableRevision: 2 });
+    await write;
+    expect(model().settings.panelCornerRadiusPx).toBe(40);
+  });
+
+  it('takes the answer of the write sent last when the answers arrive out of order', async () => {
+    const { palette, request, load, model } = setup();
+    await load();
+    const first = deferred<unknown>();
+    const second = deferred<unknown>();
+    request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const one = palette.actions.update({ panelCornerRadiusPx: 10 });
+    const two = palette.actions.update({ panelCornerRadiusPx: 20 });
+    second.resolve({ settings: radius(20), durableRevision: 3 });
+    await two;
+    first.resolve({ settings: radius(10), durableRevision: 2 });
+    await one;
+    expect(model().settings.panelCornerRadiusPx).toBe(20);
+  });
+
+  it('applies a snapshot collected after a write answered', async () => {
+    const { palette, request, load, model } = setup();
+    await load();
+    request.mockResolvedValueOnce({ settings: radius(30), durableRevision: 2 });
+    await palette.actions.update({ panelCornerRadiusPx: 30 });
+    request.mockResolvedValueOnce(snapshot({ settings: radius(31) }));
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model().settings.panelCornerRadiusPx).toBe(31));
+  });
+});
+
+describe('operations that ended out of sight', () => {
+  const recovered = (over: Partial<RecoveredOperationNotice> = {}): RecoveredOperationNotice => ({
+    operationId: 'op-1',
+    kind: 'backup/importValidated',
+    state: 'failed',
+    components: [],
+    updatedAt: 1,
+    ...over,
+  });
+  const status = (over: Record<string, unknown> = {}) => ({
+    operationId: 'op-1',
+    kind: 'backup/importValidated',
+    state: 'failed',
+    phase: 'terminal',
+    errorCode: 'backend_restarted',
+    components: [],
+    reconcileComponents: [],
+    cancelRequested: false,
+    createdAt: 1,
+    updatedAt: 2,
+    ...over,
+  });
+  const calls = (request: ReturnType<typeof setup>['request'], operation: string) =>
+    request.mock.calls.filter(([name]) => name === operation);
+
+  /** A tools stub: the snapshot the test names, and a status for every operation id. */
+  const tools = (
+    request: ReturnType<typeof setup>['request'],
+    snap: () => SettingsSnapshot,
+    statuses: Record<string, unknown>,
+  ) =>
+    request.mockImplementation(async (operation: unknown, payload: unknown) => {
+      if (operation === 'snapshot/get') return snap();
+      if (operation === 'operation/status') {
+        return statuses[(payload as { operationId: string }).operationId];
+      }
+      return { acknowledged: true };
+    });
+
+  it('shows what restarting tools did to an import, and acknowledges the notice', async () => {
+    const { palette, request, model } = setup();
+    tools(request, () => snapshot({ recoveredOperationNotices: [recovered()] }), {
+      'op-1': status(),
+    });
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model().notice).toContain('The import did not finish'));
+    expect(model().notice).toContain('restarted');
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith('recovery/acknowledgeNotice', { operationId: 'op-1' }),
+    );
+  });
+
+  it('reports an operation that finished while the document was reloading', async () => {
+    const { palette, request, resume, model } = setup();
+    const pending: PendingOperation[] = [
+      { operationId: 'op-2', kind: 'backup/restore', state: 'succeeded', updatedAt: 5 },
+    ];
+    tools(request, () => snapshot({ pendingOperations: pending }), {
+      'op-2': status({ operationId: 'op-2', kind: 'backup/restore', state: 'succeeded' }),
+    });
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model().notice).toBe('The restore finished.'));
+    expect(resume).toHaveBeenCalledWith(pending);
+    await vi.waitFor(() =>
+      expect(request).toHaveBeenCalledWith('recovery/acknowledgeNotice', { operationId: 'op-2' }),
+    );
+  });
+
+  it('reports each operation once, however many snapshots list it', async () => {
+    const { palette, request, model } = setup();
+    tools(request, () => snapshot({ recoveredOperationNotices: [recovered()] }), {
+      'op-1': status(),
+    });
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model().notice).not.toBeNull());
+    palette.actions.clearNotice();
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(calls(request, 'snapshot/get')).toHaveLength(2));
+    await Promise.resolve();
+    expect(model().notice).toBeNull();
+    expect(calls(request, 'recovery/acknowledgeNotice')).toHaveLength(1);
+  });
+
+  it('leaves alone an operation tools lists as already acknowledged', async () => {
+    const { palette, request, model } = setup();
+    tools(
+      request,
+      () =>
+        snapshot({
+          pendingOperations: [
+            {
+              operationId: 'op-3',
+              kind: 'backup/delete',
+              state: 'failed',
+              updatedAt: 1,
+              noticeAcknowledged: true,
+            },
+          ],
+        }),
+      {},
+    );
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model()).toBeDefined());
+    await Promise.resolve();
+    expect(calls(request, 'operation/status')).toHaveLength(0);
+    expect(model().notice).toBeNull();
+  });
+
+  it('does not report the operation this document ran itself a second time', async () => {
+    const { palette, request, run, load, model } = setup();
+    await load();
+    tools(
+      request,
+      () =>
+        snapshot({
+          pendingOperations: [
+            { operationId: 'op-run', kind: 'backup/restore', state: 'failed', updatedAt: 3 },
+          ],
+        }),
+      { 'op-run': status({ operationId: 'op-run', kind: 'backup/restore', errorCode: 'busy' }) },
+    );
+    run.mockResolvedValueOnce(
+      outcome({
+        operationId: 'op-run',
+        kind: 'backup/restore',
+        state: 'failed',
+        errorCode: 'busy',
+      }),
+    );
+    await palette.actions.restoreBackup('b1');
+    await vi.waitFor(() => expect(calls(request, 'snapshot/get').length).toBeGreaterThan(0));
+    await Promise.resolve();
+    expect(calls(request, 'operation/status')).toHaveLength(0);
+    expect(calls(request, 'recovery/acknowledgeNotice')).toHaveLength(1);
+    expect(model().notice).toContain('The restore did not finish');
+  });
+
+  it('looks again later at an operation tools cannot report on yet', async () => {
+    const { palette, request, model } = setup();
+    let answer: unknown = new SettingsClientError('timeout', true);
+    tools(request, () => snapshot({ recoveredOperationNotices: [recovered()] }), {});
+    request.mockImplementation(async (operation: unknown) => {
+      if (operation === 'snapshot/get')
+        return snapshot({ recoveredOperationNotices: [recovered()] });
+      if (operation === 'operation/status') {
+        if (answer instanceof Error) throw answer;
+        return answer;
+      }
+      return { acknowledged: true };
+    });
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(calls(request, 'operation/status')).toHaveLength(1));
+    expect(model().notice).toBeNull();
+    answer = status();
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(model().notice).toContain('The import did not finish'));
   });
 });

@@ -29,7 +29,7 @@ import SearchIcon from 'lucide-react/dist/esm/icons/search';
 import TriangleAlertIcon from 'lucide-react/dist/esm/icons/triangle-alert';
 
 import { BentoIcon } from '../primitives';
-import { moveEntry, removeAt, toggleChange } from './editing';
+import { toggleChange } from './editing';
 import {
   editorSpecFor,
   filterRows,
@@ -44,7 +44,7 @@ import {
   type Intent,
   type PaletteRow,
 } from './rows';
-import { PANEL_SIZE_LIMITS } from './settingsCatalog';
+import { createSizeRunner, stackAfterSizeChange } from './sizeIntents';
 import {
   crumbPrefix,
   crumbsFor,
@@ -53,7 +53,6 @@ import {
   popStage,
   popToKind,
   pushStage,
-  replaceTop,
   stageKey,
   topStage,
   type Stage,
@@ -73,6 +72,8 @@ export interface SettingsPaletteProps {
   initialQuery?: string;
   /** Changes on every show; the palette returns to `initialStages` when it does. */
   openToken?: number;
+  /** Changes whenever chrome hides the palette: an unfinished edit is put back at once. */
+  hideToken?: number;
 }
 
 const TRAIL_ICONS = {
@@ -132,6 +133,7 @@ export default function SettingsPalette({
   initialStages,
   initialQuery = '',
   openToken = 0,
+  hideToken = 0,
 }: SettingsPaletteProps) {
   const model = view.kind === 'ready' ? view.model : null;
   const start = useMemo(() => [...(initialStages ?? initialStack())], [initialStages]);
@@ -139,6 +141,14 @@ export default function SettingsPalette({
   const [query, setQuery] = useState(initialQuery);
   const stage = topStage(stack);
   const editor = useStageEditor(stage, model, actions);
+  const latest = useRef({ model, actions });
+  latest.current = { model, actions };
+  const [runSize] = useState(() =>
+    createSizeRunner({
+      model: () => latest.current.model,
+      update: (changes) => latest.current.actions.update(changes),
+    }),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const editing = isEditorStage(stage);
@@ -169,6 +179,17 @@ export default function SettingsPalette({
     inputRef.current?.focus();
     // Only a new show resets; the editor, model and actions are read as they are then.
   }, [openToken]);
+
+  // Chrome hiding the palette (another overlay opened, Esc, a click outside) leaves the document
+  // loaded: the live preview and its timer stop now, not at the next show, when putting the old
+  // value back could overwrite one saved in the meantime from another window.
+  const lastHide = useRef(hideToken);
+  useEffect(() => {
+    if (lastHide.current === hideToken) return;
+    lastHide.current = hideToken;
+    editor.revert();
+    // Only a new hide acts; the editor is read as it is then.
+  }, [hideToken]);
 
   // The palette stays mounted while chrome hides it, so the field takes focus back on show.
   useEffect(() => {
@@ -257,29 +278,14 @@ export default function SettingsPalette({
         else actions.openMergePalette();
         close();
         break;
-      case 'addSize': {
-        const sizes = model.settings.customPanelSizes;
-        const size = Math.min(
-          PANEL_SIZE_LIMITS.max,
-          Math.max(PANEL_SIZE_LIMITS.min, model.settings.defaultPanelWidthPx),
-        );
-        void actions.update({ customPanelSizes: [...sizes, size] });
-        break;
-      }
+      case 'addSize':
       case 'moveSize':
-        void actions.update({
-          customPanelSizes: moveEntry(model.settings.customPanelSizes, intent.index, intent.delta),
-        });
-        // The actions follow the entry to its new place.
-        setStack((current) =>
-          replaceTop(current, { kind: 'sizeActions', index: intent.index + intent.delta }),
-        );
-        break;
       case 'removeSize':
-        void actions.update({
-          customPanelSizes: removeAt(model.settings.customPanelSizes, intent.index),
+        // The stage follows the entry only once the new order is saved: until then the actions
+        // still belong to the entry they were opened on, and a second press is ignored.
+        void runSize(intent).then((saved) => {
+          if (saved) setStack((current) => stackAfterSizeChange(current, intent));
         });
-        back();
         break;
       case 'export':
         if (!model.pending.has('backup')) void actions.exportBackup();

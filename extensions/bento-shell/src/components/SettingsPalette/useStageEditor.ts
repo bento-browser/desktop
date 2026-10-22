@@ -1,22 +1,15 @@
 // The editor stages: a number or a name typed in the search field. Numbers apply live (the
 // panel corners move while you type), Enter keeps the value, Esc puts back what the stage
-// started with, and a draft that is not valid is never sent.
+// started with, and a draft that is not valid is never sent. The session itself lives in
+// `editorSession.ts`; this hook adds the field's text and what it parses to.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { numberChange, parseName, replaceAt, stepPreset } from './editing';
+import { useEffect, useRef, useState } from 'react';
+import { createEditorSession } from './editorSession';
+import { parseName, stepPreset } from './editing';
 import { editorSpecFor } from './rows';
-import { parseNumber, type NumberSettingKey } from './settingsCatalog';
+import { parseNumber } from './settingsCatalog';
 import type { Stage } from './stageStack';
 import type { SettingsPaletteActions, SettingsPaletteModel } from './types';
-
-/** Delay between the last keystroke and the live apply, so typing 24 does not apply 2. */
-const LIVE_APPLY_DELAY_MS = 180;
-
-/** What the open editor started with, and the last number it sent (null: nothing yet). */
-type Session =
-  | { kind: 'number'; key: NumberSettingKey; entry: number; applied: number | null }
-  | { kind: 'size'; index: number; entry: number[]; applied: number | null }
-  | { kind: 'name'; entry: string };
 
 export interface StageEditor {
   draft: string;
@@ -43,10 +36,14 @@ export function useStageEditor(
   actions: SettingsPaletteActions,
 ): StageEditor {
   const [draft, setDraft] = useState('');
-  const session = useRef<Session | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef({ model, actions });
   latest.current = { model, actions };
+  const [session] = useState(() =>
+    createEditorSession({
+      model: () => latest.current.model,
+      update: (changes) => latest.current.actions.update(changes),
+    }),
+  );
 
   const spec = editorSpecFor(stage);
   const parsed = spec ? parseNumber(draft, spec) : null;
@@ -55,29 +52,10 @@ export function useStageEditor(
   const problem = check && !check.ok ? check.reason : null;
   const value = parsed?.ok ? parsed.value : null;
 
-  const cancelTimer = useCallback(() => {
-    clearTimeout(timer.current);
-    timer.current = undefined;
-  }, []);
-
-  const send = useCallback((current: Session, next: number) => {
-    if (current.kind === 'name' || current.applied === next) return;
-    current.applied = next;
-    const { model: now, actions: act } = latest.current;
-    if (current.kind === 'number') {
-      void act.update(numberChange(current.key, next));
-    } else if (now) {
-      void act.update({
-        customPanelSizes: replaceAt(now.settings.customPanelSizes, current.index, next),
-      });
-    }
-  }, []);
-
-  useEffect(() => cancelTimer, [cancelTimer]);
+  useEffect(() => session.cancelPending, [session]);
 
   const applyNow = (next: number) => {
-    cancelTimer();
-    if (session.current) send(session.current, next);
+    session.apply(next);
     setDraft(String(next));
   };
 
@@ -87,33 +65,13 @@ export function useStageEditor(
     value,
 
     begin(next, current) {
-      cancelTimer();
-      if (next.kind === 'number') {
-        const entry = current.settings[next.key];
-        session.current = { kind: 'number', key: next.key, entry, applied: null };
-        setDraft(String(entry));
-      } else if (next.kind === 'sizeEdit') {
-        const entry = [...current.settings.customPanelSizes];
-        session.current = { kind: 'size', index: next.index, entry, applied: null };
-        setDraft(String(entry[next.index] ?? ''));
-      } else if (next.kind === 'text') {
-        const entry = current.settings.defaultWorkspaceName;
-        session.current = { kind: 'name', entry };
-        setDraft(entry);
-      } else {
-        session.current = null;
-        setDraft('');
-      }
+      setDraft(session.begin(next, current));
     },
 
     type(text) {
       setDraft(text);
-      cancelTimer();
-      const current = session.current;
-      if (!current || current.kind === 'name' || !spec) return;
-      const result = parseNumber(text, spec);
-      if (!result.ok) return;
-      timer.current = setTimeout(() => send(current, result.value), LIVE_APPLY_DELAY_MS);
+      if (spec) session.type(text, spec);
+      else session.cancelPending();
     },
 
     step(direction) {
@@ -125,32 +83,10 @@ export function useStageEditor(
     choose: applyNow,
 
     commit() {
-      const current = session.current;
-      if (!current || !check?.ok) return false;
-      cancelTimer();
-      if (current.kind === 'name') {
-        if (name?.ok && name.value !== current.entry) {
-          void latest.current.actions.update({ defaultWorkspaceName: name.value });
-        }
-      } else if (parsed?.ok) {
-        const started = current.kind === 'number' ? current.entry : current.entry[current.index];
-        if (current.applied !== null || parsed.value !== started) send(current, parsed.value);
-      }
-      session.current = null;
-      return true;
+      if (!check?.ok) return false;
+      return session.commit(check.value);
     },
 
-    revert() {
-      const current = session.current;
-      cancelTimer();
-      session.current = null;
-      if (!current || current.kind === 'name' || current.applied === null) return;
-      const { actions: act } = latest.current;
-      if (current.kind === 'number') {
-        void act.update(numberChange(current.key, current.entry));
-      } else {
-        void act.update({ customPanelSizes: current.entry });
-      }
-    },
+    revert: session.revert,
   };
 }

@@ -88,7 +88,7 @@ const RESTORE_OPTIONS: ImportOptions = {
 export interface SettingsCaller {
   /** Binds import validation tokens: the overlay document id. */
   clientId: string;
-  /** Binds durable operations: the tools session plus window id. */
+  /** Binds durable operations: the browser session plus window id. */
   ownerId: string;
   windowId: number;
   isPrivate: boolean;
@@ -122,8 +122,6 @@ export interface SettingsDomainContext {
   graphPublications: GraphPublicationCoordinator;
   /** Reaches every connected shell document. */
   broadcast(event: Event): void;
-  /** Identifies this tools-background run; window ids are only unique within one browser session. */
-  sessionId: string;
 }
 
 export interface SettingsRequest {
@@ -277,13 +275,14 @@ export class SettingsDomainService {
 
   /**
    * The caller for a document the shell background relayed. Durable operations belong to a
-   * window of this tools-background run, so a reloaded Settings document can read the status
-   * of its predecessor's work, while records from an earlier run stay unreachable.
+   * window of one browser session (chrome mints the session id; window ids repeat across
+   * sessions), so a reloaded Settings document, or a reloaded tools background, still reaches the
+   * work of the window, while records from an earlier browser session stay unreachable.
    */
   overlayCaller(caller: SettingsClientCaller): SettingsCaller {
     return {
       clientId: caller.documentId,
-      ownerId: `window:${this.#ctx.sessionId}:${caller.windowId}`,
+      ownerId: `window:${caller.sessionId}:${caller.windowId}`,
       windowId: caller.windowId,
       isPrivate: caller.isPrivate,
     };
@@ -592,7 +591,13 @@ export class SettingsDomainService {
     return this.#ctx.operations
       .listOwned(caller.ownerId, RECENT_OPERATION_MS)
       .filter((record) => !(caller.isPrivate && record.kind.startsWith('backup/')))
-      .map(({ operationId, kind, state, updatedAt }) => ({ operationId, kind, state, updatedAt }));
+      .map(({ operationId, kind, state, updatedAt, noticeAcknowledged }) => ({
+        operationId,
+        kind,
+        state,
+        updatedAt,
+        ...(noticeAcknowledged ? { noticeAcknowledged: true as const } : {}),
+      }));
   }
 
   async #backupContext() {

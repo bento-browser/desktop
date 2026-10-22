@@ -161,15 +161,18 @@ lists them) or `failed` (every component failed). `components` is final for
 every kind; `phase` is the progress indicator while it runs.
 
 Ownership of a durable operation is the caller's `ownerId`. For the overlay it is
-the tools session id (`sessionId`, a UUID `background.ts` draws once per tools run)
-and the window id, so a reloaded Settings document in the same window can read its
-predecessor's status and `snapshot/get` lists the window's running and recently
-finished operations (`pendingOperations`, ten minutes) for it to resume polling.
-Records of another owner, such as the `shell-port` reset, are never readable
-through the overlay. Window ids repeat across browser sessions, which is why the
-session id is part of the key; reloading the tools extension starts a new session,
-so a Settings document that outlives it cannot read the earlier session's records. `recoveredOperationNotices` lists only records recovery or startup
-settlement closed (`recovered: true`).
+the browser session id and the window id (`window:<sessionId>:<windowId>`). Chrome
+supplies both in the `caller` block: the BentoShellBus hub mints the session id (a
+UUID) when its parent-process module loads and stamps it on every upward record, so
+it survives a reload of the tools or shell extensions and changes only when the
+browser restarts. A reloaded Settings document, or a reloaded tools background, in
+the same window therefore reads its predecessor's status, and `snapshot/get` lists
+the window's running and recently finished operations (`pendingOperations`, ten
+minutes; `noticeAcknowledged: true` once a document reported the end) for it to
+resume polling. Records of another owner, such as the `shell-port` reset, are never
+readable through the overlay. Window ids repeat across browser sessions, which is why
+the session id is part of the key. `recoveredOperationNotices` lists only records
+recovery or startup settlement closed (`recovered: true`) and not yet acknowledged.
 
 Backup operations, `recovery/acknowledgeNotice` and `settings/reset` are refused
 to a private caller (`private_window_forbidden`; `isPrivateForbiddenOperation`),
@@ -216,16 +219,40 @@ parts, and it is split so each piece is testable without the browser:
   and the import preview. The private-window state is read from the snapshot: tools
   omits the `backup` domain for a private caller, so `isPrivate` is `backup ===
 undefined`, and the palette then shows no backup rows or automatic-backup
-  preferences. Files over 8 Mi characters are refused before sending because the relay
-  actor drops a longer message (`BentoShellBusChild.sys.mjs`).
+  preferences. A backup file is refused before sending (`That file is too large to
+import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, escaped
+  into the request message, it is longer than the relay actor carries
+  (`RELAY_UP_MAX_CHARS` in `settings-palette/relayLimit.ts`, 22 MiB, equal to `MAX_MESSAGE_CHARS` in
+  `BentoShellBusChild.sys.mjs`; a test keeps the two equal). The actor limit counts the
+  serialized message, in which JSON escaping doubles a pretty-printed backup, so the
+  limit is sized for two times the backup limit. An export travels the other way, which
+  has no limit.
+- Published values (`settings`, `privacy`, `search`) are applied by ticket. Every write
+  and every snapshot takes the next ticket when it is sent, a change notice counts as
+  the newest ticket sent so far, and an answer applies only to the fields it is newer
+  than. A snapshot collected before a write or notice therefore cannot replace the newer
+  value, a stale write answer cannot replace a notice, and the answers of two quick
+  writes arriving out of order leave the one sent last.
+- Operations that ended while the document could not see them are reported once. After
+  each snapshot the store takes the `pendingOperations` that are finished and not
+  `noticeAcknowledged`, plus the `recoveredOperationNotices`, reads each with
+  `operation/status`, shows the outcome in the footer notice ("The import did not
+  finish. Bento restarted first. ..." or "The restore finished.") and sends
+  `recovery/acknowledgeNotice`. An operation this document ran itself is concluded the
+  same way when its run ends (acknowledged, shown only when it did not succeed), and
+  nothing is reported while the document has a durable run of its own in flight.
 - `relayTransport.ts` is the only file that knows how Settings traffic is shaped on the
   BentoShellBus relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
   strings, built on `bridge/shellBus.ts`). It sends `settings-hello` until acknowledged,
   holds requests until then (for at most the client deadline) and posts each request as
   `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
   notices as `event`. The background side is `bridge/settingsRelay.ts`.
-- `useShowSignal.ts` listens for chrome's `bento-settings-show` event (see
-  overlay-documents.md): each show bumps `openToken` (the palette returns to the stages
+- `useShowSignal.ts` listens for chrome's `bento-settings-show` and `bento-settings-hide`
+  events (see overlay-documents.md). A hide bumps `hideToken`, which makes the palette put
+  back an unfinished number edit and stop its live-apply timer at once (chrome hides the
+  overlay when another overlay opens, on Esc and on an outside click, and the document
+  stays loaded; waiting for the next show would let that revert overwrite a value saved
+  meanwhile from another window). Each show bumps `openToken` (the palette returns to the stages
   and search text `resolveSettingsTarget` gives for the show's `target`: the root, the
   protection level list for the privacy link, or the setting a command palette result
   named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
@@ -432,8 +459,19 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   every other import or restore with `graph_reserved`, also after restarts. A
   terminal journal an earlier build left behind is cleared on the next startup.
 - Window ids are unique only within one browser session. Never key a retained
-  operation on the window id alone; the overlay owner key includes the parent
-  session and boot ids.
+  operation on the window id alone; the overlay owner key includes the browser session
+  id the BentoShellBus hub mints. It was once a UUID drawn per tools run, so a reload of
+  tools during an import changed the owner while the window survived: the document got
+  `operation_not_owned` and a snapshot could not rediscover its record.
+- The relay actor's limit counts the serialized message. A limit on the raw file text
+  once let a 7.1 million character backup through the UI check as a 14 million
+  character message that the actor dropped without an answer, and exports between about
+  8 and 10 MiB could not be imported. Keep `RELAY_UP_MAX_CHARS` at twice the backup
+  limit plus headroom, and size any new upward payload by its escaped length.
+- A size list action (Move up, Move down, Remove) keeps the stage on its entry until
+  tools saved the new order (`sizeIntents.ts`): moving the stage first left the actions
+  on the neighbour after a refused move, so Remove could delete it, and a second press
+  before the answer reordered a stale list. A second action while one waits is dropped.
 - Do not accept blob URLs other than `blob:system/<uuid>`, and do not widen the
   other schemes to make an icon appear: the experiment runs with the system
   principal, so what it fetches has to stay an explicit list.
