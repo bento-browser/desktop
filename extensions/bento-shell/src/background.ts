@@ -55,6 +55,8 @@ interface BentoChromeBusMessage {
   documentId: string | null;
   windowId: number;
   isPrivate: boolean;
+  /** Names one browser run (the hub mints it at load); see BentoShellBusParent.sys.mjs. */
+  sessionId: string;
   message: unknown;
 }
 
@@ -426,6 +428,7 @@ function handleBusMessage({
   documentId,
   windowId,
   isPrivate,
+  sessionId,
   message,
 }: BentoChromeBusMessage): void {
   if (!message || typeof message !== 'object') return;
@@ -437,11 +440,11 @@ function handleBusMessage({
   };
   // The Settings overlay uses the relay in every window; identity is the hub's.
   if (documentId && data.kind === 'settings-hello') {
-    settingsRelay.hello(documentId, { windowId, isPrivate }, data.helloId);
+    settingsRelay.hello(documentId, { windowId, isPrivate, sessionId }, data.helloId);
     return;
   }
   if (documentId && data.kind === 'settings-request') {
-    settingsRelay.request(documentId, { windowId, isPrivate }, data.request);
+    settingsRelay.request(documentId, { windowId, isPrivate, sessionId }, data.request);
     return;
   }
   if (documentId && data.kind === 'document-closed') {

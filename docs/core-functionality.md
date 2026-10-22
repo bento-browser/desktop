@@ -789,7 +789,10 @@ confirmation) and Merge browser session, which opens the merge palette. Reset
 Bento settings asks for confirmation, restores Bento settings, the protection
 level and the search engine to their defaults, and closes the palette so the
 onboarding dialog can open again. Operations that take time keep running if the
-palette is closed. A private window's Settings palette has no backup, merge or
+palette is closed, and reopening Settings reports how an operation ended if it
+finished (or was cut short by Bento restarting) while the palette was closed or
+reloading. Import accepts backup files up to 10 MiB. A number being edited is put
+back if the palette is hidden before the edit is kept. A private window's Settings palette has no backup, merge or
 reset rows; its Bento color mode is that window's own and is not saved, and any
 other setting changed there is saved for the whole profile as usual.
 

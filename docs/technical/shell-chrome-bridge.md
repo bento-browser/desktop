@@ -320,6 +320,10 @@ window (see "The Settings overlay on the relay" below).
   `embedderElement.ownerGlobal` is null for these frames). It derives the window id
   (`windowTracker.getId`) and privacy (`PrivateBrowsingUtils.isWindowPrivate`)
   there and mints a `documentId` per document. The page supplies only the message.
+  The hub also stamps every upward record with a `sessionId` it mints when the module
+  loads (one per browser run); the Settings relay hands it to tools in the `caller`
+  block, where it scopes durable-operation ownership. The child actor forwards an upward
+  string of up to 22 MiB, which counts the serialized message (see privacy-search.md).
 - Hub: the parent module exports `BentoShellBusHub` (up listener, backlog of 128
   messages while nothing listens, `postToDocument`, `postFromChrome`). The
   chrome-bridge experiment exposes it as `bentoChrome.onBusMessage` and
@@ -378,7 +382,7 @@ window (see "The Settings overlay on the relay" below).
   `{kind: 'settings-request', request}` in every window, regular or private. The
   background (`bridge/settingsRelay.ts`, `SettingsRelay`) keeps these documents apart
   from the private sidebar documents (`relayDocuments`), takes the identity from the
-  hub (`{documentId, windowId, isPrivate}`, never from the page: a `caller` field the
+  hub (`{documentId, windowId, isPrivate, sessionId}`, never from the page: a `caller` field the
   page adds is dropped) and forwards the request to tools on the authenticated port as
   a `settings-client/request`. It puts its own id on the wire (`requestId`) and maps
   tools' `settings/result` back to the asking document under that document's own id,

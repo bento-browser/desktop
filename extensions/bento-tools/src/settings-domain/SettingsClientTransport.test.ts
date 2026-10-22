@@ -15,7 +15,7 @@ function request(overrides: Record<string, unknown> = {}): SettingsClientRequest
   return {
     kind: 'settings-client/request',
     shellBackgroundInstanceId: 'background-1',
-    caller: { documentId: 'doc-1', windowId: 4, isPrivate: false },
+    caller: { documentId: 'doc-1', windowId: 4, isPrivate: false, sessionId: 'browser-1' },
     requestId: 'request-1',
     operation: 'snapshot/get',
     payload: { domains: ['settings'] },
@@ -45,11 +45,33 @@ describe('settings client request guard', () => {
     ['an oversized request id', { requestId: 'x'.repeat(200) }],
     [
       'a caller with an extra key',
-      { caller: { documentId: 'd', windowId: 1, isPrivate: false, role: 'primary' } },
+      {
+        caller: {
+          documentId: 'd',
+          windowId: 1,
+          isPrivate: false,
+          sessionId: 's',
+          role: 'primary',
+        },
+      },
     ],
-    ['a caller without privacy', { caller: { documentId: 'd', windowId: 1 } }],
-    ['a fractional window id', { caller: { documentId: 'd', windowId: 1.5, isPrivate: false } }],
-    ['a negative window id', { caller: { documentId: 'd', windowId: -1, isPrivate: false } }],
+    ['a caller without privacy', { caller: { documentId: 'd', windowId: 1, sessionId: 's' } }],
+    [
+      'a caller without a browser session',
+      { caller: { documentId: 'd', windowId: 1, isPrivate: false } },
+    ],
+    [
+      'an oversized session id',
+      { caller: { documentId: 'd', windowId: 1, isPrivate: false, sessionId: 's'.repeat(300) } },
+    ],
+    [
+      'a fractional window id',
+      { caller: { documentId: 'd', windowId: 1.5, isPrivate: false, sessionId: 's' } },
+    ],
+    [
+      'a negative window id',
+      { caller: { documentId: 'd', windowId: -1, isPrivate: false, sessionId: 's' } },
+    ],
     ['a durable operation without an operation id', { operation: 'backup/delete' }],
     [
       'a durable operation with a malformed operation id',

@@ -2373,6 +2373,9 @@
     if (!host) return;
     host.style.opacity = '0';
     hideOverlayHostAfterFade(host);
+    // The document stays loaded, so it is told: an unfinished edit is put back and its timer
+    // stopped now, not at the next show.
+    dispatchSettingsPaletteHide();
   }
 
   // A command palette result: BENTO_OPEN_SETTING:<id>:<ts>. The id comes from a page's title, so
@@ -9373,7 +9376,8 @@
     encodeURIComponent(MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_SRC);
 
   // The Settings palette document stays loaded while hidden, so chrome tells it when it is shown (and
-  // which setting a link wants) with a DOM event, not the bus: this also reaches a private window.
+  // which setting a link wants) and when it is hidden with DOM events, not the bus: this also reaches
+  // a private window.
   const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoSettingsPaletteShow", function(msg) {' +
@@ -9382,6 +9386,11 @@
     '    content.dispatchEvent(new content.CustomEvent("bento-settings-show", {' +
     '      detail: JSON.stringify({ target: target })' +
     '    }));' +
+    '  } catch (e) {}' +
+    '});' +
+    'addMessageListener("BentoSettingsPaletteHide", function() {' +
+    '  try {' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-settings-hide"));' +
     '  } catch (e) {}' +
     '});';
   const SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL =
@@ -9577,29 +9586,43 @@
     }
   }
 
-  function dispatchSettingsPaletteShow(target, attempt = 0) {
+  // Sends a lifecycle message to the Settings document's frame script, loading the script on first
+  // use. A message that cannot go yet (the frame has no message manager) is retried briefly.
+  function sendSettingsPaletteMessage(name, data, attempt = 0) {
     const frame = document.getElementById('bento-settings-palette-frame');
     if (!frame) return false;
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
-        if (attempt < 10) setTimeout(() => dispatchSettingsPaletteShow(target, attempt + 1), 100);
+        if (attempt < 10) setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1), 100);
         return false;
       }
       if (!frame._bentoSettingsPaletteShowScriptLoaded && typeof mm.loadFrameScript === 'function') {
         mm.loadFrameScript(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL, true);
         frame._bentoSettingsPaletteShowScriptLoaded = true;
       }
-      mm.sendAsyncMessage('BentoSettingsPaletteShow', { target: target || null });
+      mm.sendAsyncMessage(name, data);
       return true;
     } catch (err) {
       if (attempt < 10) {
-        setTimeout(() => dispatchSettingsPaletteShow(target, attempt + 1), 100);
+        setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1), 100);
       } else {
-        console.warn('[bento-shell-mount] settings palette show dispatch failed:', err);
+        console.warn('[bento-shell-mount] settings palette ' + name + ' dispatch failed:', err);
       }
       return false;
     }
+  }
+
+  function dispatchSettingsPaletteShow(target) {
+    return sendSettingsPaletteMessage('BentoSettingsPaletteShow', { target: target || null });
+  }
+
+  // Only a document that was shown has anything to put back, so a hide before the first show is
+  // not sent (it would load the frame script for nothing).
+  function dispatchSettingsPaletteHide() {
+    const frame = document.getElementById('bento-settings-palette-frame');
+    if (!frame || !frame._bentoSettingsPaletteShowScriptLoaded) return false;
+    return sendSettingsPaletteMessage('BentoSettingsPaletteHide', {});
   }
 
   function setPanelTrailerAddFocus(focused) {

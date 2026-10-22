@@ -13,8 +13,8 @@ const settings = (uiColorMode: BentoSettings['uiColorMode'], sidebarCollapsed = 
     panelCornerRadiusPx: 6,
   }) as BentoSettings;
 
-const REGULAR = { windowId: 1, isPrivate: false };
-const PRIVATE = { windowId: 7, isPrivate: true };
+const REGULAR = { windowId: 1, isPrivate: false, sessionId: 'browser-1' };
+const PRIVATE = { windowId: 7, isPrivate: true, sessionId: 'browser-1' };
 
 let wire = 0;
 
@@ -75,12 +75,12 @@ describe('SettingsRelay', () => {
       requestId: 'req-1',
       operation: 'snapshot/get',
       payload: { domains: ['settings'] },
-      caller: { documentId: 'forged', windowId: 99, isPrivate: true },
+      caller: { documentId: 'forged', windowId: 99, isPrivate: true, sessionId: 'forged' },
     });
     expect(ctx.toTools).toHaveBeenCalledWith({
       kind: 'settings-client/request',
       shellBackgroundInstanceId: 'bg-1',
-      caller: { documentId: 'doc-r', windowId: 1, isPrivate: false },
+      caller: { documentId: 'doc-r', windowId: 1, isPrivate: false, sessionId: 'browser-1' },
       requestId: 'wire-1',
       operation: 'snapshot/get',
       payload: { domains: ['settings'] },

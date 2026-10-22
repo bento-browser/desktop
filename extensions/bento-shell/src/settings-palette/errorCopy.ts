@@ -19,6 +19,7 @@ const COPY: Record<string, string> = {
   invalid_payload: 'Bento did not accept that value.',
   operation_unknown: 'Bento lost track of that change. Check the result and try again.',
   operation_not_owned: 'That change belongs to another window.',
+  backend_restarted: 'Bento restarted first. Check the result and try again.',
 };
 
 const FALLBACK = 'Something went wrong. Try again.';

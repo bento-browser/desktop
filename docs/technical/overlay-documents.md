@@ -34,8 +34,11 @@ mount's table by `scripts/overlay-manager.test.mjs`. The show is not a channel m
 a frame script (`BentoSettingsPaletteShow`, loaded into the frame like the merge
 palette's) dispatches a `bento-settings-show` CustomEvent with a JSON detail
 (`{target: <root row id> | null}`) on the document's window, so it reaches a private
-window's document too. The document returns to its first list (or the one the target names),
-and refreshes its snapshot, on each show. Its titles to chrome: `BENTO_CLOSE_SETTINGS_PALETTE_<ts>`
+window's document too. The same frame script turns a `BentoSettingsPaletteHide` message into a
+`bento-settings-hide` event whenever chrome hides the overlay (Esc, the document's own close,
+another overlay opening, an outside click), so an unfinished number edit is put back and its
+timer stopped at once; no hide is sent before the first show. The document returns to its
+first list (or the one the target names), and refreshes its snapshot, on each show. Its titles to chrome: `BENTO_CLOSE_SETTINGS_PALETTE_<ts>`
 hides it; `BENTO_OPEN_MERGE_PALETTE_<ts>` opens the merge palette (which dismisses it);
 `BENTO_OPEN_FIREFOX_SEARCH_SETTINGS_<ts>` hides it and opens `about:preferences#search`
 in a new tab, or reuses an open Firefox Settings tab. Esc is handled by the document

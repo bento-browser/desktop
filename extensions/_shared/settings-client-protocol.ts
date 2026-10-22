@@ -102,6 +102,9 @@ export interface SettingsClientCaller {
   documentId: string;
   windowId: number;
   isPrivate: boolean;
+  /** One browser run, minted by the chrome hub. Window ids repeat across runs, so the owner of a
+   * durable operation is this plus the window id: it survives a reload of tools, not a restart. */
+  sessionId: string;
 }
 
 export interface SettingsClientRequest {
@@ -194,8 +197,9 @@ export function isSettingsClientRequest(value: unknown): value is SettingsClient
     !isBoundedId(value.shellBackgroundInstanceId) ||
     !isBoundedId(value.requestId) ||
     !isPlainRecord(caller) ||
-    !hasExactKeys(caller, ['documentId', 'windowId', 'isPrivate']) ||
+    !hasExactKeys(caller, ['documentId', 'windowId', 'isPrivate', 'sessionId']) ||
     !isBoundedId(caller.documentId) ||
+    !isBoundedId(caller.sessionId) ||
     !Number.isInteger(caller.windowId) ||
     (caller.windowId as number) < 0 ||
     typeof caller.isPrivate !== 'boolean' ||
@@ -307,6 +311,8 @@ export interface PendingOperation {
   kind: DurableSettingsOperation;
   state: OperationState;
   updatedAt: number;
+  /** True once a document reported how it ended (`recovery/acknowledgeNotice`); omitted before. */
+  noticeAcknowledged?: true;
 }
 
 export interface RecoveredOperationNotice {

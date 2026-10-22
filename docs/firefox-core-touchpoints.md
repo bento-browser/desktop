@@ -909,7 +909,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   Settings palette overlay uses it for its requests in every window. The parent derives the document's
   window id and privacy from the hosting chrome window; the page supplies only a
   JSON string. Chrome posts a private window's tools-bound actions straight into the
-  hub.
+  hub. The hub also mints one session id (`Services.uuid`, when the parent-process
+  module loads) and stamps it on every upward record as `sessionId`; Settings scopes a
+  window's durable operations to it, so they survive a reload of the extensions and
+  not a browser restart. The child actor forwards an upward message of up to 22 MiB
+  (`MAX_MESSAGE_CHARS`, equal to `RELAY_UP_MAX_CHARS` in
+  `extensions/bento-shell/src/settings-palette/relayLimit.ts`): it counts the serialized message,
+  in which JSON escaping doubles a 10 MiB backup import. `scripts/shell-bus-actors.test.mjs`
+  runs both actor modules against stubs.
 - Vanilla Firefox surface touched or depended on: `ChromeUtils.registerWindowActor`
   with `allFrames`, `matches: moz-extension://*/*` and a `wantUntrusted` DOM event;
   `JSWindowActorParent.manager.documentURI` and
@@ -933,7 +940,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   regular window's workspace list never shows "Private"; in the Browser Toolbox
   Console import `resource:///actors/BentoShellBusParent.sys.mjs`, attach
   `BentoShellBusHub.onUp`, and confirm each private document's hello reports
-  `isPrivate: true` and its window id; confirm no `[BentoShellBus]` warning appears.
+  `isPrivate: true` and its window id; confirm no `[BentoShellBus]` warning appears and every record carries the same
+  `sessionId`; import a backup of about 10 MiB that is mostly quotes and newlines in the
+  Settings palette (the request message is then about 20 MiB) and confirm it reaches the
+  preview step.
 - Rollback or migration notes: removing the actor leaves private windows without a
   working shell (the pre-existing state); the patch hunk is independent of the key
   actors. The shell manifest version was bumped because the experiment API gained
@@ -963,7 +973,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   letters, digits, colon, dash and underscore up to 64 characters); chrome sends the document its show with a frame
   script (`BentoSettingsPaletteShow`, the same `loadFrameScript` and
   `sendAsyncMessage` the merge palette uses) that dispatches a DOM event carrying
-  `{target}` (a row id or null), so no channel is involved. The overlay opens
+  `{target}` (a row id or null), so no channel is involved; hiding the overlay sends
+  the same way a `BentoSettingsPaletteHide` message that dispatches a
+  `bento-settings-hide` event, so the document can put back an unfinished live edit
+  and stop its timer at once. The overlay opens
   Firefox's own search settings (`about:preferences#search`, through
   `gBrowser.addTrustedTab` or the open Settings tab) for adding engines. Firefox's
   own Settings page has no Bento category any more (the native pane and its patch
@@ -982,7 +995,8 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   palette (Open Settings and Privacy, and a Settings result such as typing
   "radius") and the welcome Open Settings button, in a regular and a private
   window; confirm Esc steps back one list and closes from the
-  first; confirm "Manage search engines" opens `about:preferences#search`; confirm
+  first; start a number edit, open the command palette without finishing it and
+  confirm the setting returns to its old value at once (hide message); confirm "Manage search engines" opens `about:preferences#search`; confirm
   the merge palette and the command palette close the Settings palette and the
   reverse.
 - Rollback or migration notes: none; the native pane and the rollback builds were

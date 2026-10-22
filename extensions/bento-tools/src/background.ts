@@ -1284,7 +1284,6 @@ const settingsDomain = new SettingsDomainService({
   privacyMutations,
   graphPublications,
   broadcast: broadcastEvent,
-  sessionId: backendInstanceId,
 });
 // Windows the shell may claim as a source: shell actions and Settings requests both check them.
 const shellWindows = createWindowRegistry(browser.windows, undefined, (window) => {
