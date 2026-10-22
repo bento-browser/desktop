@@ -37,6 +37,7 @@ function mountConst(name) {
 
 const CONSTANTS = [
   'SIDEBAR_PUSH_ATTR',
+  'SIDEBAR_RAIL_ATTR',
   'SIDEBAR_PUSH_DELTA_PROP',
   'SIDEBAR_PUSH_PROPS',
   'SIDEBAR_PUSH_DIVIDER_EDGE',
@@ -429,6 +430,51 @@ test('an expand out of the hidden state is a show, pushing from no layout space 
   assert.deepEqual(plain(world.liveWaits()[0].filter), {
     animations: ['bento-sidebar-push-host-expand'],
   });
+});
+
+test('the rail colour attribute follows the push target from the frame the push starts', () => {
+  const world = makeWorld();
+  const rail = () => world.root.hasAttribute('bento-sidebar-rail');
+  // Boot into the rail, and the instant path without a slide, set it with the class.
+  world.boot(true);
+  assert.equal(rail(), true);
+  // An expand flips it as the host widens, in the push's first change, before the slide ends.
+  world.apply(false);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(rail(), false);
+  world.endMotion();
+  assert.equal(rail(), false);
+  // A collapse flips it at the start too, while the host is still wide.
+  world.apply(true);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'collapse');
+  assert.equal(world.host.classes.has('bento-sidebar-collapsed'), false);
+  assert.equal(rail(), true);
+  world.endMotion();
+  assert.equal(rail(), true);
+  world.assertNoResidue();
+});
+
+test('an interrupted collapse settles the rail colour at the end it was heading to', () => {
+  const world = makeWorld();
+  world.boot(false);
+  world.apply(true);
+  world.settle();
+  assert.equal(world.root.hasAttribute('bento-sidebar-rail'), true);
+  assert.equal(world.host.classes.has('bento-sidebar-collapsed'), true);
+});
+
+test('a hide takes the rail colour when it ends, not while the sidebar is sliding out', () => {
+  const world = makeWorld();
+  world.boot(false);
+  world.payload(true, true);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'hide');
+  assert.equal(world.root.hasAttribute('bento-sidebar-rail'), false);
+  world.endMotion();
+  assert.equal(world.root.hasAttribute('bento-sidebar-rail'), true);
+  // Showing it again leaves the rail look for the expanded sidebar at the start.
+  world.payload(false, false);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'show');
+  assert.equal(world.root.hasAttribute('bento-sidebar-rail'), false);
 });
 
 test('toggles that leave the sidebar hidden, and the boot into it, switch instantly', () => {
@@ -896,7 +942,9 @@ test('a toggle reads the push target, not the class that only lands when the sli
 
 // The stylesheet side of the audit: a rule keyed to an expand also names the show (the expand
 // out of the hidden state), unless it belongs to the shell document's own counter-translation
-// (the host's clip, the frame, the edge line), which a collapse and an expand alone have.
+// (the host's clip, the frame, the edge line) or to the rail colour fade (the toolbar segment,
+// the host's background, the chrome divider), which a collapse and an expand alone have: a
+// show or hide switches the colour at once.
 test('the stylesheet gives show every expand rule but the shell-document ones, and has no fade', () => {
   const css = readFileSync(
     resolve(
@@ -909,9 +957,38 @@ test('the stylesheet gives show every expand rule but the shell-document ones, a
     m[1].replace(/\s+/g, ' ').trim(),
   );
   const expandOnly = selectors.filter((s) => s.includes("'expand'") && !s.includes("'show'"));
-  assert.equal(expandOnly.length, 3, expandOnly.join('\n'));
+  assert.equal(expandOnly.length, 7, expandOnly.join('\n'));
   for (const selector of expandOnly) {
-    assert.match(selector, /#bento-shell-(host(::after)?|frame)$/, selector);
+    assert.match(
+      selector,
+      /#bento-shell-(host(::after)?|frame)$|#nav-bar\)$|#bento-sidebar-chrome-divider$/,
+      selector,
+    );
   }
   assert.doesNotMatch(css, /bento-sidebar-push-fade/);
+});
+
+// The colour transition replaces the transition list of the toolbar surfaces for the push;
+// Firefox's fullscreen reveal on the toolbox (`transition: 0.8s margin-top` under
+// [fullscreenShouldAnimate]) must not be cut short by it.
+test('the push colour transition skips a toolbox whose fullscreen reveal is animating', () => {
+  const css = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../src/browser/base/content/bento-shell-mount.css',
+    ),
+    'utf8',
+  );
+  const rule = /^(:root:is\([^{]*\)\s+:is\([^{]*#TabsToolbar[^{]*)\{([^}]*)\}/m.exec(css);
+  assert.ok(rule, 'the toolbar colour transition rule is missing');
+  assert.match(rule[1], /#navigator-toolbox:not\(\[fullscreenShouldAnimate\]\)/);
+  assert.match(rule[2], /transition:\s*--bento-toolbar-left-bg/);
+  const toolbox = [...css.matchAll(/^[^\n{]*#navigator-toolbox[^{]*\{([^}]*)\}/gm)].filter(
+    (m) => /transition\s*:/.test(m[1]) && !m[0].includes('fullscreenShouldAnimate'),
+  );
+  assert.deepEqual(
+    toolbox.map((m) => m[0].slice(0, 60)),
+    [],
+    'no other rule may set a transition on the plain toolbox',
+  );
 });

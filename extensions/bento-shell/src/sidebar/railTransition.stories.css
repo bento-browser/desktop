@@ -2,10 +2,18 @@
  * (bento-shell-mount.css "Sidebar push"): the host slides on the reveal spring pair
  * with its frame counter-translated, so the document stays put and the strip's edge
  * wipes; the page group slides with the edge. */
+/* The window: chrome paints the toolbar's main colour around the page, and the sidebar's
+   own colour is the App's (the rail look in app.css), so the rail and the gap around the
+   page read as one surface. */
 .bento-rail-story {
   position: relative;
   overflow: hidden;
-  background-color: var(--bento-brand-bg);
+  background-color: var(--bento-toolbar-main-bg);
+}
+
+/* No side panels: chrome's toolbar is the brand background there. */
+.bento-rail-story:has(.bento-shell-app--no-side-panels) {
+  --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-5);
 }
 
 .bento-rail-story__host {
@@ -60,6 +68,39 @@
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
 }
 
+/* The host's edge line (#bento-shell-host::after in the mount stylesheet): it stands where
+   the shell's own right border will be, and goes with a collapse and comes with an expand,
+   on the colour's timing, since the rail has no edge line. */
+.bento-rail-story[data-push]:not(:has(.bento-shell-app--no-side-panels))
+  .bento-rail-story__host::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 1px;
+  background-color: var(--bento-sidebar-divider-color);
+  pointer-events: none;
+}
+.bento-rail-story[data-push='collapse'] .bento-rail-story__host::after {
+  animation: bento-rail-story-edge-out
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+.bento-rail-story[data-push='expand'] .bento-rail-story__host::after {
+  animation: bento-rail-story-edge-in var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+
+@keyframes bento-rail-story-edge-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes bento-rail-story-edge-in {
+  from {
+    opacity: 0;
+  }
+}
 @keyframes bento-rail-story-out {
   to {
     translate: calc(-1 * var(--bento-rail-story-delta, 0px)) 0;

@@ -5,7 +5,8 @@
     flex: 0 0 auto;
     min-width: 0;
     padding: var(--space-3xs) var(--space-3xs) 0;
-    background: var(--neutral-5);
+    /* Follows the rail look's colour while the collapse choreography folds it away. */
+    background: var(--bento-brand-bg);
   }
 
   html[data-bento-collapsed='true'] .bento-sidebar-address-bar {
@@ -25,7 +26,7 @@
     padding-inline: var(--space-4xs);
     border: 1px solid var(--neutral-18);
     border-radius: var(--bento-sidebar-address-field-radius);
-    background: var(--neutral-5);
+    background: var(--bento-brand-bg);
   }
 
   .bento-sidebar-address-bar__row > .muxui-button {

@@ -4946,6 +4946,9 @@
   // that read it are held off like during a live resize (isBentoChromeLiveResizing)
   // and settleSidebarPush refreshes them once at the end.
   const SIDEBAR_PUSH_ATTR = 'bento-sidebar-push';
+  // Root attribute while the sidebar is, or is sliding to, the collapsed rail: the rail
+  // takes the toolbar's main colour (see bento-shell-mount.css, ':root[bento-sidebar-rail]').
+  const SIDEBAR_RAIL_ATTR = 'bento-sidebar-rail';
 
   function isBentoSidebarPushing() {
     return document.documentElement.hasAttribute(SIDEBAR_PUSH_ATTR);
@@ -5550,8 +5553,8 @@
         const split = splitX + 'px';
         const gradient =
           'linear-gradient(to right, ' +
-          'var(--bento-toolbar-sidebar-bg) 0, ' +
-          'var(--bento-toolbar-sidebar-bg) ' +
+          'var(--bento-toolbar-left-bg) 0, ' +
+          'var(--bento-toolbar-left-bg) ' +
           split +
           ', var(--bento-toolbar-main-bg) ' +
           split +
@@ -16844,6 +16847,11 @@
     // is until the slide ends.
     if (expands) host.classList.remove('bento-sidebar-collapsed');
     for (const el of pageEls) el.classList.add(SIDEBAR_PUSH_PAGE_CLASS);
+    // The rail colour follows the target, not the settled class: a collapse keeps the host
+    // wide until the slide ends and an expand widens it now. In the same style change as
+    // the push attribute, so the colour fades from where it was. A hide, whose colour
+    // cannot be seen (the sidebar leaves), takes the rail at its end.
+    if (!hiding) root.toggleAttribute(SIDEBAR_RAIL_ATTR, collapsed);
     root.setAttribute(SIDEBAR_PUSH_ATTR, direction);
     // Read after the styles above: a missing or disabled animation measures 0 and
     // settles at once, with the final state and no frames in between.
@@ -16874,6 +16882,7 @@
       host.classList.add('bento-sidebar-hidden');
     }
     host.classList.toggle('bento-sidebar-collapsed', collapsed);
+    root.toggleAttribute(SIDEBAR_RAIL_ATTR, collapsed);
     for (const el of pageEls) el.classList.remove(SIDEBAR_PUSH_PAGE_CLASS);
     root.removeAttribute(SIDEBAR_PUSH_ATTR);
     for (const name of SIDEBAR_PUSH_PROPS) root.style.removeProperty(name);
@@ -16952,6 +16961,7 @@
         !first && (hiding || !hidden) && !window.matchMedia(SIDEBAR_PUSH_REDUCED_MOTION).matches;
       if (!slide || !startSidebarPush(host, collapsed, wasHidden, hiding)) {
         host.classList.toggle('bento-sidebar-collapsed', collapsed);
+        document.documentElement.toggleAttribute(SIDEBAR_RAIL_ATTR, collapsed);
       }
     }
     // Hide the resize splitter when collapsed — there's nothing to drag
