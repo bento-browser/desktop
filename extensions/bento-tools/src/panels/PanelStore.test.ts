@@ -104,6 +104,59 @@ describe('PanelStore headerHidden', () => {
   });
 });
 
+describe('PanelStore group ratio', () => {
+  beforeEach(() => {
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({})),
+          set: vi.fn(async () => undefined),
+          remove: vi.fn(async () => undefined),
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function twoSubdivisions() {
+    const store = new PanelStore();
+    store.add('ws-a', 1);
+    store.subdivide('ws-a', 1);
+    store.add('ws-b', 2);
+    store.subdivide('ws-b', 2);
+    const ratio = (workspaceId: string) => {
+      const root = store.getPanelLayout(workspaceId).root[0];
+      if (!root || root.kind !== 'group') throw new Error('Expected a subdivision');
+      return { id: root.id, ratio: root.ratio };
+    };
+    return { store, ratio };
+  }
+
+  it('sets only the named workspace', () => {
+    const { store, ratio } = twoSubdivisions();
+    const other = ratio('ws-b');
+
+    store.setGroupRatioIn('ws-b', ratio('ws-a').id, 0.8);
+    expect(ratio('ws-a').ratio).not.toBe(0.8);
+
+    store.setGroupRatioIn('ws-a', ratio('ws-a').id, 0.8);
+    expect(ratio('ws-a').ratio).toBe(0.8);
+    expect(ratio('ws-b')).toEqual(other);
+  });
+
+  // The archived rollback source calls it with this shape and has no private windows.
+  it('keeps the two-argument call of the archived rollback source searching every workspace', () => {
+    const { store, ratio } = twoSubdivisions();
+
+    store.setGroupRatio(ratio('ws-b').id, 0.2);
+
+    expect(ratio('ws-b').ratio).toBe(0.2);
+  });
+});
+
 describe('PanelStore devtools panels', () => {
   beforeEach(() => {
     vi.stubGlobal('browser', {
