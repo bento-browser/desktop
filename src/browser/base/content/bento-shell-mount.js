@@ -1698,7 +1698,31 @@
     navigateChromeFrame(frame, finalUrl);
   }
 
+  // Chrome's root font size in px. Chrome's rem is not the shell's (11px against 16px), so the
+  // gutter above the main panels (`--space-3xs`, bento-shell-mount.css) is a different length in
+  // each. The sidebar of a private window reads this from its frame URL (#bentoChromeRem,
+  // public/boot.js) and scales the same token, so its Private band starts level with the panels.
+  function chromeRemPx() {
+    const px = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    return Number.isFinite(px) && px > 0 ? px : null;
+  }
+
+  // The root font size comes from a stylesheet (global.css, 'font: message-box'). A window whose
+  // sheets are not in the shared cache yet (the first private window of a session) runs this
+  // script before any of them applies and would read the 16px default, so the private window's
+  // frame waits for the document load event, which every parser-created sheet blocks.
+  function chromeSheetsApplied() {
+    return Array.from(document.querySelectorAll('link[rel="stylesheet"]')).every(
+      (link) => link.sheet,
+    );
+  }
+
   function setBentoShellSrc() {
+    const isPrivate = BentoPrivateBrowsingUtils.isWindowPrivate(window);
+    if (isPrivate && document.readyState !== 'complete' && !chromeSheetsApplied()) {
+      window.addEventListener('load', setBentoShellSrc, { once: true });
+      return;
+    }
     const frame = document.getElementById('bento-shell-frame');
     if (frame) {
       frame.setAttribute('transparent', 'transparent');
@@ -1710,6 +1734,7 @@
       bentoSidebarAddressBridgeToken: getBentoSidebarAddressBridgeToken(),
       bentoMountToken: registryRecord?.mountToken,
       bentoClientInstanceId: registryRecord?.clientInstanceId,
+      bentoChromeRem: isPrivate ? chromeRemPx() : null,
     });
   }
 

@@ -4,8 +4,13 @@
  * paired foreground give a light block in a dark window and a dark one in a light window
  * with no scope of their own. Expanded it spans the sidebar edge to edge with the glyph at
  * the start and two text lines; in the rail it is a glyph-only block the rail wide (the
- * shell's own width, in CSS). The Mux Button supplies the press state and keyboard
- * activation; its box and fill give way to the band's. The note is a Mux Popover. */
+ * shell's own width, in CSS). The glyph never moves between the two: its start inset centres
+ * it in the rail (rail width and glyph size tokens), and the text starts one inset after the
+ * glyph, so it begins at the rail's edge. The sidebar's narrowing edge therefore clips the
+ * text away in a collapse and the widening edge reveals it in an expand, at full opacity, and
+ * the rail layout hides nothing that was still visible. The Mux Button supplies the press
+ * state and keyboard activation; its box and fill give way to the band's. The note is a Mux
+ * Popover. */
 @layer bento.components {
   .bento-private-band {
     width: 100%;
@@ -20,7 +25,8 @@
     height: var(--bento-private-band-height);
     min-height: var(--bento-private-band-height);
     padding-block: 0;
-    padding-inline: var(--muxui-semantic-layout-inset-large);
+    padding-inline-start: var(--bento-private-band-inset);
+    padding-inline-end: var(--muxui-semantic-layout-inset-large);
     border: 0;
     border-radius: 0;
     background-color: var(--muxui-semantic-color-neutral-90);
@@ -50,13 +56,15 @@
     display: flex;
     flex: 1 1 auto;
     align-items: center;
-    gap: var(--muxui-semantic-layout-inset-medium);
+    gap: var(--bento-private-band-inset);
     min-width: 0;
     width: 100%;
   }
 
   .bento-private-band__icon {
     flex: none;
+    width: var(--bento-private-band-icon-size);
+    height: var(--bento-private-band-icon-size);
   }
 
   .bento-private-band__text {
@@ -90,14 +98,10 @@
     color: var(--muxui-semantic-content-default);
   }
 
-  /* Rail: a glyph-only block. */
+  /* Rail: a glyph-only block. The glyph keeps its place (the same start inset), the text is
+     already past the edge, and nothing is left of the end padding. */
   html[data-bento-collapsed='true'] .muxui-button.bento-private-band__button {
-    padding-inline: 0;
-    justify-content: center;
-  }
-
-  html[data-bento-collapsed='true'] .bento-private-band__button .muxui-button-content {
-    justify-content: center;
+    padding-inline-end: 0;
   }
 
   html[data-bento-collapsed='true'] .bento-private-band__text {

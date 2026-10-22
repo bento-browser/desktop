@@ -180,7 +180,6 @@
         .bento-shell-app__main,
         .bento-pinned-panels,
         .bento-workspace-switcher__avatar-frame,
-        .bento-private-band__icon,
         .bento-shell-app__list-region,
         .bento-tab-list__new-action-button svg,
         .bento-tab-list-pane__scroller,
@@ -200,7 +199,6 @@
     &
       :is(
         .bento-workspace-switcher__trigger-name,
-        .bento-private-band__text,
         .bento-workspace-switcher__chevron,
         .bento-tab-list__new-action-label,
         .bento-tab-list__search-trigger,
@@ -302,12 +300,7 @@
     & .bento-shell-app {
       animation: bento-rail-hold var(--muxui-semantic-motion-reveal-transition-spring-duration) both;
     }
-    &
-      :is(
-        .bento-workspace-switcher__trigger-name,
-        .bento-private-band__text,
-        .bento-tab-list__new-action-label
-      ) {
+    & :is(.bento-workspace-switcher__trigger-name, .bento-tab-list__new-action-label) {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.15);
     }
     &

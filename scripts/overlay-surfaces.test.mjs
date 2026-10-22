@@ -1088,6 +1088,83 @@ test("setFrameSrc marks a private window's frames with #bentoPrivate=1, and only
   ]);
 });
 
+test("a private window's sidebar frame carries chrome's root font size; others do not", () => {
+  const stamped = [];
+  const run = ({ privateWindow, fontSize }) => {
+    const sandbox = {
+      document: {
+        readyState: 'complete',
+        getElementById: () => ({ setAttribute: () => {}, style: { setProperty: () => {} } }),
+        querySelectorAll: () => [],
+        documentElement: {},
+      },
+      getComputedStyle: () => ({ fontSize }),
+      registerBentoShellDocument: () => ({ mountToken: 'm', clientInstanceId: 'c' }),
+      getBentoSidebarAddressBridgeToken: () => 'token',
+      setFrameSrc: (_id, _path, _attempt, extra) => stamped.push(extra.bentoChromeRem),
+      window: {},
+      Array,
+      Number,
+      BentoPrivateBrowsingUtils: { isWindowPrivate: () => privateWindow },
+    };
+    vm.runInNewContext(
+      `"use strict";${extractFunction('chromeRemPx')}\n${extractFunction('chromeSheetsApplied')}\n${extractFunction('setBentoShellSrc')}\nsetBentoShellSrc();`,
+      sandbox,
+      { filename: 'bento-shell-mount.js#setBentoShellSrc' },
+    );
+  };
+
+  run({ privateWindow: true, fontSize: '11px' });
+  run({ privateWindow: false, fontSize: '11px' });
+  run({ privateWindow: true, fontSize: '' });
+
+  // Absent for a regular window and for a root size that cannot be read.
+  assert.deepEqual(stamped, [11, null, null]);
+});
+
+test("a private window whose chrome sheets are still loading stamps the font size only at load", () => {
+  const stamped = [];
+  const listeners = [];
+  const link = { sheet: null };
+  // A cold window reads 16px (the default) until global.css applies.
+  let fontSize = '16px';
+  const doc = {
+    readyState: 'loading',
+    getElementById: () => ({ setAttribute: () => {}, style: { setProperty: () => {} } }),
+    querySelectorAll: () => [link],
+    documentElement: {},
+  };
+  const sandbox = {
+    document: doc,
+    getComputedStyle: () => ({ fontSize }),
+    registerBentoShellDocument: () => ({ mountToken: 'm', clientInstanceId: 'c' }),
+    getBentoSidebarAddressBridgeToken: () => 'token',
+    setFrameSrc: (_id, _path, _attempt, extra) => stamped.push(extra.bentoChromeRem),
+    window: { addEventListener: (type, fn) => listeners.push({ type, fn }) },
+    Array,
+    Number,
+    BentoPrivateBrowsingUtils: { isWindowPrivate: () => true },
+  };
+  vm.runInNewContext(
+    `"use strict";${extractFunction('chromeRemPx')}\n${extractFunction('chromeSheetsApplied')}\n${extractFunction('setBentoShellSrc')}\nthis.setBentoShellSrc = setBentoShellSrc; setBentoShellSrc();`,
+    sandbox,
+    { filename: 'bento-shell-mount.js#setBentoShellSrc' },
+  );
+
+  assert.deepEqual(stamped, []);
+  assert.deepEqual(
+    listeners.map((l) => l.type),
+    ['load'],
+  );
+
+  // The load event: every sheet applied, the root font size is final.
+  link.sheet = {};
+  doc.readyState = 'complete';
+  fontSize = '11px';
+  listeners[0].fn();
+  assert.deepEqual(stamped, [11]);
+});
+
 // ─── The hide waits for the fade the stylesheet configures ──────────────────
 
 const isHidden = (world, id) => !world.isShown(id);

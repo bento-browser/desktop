@@ -1017,11 +1017,7 @@ reaches chrome later), and the choreography persists nothing.
   after the shell's expand began) shows the rail and waits for the next widen.
 - Offsets: positions are rounded to device pixels before differencing, and each offset
   is relative to the nearest moving ancestor (main column, list region, scroller,
-  list viewport for the scroll change, row). A private window's band glyph
-  (`.bento-private-band__icon`) is one of the single elements, like the workspace avatar
-  it stands in for: it moves between its expanded and centred rail places on the same
-  spring pair while the band's block, which fills the sidebar width, is wiped by the
-  strip's edge and so needs no move of its own. Rows share geometry: one plain tab row, one
+  list viewport for the scroll change, row). Rows share geometry: one plain tab row, one
   folder child (indented) and one folder row are measured and their offsets go on the
   app root as inherited `--bento-rail-*` properties the row rules read; when the window
   holds only one kind of tab row, the other's offsets are derived from it and the
@@ -1244,8 +1240,26 @@ workspaces.
   setting; the layout itself follows `html[data-bento-collapsed]`) the shell frame is
   52 px wide and would clip a popover, so the note is the chrome-side rail tooltip
   (`useRailTooltip`, `BENTO_RAIL_TOOLTIP`, see "Tooltip document" in
-  [overlay-documents.md](overlay-documents.md)) on hover and keyboard focus. The band's
-  text joins the collapse choreography's fade (`railTransition.css`).
+  [overlay-documents.md](overlay-documents.md)) on hover and keyboard focus. The band is
+  not part of the collapse choreography's moves or fades: the glyph's start inset
+  (`--bento-private-band-inset`, half of the rail width minus the glyph size) centres it in
+  the rail in both layouts, so it never moves, and the gap to the text is the same inset, so
+  the text starts at the rail's edge. The text stays at full opacity: in a collapse the
+  strip's narrowing edge (chrome's push) clips it away, in an expand the widening edge
+  reveals it, and at the settle the rail layout (text hidden) drops nothing that was still
+  visible. The band's block fills the sidebar width and is wiped by the same edge. Its slot
+  starts `--bento-panel-top-inset` below the frame's top, so the band is level with the main
+  panels, which start one gutter token (`--space-3xs`, rounded as the no-panels frame margin
+  is) below the toolbar. The token is a rem length and chrome's rem (11px) is not the shell's
+  (16px), so chrome stamps its root font size on a private window's sidebar frame URL
+  (`#bentoChromeRem`, `chromeRemPx` in the mount script) and `boot.js` turns it into
+  `--bento-chrome-rem-scale` before first paint; the inset is the same token, scaled,
+  rounded. The root font size comes from chrome's `global.css`, which a cold window (the
+  first private window of a session) has not applied when the mount script first runs, so
+  `setBentoShellSrc` holds a private window's frame until the document `load` event while a
+  stylesheet link has no sheet (`chromeSheetsApplied`); reading at that point stamped the
+  16px default and left the band 2px below the panels. It does not follow the panel gap setting (`panelSplitterSizePx`): the
+  panels' top is that token in both split (strip padding) and no-panels (frame margin) modes.
 - Manual verification (expanded, note open, rail; dark and light): the band reads
   "Private" over "Nothing here is saved." at the top of the sidebar; click it and the note
   appears under it, Escape or a click outside closes it; collapse the sidebar and the band
