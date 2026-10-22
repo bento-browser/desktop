@@ -788,14 +788,14 @@ the "Cascade" direction) runs inside that push while the shell document stays pu
 the strip's edge wipes over it. It animates only `translate` and `opacity`, keyed on
 `data-bento-rail-transition` on `<html>`:
 
-- Moves (the workspace avatar, the list region and the scroller as it rises over the
+- Moves (the workspace avatar, the glyph of a private window's band, the list region and the scroller as it rises over the
   address bar, the New plus, each tab and folder row and its favicon or icon, the
   active row's retracting tail, the pinned panel rail and the main column's shift, the
   footer buttons, and the footer backdrop that rises with the divider) are the `reveal`
   spring pair at `calc()` 0.6 of its duration, so a staggered move still ends inside
   the slide. A collapse moves to the measured rail places and holds them until the
   rail layout replaces it; an expand starts at them and moves back.
-- Fades (the workspace name, the New label, row titles, the switcher's fill and the
+- Fades (the workspace name, the private band's two text lines, the New label, row titles, the switcher's fill and the
   rail square that replaces it, folder outlines, the pinned and folder band, the
   address bar's fold, pinned panels) are the `state` pair. Trailing controls (the
   switcher chevron, Search, row buttons and audio controls, an open search field,

@@ -1017,7 +1017,11 @@ reaches chrome later), and the choreography persists nothing.
   after the shell's expand began) shows the rail and waits for the next widen.
 - Offsets: positions are rounded to device pixels before differencing, and each offset
   is relative to the nearest moving ancestor (main column, list region, scroller,
-  list viewport for the scroll change, row). Rows share geometry: one plain tab row, one
+  list viewport for the scroll change, row). A private window's band glyph
+  (`.bento-private-band__icon`) is one of the single elements, like the workspace avatar
+  it stands in for: it moves between its expanded and centred rail places on the same
+  spring pair while the band's block, which fills the sidebar width, is wiped by the
+  strip's edge and so needs no move of its own. Rows share geometry: one plain tab row, one
   folder child (indented) and one folder row are measured and their offsets go on the
   app root as inherited `--bento-rail-*` properties the row rules read; when the window
   holds only one kind of tab row, the other's offsets are derived from it and the
