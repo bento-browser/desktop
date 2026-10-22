@@ -324,8 +324,9 @@ window (see "The Settings overlay on the relay" below).
   loads (one per browser run); the Settings relay hands it to tools in the `caller`
   block, where it scopes durable-operation ownership. The child actor forwards an upward
   string of up to 22 MiB, which counts the serialized message (see privacy-search.md).
-- Hub: the parent module exports `BentoShellBusHub` (up listener, backlog of 128
-  messages while nothing listens, `postToDocument`, `postFromChrome`). The
+- Hub: the parent module exports `BentoShellBusHub` (up listener, backlog while nothing
+  listens of at most 128 records and 24 Mi characters of document messages, oldest
+  dropped first, `postToDocument`, `postFromChrome`). The
   chrome-bridge experiment exposes it as `bentoChrome.onBusMessage` and
   `bentoChrome.postToDocument(documentId, message)`, in both copies
   (`src/experiments/chrome-bridge/` and the tracked `experiments/chrome-bridge/`,

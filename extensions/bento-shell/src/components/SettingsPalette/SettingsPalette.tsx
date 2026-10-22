@@ -44,7 +44,7 @@ import {
   type Intent,
   type PaletteRow,
 } from './rows';
-import { createSizeRunner, stackAfterSizeChange } from './sizeIntents';
+import { createSizeRunner, stackAfterSizeChange, waitsForSave } from './sizeIntents';
 import {
   crumbPrefix,
   crumbsFor,
@@ -143,7 +143,7 @@ export default function SettingsPalette({
   const editor = useStageEditor(stage, model, actions);
   const latest = useRef({ model, actions });
   latest.current = { model, actions };
-  const [runSize] = useState(() =>
+  const [sizes] = useState(() =>
     createSizeRunner({
       model: () => latest.current.model,
       update: (changes) => latest.current.actions.update(changes),
@@ -171,7 +171,8 @@ export default function SettingsPalette({
     }
     editor.revert();
     actions.cancelImport();
-    actions.clearNotice();
+    // The notice is not cleared here: the store does that when it is told of the show, and then
+    // reports what ended while the palette was hidden, which a clear after it would erase.
     setStack(start);
     setQuery(initialQuery);
     const top = topStage(start);
@@ -240,6 +241,8 @@ export default function SettingsPalette({
       return;
     }
     if (!model) return;
+    // While the list is being saved its entries may be about to move: nothing that names one waits.
+    if (waitsForSave(intent, sizes)) return;
     switch (intent.type) {
       case 'toggle':
         if (!model.pending.has(intent.key)) {
@@ -283,7 +286,7 @@ export default function SettingsPalette({
       case 'removeSize':
         // The stage follows the entry only once the new order is saved: until then the actions
         // still belong to the entry they were opened on, and a second press is ignored.
-        void runSize(intent).then((saved) => {
+        void sizes.run(intent).then((saved) => {
           if (saved) setStack((current) => stackAfterSizeChange(current, intent));
         });
         break;

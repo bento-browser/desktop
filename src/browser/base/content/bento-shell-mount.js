@@ -9586,15 +9586,28 @@
     }
   }
 
+  // Every Show or Hide takes the next generation, and a retry of an older one is dropped: a Hide
+  // that waited for the frame must not land after the Show that came later (it would cancel the
+  // editor session that Show just began), nor a Show after a later Hide reopen the state.
+  let settingsLifecycleSeq = 0;
+
   // Sends a lifecycle message to the Settings document's frame script, loading the script on first
   // use. A message that cannot go yet (the frame has no message manager) is retried briefly.
-  function sendSettingsPaletteMessage(name, data, attempt = 0) {
+  function sendSettingsPaletteMessage(
+    name,
+    data,
+    attempt = 0,
+    generation = (settingsLifecycleSeq += 1),
+  ) {
+    if (generation !== settingsLifecycleSeq) return false;
     const frame = document.getElementById('bento-settings-palette-frame');
     if (!frame) return false;
+    const retry = () =>
+      setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1, generation), 100);
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
-        if (attempt < 10) setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1), 100);
+        if (attempt < 10) retry();
         return false;
       }
       if (!frame._bentoSettingsPaletteShowScriptLoaded && typeof mm.loadFrameScript === 'function') {
@@ -9605,7 +9618,7 @@
       return true;
     } catch (err) {
       if (attempt < 10) {
-        setTimeout(() => sendSettingsPaletteMessage(name, data, attempt + 1), 100);
+        retry();
       } else {
         console.warn('[bento-shell-mount] settings palette ' + name + ' dispatch failed:', err);
       }
@@ -9618,10 +9631,14 @@
   }
 
   // Only a document that was shown has anything to put back, so a hide before the first show is
-  // not sent (it would load the frame script for nothing).
+  // not sent (it would load the frame script for nothing). It still ends a Show still waiting for
+  // the frame.
   function dispatchSettingsPaletteHide() {
     const frame = document.getElementById('bento-settings-palette-frame');
-    if (!frame || !frame._bentoSettingsPaletteShowScriptLoaded) return false;
+    if (!frame || !frame._bentoSettingsPaletteShowScriptLoaded) {
+      settingsLifecycleSeq += 1;
+      return false;
+    }
     return sendSettingsPaletteMessage('BentoSettingsPaletteHide', {});
   }
 

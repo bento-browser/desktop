@@ -60,12 +60,17 @@ const host: SettingsPaletteHost = {
 const relay = createRelayTransport();
 relay.connect();
 const settings = createSettingsPaletteStore(createSettingsClient(relay), host);
+// The document loads hidden: chrome reveals it, and sends the show, once it has announced itself.
+settings.actions.setVisible(false);
 
 function SettingsPaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const view = useStore(settings.store, (state) => state.view);
-  const { openToken, hideToken, stages, query } = useShowSignal(settings.actions.refresh);
+  const { openToken, hideToken, stages, query } = useShowSignal(
+    settings.actions.refresh,
+    settings.actions.setVisible,
+  );
   // After the effect that listens for the show: chrome reveals the overlay on this announcement.
   useOverlayReadySignal('settings-palette');
   return (

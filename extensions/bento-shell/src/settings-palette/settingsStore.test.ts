@@ -92,6 +92,13 @@ const outcome = (over: Partial<DurableOutcome> = {}): DurableOutcome => ({
   ...over,
 });
 
+const radius = (value: number) => ({ ...FIXTURE_SETTINGS, panelCornerRadiusPx: value });
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+};
+
 describe('loading', () => {
   it('starts loading, then holds the snapshot and asks for every domain', async () => {
     const { palette, request, load, model } = setup();
@@ -498,13 +505,6 @@ describe('reset and backups', () => {
 });
 
 describe('older answers never replace newer values', () => {
-  const radius = (value: number) => ({ ...FIXTURE_SETTINGS, panelCornerRadiusPx: value });
-  const deferred = <T>() => {
-    let resolve!: (value: T) => void;
-    const promise = new Promise<T>((done) => (resolve = done));
-    return { promise, resolve };
-  };
-
   it('keeps a value a change notice delivered while the snapshot was being collected', async () => {
     const { palette, request, emit, load, model } = setup();
     await load();
@@ -573,6 +573,75 @@ describe('older answers never replace newer values', () => {
     request.mockResolvedValueOnce(snapshot({ settings: radius(31) }));
     palette.actions.refresh();
     await vi.waitFor(() => expect(model().settings.panelCornerRadiusPx).toBe(31));
+  });
+  it('keeps a change notice that lands while the first snapshot is still being collected', async () => {
+    const { palette, request, emit, model } = setup();
+    const first = deferred<SettingsSnapshot>();
+    request.mockReturnValueOnce(first.promise);
+    palette.actions.refresh();
+    // Another window changed the radius after the snapshot was asked for and before it came back:
+    // the snapshot's 12 is the older picture.
+    emit({ type: 'settings/changed', settings: radius(40) as never });
+    expect(palette.store.getState().view.kind).toBe('loading');
+    first.resolve(snapshot({ settings: radius(12) }));
+    await vi.waitFor(() => expect(palette.store.getState().view.kind).toBe('ready'));
+    expect(model().settings.panelCornerRadiusPx).toBe(40);
+  });
+
+  it('keeps early notices per field, and the snapshot for the fields none touched', async () => {
+    const { palette, request, emit, model } = setup();
+    const first = deferred<SettingsSnapshot>();
+    request.mockReturnValueOnce(first.promise);
+    palette.actions.refresh();
+    emit({
+      type: 'privacy/changed',
+      privacy: { ...FIXTURE_PRIVACY, protectionLevel: 'hardened' } as never,
+    });
+    first.resolve(snapshot({ settings: radius(20) }));
+    await vi.waitFor(() => expect(palette.store.getState().view.kind).toBe('ready'));
+    expect(model().privacy?.protectionLevel).toBe('hardened');
+    expect(model().settings.panelCornerRadiusPx).toBe(20);
+  });
+
+  it('takes a snapshot that was asked for after the notice came in', async () => {
+    const { palette, request, emit, model } = setup();
+    emit({ type: 'settings/changed', settings: radius(40) as never });
+    request.mockResolvedValueOnce(snapshot({ settings: radius(12) }));
+    palette.actions.refresh();
+    await vi.waitFor(() => expect(palette.store.getState().view.kind).toBe('ready'));
+    expect(model().settings.panelCornerRadiusPx).toBe(12);
+  });
+
+  it('keeps a change that landed while a reset ran, whatever the reset returns', async () => {
+    const { palette, run, emit, load, model } = setup();
+    await load();
+    const reset = deferred<DurableOutcome>();
+    run.mockReturnValueOnce(reset.promise);
+    const done = palette.actions.reset();
+    emit({ type: 'settings/changed', settings: radius(40) as never });
+    reset.resolve(
+      outcome({
+        result: {
+          result: { settings: radius(12), privacy: FIXTURE_PRIVACY, search: FIXTURE_SEARCH },
+        },
+      }),
+    );
+    await done;
+    expect(model().settings.panelCornerRadiusPx).toBe(40);
+  });
+
+  it('applies what a reset returns when nothing newer came in', async () => {
+    const { palette, run, load, model } = setup();
+    await load();
+    run.mockResolvedValueOnce(
+      outcome({
+        result: {
+          result: { settings: radius(7), privacy: FIXTURE_PRIVACY, search: FIXTURE_SEARCH },
+        },
+      }),
+    );
+    await palette.actions.reset();
+    expect(model().settings.panelCornerRadiusPx).toBe(7);
   });
 });
 
@@ -732,5 +801,134 @@ describe('operations that ended out of sight', () => {
     answer = status();
     palette.actions.refresh();
     await vi.waitFor(() => expect(model().notice).toContain('The import did not finish'));
+  });
+  describe('while the palette is hidden', () => {
+    const ackOf = (request: ReturnType<typeof setup>['request']) =>
+      calls(request, 'recovery/acknowledgeNotice').map(([, payload]) => payload);
+
+    it('keeps a failure that ends after the palette was closed, and shows it on the next show', async () => {
+      const { palette, request, run, load, model } = setup();
+      await load();
+      tools(request, () => snapshot(), {});
+      palette.actions.setVisible(false);
+      run.mockResolvedValueOnce(
+        outcome({
+          operationId: 'op-h',
+          kind: 'backup/restore',
+          state: 'failed',
+          errorCode: 'busy',
+        }),
+      );
+      await palette.actions.restoreBackup('b1');
+      // Nobody could read it, so it is neither shown nor acknowledged in tools.
+      expect(model().notice).toBeNull();
+      expect(ackOf(request)).toEqual([]);
+
+      palette.actions.setVisible(true);
+      expect(model().notice).toContain('The restore did not finish');
+      await vi.waitFor(() => expect(ackOf(request)).toEqual([{ operationId: 'op-h' }]));
+    });
+
+    it('reports a success that ends while hidden as finished, on the next show', async () => {
+      const { palette, request, run, load, model } = setup();
+      await load();
+      tools(request, () => snapshot(), {});
+      palette.actions.setVisible(false);
+      run.mockResolvedValueOnce(outcome({ operationId: 'op-s', kind: 'backup/importValidated' }));
+      await palette.actions.restoreBackup('b1');
+      expect(model().notice).toBeNull();
+      palette.actions.setVisible(true);
+      expect(model().notice).toBe('The import finished.');
+      expect(ackOf(request)).toEqual([{ operationId: 'op-s' }]);
+    });
+
+    it('does not let a show clear the outcome it has just reported', async () => {
+      const { palette, request, run, load, model } = setup();
+      await load();
+      tools(request, () => snapshot(), {});
+      palette.actions.setVisible(false);
+      run.mockResolvedValueOnce(
+        outcome({ operationId: 'op-d', kind: 'backup/delete', state: 'failed', errorCode: 'busy' }),
+      );
+      await palette.actions.deleteBackup('b1');
+      palette.actions.setVisible(true);
+      const shown = model().notice;
+      expect(shown).toContain('The delete did not finish');
+      // A second show, with nothing new, starts clean: the outcome was seen once.
+      palette.actions.setVisible(true);
+      expect(model().notice).toBeNull();
+      expect(ackOf(request)).toHaveLength(1);
+    });
+
+    it('acknowledges at once an outcome that ends while the palette is open', async () => {
+      const { palette, request, run, load, model } = setup();
+      await load();
+      tools(request, () => snapshot(), {});
+      run.mockResolvedValueOnce(
+        outcome({ operationId: 'op-v', kind: 'backup/delete', state: 'failed', errorCode: 'busy' }),
+      );
+      await palette.actions.deleteBackup('b1');
+      expect(model().notice).toContain('The delete did not finish');
+      expect(ackOf(request)).toEqual([{ operationId: 'op-v' }]);
+    });
+
+    it('leaves an unseen outcome for a reloaded document to find, and does not repeat a seen one', async () => {
+      // The first document: closed, the restore fails, the document is reloaded before a show.
+      const first = setup();
+      await first.load();
+      tools(first.request, () => snapshot(), {});
+      first.palette.actions.setVisible(false);
+      first.run.mockResolvedValueOnce(
+        outcome({
+          operationId: 'op-r',
+          kind: 'backup/restore',
+          state: 'failed',
+          errorCode: 'busy',
+        }),
+      );
+      await first.palette.actions.restoreBackup('b1');
+      expect(ackOf(first.request)).toEqual([]);
+
+      // The reloaded document asks again: tools still lists the operation, not acknowledged.
+      const second = setup();
+      second.palette.actions.setVisible(false);
+      tools(
+        second.request,
+        () =>
+          snapshot({
+            pendingOperations: [
+              { operationId: 'op-r', kind: 'backup/restore', state: 'failed', updatedAt: 3 },
+            ],
+          }),
+        { 'op-r': status({ operationId: 'op-r', kind: 'backup/restore', errorCode: 'busy' }) },
+      );
+      second.palette.actions.refresh();
+      await vi.waitFor(() => expect(second.palette.store.getState().view.kind).toBe('ready'));
+      await vi.waitFor(() => expect(calls(second.request, 'operation/status')).toHaveLength(1));
+      expect(ackOf(second.request)).toEqual([]);
+      second.palette.actions.setVisible(true);
+      expect(second.model().notice).toContain('The restore did not finish');
+      await vi.waitFor(() => expect(ackOf(second.request)).toEqual([{ operationId: 'op-r' }]));
+    });
+
+    it('holds an outcome until the first snapshot gives it a model to show in', async () => {
+      const { palette, request, emitResumed, model } = setup();
+      tools(request, () => snapshot(), {});
+      palette.actions.setVisible(false);
+      emitResumed(
+        outcome({
+          operationId: 'op-e',
+          kind: 'backup/restore',
+          state: 'failed',
+          errorCode: 'busy',
+        }),
+      );
+      // Shown before there is a model: nothing to put the notice in yet.
+      palette.actions.setVisible(true);
+      expect(palette.store.getState().view.kind).toBe('loading');
+      palette.actions.refresh();
+      await vi.waitFor(() => expect(palette.store.getState().view.kind).toBe('ready'));
+      expect(model().notice).toContain('The restore did not finish');
+    });
   });
 });

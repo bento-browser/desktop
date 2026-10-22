@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { EditableSettings } from './model';
-import { createSizeRunner, stackAfterSizeChange } from './sizeIntents';
+import {
+  createSizeRunner,
+  stackAfterSizeChange,
+  touchesSizeList,
+  waitsForSave,
+} from './sizeIntents';
+import type { Intent } from './rows';
 import type { Stage } from './stageStack';
 import type { SettingsPaletteModel } from './types';
 
 function setup(initial: number[]) {
   let sizes = initial;
+  let pending: ReadonlySet<string> = new Set();
   const gates: Array<(saved: boolean) => void> = [];
   const update = vi.fn((changes: Partial<EditableSettings>) => {
     const next = changes.customPanelSizes as number[];
@@ -19,8 +26,16 @@ function setup(initial: number[]) {
   const model = () =>
     ({
       settings: { customPanelSizes: sizes, defaultPanelWidthPx: 480 },
+      pending,
     }) as unknown as SettingsPaletteModel;
-  return { run: createSizeRunner({ model, update }), update, gates, sizes: () => sizes };
+  const runner = createSizeRunner({ model, update });
+  return {
+    ...runner,
+    update,
+    gates,
+    sizes: () => sizes,
+    setPending: (keys: string[]) => (pending = new Set(keys)),
+  };
 }
 
 const actionsAt = (index: number): Stage[] => [
@@ -105,5 +120,66 @@ describe('stackAfterSizeChange', () => {
       actionsAt(0),
     );
     expect(stackAfterSizeChange(actionsAt(0), { type: 'addSize' })).toEqual(actionsAt(0));
+  });
+});
+
+describe('while the list is being saved', () => {
+  const editEntry = (index: number): Intent => ({
+    type: 'push',
+    stage: { kind: 'sizeEdit', index },
+  });
+
+  it('knows which intents name an entry of the list', () => {
+    const touching: Intent[] = [
+      { type: 'addSize' },
+      { type: 'moveSize', index: 0, delta: 1 },
+      { type: 'removeSize', index: 0 },
+      editEntry(1),
+      { type: 'push', stage: { kind: 'sizeActions', index: 1 } },
+    ];
+    for (const intent of touching) expect(touchesSizeList(intent)).toBe(true);
+    const others: Intent[] = [
+      { type: 'push', stage: { kind: 'sizes' } },
+      { type: 'push', stage: { kind: 'number', key: 'panelCornerRadiusPx' } },
+      { type: 'applyNumber', value: 340 },
+      { type: 'back' },
+      { type: 'none' },
+    ];
+    for (const intent of others) expect(touchesSizeList(intent)).toBe(false);
+  });
+
+  it('is busy from a move until tools answers, so Edit size cannot be entered meanwhile', async () => {
+    // Move 320 below 480, enter Edit on index 1 before it completes and save 340: the list
+    // became [340, 320], the edit landing on the neighbour.
+    const runner = setup([320, 480]);
+    expect(waitsForSave(editEntry(1), runner)).toBe(false);
+    const moved = runner.run({ type: 'moveSize', index: 0, delta: 1 });
+    expect(waitsForSave(editEntry(1), runner)).toBe(true);
+    expect(waitsForSave({ type: 'push', stage: { kind: 'sizeActions', index: 0 } }, runner)).toBe(
+      true,
+    );
+    // What does not name an entry of the list is not held back.
+    expect(waitsForSave({ type: 'back' }, runner)).toBe(false);
+    runner.gates[0]!(true);
+    await moved;
+    expect(waitsForSave(editEntry(1), runner)).toBe(false);
+  });
+
+  it('is busy as well while a size edited live is still being saved, and runs nothing then', async () => {
+    const { run, isBusy, update, setPending } = setup([320, 480]);
+    setPending(['customPanelSizes']);
+    expect(isBusy()).toBe(true);
+    await expect(run({ type: 'removeSize', index: 0 })).resolves.toBe(false);
+    expect(update).not.toHaveBeenCalled();
+    setPending(['panelCornerRadiusPx']);
+    expect(isBusy()).toBe(false);
+  });
+
+  it('is free again after a refusal', async () => {
+    const { run, isBusy, gates } = setup([320, 480]);
+    const moved = run({ type: 'moveSize', index: 0, delta: 1 });
+    gates[0]!(false);
+    await moved;
+    expect(isBusy()).toBe(false);
   });
 });
