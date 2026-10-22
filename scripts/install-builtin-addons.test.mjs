@@ -70,7 +70,7 @@ test('custom runtime entries replace defaults but always include manifest', () =
   }
 });
 
-test('packages both privileged preference bridge experiments and version metadata', () => {
+test('packages privileged experiments and version metadata', () => {
   const root = fixture();
   try {
     const shell = addExtension(root, 'bento-shell', {
@@ -84,18 +84,18 @@ test('packages both privileged preference bridge experiments and version metadat
       },
     });
     const tools = addExtension(root, 'bento-tools', {
-      version: '0.1.11',
+      version: '0.1.12',
       browser_specific_settings: { gecko: { id: 'bento-tools@bento.app' } },
       experiment_apis: {
-        bentoNativePreferences: {
-          schema: 'experiments/bento-native-preferences/schema.json',
-          parent: { script: 'experiments/bento-native-preferences/api.js' },
+        bentoPrivacy: {
+          schema: 'experiments/bento-privacy/schema.json',
+          parent: { script: 'experiments/bento-privacy/api.js' },
         },
       },
     });
     for (const [extension, directory] of [
       [shell, 'chrome-bridge'],
-      [tools, 'bento-native-preferences'],
+      [tools, 'bento-privacy'],
     ]) {
       const experiment = path.join(extension, 'experiments', directory);
       fs.mkdirSync(experiment, { recursive: true });
@@ -112,7 +112,7 @@ test('packages both privileged preference bridge experiments and version metadat
         fs.readFileSync(path.join(addon.destination, 'manifest.json'), 'utf8'),
       );
       assert.ok(manifest.experiment_apis);
-      assert.match(manifest.version, /^0\.(?:0\.3|1\.11)$/);
+      assert.match(manifest.version, /^0\.(?:0\.3|1\.12)$/);
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

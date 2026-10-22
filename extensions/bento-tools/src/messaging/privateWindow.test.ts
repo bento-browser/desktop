@@ -42,13 +42,6 @@ async function createContext(sourceWindowId: number | null) {
       create: vi.fn(),
     },
     savedPanels: {},
-    backup: {
-      exportData: vi.fn(),
-      requestList: vi.fn(),
-      restore: vi.fn(),
-      delete: vi.fn(),
-      listBackups: vi.fn(),
-    },
     send,
     sendAudience,
     syncPrivateWindow: vi.fn(),
@@ -117,10 +110,6 @@ describe('private window protocol handling', () => {
       { type: 'tabFolder/create', name: 'f', tabIds: [900] } as Action,
       { type: 'tabs/setFolder', ids: [900], folderId: 'f1' },
       { type: 'pinnedPanel/add', tabId: 900 } as Action,
-      { type: 'backup/export' },
-      { type: 'backup/requestList' },
-      { type: 'backup/restore', backupId: 'b1' },
-      { type: 'backup/delete', backupId: 'b1' },
       { type: 'externalMerge/requestSources', requestId: 'r1' },
     ];
 
@@ -138,9 +127,6 @@ describe('private window protocol handling', () => {
 
       for (const spy of spies) expect(spy).not.toHaveBeenCalled();
       expect(ctx.tabs.assignWorkspace).not.toHaveBeenCalled();
-      expect(Object.values(ctx.backup)).toSatisfy((fns: Array<ReturnType<typeof vi.fn>>) =>
-        fns.every((fn) => fn.mock.calls.length === 0),
-      );
       expect(send).not.toHaveBeenCalled();
       expect(sendAudience).not.toHaveBeenCalled();
     });

@@ -80,7 +80,7 @@ Build, packaging, and release helper scripts.
   with the Python chosen by `BENTO_MACH_PYTHON` (see `docs/build-tooling.md`).
 - Extension and theme builds: `build-extension-background.mjs`,
   `sync-theme-presets.mjs`, `import-theme.mjs`, `generate-chrome-tokens.mjs`,
-  `mux-css.mjs`, `theme-selector.mjs`, `generate-native-preferences-protocol.mjs`;
+  `mux-css.mjs`, `theme-selector.mjs`;
   `muxui-source.mjs` and `muxui-regenerator.mjs` support `muxui-dev.mjs`.
 - Checks (CLAUDE.md lists which ones CI runs): `check-security-invariants.mjs` (with
   `ci-build-guard.mjs`, which keeps native builds out of workflows and actions),
@@ -92,7 +92,5 @@ Build, packaging, and release helper scripts.
   `firefox-compat-registry.mjs`, `check-chrome-resize-guard.mjs`,
   `check-legacy-aliases.mjs` with `legacy-aliases.mjs`,
   `check-product-identity.mjs`, `check-rust-toolchain.mjs`.
-- Release and rollback: `build-release.sh`, `generate-release-sbom.mjs`,
-  `generate-release-metadata.mjs`,
-  `build-rollback-variant.mjs` with `rollback-variants.mjs`
-  (`pnpm run rollback:check` runs its read-only checks).
+- Release: `build-release.sh`, `generate-release-sbom.mjs`,
+  `generate-release-metadata.mjs`.

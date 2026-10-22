@@ -51,7 +51,6 @@ import { usePinnedPanelsStore } from '../state/pinnedPanels';
 import { useTabFoldersStore } from '../state/tabFolders';
 import { useSavedPanelsStore } from '../state/savedPanels';
 import { usePrivacyStore } from '../state/privacy';
-import { useBackupStore } from '../state/backup';
 import { useAddressBarStore } from '../state/addressBar';
 import { useSearchEnginesStore } from '../state/searchEngines';
 import { usePanelFocusStore } from '../state/panelFocus';
@@ -480,22 +479,6 @@ function ensureConnection(): void {
         return;
       case 'savedPanels/snapshot':
         useSavedPanelsStore.getState().apply(event.items);
-        return;
-      case 'backup/exportReady':
-        window.dispatchEvent(
-          new CustomEvent('bento-export-ready', {
-            detail: { json: event.json, filename: event.filename },
-          }),
-        );
-        return;
-      case 'backup/importComplete':
-        window.dispatchEvent(new CustomEvent('bento-import-complete', { detail: event.summary }));
-        return;
-      case 'backup/importError':
-        window.dispatchEvent(new CustomEvent('bento-import-error', { detail: event.message }));
-        return;
-      case 'backup/list':
-        useBackupStore.getState().apply(event.backups);
         return;
       case 'externalMerge/sources':
         useExternalMergeStore.getState().applySources(event, state.windowId);

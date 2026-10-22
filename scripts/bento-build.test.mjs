@@ -333,8 +333,6 @@ test('package writes a MAR and update metadata only while the updater is enabled
     return;
   }
   const { root } = await packagingFixture();
-  const variant = process.env.BENTO_RELEASE_VARIANT;
-  delete process.env.BENTO_RELEASE_VARIANT;
   try {
     await withObjdirEnv(undefined, async () => {
       const dist = path.join(root, 'dist');
@@ -370,7 +368,6 @@ test('package writes a MAR and update metadata only while the updater is enabled
       assert.equal(validateArtifacts(root).updates, true);
     });
   } finally {
-    if (variant !== undefined) process.env.BENTO_RELEASE_VARIANT = variant;
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
@@ -1160,7 +1157,7 @@ test('a release package is refused while the object directory still holds the de
     config.build.mode = mode;
     fs.writeFileSync(path.join(root, 'bento.json'), JSON.stringify(config));
   };
-  const clean = { BENTO_OBJDIR: undefined, BENTO_RELEASE: undefined, BENTO_BUILD_MODE: undefined, BENTO_RELEASE_VARIANT: undefined, MOZCONFIG: undefined };
+  const clean = { BENTO_OBJDIR: undefined, BENTO_RELEASE: undefined, BENTO_BUILD_MODE: undefined, MOZCONFIG: undefined };
   try {
     fs.writeFileSync(engineFile(root, 'mach'), '');
     // What an earlier dev build leaves: a current stamp in the loose tree the Mux check reads,

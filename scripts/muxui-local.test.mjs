@@ -10,9 +10,7 @@ import {
   muxLocalViteConfig,
   muxSourcePlugin,
   resolveMuxLocal,
-  rollbackMuxStamp,
 } from '../extensions/bento-shell/muxui-local.mjs';
-import { ROLLBACK_VARIANTS } from './rollback-variants.mjs';
 
 const exportsMap = {
   '.': { types: './generated/index.d.ts', default: './generated/index.mjs' },
@@ -207,11 +205,9 @@ function emitStamp(mux, npmPackageJson) {
   return emitted;
 }
 
-const check = (text, variant) =>
-  assertMuxSourceStamp(text, { where: 'stamp', variant, variants: ROLLBACK_VARIANTS });
+const check = (text) => assertMuxSourceStamp(text, { where: 'stamp' });
 const npmStamp = '{"source":"npm","version":"0.1.0-rc.1"}';
 const localStamp = '{"source":"local"}';
-const stampFor = (variant) => JSON.stringify(rollbackMuxStamp(variant));
 
 test('the shell build stamps its Mux source and the stamp policy reads it back', () => {
   const npmPackage = path.join(tempDir(), 'package.json');
@@ -224,36 +220,14 @@ test('the shell build stamps its Mux source and the stamp policy reads it back',
   const local = emitStamp(mux, npmPackage);
   assert.deepEqual(JSON.parse(local.source), { source: 'local' });
 
-  assert.doesNotThrow(() => check(npm.source, undefined));
-  assert.throws(() => check(local.source, undefined), /"source":"local".*MUXUI_LOCAL/s);
+  assert.doesNotThrow(() => check(npm.source));
+  assert.throws(() => check(local.source), /"source":"local".*MUXUI_LOCAL/s);
 });
 
-test('without a rollback variant only an npm stamp may ship', () => {
-  assert.doesNotThrow(() => check(npmStamp, undefined));
-  assert.throws(() => check(localStamp, undefined), /expected the published npm/);
-  assert.throws(() => check(undefined, undefined), /missing/);
-  assert.throws(() => check('not json', undefined), /not valid JSON/);
-  assert.throws(() => check('{"source":"npm"', undefined), /not valid JSON/);
-  assert.throws(
-    () => check(stampFor('rollback-final-r2'), undefined),
-    /expected the published npm/,
-  );
-});
-
-test('a rollback variant ships only its own stamp, never npm, local, or missing', () => {
-  for (const variant of ROLLBACK_VARIANTS) {
-    assert.doesNotThrow(() => check(stampFor(variant), variant));
-    const other = ROLLBACK_VARIANTS.find((name) => name !== variant);
-    assert.throws(() => check(stampFor(other), variant), new RegExp(`expected ${variant}`));
-    assert.throws(() => check(npmStamp, variant), new RegExp(`expected ${variant}`));
-    assert.throws(() => check(localStamp, variant), new RegExp(`expected ${variant}`));
-    assert.throws(() => check(undefined, variant), /missing/);
-  }
-});
-
-test('an unknown BENTO_RELEASE_VARIANT is rejected even with a matching stamp', () => {
-  const unknown = 'not-a-rollback-variant';
-  assert.throws(() => check(stampFor(unknown), unknown), /not a rollback variant/);
-  assert.throws(() => check(undefined, unknown), /not a rollback variant/);
-  assert.throws(() => check(npmStamp, unknown), /not a rollback variant/);
+test('only an npm stamp may ship', () => {
+  assert.doesNotThrow(() => check(npmStamp));
+  assert.throws(() => check(localStamp), /expected the published npm/);
+  assert.throws(() => check(undefined), /missing/);
+  assert.throws(() => check('not json'), /not valid JSON/);
+  assert.throws(() => check('{"source":"npm"'), /not valid JSON/);
 });

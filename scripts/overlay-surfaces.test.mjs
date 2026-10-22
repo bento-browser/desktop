@@ -116,6 +116,7 @@ const FUNCTIONS = [
   'isSettingsPaletteVisible',
   'showSettingsPalette',
   'hideSettingsPalette',
+  'handleSettingsTargetTitle',
   'isAddrbarVisible',
   'nextAddrbarOpenId',
   'positionAddrbarHost',
@@ -157,6 +158,8 @@ const CONSTANTS = [
   'MOTION_SLACK_MS',
   'MOTION_UNAVAILABLE_CEILING_MS',
   'motionWaits',
+  'SETTINGS_TARGET_OPEN_PREFIX',
+  'SETTINGS_TARGET_ID_PATTERN',
   'ADDRBAR_POPUP_WIDTH_PX',
   'ADDRBAR_POPUP_HEIGHT_PX',
   'ADDRBAR_FRAME_GUTTER_TOP_PX',
@@ -188,6 +191,7 @@ const EXPORTED = [
   'toggleMergePalette',
   'showSettingsPalette',
   'hideSettingsPalette',
+  'handleSettingsTargetTitle',
   'showAddrbar',
   'hideAddrbar',
   'revealPendingAddrbar',
@@ -978,7 +982,7 @@ test('a ready palette opens synchronously', () => {
 
 test('a cold Settings palette open waits for its document, then shows and sends the show once', () => {
   const world = makeWorld();
-  world.showSettingsPalette('protection');
+  world.showSettingsPalette('privacy:level');
   assert.equal(world.overlays.hasPendingOpen('settings-palette'), true);
   assert.equal(world.isShown('settings-palette'), false);
   assert.deepEqual(
@@ -990,12 +994,25 @@ test('a cold Settings palette open waits for its document, then shows and sends 
   world.ready('settings-palette');
   assert.equal(world.isShown('settings-palette'), true);
   assert.deepEqual([...world.events.scrim], ['settings-palette']);
-  assert.deepEqual(world.settingsShows(), [{ stage: 'protection' }]);
+  assert.deepEqual(world.settingsShows(), [{ target: 'privacy:level' }]);
   assert.deepEqual(world.events.navigations, ['settings-palette']);
 
   // Shown again (a link while it is open) sends another show, so the document returns to its start.
   world.showSettingsPalette();
-  assert.deepEqual(world.settingsShows(), [{ stage: 'protection' }, { stage: null }]);
+  assert.deepEqual(world.settingsShows(), [{ target: 'privacy:level' }, { target: null }]);
+});
+
+test('a command palette result opens the Settings palette at its row, and an odd id opens the first list', () => {
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:setting:panelCornerRadiusPx:1792650000000');
+  world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:bad id with spaces:1792650000001');
+  world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:');
+  assert.deepEqual(world.settingsShows(), [
+    { target: 'setting:panelCornerRadiusPx' },
+    { target: null },
+    { target: null },
+  ]);
 });
 
 test('Esc cancels a cold Settings palette open, and hides a shown one', () => {

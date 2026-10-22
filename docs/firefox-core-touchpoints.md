@@ -515,14 +515,13 @@ Use this shape for new or changed touchpoints:
   without sliding in from the top or bottom, verify the app menu lists
   "Bento Settings" directly above Settings with the same styling, hover and
   focus ring in light and dark modes, only once after repeated opens and in a
-  second window, that arrow keys reach it, and that Enter or a click opens
-  `about:settings#bento` (or switches an existing Settings tab to `#bento`) and
-  closes the menu, verify the sidebar footer is the same five buttons (no
+  second window, that arrow keys reach it, and that Enter or a click closes the
+  menu and opens the Settings palette, verify the sidebar footer is the same five buttons (no
   Settings, merge or progress button) in the expanded and collapsed rail while a
   merge runs, and that a running merge shows as a card over the bottom of the tab
   list, verify the command palette's Merge browser session
-  command and the Bento Settings Merge browser session button open the merge
-  palette (the latter over the window holding the Settings tab), verify the
+  command and the Settings palette's Merge browser session row open the merge
+  palette, verify the
   sidebar footer Downloads
   button opens Firefox's native downloads panel with recent download actions and
   download history intact while using the same footer-side alignment and no
@@ -881,8 +880,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   confirm neither becomes a panel; confirm the Browser Console logs
   `add-as-panel: no matching grant` for the second case.
 - Rollback or migration notes: the old `bento_add_as_panel=1` URL marker is no
-  longer accepted by current builds. Rollback variants carry the same grant
-  handshake (see `docs/settings-consolidation-rollback.md`).
+  longer accepted by current builds.
 
 ### Shell Bus Relay (BentoShellBus Actor)
 
@@ -891,9 +889,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Files or patches:
   - `src/browser/actors/BentoShellBusChild.sys.mjs` and
     `BentoShellBusParent.sys.mjs`
+  - `src/browser/actors/BentoShellDocumentRegistry.sys.mjs` (the parent-process
+    shell document registry the chrome-bridge experiment and the mount script
+    import; it lived in the native pane patch until that patch was removed)
   - `patches/chrome-layout/04-bento-key-actors.patch` (a second
-    `FINAL_TARGET_FILES.actors` block in `browser/actors/moz.build`, so patch
-    `core-ui/15`, which edits the sorted list, still applies)
+    `FINAL_TARGET_FILES.actors` block in `browser/actors/moz.build` that lists the
+    bus actors and the registry module beside the sorted list)
   - `src/browser/base/content/bento-shell-mount.js` (`registerShellBusActor`,
     `postShellActionThroughBusHub`, the `bentoPrivate` hash flag in `setFrameSrc`)
   - `extensions/bento-shell/src/experiments/chrome-bridge/` and the tracked
@@ -947,7 +948,8 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     entry, `ensureOverlayHost` for `bento-settings-palette-host`,
     `showSettingsPalette` / `hideSettingsPalette` / `dismissSettingsPalette`,
     `dispatchSettingsPaletteShow` and its `SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL`,
-    `openFirefoxSearchSettings`, the `bento-settings-palette-frame` title handler)
+    `openFirefoxSearchSettings`, `handleSettingsTargetTitle`, the
+    `bento-settings-palette-frame` title handler)
   - `scripts/firefox-compat-registry.mjs` (new sites on `gBrowser.addTrustedTab` and
     `MessageManager.loadFrameScript`; no new Firefox member), the regenerated table
     below
@@ -955,13 +957,17 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Bento functionality: Bento Settings is a quick-pick overlay over the browser
   window instead of a Settings tab. The app menu item, the command palette's two
   commands and the welcome Open Settings button open it (`BENTO_OPEN_SETTINGS_`,
-  `BENTO_OPEN_SETTINGS_PRIVACY_`); chrome sends the document its show with a frame
+  `BENTO_OPEN_SETTINGS_PRIVACY_`), and so does a Settings row in the command
+  palette's results (`BENTO_OPEN_SETTING:<row id>:<ts>`; the palette holds only a
+  static label index, no settings state, and chrome accepts only an id of
+  letters, digits, colon, dash and underscore up to 64 characters); chrome sends the document its show with a frame
   script (`BentoSettingsPaletteShow`, the same `loadFrameScript` and
-  `sendAsyncMessage` the merge palette uses) that dispatches a DOM event, so no
-  channel is involved. The overlay opens Firefox's own search settings
-  (`about:preferences#search`, through `gBrowser.addTrustedTab` or the open Settings
-  tab) for adding engines. The native `about:preferences#bento` pane is untouched
-  and stays reachable by URL.
+  `sendAsyncMessage` the merge palette uses) that dispatches a DOM event carrying
+  `{target}` (a row id or null), so no channel is involved. The overlay opens
+  Firefox's own search settings (`about:preferences#search`, through
+  `gBrowser.addTrustedTab` or the open Settings tab) for adding engines. Firefox's
+  own Settings page has no Bento category any more (the native pane and its patch
+  were removed 2026-10-22).
 - Vanilla Firefox surface touched or depended on: `gBrowser.addTrustedTab`,
   `messageManager.loadFrameScript`/`sendAsyncMessage` (both already logged), the
   overlay manager and `afterMotion` of the mount script, and the BentoShellBus relay
@@ -973,13 +979,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `addTrustedTab` would break the show message and the search settings link; the
   overlay would then open at its first list and the link would do nothing.
 - Regression checks for future updates: open Settings from the app menu, the command
-  palette (Open Settings and Privacy) and the welcome Open Settings button, in a
-  regular and a private window; confirm Esc steps back one list and closes from the
+  palette (Open Settings and Privacy, and a Settings result such as typing
+  "radius") and the welcome Open Settings button, in a regular and a private
+  window; confirm Esc steps back one list and closes from the
   first; confirm "Manage search engines" opens `about:preferences#search`; confirm
   the merge palette and the command palette close the Settings palette and the
   reverse.
-- Rollback or migration notes: none; the native pane is still the fallback by URL
-  until it is removed.
+- Rollback or migration notes: none; the native pane and the rollback builds were
+  retired with this surface.
 
 ### Search Engine Icons (bento-privacy Experiment)
 
@@ -1038,7 +1045,16 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-10-22
+- Patch removal (2026-10-22): `core-ui/15-bento-native-preferences.patch` is gone
+  (see Native Bento Preferences (removed)); 23 patches remain. Its only shared
+  file with a later patch was `browser/actors/moz.build`, which
+  `chrome-layout/04` now edits alone (a second `FINAL_TARGET_FILES.actors` block
+  that also lists `BentoShellDocumentRegistry.sys.mjs`); `core-ui/12` precedes it
+  and is unchanged. The series applied in order with `git apply
+--ignore-space-change --ignore-whitespace` to the pristine 158.0 files it
+  touches; the source-import CI job and `pnpm run firefox:patches:check` replay the
+  full stack.
 - Firefox 158.0 review (2026-10-14): all 24 patches apply to 158.0. The rebase
   (`pnpm run firefox:patches:rebase` from the 157.0.1 base) stopped on three
   patches, each resolved in the stack worktree: core-ui/09 (see First-Run Browser
@@ -1150,9 +1166,8 @@ rel="stylesheet">` load and error events on chrome documents, and the
   links), and light and dark. After a Firefox bump also run
   `git apply --check` of the jar.mn hunk against the new `browser/base/jar.mn`.
 - Rollback or migration notes: removing the wildcard line and the mount
-  function, and running `generate-chrome-tokens.mjs --monolithic` as the default,
-  restores the single-sheet layout. The rollback-final-r2 variant already builds
-  that layout, because its archived mount script loads only the base sheet.
+  function, and folding the theme sheets back into the base sheet in
+  `generate-chrome-tokens.mjs`, restores the single-sheet layout.
 
 ### Chrome Layout Stylesheet
 
@@ -1352,9 +1367,7 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 - Rollback or migration notes: restoring the sheet as a template literal inside
   `injectChromeStyles()` and dropping the jar.mn line returns to the inline
   `<style>`; the gate then has nothing to wait for on the layout link, and its
-  call can stay for the tokens and theme links. The rollback-final-r2 variant
-  keeps its archived mount script with its own inline template and ignores this
-  file, which stays in `jar.mn` harmlessly.
+  call can stay for the tokens and theme links.
 
 ### Native Preferences Layout
 
@@ -1440,95 +1453,51 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   semantic-token bridge if this customization conflicts with a future redesign
   or Firefox exposes a supported shared theme-token hook for in-content pages.
 
-### Native Bento Preferences
+### Native Bento Preferences (removed)
 
-- Status: Active
-- Last updated: 2026-10-21
-- Merge browser session button (2026-10-21): the "Backup and data" group has a
-  `bento-merge-session` `moz-button` (hidden in private windows like the other
-  backup buttons) whose click reads `window.browsingContext.topChromeWindow` and
-  dispatches a `BentoOpenMergePalette` `CustomEvent` on it; the mount script of
-  that window listens and calls its existing `showMergePalette()`. It is a
-  window event, not an observer, so nothing process-wide needs releasing on window
-  close, and a Settings tab moved to another window reaches its new host because
-  the window is read at click time. The change adds one setting, one group item,
-  one Fluent message (`bento-merge-session`) and three mochitest edits to the
-  patch.
-- Firefox 158.0 review (2026-10-14): the patch applies with offsets;
-  `settings-redesign` is on. Runtime on 158.0: `about:preferences` lists
-  `category-bento` and the `paneBento` pane, with the `paneBentoBackups` and
-  `paneBentoShortcuts` subpanes. The mouse and keyboard `moz-select` checks below
-  were not repeated headless.
-- Firefox 157.0.1 review (2026-10-12): Firefox 157 rejects `moz-extension:`
-  URLs in `Services.scriptloader.loadSubScript` unless the caller passes
-  `allowUnsafeURL: true` (or sets `security.allow_unsafe_subscript_loads`), which
-  stopped `bento-tools` from starting; the experiment now calls
-  `loadSubScriptWithOptions(..., { target, allowUnsafeURL: true })` for its two
-  scripts. `moz-select` opens a `panel-list` on mousedown and closes it on any
-  window `resize` or `scroll` outside the list, which is why the mount's resize
-  guard matters. Verified: the Bento pane and the stock default search engine
-  `moz-select` open by mouse, close on Escape, and open again with ArrowDown.
-- Files or patches:
-  - `patches/core-ui/15-bento-native-preferences.patch`
-  - `extensions/_shared/native-preferences-contract.json`
-  - `extensions/bento-tools/experiments/bento-native-preferences/**`
-  - `extensions/bento-shell/src/experiments/chrome-bridge/**`
-  - `src/browser/base/content/bento-shell-mount.js`
-- Bento functionality: registers an always-visible native Bento category plus
-  backup and shortcut subpanes for `about:preferences` and `about:settings`.
-  A generated, hash-pinned observer contract connects native controls to the
-  durable tools stores. The parent-process document registry preserves logical
-  shell identities across add-on reloads, while source-window title signals
-  route Settings launches without accepting arbitrary URLs. The Backup and data
-  group's Merge browser session button asks the hosting chrome window to open
-  Bento's merge palette through a `BentoOpenMergePalette` window event.
-- Vanilla Firefox surface touched or depended on: config-backed preferences
-  panes; `moz-page-header`, `moz-select` and its `panel-list` path,
-  `moz-slider`, `moz-input-number`, `moz-button`, `moz-input-search`,
-  `moz-box-group`, and `moz-box-item`; preferences
-  XHTML/jar/locales; browser actors; system-principal observer subjects; and
-  built-in WebExtension experiment loading. The experiment also calls
-  `extension.windowManager.getWrapper(chromeWindow)` (WebExtension parent
-  framework, `ext-tabs-base.js`) and reads `wrapper.id` to bind a Settings
-  request to a live browser window. The merge button reads
-  `window.browsingContext.topChromeWindow` and dispatches a `CustomEvent` created
-  from that window.
-- Why this cannot stay extension-only: the category and its controls must be a
-  native Settings surface, and only parent chrome can authenticate the document,
-  derive its browser window/private audience, and retain shell mount identity.
-- Firefox update risk: preference config APIs, `moz-select`/`panel-list`
-  properties and popup event behavior, `about:settings` routing, file-picker
-  signatures, actor packaging, or extension experiment bootstrap changes can
-  break registration or fail the bridge closed.
-- Regression checks for future updates: run protocol generation checks, patch
-  replay, the four `browser_bento_*` tests, both extension builds, source install,
-  packaged-app, and release-package add-on identity checks. Confirm the native
-  slider/value pair stays synchronized, the custom panel sizes label names its
-  native reorderable list, and panel-size rows reorder by drag and
-  Ctrl+Shift+ArrowUp/ArrowDown without losing their occurrence identity. Each
-  size row should expose its numeric value and native destructive Remove action
-  without a position-based visible label or duplicate Move buttons; its number
-  field keeps the unnumbered accessible name “Panel size.” Confirm the long main
-  Bento pane keeps every native setting group continuously rendered and scrolls
-  without blank, delayed, or jumping cards; do not add `content-visibility`
-  containment to those groups.
-  Confirm the backup and shortcut subpanes contain native list and action
-  components. Open every Bento dropdown with both mouse and keyboard, select a
-  value, and confirm the Firefox panel closes and the Bento setting persists.
-  Confirm the native page header shows its localized Bento heading beside the
-  icon. Confirm the Backup and data group lists Merge browser session between
-  Import and Manage stored backups, that clicking it opens the merge palette over
-  the window holding the Settings tab (also after moving the tab to another
-  window), and that it is absent in a private window. Test both redesign pref
-  values and regular/private windows. Move the
-  Settings tab to another window (`gBrowser.replaceTabWithWindow`, or "Move to New
-  Window") and change a setting there: the model re-hellos for the new window
-  (`hostChromeWindowId`) and no `invalid_session` is logged, including when the
-  move happens while the first hello is still pending.
-- Rollback or migration notes: patch 15 is the rollback boundary for the native
-  pane. Keep the source overlay routing edit out of patch 15. A rollback build
-  must restore a compatible settings surface before removing the category; do
-  not leave a bridge-only or pane-only intermediate release.
+- Status: Removed (2026-10-22)
+- Last updated: 2026-10-22
+- Files or patches: none remain. Removed with the Settings palette work:
+  `patches/core-ui/15-bento-native-preferences.patch` (the Bento category and
+  panes of `about:preferences` and `about:settings`, their config module,
+  custom elements, protocol copies, Fluent file, stylesheet, mochitests, and the
+  `moz-select` and `test_moz_select_panel.html` edits),
+  `extensions/_shared/native-preferences-contract.json` with its generated
+  copies, and `extensions/bento-tools/experiments/bento-native-preferences/**`.
+  Kept: `patches/core-ui/12-center-native-preferences.patch` (entry above), and
+  the parent-process document registry, now the overlay file
+  `src/browser/actors/BentoShellDocumentRegistry.sys.mjs` with its
+  `FINAL_TARGET_FILES.actors` entry in
+  `patches/chrome-layout/04-bento-key-actors.patch` (the Shell Bus Relay entry),
+  at the same `resource:///actors/` URL. The registry lost
+  `getCurrentBootAttestation`; bento-tools now numbers its own run for
+  durable-operation ownership.
+- Bento functionality: none; Bento's settings live in the Settings palette
+  (entry above). `bento-tools` deletes the retired `bento.nativeSessions.v1`
+  storage key at startup and keeps `bento.nativeOperations.v1`, the durable
+  operation records the palette still uses. The `BentoOpenMergePalette` window
+  listener of the mount script was removed with the pane's Merge button.
+- Vanilla Firefox surface no longer touched: config-backed preferences panes
+  (`Preferences.mjs`, `AsyncSetting`, `SettingGroupManager`, `CONFIG_PANES`,
+  `gotoPref`), `moz-select`, `moz-slider`, `moz-input-number`, `moz-button`,
+  `moz-input-search`, `moz-box-group`, `moz-box-item`, preferences jar and
+  locales, and `extension.windowManager.getWrapper`. The 21 registry members for
+  them were removed from `scripts/firefox-compat-registry.mjs`. Still used:
+  `CanonicalBrowsingContext.topChromeWindow` (patch 12 and the shell bus relay)
+  and `FINAL_TARGET_FILES.actors`.
+- Why this exists: the Settings palette replaced the pane, and the pane's
+  observer bridge and the rollback builds that guarded its removal were retired
+  together.
+- Firefox update risk: none from the pane. The registry module is a plain system
+  module that depends on `Services.uuid` only.
+- Regression checks for future updates: patch replay passes with the pane patch
+  absent; `about:preferences` shows no Bento category; the Browser Console shows
+  no `[bento-compat] missing` line and no error from
+  `resource:///actors/BentoShellDocumentRegistry.sys.mjs`; the Settings palette
+  opens and applies a change in a regular and a private window.
+- Rollback or migration notes: the rollback builds (`rollback/legacy-source`,
+  `scripts/build-rollback-variant.mjs`) were removed with the pane. Restoring the
+  pane means restoring the patch from version control and the experiment with it.
 
 ### Hidden Native Tabs And Titlebar Controls
 
@@ -1782,10 +1751,8 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   bookmarks/history/password resources are present in the new
   Bento profile. On the Ready step click Open Settings (and, in a second pass,
   double-click it): the overlay and its toolbar scrim are gone once the fade ends
-  and exactly one Settings tab opens on `about:settings#bento`, selected with focus
-  in the page; with a Settings tab already open in the window, Open Settings
-  selects it and sets the `#bento` hash instead of opening another; Start browsing
-  still only closes the overlay. Then use Reset Bento settings in the same window
+  and the Settings palette opens with focus in its search field; a second click while
+  the dialog fades out is ignored; Start browsing still only closes the overlay. Then use Reset Bento settings in the same window
   and confirm onboarding shows again and both Ready buttons work.
 - Rollback or migration notes: removing the patch reverts Bento to vanilla
   Firefox behavior for this migration surface, where the Bento chrome host
@@ -2314,7 +2281,7 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   - `scripts/sync-builtin-addon-symlinks.sh`
   - `extensions/ublock-origin/.bento-runtime-entries.json`
   - `extensions/bento-tools/experiments/bento-privacy/**`
-  - `extensions/bento-tools/experiments/bento-native-preferences/**`
+  - `extensions/bento-tools/experiments/bento-external-sessions/**`
   - `extensions/bento-shell/experiments/chrome-bridge/**`
 - Bento functionality: Bento's independent installer packages its privileged
   built-in extensions and the bundled uBlock Origin extension into Firefox's
@@ -2338,7 +2305,7 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   loading.
 - Regression checks for future updates: run `pnpm run ext:build` and
   `pnpm run import`, confirm `engine/browser/extensions/bento-tools/jar.mn`
-  includes both tools experiments and the shell jar includes the chrome bridge, confirm
+  includes the tools experiments and the shell jar includes the chrome bridge, confirm
   `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
   `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
   shows Bento Tools, Bento Shell, and uBlock Origin. Run
@@ -2612,7 +2579,6 @@ below is generated; edit the registry, then run
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
-| `windowManager.getWrapper` | source (engine only) | The native preferences experiment resolves the chrome window that hosts a Settings page through extension.windowManager and reads wrapper.id to authorize the request against a live browser window; a window the extension cannot access has no wrapper. | `extensions/bento-tools/experiments/bento-native-preferences/api.js#validateDocumentSubject` | `toolkit/components/extensions/parent/ext-tabs-base.js:2443` |
 | `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
 | `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:137` |
@@ -2684,32 +2650,12 @@ below is generated; edit the registry, then run
 | `migration-wizard #resource-type-list` | source (engine only) | Resource checkbox list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-type-list` | `browser/components/migration/content/migration-wizard.mjs:89` |
 | `migration-wizard .resource-progress` | source (engine only) | Progress list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress` | `browser/components/migration/content/migration-wizard.mjs:129` |
 | `migration-wizard .resource-progress-group` | source (engine only) | Progress rows the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress-group` | `browser/components/migration/content/migration-wizard.mjs:130` |
-| `AsyncSetting.emitChange` | source (engine only) | Bento settings pass this bound arrow field to their model subscriptions to refresh the control; it must stay a field, not a method. | `patches/core-ui/15-bento-native-preferences.patch#emitChange` | `toolkit/content/preferences/AsyncSetting.mjs:34` |
-| `AsyncSetting.setup` | source (engine only) | Subscribes to the Bento model and returns the teardown function. | `patches/core-ui/15-bento-native-preferences.patch#setup()` | `toolkit/content/preferences/AsyncSetting.mjs:44` |
-| `AsyncSetting.get` | source (engine only) | Reads the Bento setting value for the control. | `patches/core-ui/15-bento-native-preferences.patch#async get()` | `toolkit/content/preferences/AsyncSetting.mjs:71` |
-| `AsyncSetting.set` | source (engine only) | Writes the control value to the Bento setting. | `patches/core-ui/15-bento-native-preferences.patch#async set(value)` | `toolkit/content/preferences/AsyncSetting.mjs:81` |
-| `AsyncSetting.disabled` | source (engine only) | Disables the control while the Bento model is unavailable. | `patches/core-ui/15-bento-native-preferences.patch#async disabled()` | `toolkit/content/preferences/AsyncSetting.mjs:88` |
-| `AsyncSetting.visible` | source (engine only) | Hides the control for settings that do not apply. | `patches/core-ui/15-bento-native-preferences.patch#async visible()` | `toolkit/content/preferences/AsyncSetting.mjs:97` |
-| `AsyncSetting.getControlConfig` | source (engine only) | Supplies the default search engine options to the control. | `patches/core-ui/15-bento-native-preferences.patch#getControlConfig` | `toolkit/content/preferences/AsyncSetting.mjs:107` |
-| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block, so patch core-ui/15 keeps applying to the sorted list; the parent module is imported by the mount, the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
-| `chrome://global/content/preferences/Preferences.mjs` | source (engine only) | Bento settings are Preferences settings; registered in toolkit/content/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#Preferences.mjs` | `toolkit/content/jar.mn:69` |
-| `Preferences.addSetting` | source (engine only) | Registers each Bento setting with the Preferences framework. | `patches/core-ui/15-bento-native-preferences.patch#addSetting` | `toolkit/content/preferences/Preferences.mjs:100` |
-| `Preferences.AsyncSetting` | source (engine only) | Base class of Bento settings that read and write through the extension bridge. | `patches/core-ui/15-bento-native-preferences.patch#AsyncSetting` | `toolkit/content/preferences/Preferences.mjs:435` |
-| `chrome://browser/content/preferences/config/SettingGroupManager.mjs` | source (engine only) | Bento setting groups register here; registered in browser/components/preferences/jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#SettingGroupManager` | `browser/components/preferences/jar.mn:50` |
-| `SettingGroupManager.registerGroups` | source (engine only) | Adds the Bento setting groups to the Settings page. | `patches/core-ui/15-bento-native-preferences.patch#registerGroups` | `browser/components/preferences/config/SettingGroupManager.mjs:64` |
-| `CONFIG_PANES` | source (engine only) | Bento adds its pane entries (l10nId, iconSrc, groupIds, module, parent, visible) to this object. | `patches/core-ui/15-bento-native-preferences.patch#CONFIG_PANES` | `browser/components/preferences/preferences.js:242` |
-| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. The Bento Settings page (patch 15) also reads it on each click of Merge browser session and dispatches BentoOpenMergePalette on that window, which the mount script answers by opening the merge palette there. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `patches/core-ui/15-bento-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
+| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) and the shell document registry sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module and the registry are imported by the mount, the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellDocumentRegistry` | `browser/actors/moz.build:92` |
+| `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `JSWindowActorParent.manager` | source (engine only) | The BentoShellBus parent actor reads its WindowGlobalParent to check which document a relayed message comes from. | `src/browser/actors/BentoShellBusParent.sys.mjs#manager` | `dom/chrome-webidl/JSWindowActor.webidl:26` |
 | `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
 | `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |
 | `WebExtensionPolicy.mozExtensionHostname` | source (engine only) | The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped. | `src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname` | `dom/chrome-webidl/WebExtensionPolicy.webidl:31` |
-| `gotoPref` | source (engine only) | Navigates between the Bento settings subpanes. | `patches/core-ui/15-bento-native-preferences.patch#gotoPref` | `browser/components/preferences/preferences.js:728` |
-| `chrome://global/content/elements/moz-box-group.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-group` | `toolkit/content/jar.mn:115` |
-| `chrome://global/content/elements/moz-box-item.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-box-item` | `toolkit/content/jar.mn:121` |
-| `chrome://global/content/elements/moz-button.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-button` | `toolkit/content/jar.mn:125` |
-| `chrome://global/content/elements/moz-input-number.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-input-number` | `toolkit/content/jar.mn:140` |
-| `chrome://global/content/elements/moz-input-search.mjs` | source (engine only) | Element module imported by the Bento settings config. | `patches/core-ui/15-bento-native-preferences.patch#moz-input-search` | `toolkit/content/jar.mn:142` |
-| `chrome://global/content/reader/moz-slider.mjs` | source (engine only) | Slider element module imported by the Bento settings config; registered in the reader jar.mn. | `patches/core-ui/15-bento-native-preferences.patch#moz-slider` | `toolkit/components/reader/jar.mn:8` |
 
 <!-- firefox-compat:end -->
 <!-- prettier-ignore-end -->

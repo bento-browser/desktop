@@ -48,7 +48,7 @@ export function createSettingsClientTransport({ service, windows }: TransportDep
       if (!(await windows.confirm(caller.windowId))) throw new SettingsError('caller_unbound');
       const result = await service.execute(
         { operation, payload, operationId },
-        await service.overlayCaller(caller),
+        service.overlayCaller(caller),
       );
       reply({
         type: 'settings/result',

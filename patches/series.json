@@ -88,11 +88,6 @@
       "subject": "Theme Passwords megalist with Bento tokens"
     },
     {
-      "path": "patches/core-ui/15-bento-native-preferences.patch",
-      "id": "bento-native-preferences",
-      "subject": "Add native Bento preferences"
-    },
-    {
       "path": "patches/core-ui/16-hide-updates-group-without-updater.patch",
       "id": "hide-updates-group-without-updater",
       "subject": "Hide the About updates group when the updater is not built in"

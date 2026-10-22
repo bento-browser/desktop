@@ -1,8 +1,9 @@
 import {
-  CONTRACT,
+  SETTINGS_LIMITS,
+  SNAPSHOT_DOMAINS,
   validateAdvancedPrivacyChange,
   validateSettingsChanges,
-} from '@shared/generated/native-preferences-protocol';
+} from '@shared/settings-rules';
 import type {
   BentoExportSchema,
   BentoSettings,
@@ -38,11 +39,11 @@ import type { BentoMutationCoordinator } from '../mutations/BentoMutationCoordin
 import {
   failComponents,
   finishComponents,
-  type NativeOperationComponent,
-  type NativeOperationKind,
-  type NativeOperationRecord,
+  type DurableOperationComponent,
+  type DurableOperationKind,
+  type DurableOperationRecord,
   type OperationRegistry,
-} from '../native-preferences/OperationRegistry';
+} from './OperationRegistry';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
 import type { PrivacyMutationService } from '../privacy/PrivacyMutationService';
@@ -85,9 +86,9 @@ const RESTORE_OPTIONS: ImportOptions = {
 
 /** Who is asking, independent of the transport that carried the request. */
 export interface SettingsCaller {
-  /** Binds import validation tokens: the native client instance or the overlay document id. */
+  /** Binds import validation tokens: the overlay document id. */
   clientId: string;
-  /** Binds durable operations: the native client instance, or boot identity plus window id. */
+  /** Binds durable operations: the tools session plus window id. */
   ownerId: string;
   windowId: number;
   isPrivate: boolean;
@@ -121,8 +122,8 @@ export interface SettingsDomainContext {
   graphPublications: GraphPublicationCoordinator;
   /** Reaches every connected shell document. */
   broadcast(event: Event): void;
-  /** Identifies this parent-process session; window ids are only unique within one. */
-  bootAttestation(): Promise<{ currentParentSessionId: string; currentBootId: string }>;
+  /** Identifies this tools-background run; window ids are only unique within one browser session. */
+  sessionId: string;
 }
 
 export interface SettingsRequest {
@@ -144,7 +145,7 @@ interface EffectOutcome {
   /** Operation-specific fields merged into the result. */
   extra: Record<string, unknown>;
   /** Components that did not complete; any entry makes the operation `partial`. */
-  failed?: NativeOperationComponent[];
+  failed?: DurableOperationComponent[];
   skipped?: ReadonlySet<string>;
 }
 
@@ -166,9 +167,7 @@ function exactKeys(
 
 function isBoundedId(value: unknown): value is string {
   return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= CONTRACT.bounds.sourceIdCodeUnits
+    typeof value === 'string' && value.length > 0 && value.length <= SETTINGS_LIMITS.idCodeUnits
   );
 }
 
@@ -211,7 +210,7 @@ function settingsSearch(snapshot: SearchEnginesSnapshot): SettingsSearch {
   };
 }
 
-export function toPublicOperation(record: NativeOperationRecord): OperationStatus {
+export function toPublicOperation(record: DurableOperationRecord): OperationStatus {
   return {
     operationId: record.operationId,
     kind: record.kind,
@@ -229,9 +228,9 @@ export function toPublicOperation(record: NativeOperationRecord): OperationStatu
 
 /**
  * Settings, privacy, search and backup operations with their validation, private-window policy,
- * serialization, durable operation records and change notices. Transport-free: the native
- * observer bridge and the Settings overlay both call `execute`, and ordinary shell-port handlers
- * call the typed mutations below, so the outcome of a change never depends on how it arrived.
+ * serialization, durable operation records and change notices. Transport-free: the Settings
+ * overlay calls `execute`, and ordinary shell-port handlers call the typed mutations below, so
+ * the outcome of a change never depends on how it arrived.
  */
 export class SettingsDomainService {
   #ctx: SettingsDomainContext;
@@ -278,15 +277,13 @@ export class SettingsDomainService {
 
   /**
    * The caller for a document the shell background relayed. Durable operations belong to a
-   * window of this parent-process session, so a reloaded Settings document can read the status
-   * of its predecessor's work, while records from an earlier session or from the native bridge
-   * stay unreachable.
+   * window of this tools-background run, so a reloaded Settings document can read the status
+   * of its predecessor's work, while records from an earlier run stay unreachable.
    */
-  async overlayCaller(caller: SettingsClientCaller): Promise<SettingsCaller> {
-    const { currentParentSessionId, currentBootId } = await this.#ctx.bootAttestation();
+  overlayCaller(caller: SettingsClientCaller): SettingsCaller {
     return {
       clientId: caller.documentId,
-      ownerId: `window:${currentParentSessionId}:${currentBootId}:${caller.windowId}`,
+      ownerId: `window:${this.#ctx.sessionId}:${caller.windowId}`,
       windowId: caller.windowId,
       isPrivate: caller.isPrivate,
     };
@@ -559,7 +556,7 @@ export class SettingsDomainService {
   // ---- Reads ----
 
   async #snapshot(payload: unknown, caller: SettingsCaller): Promise<SettingsSnapshot> {
-    const publicationDomains: readonly string[] = CONTRACT.publicationDomains;
+    const publicationDomains: readonly string[] = SNAPSHOT_DOMAINS;
     if (
       !exactKeys(payload, ['domains']) ||
       !Array.isArray(payload.domains) ||
@@ -622,7 +619,7 @@ export class SettingsDomainService {
     if (
       ids !== undefined &&
       (!Array.isArray(ids) ||
-        ids.length > CONTRACT.bounds.workspaceCount ||
+        ids.length > SETTINGS_LIMITS.workspaceCount ||
         !ids.every(isBoundedId))
     ) {
       throw invalidPayload();
@@ -633,7 +630,7 @@ export class SettingsDomainService {
       ),
     );
     const json = JSON.stringify(data, null, 2);
-    if (utf8Length(json) > CONTRACT.bounds.backupFileBytes) {
+    if (utf8Length(json) > SETTINGS_LIMITS.backupFileBytes) {
       throw new SettingsError('payload_too_large');
     }
     return {
@@ -650,8 +647,8 @@ export class SettingsDomainService {
     // A string is never shorter in UTF-8 than in UTF-16 code units, so the cheap test settles
     // the common oversize case without encoding the whole file.
     if (
-      json.length > CONTRACT.bounds.backupFileBytes ||
-      utf8Length(json) > CONTRACT.bounds.backupFileBytes
+      json.length > SETTINGS_LIMITS.backupFileBytes ||
+      utf8Length(json) > SETTINGS_LIMITS.backupFileBytes
     ) {
       throw new SettingsError('payload_too_large');
     }
@@ -669,7 +666,7 @@ export class SettingsDomainService {
       if (entry.expiresAt <= now || entry.clientId === caller.clientId) this.#tokens.delete(key);
     }
     const validationToken = newToken();
-    const expiresAt = now + CONTRACT.session.validationTokenMs;
+    const expiresAt = now + SETTINGS_LIMITS.validationTokenMs;
     this.#tokens.set(validationToken, {
       clientId: caller.clientId,
       windowId: caller.windowId,
@@ -750,7 +747,7 @@ export class SettingsDomainService {
    */
   async #runOperation(
     input: {
-      kind: NativeOperationKind;
+      kind: DurableOperationKind;
       operationId: string;
       caller: SettingsCaller;
       payload: unknown;
@@ -814,7 +811,7 @@ export class SettingsDomainService {
     data: BentoExportSchema,
     options: ImportOptions,
   ): Promise<EffectOutcome> {
-    let failed: NativeOperationComponent[] = [];
+    let failed: DurableOperationComponent[] = [];
     const summary = await this.#ctx.coordinator.runExclusive(
       options.replaceExisting ? 'graph-replacement' : 'graph-additive',
       async (mutation) => {
@@ -829,7 +826,6 @@ export class SettingsDomainService {
           options.replaceExisting ? regularWindows : 1,
         );
         const plannedWorkspaceIds = Array.from({ length: plannedCount }, () => crypto.randomUUID());
-        const attestation = await this.#ctx.bootAttestation();
         await this.#ctx.journal.begin({
           operationId,
           kind,
@@ -838,8 +834,6 @@ export class SettingsDomainService {
           applySavedPanels: options.importSavedPanels,
           ownerClientInstanceId: caller.ownerId,
           targetWindowId: caller.windowId,
-          acceptedParentSessionId: attestation.currentParentSessionId,
-          acceptedParentBootId: attestation.currentBootId,
           sourceHash,
           sourceJson,
           oldWorkspaceIds: options.replaceExisting

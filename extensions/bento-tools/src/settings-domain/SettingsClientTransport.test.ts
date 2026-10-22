@@ -40,7 +40,7 @@ describe('settings client request guard', () => {
   it.each<[string, Record<string, unknown>]>([
     ['an unknown key', { injected: true }],
     ['an unknown operation', { operation: 'session/hello' }],
-    ['a native-only operation', { operation: 'operation/reconcile' }],
+    ['a retired operation', { operation: 'operation/reconcile' }],
     ['a missing request id', { requestId: undefined }],
     ['an oversized request id', { requestId: 'x'.repeat(200) }],
     [
@@ -105,7 +105,7 @@ describe('settings client transport', () => {
 
   beforeEach(() => {
     replies.length = 0;
-    service.overlayCaller.mockReset().mockImplementation(async (caller) => ({
+    service.overlayCaller.mockReset().mockImplementation((caller) => ({
       clientId: caller.documentId,
       ownerId: `window:${caller.windowId}`,
       windowId: caller.windowId,

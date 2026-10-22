@@ -69,6 +69,8 @@ export interface SettingsPaletteProps {
   onClose: () => void;
   /** Stages to start on, root first. The root alone by default. */
   initialStages?: readonly Stage[];
+  /** Search text to start with (a link to a setting that has no list of its own). */
+  initialQuery?: string;
   /** Changes on every show; the palette returns to `initialStages` when it does. */
   openToken?: number;
 }
@@ -128,12 +130,13 @@ export default function SettingsPalette({
   actions,
   onClose,
   initialStages,
+  initialQuery = '',
   openToken = 0,
 }: SettingsPaletteProps) {
   const model = view.kind === 'ready' ? view.model : null;
   const start = useMemo(() => [...(initialStages ?? initialStack())], [initialStages]);
   const [stack, setStack] = useState<Stage[]>(start);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const stage = topStage(stack);
   const editor = useStageEditor(stage, model, actions);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -160,7 +163,7 @@ export default function SettingsPalette({
     actions.cancelImport();
     actions.clearNotice();
     setStack(start);
-    setQuery('');
+    setQuery(initialQuery);
     const top = topStage(start);
     if (model && isEditorStage(top)) editor.begin(top, model);
     inputRef.current?.focus();

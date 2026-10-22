@@ -76,12 +76,12 @@ const STEPS = [
   {
     id: 'privacy',
     title: 'Pick a protection level',
-    note: 'Protection levels can be fine-tuned in the Settings',
+    note: 'Protection levels can be fine-tuned in Settings',
   },
   {
     id: 'search',
     title: 'Default search engine',
-    note: 'Add more search engines in the Settings',
+    note: "Add more search engines in Firefox's search settings",
   },
   { id: 'tour', title: 'How Bento works' },
   {

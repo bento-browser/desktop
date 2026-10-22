@@ -3,29 +3,29 @@ const STORAGE_VERSION = 1;
 const RESULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 const TOMBSTONE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type NativeOperationKind =
+export type DurableOperationKind =
   'settings/reset' | 'backup/importValidated' | 'backup/restore' | 'backup/delete';
 
-export type NativeOperationState =
+export type DurableOperationState =
   'reserved' | 'running' | 'partial' | 'succeeded' | 'failed' | 'cancelled';
 
-export interface NativeOperationComponent {
+export interface DurableOperationComponent {
   component: string;
   state: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
   retryable: boolean;
   errorCode?: string;
 }
 
-export interface NativeOperationRecord {
+export interface DurableOperationRecord {
   operationId: string;
-  kind: NativeOperationKind;
+  kind: DurableOperationKind;
   ownerClientInstanceId: string;
   targetWindowId: number;
   isPrivate: boolean;
   payloadHash: string;
-  state: NativeOperationState;
+  state: DurableOperationState;
   phase: string;
-  components: NativeOperationComponent[];
+  components: DurableOperationComponent[];
   reconcileComponents: string[];
   result?: unknown;
   errorCode?: string;
@@ -40,12 +40,12 @@ export interface NativeOperationRecord {
 
 interface StoredOperations {
   version: 1;
-  records: NativeOperationRecord[];
+  records: DurableOperationRecord[];
 }
 
-function isRecord(value: unknown): value is NativeOperationRecord {
+function isRecord(value: unknown): value is DurableOperationRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Partial<NativeOperationRecord>;
+  const record = value as Partial<DurableOperationRecord>;
   return (
     typeof record.operationId === 'string' &&
     typeof record.kind === 'string' &&
@@ -70,10 +70,10 @@ function clone<T>(value: T): T {
  * skipped components marked, the rest succeeded.
  */
 export function finishComponents(
-  components: readonly NativeOperationComponent[],
-  failed: readonly NativeOperationComponent[] = [],
+  components: readonly DurableOperationComponent[],
+  failed: readonly DurableOperationComponent[] = [],
   skipped: ReadonlySet<string> = new Set(),
-): NativeOperationComponent[] {
+): DurableOperationComponent[] {
   const failures = new Map(failed.map((entry) => [entry.component, entry]));
   return components.map((entry) => {
     const failure = failures.get(entry.component);
@@ -87,11 +87,11 @@ export function finishComponents(
  * finished (or been skipped) counts as failed. `only` limits that to the named components.
  */
 export function failComponents(
-  components: readonly NativeOperationComponent[],
+  components: readonly DurableOperationComponent[],
   errorCode: string,
   retryable: boolean,
   only?: readonly string[],
-): NativeOperationComponent[] {
+): DurableOperationComponent[] {
   return components.map((entry) =>
     entry.state === 'succeeded' ||
     entry.state === 'skipped' ||
@@ -104,9 +104,9 @@ export function failComponents(
 export class OperationConflictError extends Error {}
 export class OperationOwnershipError extends Error {}
 
-/** Durable exactly-once registry shared by native destructive operations. */
+/** Durable exactly-once registry of the Settings palette's destructive operations. */
 export class OperationRegistry {
-  #records = new Map<string, NativeOperationRecord>();
+  #records = new Map<string, DurableOperationRecord>();
   #writeQueue: Promise<void> = Promise.resolve();
   #now: () => number;
 
@@ -127,13 +127,13 @@ export class OperationRegistry {
 
   async reserve(input: {
     operationId: string;
-    kind: NativeOperationKind;
+    kind: DurableOperationKind;
     ownerClientInstanceId: string;
     targetWindowId: number;
     isPrivate: boolean;
     payloadHash: string;
     components?: string[];
-  }): Promise<{ record: NativeOperationRecord; existing: boolean }> {
+  }): Promise<{ record: DurableOperationRecord; existing: boolean }> {
     const existing = this.#records.get(input.operationId);
     if (existing) {
       if (existing.ownerClientInstanceId !== input.ownerClientInstanceId) {
@@ -145,7 +145,7 @@ export class OperationRegistry {
       return { record: clone(existing), existing: true };
     }
     const now = this.#now();
-    const record: NativeOperationRecord = {
+    const record: DurableOperationRecord = {
       operationId: input.operationId,
       kind: input.kind,
       ownerClientInstanceId: input.ownerClientInstanceId,
@@ -169,7 +169,7 @@ export class OperationRegistry {
     return { record: clone(record), existing: false };
   }
 
-  getOwned(operationId: string, clientInstanceId: string): NativeOperationRecord | null {
+  getOwned(operationId: string, clientInstanceId: string): DurableOperationRecord | null {
     const record = this.#records.get(operationId);
     if (!record) return null;
     if (record.ownerClientInstanceId !== clientInstanceId) {
@@ -179,13 +179,13 @@ export class OperationRegistry {
   }
 
   /** Record lookup for tools-internal callers (recovery); no ownership check. */
-  peek(operationId: string): NativeOperationRecord | null {
+  peek(operationId: string): DurableOperationRecord | null {
     const record = this.#records.get(operationId);
     return record ? clone(record) : null;
   }
 
   /** An owner's records that are still running or finished within `recentMs`. */
-  listOwned(ownerClientInstanceId: string, recentMs: number): NativeOperationRecord[] {
+  listOwned(ownerClientInstanceId: string, recentMs: number): DurableOperationRecord[] {
     const now = this.#now();
     return Array.from(this.#records.values())
       .filter(
@@ -230,7 +230,7 @@ export class OperationRegistry {
     operationId: string,
     changes: Partial<
       Pick<
-        NativeOperationRecord,
+        DurableOperationRecord,
         | 'state'
         | 'phase'
         | 'components'
@@ -241,7 +241,7 @@ export class OperationRegistry {
         | 'recovered'
       >
     >,
-  ): Promise<NativeOperationRecord> {
+  ): Promise<DurableOperationRecord> {
     const record = this.#records.get(operationId);
     if (!record) throw new Error('operation_unknown');
     Object.assign(record, clone(changes), { updatedAt: this.#now() });
@@ -255,7 +255,7 @@ export class OperationRegistry {
   async requestCancel(
     operationId: string,
     clientInstanceId: string,
-  ): Promise<NativeOperationRecord> {
+  ): Promise<DurableOperationRecord> {
     const record = this.#records.get(operationId);
     if (!record) throw new Error('operation_unknown');
     if (record.ownerClientInstanceId !== clientInstanceId) {
@@ -274,7 +274,7 @@ export class OperationRegistry {
   }
 
   /** Finished records the owner could not have seen settle: those recovery settled. */
-  recoveredNotices(clientInstanceId: string, isPrivate: boolean): NativeOperationRecord[] {
+  recoveredNotices(clientInstanceId: string, isPrivate: boolean): DurableOperationRecord[] {
     if (isPrivate) return [];
     return Array.from(this.#records.values())
       .filter(

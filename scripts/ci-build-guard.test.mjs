@@ -22,20 +22,12 @@ test('native script names come from package.json, directly and through other scr
   for (const name of ['bootstrap', 'build', 'package', 'mach', 'mach:build', 'build:full']) {
     assert.ok(nativeNames.has(name), `${name} should be a native script`);
   }
-  for (const name of ['build:release', 'build:ui', 'firefox:sync', 'rollback:release-final']) {
+  for (const name of ['build:release', 'build:ui', 'firefox:sync']) {
     assert.ok(nativeNames.has(name), `${name} should be a native script`);
   }
   for (const name of ['ext:build', 'tools:build', 'shell:build', 'import', 'download', 'lc']) {
     assert.ok(!nativeNames.has(name), `${name} must not be a native script`);
   }
-  assert.ok(!nativeNames.has('rollback:check'), 'rollback:check only lints and checks');
-
-  // The rollback driver defaults to `build`, so an alias without an action is native.
-  const aliases = nativeScriptNames({
-    bare: 'node scripts/build-rollback-variant.mjs rollback-final-r2',
-    checked: 'node scripts/build-rollback-variant.mjs rollback-final-r2 check',
-  });
-  assert.deepEqual([...aliases], ['bare']);
 });
 
 test('rejects every native build entry point', () => {
@@ -51,7 +43,6 @@ test('rejects every native build entry point', () => {
     'pnpm run build:full',
     'pnpm run build:release',
     'pnpm run firefox:sync',
-    'pnpm run rollback:release-final',
     'node scripts/bento-build.mjs build',
     'node scripts/bento-build.mjs bootstrap',
     'node scripts/bento-build.mjs package',
@@ -63,9 +54,6 @@ test('rejects every native build entry point', () => {
     'cd engine && ./mach bootstrap',
     'mach package',
     'bash scripts/build-release.sh',
-    'node scripts/build-rollback-variant.mjs rollback-final-r2 release',
-    'node scripts/build-rollback-variant.mjs rollback-final-r2',
-    'node scripts/build-rollback-variant.mjs rollback-final-r2 check && node scripts/build-rollback-variant.mjs rollback-final-r2',
     'gh release create v0.0.1',
   ];
   for (const command of commands) {
@@ -147,24 +135,6 @@ test('sees through quoted script names and backslash continuations', () => {
   }
 });
 
-test('reads a rollback action only from the invocation line', () => {
-  const driver = 'node scripts/build-rollback-variant.mjs';
-  for (const text of [
-    `run: |\n  ${driver} rollback-final-r2\n  check the output\n`,
-    `run: |\n  ${driver}\n  rollback-final-r2 check\n`,
-    `run: ${driver} rollback-final-r2 chec\n`,
-  ]) {
-    assert.ok(hits(text).length > 0, `${JSON.stringify(text)} should be rejected`);
-  }
-  for (const text of [
-    `run: ${driver} rollback-final-r2 'check'\n`,
-    `run: ${driver} "rollback-final-r2" "check"\n`,
-    `run: |\n  ${driver} rollback-transition-r1 check\n  ${driver} rollback-final-r2 check\n`,
-  ]) {
-    assert.deepEqual(hits(text), [], `${JSON.stringify(text)} should be accepted`);
-  }
-});
-
 test('rejects manual triggers, artifact uploads, and release steps', () => {
   for (const text of [
     'on:\n  workflow_dispatch:\n',
@@ -190,8 +160,6 @@ test('accepts the extension builds and source commands CI runs', () => {
     'pnpm run download',
     'pnpm run import',
     'pnpm run lc',
-    'pnpm run rollback:check',
-    'node scripts/build-rollback-variant.mjs rollback-transition-r1 check',
     'pnpm run release:security-check:shell',
     'pnpm install --frozen-lockfile',
     'bash scripts/bento-env.sh download',

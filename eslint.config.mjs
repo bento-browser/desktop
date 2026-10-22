@@ -5,7 +5,7 @@
 //   1. Bundle discipline: forbid private Mux generated imports and the
 //      lucide-react barrel — keeps shell.js bundle boundaries explicit (§6.2).
 //
-//   2. Public design-system boundary: shell source, Ladle, and rollback UI
+//   2. Public design-system boundary: shell source and Ladle
 //      cannot import React Aria directly. Structural HTML and product-specific
 //      row/drag hosts remain allowed; generic controls use public Mux parts.
 //      This config checks imports, not intrinsic JSX or CSS values (§3.1).
@@ -54,6 +54,7 @@ const firefoxSystemModuleGlobals = {
   JSWindowActorParent: 'readonly',
   WebExtensionPolicy: 'readonly',
   console: 'readonly',
+  structuredClone: 'readonly',
 };
 
 // Globals of a Firefox browser window (browser.xhtml) beyond the standard web
@@ -96,7 +97,6 @@ export default tseslint.config(
   {
     files: [
       'extensions/**/*.{ts,tsx,js,jsx,mjs}',
-      'rollback/legacy-source/extensions/**/*.{ts,tsx,js,jsx,mjs}',
     ],
     languageOptions: {
       globals: { ...globals.browser, ...globals.webextensions },
@@ -148,7 +148,6 @@ export default tseslint.config(
   {
     files: [
       'extensions/**/*.{ts,tsx,js,jsx,mjs}',
-      'rollback/legacy-source/extensions/**/*.{ts,tsx,js,jsx,mjs}',
     ],
     rules: {
       'no-restricted-imports': [
@@ -161,11 +160,10 @@ export default tseslint.config(
     },
   },
 
-  // Public Mux boundary — every shell entry, story, and rollback source
+  // Public Mux boundary — every shell entry and story
   {
     files: [
       'extensions/bento-shell/**/*.{ts,tsx,js,jsx,mjs}',
-      'rollback/legacy-source/extensions/bento-shell/**/*.{ts,tsx,js,jsx,mjs}',
     ],
     rules: {
       'no-restricted-imports': [

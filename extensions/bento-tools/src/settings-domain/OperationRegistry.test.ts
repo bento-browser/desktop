@@ -4,7 +4,7 @@ import {
   finishComponents,
   OperationConflictError,
   OperationRegistry,
-  type NativeOperationKind,
+  type DurableOperationKind,
 } from './OperationRegistry';
 
 describe('OperationRegistry', () => {
@@ -69,7 +69,7 @@ describe('OperationRegistry', () => {
   describe('startup settlement', () => {
     async function reserve(
       registry: OperationRegistry,
-      kind: NativeOperationKind,
+      kind: DurableOperationKind,
       state?: 'running',
       components = ['settings', 'privacy'],
     ) {

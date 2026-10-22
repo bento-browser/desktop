@@ -250,7 +250,7 @@ function pruneRemovedWorkspaces(event: Event): void {
 // - a private document receives global events (settings, boot, saved panels,
 //   search results) and events addressed to its own window, nothing bound to the
 //   regular workspaces;
-// - backup/* and externalMerge/* never reach a private document;
+// - externalMerge/* never reaches a private document;
 // - a private window sees the settings with its own sidebar collapse, hidden state
 //   and colour mode over the saved ones (see PrivateWindowSettings).
 
@@ -296,7 +296,7 @@ const settingsRelay = new SettingsRelay({
 });
 
 function isWithheldFromPrivateDocuments(event: Event): boolean {
-  return event.type.startsWith('backup/') || event.type.startsWith('externalMerge/');
+  return event.type.startsWith('externalMerge/');
 }
 
 function privateWindowIds(): Set<number> {

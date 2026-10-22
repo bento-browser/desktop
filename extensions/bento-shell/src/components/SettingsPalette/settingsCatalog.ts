@@ -1,8 +1,8 @@
 // Static description of the settings the Settings palette edits: labels, groups, bounds,
 // presets and shortcut copy. Values come from tools (`snapshot/get`); nothing here is state.
 //
-// The bounds mirror `extensions/_shared/native-preferences-contract.json`, which tools
-// validates against. settingsCatalog.test.ts compares the two so they cannot drift.
+// The bounds mirror `extensions/_shared/settings-rules.ts`, which tools validates against.
+// settingsCatalog.test.ts compares the two so they cannot drift.
 
 import type { PrivacyAdvancedKey } from '@shared/protocol';
 import type { EditableSettings, SettingsPrivacy } from '@shared/settings-client-protocol';
@@ -253,7 +253,7 @@ export interface ShortcutEntry {
 }
 
 /** Read-only catalogue of the keyboard shortcuts. The command palette is bound to
- * Cmd/Ctrl+Alt+P in the mount script (the native pane's older copy said Cmd/Ctrl+K). */
+ * Cmd/Ctrl+Alt+P in the mount script. */
 export const SHORTCUTS: readonly ShortcutEntry[] = [
   { label: 'Switch workspace by index', keys: 'Cmd/Ctrl + Alt + 1–9' },
   { label: 'Minimize sidebar', keys: 'Cmd/Ctrl + S' },

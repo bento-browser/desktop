@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BentoExportSchema, Event, PrivacySettings } from '@shared/protocol';
-import { CONTRACT } from '@shared/generated/native-preferences-protocol';
+import { SETTINGS_LIMITS } from '@shared/settings-rules';
 import type { SettingsOperation } from '@shared/settings-client-protocol';
 import { executeImport, type ImportContext } from '../backup/ImportExecutor';
 import { BentoMutationCoordinator } from '../mutations/BentoMutationCoordinator';
-import { OperationRegistry } from '../native-preferences/OperationRegistry';
+import { OperationRegistry } from './OperationRegistry';
 import { readPrivacySnapshot, readSearchEnginesSnapshot } from '../privacy/ProtectionLevels';
 import { GraphOperationJournal } from '../replacement/GraphOperationJournal';
 import { SettingsStore } from '../settings/SettingsStore';
@@ -70,7 +70,6 @@ interface Harness {
   ctx: SettingsDomainContext;
   storage: Record<string, unknown>;
   broadcast: ReturnType<typeof vi.fn<(event: Event) => void>>;
-  attestation: { currentParentSessionId: string; currentBootId: string };
   backup: {
     collectSnapshot: ReturnType<typeof vi.fn>;
     listBackups: ReturnType<typeof vi.fn>;
@@ -158,7 +157,6 @@ async function createHarness(
     }),
   };
   const broadcast = vi.fn<(event: Event) => void>();
-  const attestation = { currentParentSessionId: 'session-1', currentBootId: 'boot-1' };
   const ctx = {
     ready: Promise.resolve(),
     settings,
@@ -178,7 +176,7 @@ async function createHarness(
       complete: vi.fn(async () => undefined),
     },
     broadcast,
-    bootAttestation: async () => ({ ...attestation }),
+    sessionId: 'session-1',
   } as unknown as SettingsDomainContext;
   const service = new SettingsDomainService(ctx);
   await service.ready();
@@ -187,7 +185,6 @@ async function createHarness(
     ctx,
     storage,
     broadcast,
-    attestation,
     backup,
     privacyMutations,
     recovery,
@@ -259,13 +256,13 @@ describe('SettingsDomainService', () => {
       ['privacy/setAdvanced', { key: 'searchSuggestionsEnabled', value: true }],
       ['privacy/setAdvanced', { key: 'httpsOnlyMode', value: 'maybe' }],
       ['privacy/setDefaultSearchEngine', { id: '' }],
-      ['privacy/setDefaultSearchEngine', { id: 'x'.repeat(CONTRACT.bounds.sourceIdCodeUnits + 1) }],
+      ['privacy/setDefaultSearchEngine', { id: 'x'.repeat(SETTINGS_LIMITS.idCodeUnits + 1) }],
       ['backup/getContext', { unexpected: 1 }],
       ['backup/export', { workspaceIds: 'ws-1' }],
       ['backup/export', { workspaceIds: [1] }],
       [
         'backup/export',
-        { workspaceIds: Array.from({ length: CONTRACT.bounds.workspaceCount + 1 }, () => 'ws') },
+        { workspaceIds: Array.from({ length: SETTINGS_LIMITS.workspaceCount + 1 }, () => 'ws') },
       ],
       ['backup/validateImport', { json: 1 }],
       ['backup/importValidated', { validationToken: 'abc', options: { importSettings: true } }],
@@ -473,18 +470,18 @@ describe('SettingsDomainService', () => {
     it('maps oversize files and exports to payload_too_large', async () => {
       const h = await createHarness();
       const caller = await overlay(h);
-      const oversize = 'a'.repeat(CONTRACT.bounds.backupFileBytes + 1);
+      const oversize = 'a'.repeat(SETTINGS_LIMITS.backupFileBytes + 1);
       await expect(
         codeOf(run(h, 'backup/validateImport', { json: oversize }, caller)),
       ).resolves.toBe('payload_too_large');
       // Multi-byte text is measured in UTF-8 bytes, not code units.
-      const wide = '€'.repeat(Math.ceil(CONTRACT.bounds.backupFileBytes / 3) + 1);
-      expect(wide.length).toBeLessThan(CONTRACT.bounds.backupFileBytes);
+      const wide = '€'.repeat(Math.ceil(SETTINGS_LIMITS.backupFileBytes / 3) + 1);
+      expect(wide.length).toBeLessThan(SETTINGS_LIMITS.backupFileBytes);
       await expect(codeOf(run(h, 'backup/validateImport', { json: wide }, caller))).resolves.toBe(
         'payload_too_large',
       );
       h.backup.collectSnapshot.mockResolvedValue(
-        exportFile({ bentoVersion: 'x'.repeat(CONTRACT.bounds.backupFileBytes) }),
+        exportFile({ bentoVersion: 'x'.repeat(SETTINGS_LIMITS.backupFileBytes) }),
       );
       await expect(codeOf(run(h, 'backup/export', {}, caller))).resolves.toBe('payload_too_large');
     });
@@ -525,7 +522,7 @@ describe('SettingsDomainService', () => {
       );
 
       const expired = await preview(h, caller);
-      vi.setSystemTime(Date.now() + CONTRACT.session.validationTokenMs + 1);
+      vi.setSystemTime(Date.now() + SETTINGS_LIMITS.validationTokenMs + 1);
       await expect(importWith(expired)).resolves.toBe('token_invalid');
 
       const spent = await preview(h, caller);
@@ -610,8 +607,6 @@ describe('SettingsDomainService', () => {
           applySavedPanels: false,
           ownerClientInstanceId: 'someone',
           targetWindowId: 1,
-          acceptedParentSessionId: 's',
-          acceptedParentBootId: 'b',
           sourceHash: 'h',
           sourceJson: '{}',
           oldWorkspaceIds: [],
@@ -903,7 +898,7 @@ describe('SettingsDomainService', () => {
       await operations.reserve({
         operationId,
         kind,
-        ownerClientInstanceId: 'window:session-1:boot-1:1',
+        ownerClientInstanceId: 'window:session-1:1',
         targetWindowId: 1,
         isPrivate: false,
         payloadHash: 'b'.repeat(64),
@@ -921,7 +916,7 @@ describe('SettingsDomainService', () => {
         ids.push(await orphan(operations, 'backup/importValidated'));
       });
       for (const id of ids) {
-        expect(h.operations.getOwned(id, 'window:session-1:boot-1:1')).toMatchObject({
+        expect(h.operations.getOwned(id, 'window:session-1:1')).toMatchObject({
           state: 'failed',
           errorCode: 'backend_restarted',
         });
@@ -940,17 +935,15 @@ describe('SettingsDomainService', () => {
           mode: 'additive',
           applySettings: false,
           applySavedPanels: false,
-          ownerClientInstanceId: 'window:session-1:boot-1:1',
+          ownerClientInstanceId: 'window:session-1:1',
           targetWindowId: 1,
-          acceptedParentSessionId: 's',
-          acceptedParentBootId: 'b',
           sourceHash: 'h',
           sourceJson: '{}',
           oldWorkspaceIds: [],
         });
       });
-      expect(h.operations.getOwned(covered, 'window:session-1:boot-1:1')?.state).toBe('running');
-      expect(h.operations.getOwned(stray, 'window:session-1:boot-1:1')?.state).toBe('failed');
+      expect(h.operations.getOwned(covered, 'window:session-1:1')?.state).toBe('running');
+      expect(h.operations.getOwned(stray, 'window:session-1:1')?.state).toBe('failed');
     });
 
     it('does not let startup settlement fail an ordinary mutation that arrived early', async () => {
@@ -998,15 +991,12 @@ describe('SettingsDomainService', () => {
   });
 
   describe('operation ownership and rediscovery', () => {
-    it('scopes the owner to the parent-process session, the boot and the window', async () => {
+    it('scopes the owner to the tools session and the window', async () => {
       const h = await createHarness();
       const one = await overlay(h);
       expect((await overlay(h, { documentId: 'doc-9' })).ownerId).toBe(one.ownerId);
       expect((await overlay(h, { windowId: 2 })).ownerId).not.toBe(one.ownerId);
-      h.attestation.currentBootId = 'boot-2';
-      expect((await overlay(h)).ownerId).not.toBe(one.ownerId);
-      h.attestation.currentBootId = 'boot-1';
-      h.attestation.currentParentSessionId = 'session-2';
+      h.ctx.sessionId = 'session-2';
       expect((await overlay(h)).ownerId).not.toBe(one.ownerId);
     });
 
@@ -1025,33 +1015,33 @@ describe('SettingsDomainService', () => {
         codeOf(run(h, 'operation/status', { operationId }, await overlay(h, { windowId: 2 }))),
       ).resolves.toBe('operation_not_owned');
 
-      // Window ids repeat across browser sessions: a new boot cannot reach the old record.
-      h.attestation.currentBootId = 'boot-2';
+      // Window ids repeat across browser sessions: a new session cannot reach the old record.
+      h.ctx.sessionId = 'session-2';
       await expect(
         codeOf(run(h, 'operation/status', { operationId }, await overlay(h))),
       ).resolves.toBe('operation_not_owned');
     });
 
-    it('keeps native-owned records on the native transport only', async () => {
+    it('keeps records of a caller outside the overlay windows out of their reach', async () => {
       const h = await createHarness();
-      const nativeClient: SettingsCaller = {
+      const outsider: SettingsCaller = {
         clientId: uuid(),
         ownerId: uuid(),
         windowId: 1,
         isPrivate: false,
       };
       const operationId = uuid();
-      await run(h, 'settings/reset', { confirm: true }, nativeClient, operationId);
-      await expect(
-        run(h, 'operation/status', { operationId }, nativeClient),
-      ).resolves.toMatchObject({ state: 'succeeded' });
+      await run(h, 'settings/reset', { confirm: true }, outsider, operationId);
+      await expect(run(h, 'operation/status', { operationId }, outsider)).resolves.toMatchObject({
+        state: 'succeeded',
+      });
       await expect(
         codeOf(run(h, 'operation/status', { operationId }, await overlay(h))),
       ).resolves.toBe('operation_not_owned');
       const overlayOwned = uuid();
       await run(h, 'settings/reset', { confirm: true }, await overlay(h), overlayOwned);
       await expect(
-        codeOf(run(h, 'operation/status', { operationId: overlayOwned }, nativeClient)),
+        codeOf(run(h, 'operation/status', { operationId: overlayOwned }, outsider)),
       ).resolves.toBe('operation_not_owned');
     });
 
@@ -1104,7 +1094,7 @@ describe('SettingsDomainService', () => {
         await operations.reserve({
           operationId,
           kind: 'settings/reset',
-          ownerClientInstanceId: 'window:session-1:boot-1:1',
+          ownerClientInstanceId: 'window:session-1:1',
           targetWindowId: 1,
           isPrivate: false,
           payloadHash: 'c'.repeat(64),

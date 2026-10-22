@@ -141,7 +141,7 @@ UI color mode flow:
   `matchMedia('(prefers-color-scheme: dark)')` return the content preference,
   while chrome resolves Auto against the actual browser/OS theme.
   `useFirefoxTheme` writes `resolved-color-mode` from authoritative shell
-  contexts, and native Bento Settings consumes the same durable preference.
+  contexts, and the Settings palette consumes the same durable preference.
 
 Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 `bento-tools` through Firefox's content color-scheme browser setting.
@@ -162,7 +162,7 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   stylesheet makes Vite emit (2.74 MB) into WOFF2 (1.22 MB) and rewrites the
   `@font-face` sources; `@font-face` stays a local file under `assets/`. It runs
   before `panelNewtabCss`, whose Inter reference is `./Inter_opsz_wght_.woff2`.
-  The archived rollback config lists the same plugin order. Brotli at maximum
+  Brotli at maximum
   quality takes about 5 s for all six fonts, so results are cached under
   `extensions/bento-shell/node_modules/.cache/bento-woff2`. Do not point
   `@font-face` at a remote font.
@@ -182,11 +182,9 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   rules with nested rules alone and turns an emptied `@layer name { }` block into
   `@layer name;`; deleting either would change the cascade for `standard`.
 - `public/panel-newtab.html` is a plain page: no script, no Mux stylesheet. The
-  `panelNewtabCss` plugin (`panel-newtab-css.ts`, shared with the archived
-  rollback Vite config, which has no `panel-newtab` entry) bundles
+  `panelNewtabCss` plugin (`panel-newtab-css.ts`) bundles
   `src/panel-newtab/panel-newtab.css` into `assets/panel-newtab.css` with
-  esbuild. Run both `build-rollback-variant.mjs <variant> check` actions after
-  changing shell entries, because the archived config lists its own entries. Its heading keeps Inter through a
+  esbuild. Its heading keeps Inter through a
   page-local `@font-face` (weight 650) that points at the Inter file the Mux
   stylesheet makes the build emit into `assets/`; the Vite plugin fails the
   build if that file name stops existing. A hashed or renamed Inter file would
@@ -334,15 +332,11 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   (`bento-chrome-tokens.css` and `bento-chrome-themes/`); the shell CSS bundle
   alone is not enough. A new Bento theme needs `pnpm run theme:sync` (shell
   sheet) and `pnpm run import` (chrome sheet).
-- The archived rollback-final-r2 mount script links only `bento-chrome-tokens.css`.
-  The generator folds every theme into that sheet when
-  `BENTO_RELEASE_VARIANT=rollback-final-r2` (or `--monolithic`); keep that branch
-  while the archive exists.
 - A rem token is a different length in chrome (system UI font, 11 px on macOS) and
   the shell (`--font-size-root`, 16 px). The generator pins the rem tokens chrome
   sizes shell-laid-out geometry from (`SHELL_SIZED_TOKENS`: the collapsed rail width
   and the add-panel trailer's button, gap, padding and select widths) in px in the
-  chrome sheet, except in the monolithic rollback sheet; see
+  chrome sheet; see
   [Shell-sized lengths](../chrome-tokens.md#shell-sized-lengths), the rail
   pitfall in [workspaces.md](workspaces.md#workspace-pitfalls), and the trailer
   pitfall in [panel-widgets.md](panel-widgets.md#widget-pitfalls).

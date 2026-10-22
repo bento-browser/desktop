@@ -23,12 +23,10 @@ icon/layout adaptation.
 ## Consumer migration status
 
 Bento consumes the exact published `@muxui/react@0.1.0-rc.1` npm release in both
-frozen dependency graphs. All normal React documents and both supported
-rollback variants use public Mux controls, the shared stylesheet boundary, and
-Bento layout/icon primitives. The normal Settings surface is native Firefox;
-the standalone React Settings and Shortcuts surfaces belong to the rollback
-archive and are compiled against the same npm package. Native controls consume
-the generated Mux token projection.
+frozen dependency graphs. All React documents, the Settings palette included,
+use public Mux controls, the shared stylesheet boundary, and Bento layout/icon
+primitives. Native chrome and the remaining Firefox pages consume the generated
+Mux token projection.
 
 Text uses the public `xs`, `sm`, `md`, and `lg` size values. There is no
 Bento compatibility wrapper for the old Text API. React Aria is an internal Mux
@@ -43,24 +41,20 @@ published version and npm integrity and retains the approved shell runtime
 dependency policy.
 
 On 2026-10-05, isolated Node 24.21 validation passed both frozen installs,
-normal shell typecheck/lint/build, the active and archived Settings Ladle
-builds and provider/config typecheck, 64 shell tests, 154 tools tests, six release-security tests, and four
-theme-selector tests. Both rollback variants passed 14-entry builds, shell and
-tools typechecks, background bundling, and two backup privacy tests each.
-Theme regeneration is deterministic and chrome tokens were generated to a
+normal shell typecheck/lint/build, the Settings Ladle build and
+provider/config typecheck, 64 shell tests, 154 tools tests, six release-security tests, and four
+theme-selector tests. Theme regeneration is deterministic and chrome tokens were generated to a
 scratch path. The production dependency audit reported zero known
 vulnerabilities, and the release SBOM contains 709 components with the npm Mux
 integrity digest. These results cover the published RC; prior alpha test counts
 and screenshots are not evidence for it.
 
-The size checker covers the 12 normal JavaScript entries, `style.css`, the
-plain `panel-newtab.css`, and standalone Settings when the rollback source
-stages it. Existing advisory ceilings remain unchanged.
+The size checker covers the 12 normal JavaScript entries, `style.css`, and the
+plain `panel-newtab.css`. Existing advisory ceilings remain unchanged.
 An unchanged alpha baseline built in a separate source copy measured shell
 JavaScript at 386.09 KB gzipped and CSS at 91.41 KB. The RC measures 364.64 KB and
 107.41 KB respectively: JavaScript decreases 21.45 KB, while CSS increases
-16.00 KB. Both variants measure rollback Settings at 373.66 KB and shared CSS
-at 108.00 KB. The ceilings are still exceeded; passing builds are not a claim
+16.00 KB. The ceilings are still exceeded; passing builds are not a claim
 that those budgets pass. Public Mux styles alone are 79.92 KB gzipped, with
 public themes at 30.83 KB and Bento's generated aliases at 17.54 KB; combined
 compression means these source sizes do not add directly to the bundle size.
@@ -87,84 +81,17 @@ chrome token sheet from 664 kB to 284 kB (60 kB to 33 kB gzipped). The 40 KB
 ceiling for `style.css` is still exceeded.
 
 Firefox validation uses a disposable app/profile and legitimate protocol fixtures
-to activate the normal entries and both rollback Settings variants. Entry coverage
+to activate the entries. Entry coverage
 through those fixture/bridge-contract scenarios is separate from representative
 real `moz-extension` host evidence: the populated sidebar, sidebar theme/collapse
 bridge updates, the address editor, and a confirm overlay. This does not claim that every normal
 overlay flow was individually exercised in the native extension host.
 
-Fresh RC rollback checks show readable disabled dark NumberField values `30`
-and `5` in both variants; enabling backups and incrementing the interval to `35`
-produce the expected settings update. This resolves the old alpha-era blank-field
-observation without a custom value renderer or package patch. Both variants also
-pass Shortcuts filtering, nonempty-query Escape and pointer Close, plus FileTrigger
-invalid/valid JSON, same-file reselection, import dispatch, and completion. Public
-picker Tabs pass pointer categories and current-focus Home/End/arrows with
-DOM focus following selection; Enter/Space retain that category and search typing
-retains input focus. Active-panel association, inactive-panel hiding, search
-fallback, emoji/theme selection, Escape, and workspace Save also pass. Normal command and merge palettes pass pointer Close with empty and
-nonempty queries, and their public ClearButtons reset the controlled query.
-Runtime artifacts and the per-surface `acceptance-report.md` are retained under
-`/tmp/bento-mux-runtime-20261005/` for this review. No fresh native engine build or cross-platform CI was run.
-
-## Composition model
-
-Prefer the Mux component props, variants, sizes, and documented compound parts
-before adding CSS. Use Bento primitives for repeated layout and icon behavior,
-then keep product-specific composition in the owning component. A trigger that
-renders a button must not contain another button. Keep overlay state and focus
-behavior on the documented Mux parts. Public native Input handlers may adapt
-browser-specific keyboard behavior without bypassing the component renderer. Set `placement="end-top"` explicitly on nested
-`Menu.Popup` parts so chrome submenus open beside their parent item. This
-preserves pointer travel and keeps the child popup clear of subsequent root
-menu rows under the RC collection renderer.
-
-Generic buttons and picker triggers use Mux `Button` or `IconButton`. Button
-wraps its children in its `label` part (`.muxui-button-content`). The workspace
-theme picker trigger styles that part, scoped to the trigger, as a filling flex
-row so the theme name grows and the chevron sits at the end; the rule holds for
-the published package's inline wrapper and Mux main's inline-flex one. Sidebar
-search results do the same with a grid: the four-column avatar, favicon, text
-and kind layout is on that part, not on the Button, where the part was the only
-grid item and the text collapsed to nothing. The text column is a
-`.bento-tab-list-search__text` flex column holding the title and, for http(s)
-and `about:` pages, the domain line (smaller, `--muxui-semantic-content-muted`);
-the grid centers it against the avatar, favicon and kind label. Rows with a
-domain take the taller `--bento-tab-list-search-result-height-with-domain`
-through a `--with-domain` modifier on the result container, which owns the
-height, hover fill and the absolutely positioned close overlay, so all three
-cover the taller row. The rule works for the published package's inline wrapper
-and Mux main's inline-flex one. Emoji
-categories use public `Tabs` with controlled `value`/`onChange`; Mux owns tab
-roles, panel association, selection, and arrow-key navigation. Scoped layout
-keeps the existing emoji panel above its category strip. The RC can update
-selection and roving `tabIndex` while leaving DOM focus on the previous tab.
-A small effect uses the public Tabs root ref and standard ARIA roles to focus
-its selected tab directly after the controlled update commits. Do not defer
-this correction to an animation frame: Firefox can delay those callbacks in
-background overlay windows. It runs only when focus already belongs to that
-category tab list, so search, emoji results, and outside focus are preserved.
-Mux still owns the key-to-selection algorithm; no private renderer API or
-package patch is used. Recheck current-focus Home/End/arrows and
-Enter/Space, plus search focus, before removing this adaptation after a package
-upgrade. Inline
-tab/folder rename fields, tab search, and the read-only sidebar address display
-use the public `Input.Input` leaf with native input props and refs. The leaf's
-optional field context allows it to occupy the existing product grid without
-an extra wrapper. The leaf carries Mux's md-control `min-block-size` (2.25rem)
-and matching block padding. Every Bento use sits in a 2rem row, so each one
-(sidebar address, tab search, tab and folder rename) resets `min-block-size` to
-0 and sets its own block padding; otherwise the input stretches the row and
-pushes its neighbours 2 to 3px low. Sidebar address submission uses Mux `Form`, and the panel
-trailer uses public `Toolbar`; scoped Bento layout rules preserve their chrome
-geometry.
-
 The virtualized tab/folder composite is browser-specific structure. Its Bento
 `Row` host retains drag, multi-selection, context-menu, and middle-click events;
 its inner generic controls use Mux. Semantic headings/sections, host roots,
 favicon images, skeletons, and native `SelectNative` options remain ordinary
-HTML. ESLint enforces public imports in all shell source, Ladle, and rollback
-UI (CI lints the rollback sources through `pnpm run rollback:check`). It does not claim to ban every intrinsic JSX element.
+HTML. ESLint enforces public imports in all shell source and Ladle. It does not claim to ban every intrinsic JSX element.
 
 Tab and folder labels use the row's center alignment with single-line leading.
 Keep them free of relative vertical offsets: the former `top: 2px` adjustment
@@ -235,13 +162,8 @@ stay unlayered because Mux text utilities are unlayered. A sleeping (discarded)
 label uses `--muxui-semantic-color-neutral-60`; keep any dark-mode value at or
 above 4.5:1 against the sidebar.
 
-Rollback Backup import uses public `FileTrigger` around its Mux button. Mux
-owns the hidden input and resets selection before reopening the picker; Bento
-retains the 10 MB limit, JSON parsing, preview, and dispatch behavior. Shortcuts
-uses public CommandPalette `ListBox`, `Section`, and `Item` parts with read-only
-activation semantics (`closeOnSelect={false}`). Public ClearButton and Close
-parts occupy separate positions in the search row in Shortcuts, the normal and
-archived command palette, and merge. The scoped static Close position prevents
+Public ClearButton and Close parts occupy separate positions in the search row
+in the command palette, merge, and the Settings palette. The scoped static Close position prevents
 the sticky search row's Input/Clear/Refresh from covering the button. A native Input Escape
 handler closes the controlled dialog, since the RC SearchField can otherwise
 consume Escape while the controlled leaf query remains unchanged. Preserve IME
@@ -312,8 +234,7 @@ document loads only the themes it shows, from per-theme sheets:
 The shell build keeps `cssCodeSplit: false`, so every entry shares one
 `style.css`. `public/panel-newtab.html` is the exception: a plain page with no
 script and no Mux stylesheet. The `panelNewtabCss` Vite plugin
-(`extensions/bento-shell/panel-newtab-css.ts`, also used by the archived rollback
-config) bundles `src/panel-newtab/panel-newtab.css` (tokens, presets, document
+(`extensions/bento-shell/panel-newtab-css.ts`) bundles `src/panel-newtab/panel-newtab.css` (tokens, presets, document
 base, page rules) into `assets/panel-newtab.css` with esbuild and the page links
 only that file.
 It uses `--bento-panel-newtab-*` and `--bento-font-system` tokens. Because Mux

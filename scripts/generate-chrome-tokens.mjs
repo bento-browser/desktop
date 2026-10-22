@@ -15,10 +15,6 @@
  *   - bento-chrome-themes/<id>.css: one sheet per other theme, derived from the
  *     shell's theme sheets (extensions/bento-shell/public/themes). The mount
  *     script attaches the active one. jar.mn registers the directory by wildcard.
- *
- * `--monolithic` (also on for the rollback-final-r2 variant) folds every theme
- * into the base sheet instead. The archived rollback mount script links only
- * the base sheet, so it needs them there.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -37,10 +33,6 @@ const THEME_SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 const THEMES_DIR_NAME = 'bento-chrome-themes';
 const MUX_REQUIRE = createRequire(resolve(SHELL_DIR, 'package.json'));
 
-// The rollback-final-r2 build swaps in the archived mount script, which loads only
-// the base sheet (see scripts/build-rollback-variant.mjs and scripts/rollback-variants.mjs).
-const MONOLITHIC_VARIANT = 'rollback-final-r2';
-
 function usageError(message) {
   console.error(`generate-chrome-tokens: ${message}`);
   process.exit(1);
@@ -49,7 +41,6 @@ function usageError(message) {
 function parseArgs(argv) {
   let outputPath = DEFAULT_OUT_PATH;
   let themesDir;
-  let monolithic = process.env.BENTO_RELEASE_VARIANT === MONOLITHIC_VARIANT;
   const pathValue = (flag, value) => {
     if (!value || value.startsWith('--')) usageError(`${flag} needs a path`);
     return resolve(process.cwd(), value);
@@ -59,13 +50,11 @@ function parseArgs(argv) {
     if (argument === '--help' || argument === '-h') {
       console.log(
         'Usage: node scripts/generate-chrome-tokens.mjs [--output <isolated-path>] ' +
-          '[--themes-dir <path>] [--monolithic]',
+          '[--themes-dir <path>]',
       );
       process.exit(0);
     }
-    if (argument === '--monolithic') {
-      monolithic = true;
-    } else if (argument === '--output' || argument === '--themes-dir') {
+    if (argument === '--output' || argument === '--themes-dir') {
       const value = pathValue(argument, argv[index + 1]);
       if (argument === '--output') outputPath = value;
       else themesDir = value;
@@ -82,7 +71,6 @@ function parseArgs(argv) {
   return {
     outputPath,
     themesDir: themesDir ?? resolve(dirname(outputPath), THEMES_DIR_NAME),
-    monolithic,
   };
 }
 
@@ -181,7 +169,7 @@ function createShellPxResolver(css) {
   return { rootPx, resolve };
 }
 
-const { outputPath, themesDir, monolithic } = parseArgs(process.argv.slice(2));
+const { outputPath, themesDir } = parseArgs(process.argv.slice(2));
 const {
   stylesDigest: muxStylesDigest,
   themesDigest: muxThemesDigest,
@@ -221,9 +209,8 @@ const mplHeader = `/* This Source Code Form is subject to the terms of the Mozil
 
 `;
 
-const themeNote = monolithic
-  ? 'This is a monolithic build: every other theme follows below\n * because the archived mount script loads only this file.'
-  : 'Every other theme is a sheet in bento-chrome-themes/, which\n * bento-shell-mount.js attaches to the windows that show it.';
+const themeNote =
+  'Every other theme is a sheet in bento-chrome-themes/, which\n * bento-shell-mount.js attaches to the windows that show it.';
 
 const header = `${mplHeader}/*
  * AUTO-GENERATED — do not edit.
@@ -248,13 +235,6 @@ const muxBaseSection = `/* ─── public @muxui/react/styles.css blocks ─�
 ${normalizeNativeCss(renderPublicMuxCss(muxPublicBlocks))}
 `;
 
-const monolithicThemesSection =
-  monolithic && themeSheets.size > 0
-    ? `/* ─── workspace theme sheets, folded in ──────────────────────────── */
-${[...themeSheets.values()].join('\n\n')}
-`
-    : '';
-
 const bentoSection = bentoTokensCss
   ? `/* ─── Bento token layer ───────────────────────────────────────────── */
 ${normalizeNativeCss(bentoTokensCss)}
@@ -266,13 +246,10 @@ ${normalizeNativeCss(presetsIndexCss)}
 `
   : '';
 
-const tokenSheets =
-  header + muxBaseSection + monolithicThemesSection + bentoSection + presetsSection;
+const tokenSheets = header + muxBaseSection + bentoSection + presetsSection;
 
-// Unlayered, so it wins over the `bento.tokens` layer that declares the rem form. The
-// archived rollback mount script keeps the sheet it shipped with.
+// Unlayered, so it wins over the `bento.tokens` layer that declares the rem form.
 function renderShellSizedSection(css) {
-  if (monolithic) return '';
   const { rootPx, resolve } = createShellPxResolver(css);
   const declarations = SHELL_SIZED_TOKENS.map((name) => `  ${name}: ${resolve(name)};`);
   return `
@@ -327,6 +304,5 @@ ${css}
 const sizeKb = (Buffer.byteLength(output) / 1024).toFixed(1);
 console.log(
   `generate-chrome-tokens: ${baseChanged ? 'wrote' : 'unchanged'} ${outputPath} (${sizeKb} kB)` +
-    `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)` +
-    (monolithic ? '; monolithic' : ''),
+    `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)`,
 );

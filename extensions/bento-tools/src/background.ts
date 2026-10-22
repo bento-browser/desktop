@@ -59,11 +59,11 @@ import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
-import { NativePreferencesService } from './native-preferences/NativePreferencesService';
 import { SettingsDomainService } from './settings-domain/SettingsDomainService';
 import { createSettingsClientTransport } from './settings-domain/SettingsClientTransport';
 import { BentoMutationCoordinator } from './mutations/BentoMutationCoordinator';
-import { OperationRegistry } from './native-preferences/OperationRegistry';
+import { OperationRegistry } from './settings-domain/OperationRegistry';
+import { removeRetiredSettingsStorage } from './settings-domain/retiredStorage';
 import { GraphOperationJournal, GraphOperationRecovery } from './replacement/GraphOperationJournal';
 import { PrivacyMutationService } from './privacy/PrivacyMutationService';
 import { GraphPublicationCoordinator } from './replacement/GraphPublicationCoordinator';
@@ -949,6 +949,7 @@ const startupRestored = new Promise<void>((resolve) => {
 const activationGenerations = createActivationGenerations();
 
 const bootReady = storesReady.then(async () => {
+  void removeRetiredSettingsStorage();
   await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
@@ -1283,7 +1284,7 @@ const settingsDomain = new SettingsDomainService({
   privacyMutations,
   graphPublications,
   broadcast: broadcastEvent,
-  bootAttestation: () => browser.bentoNativePreferences.getCurrentBootAttestation(),
+  sessionId: backendInstanceId,
 });
 // Windows the shell may claim as a source: shell actions and Settings requests both check them.
 const shellWindows = createWindowRegistry(browser.windows, undefined, (window) => {
@@ -1293,12 +1294,6 @@ const settingsClient = createSettingsClientTransport({
   service: settingsDomain,
   windows: shellWindows,
 });
-const nativePreferences = new NativePreferencesService({
-  domain: settingsDomain,
-  operations: operationRegistry,
-  backendInstanceId,
-});
-nativePreferences.start();
 keys.init();
 
 // Per-workspace memory of the last-focused tab. When the user switches
@@ -2355,7 +2350,6 @@ browser.runtime.onConnectExternal.addListener((port) => {
         pinnedPanels,
         tabFolders,
         savedPanels,
-        backup,
         send,
         sendAudience,
         syncPrivateWindow,

@@ -146,12 +146,12 @@ pull requests, on the free `ubuntu-24.04` runner only.
 
 `ci.yml` jobs and what they wait for:
 
-| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                          |
-| -------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                      |
-| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`.     |
-| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run rollback:check`. |
-| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.                |
+| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                      |
+| -------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                  |
+| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`. |
+| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`.                        |
+| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.            |
 
 The check name of `source-import` keeps the label it had as a platform matrix
 entry, so a required-status-check rule on it still matches. The first three jobs
@@ -371,8 +371,7 @@ directory can be deleted by hand.
   holds a plain file, so `apply` would fail with "wrong type" after the import has
   already started); series that touch no symlink are unaffected.
 - **Materialized trees are unchanged.** `materialize` and `rebase` still create
-  a real checkout in `.bento/patch-stack-worktree`, and
-  `pnpm native-protocol:check:all` still reads it. The old replay used its own
+  a real checkout in `.bento/patch-stack-worktree`. The old replay used its own
   temporary worktree outside `.bento/`, so nothing that needs a materialized
   tree depended on it.
 - **Hashing.** `bento-build.mjs` hashes with streaming `node:crypto` SHA-256 in
@@ -555,9 +554,7 @@ Guards keep local Mux out of releases:
   `BENTO_BUILD_MODE=release`, or `build.mode: "release"` in `bento.json`, resolved by
   `scripts/build-mode.mjs` like the build driver does (see
   [Dev-only reload command](#dev-only-reload-command)). `shell:*:mux` still work
-  while the mode is `dev`. `scripts/build-rollback-variant.mjs` refuses
-  `MUXUI_LOCAL` in every action;
-  `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
+  while the mode is `dev`. `scripts/build-release.sh` and `scripts/build-bento.sh` exit if it is set.
 - The shell build writes `dist/muxui-source.json`: `{"source":"npm","version":...}`
   or `{"source":"local"}`. Packaging (`bento-build.mjs package`, which backs
   `pnpm run package`, `build:full`, and `build:release`) reads
@@ -581,17 +578,6 @@ Guards keep local Mux out of releases:
   and native build) has refreshed the objdir. An objdir built before this check
   has no stamp and needs `pnpm run build` once. `pnpm run build` never packages and
   is unaffected.
-
-- Rollback variants replace the shell `vite.config.ts` with the archived one in
-  `rollback/legacy-source`, which has no local Mux support and cannot stamp its
-  own build. `scripts/build-rollback-variant.mjs` stages
-  `{"source":"rollback","variant":"<name>"}` into the shell's `public/`, which Vite
-  copies into `dist/`. When `BENTO_RELEASE_VARIANT` is set, packaging accepts only
-  the stamp of that exact variant, and the name must be one of `ROLLBACK_VARIANTS`
-  in `scripts/rollback-variants.mjs`; when it is unset, only `npm`. The
-  `rollback:package-*` actions import the archived shell without a native build, so
-  they package only if the objdir already carries that variant's stamp (a symlinked
-  dev objdir follows the import; otherwise run the variant's `build` action).
 
 ### Publishing a new Mux release
 
@@ -862,14 +848,11 @@ generated theme files, so none of them needs a separate step.
   writes `extensions/bento-shell/src/theme/presets/index.{css,ts}` (Default, the
   legacy token bridge, and the registry) and one tracked sheet per other theme in
   `extensions/bento-shell/public/themes/<id>.css`. Vite copies `public/` into
-  `dist/`, so every shell page can link `./themes/<id>.css` and the archived
-  rollback build resolves the same files. `theme:sync` removes sheets for themes that no longer
+  `dist/`, so every shell page can link `./themes/<id>.css`. `theme:sync` removes sheets for themes that no longer
   exist; commit the result. [`scripts/generate-chrome-tokens.mjs`](../scripts/generate-chrome-tokens.mjs)
   reads the same sheets and writes `bento-chrome-tokens.css` (shared tokens and
   Default) plus `bento-chrome-themes/<id>.css` beside it. Both outputs are
-  gitignored. `--monolithic`, or `BENTO_RELEASE_VARIANT=rollback-final-r2`, folds
-  every theme into the base file because the archived mount script links only that
-  file. [`scripts/sync-builtin-addon-symlinks.sh`](../scripts/sync-builtin-addon-symlinks.sh)
+  gitignored. [`scripts/sync-builtin-addon-symlinks.sh`](../scripts/sync-builtin-addon-symlinks.sh)
   links the `bento-chrome-themes/` directory into the app bundle so a dev build
   sees regenerated sheets without a native rebuild; a new theme file in a packaged
   build comes from the `jar.mn` wildcard in
@@ -898,8 +881,7 @@ generated theme files, so none of them needs a separate step.
   drops rules for the component families listed in `MUX_UNUSED_COMPONENT_CLASSES`
   when the finished bundle never names the family, and fails the build if a
   `muxui-*` class a script names lost every rule. It reads the public
-  `styles.css` only. The archived rollback config registers the WOFF2 plugin and
-  not the prune.
+  `styles.css` only.
 
 ## Built-in add-ons
 
@@ -1001,17 +983,13 @@ step that produces it:
   right after the Mux stamp check and before `mach package`, and fails the
   package if `dev-reload` appears in a file or if no shell add-on is found to
   check. Dev packages are not checked. Every release packaging path goes through
-  it: `pnpm run package`, `build-release.sh` (its `bento-env.sh package` step),
-  and the rollback `package` and `release` actions (see below).
+  it: `pnpm run package` and `build-release.sh` (its `bento-env.sh package` step).
 
 The transform and scans live in `scripts/dev-reload.mjs` and the mode in
 `scripts/build-mode.mjs`; `scripts/dev-reload.test.mjs` (mode, background bundle,
 object-directory scan), `scripts/install-builtin-addons.test.mjs` (installer), and
 `scripts/bento-build.test.mjs` (package refusal over a stale object directory) cover
-them. The rollback variants use the same build script, installer, and package
-command, and their archived `background.ts` carries the same guard;
-`node scripts/build-rollback-variant.mjs <variant> check` builds in release mode
-and fails if the archived bundle still has the handler.
+them.
 
 Firefox caches built-in add-on metadata, including commands, by manifest
 `version`. After a local release import, run `pnpm run import` again for the dev
@@ -1031,17 +1009,6 @@ attribution.
 [patches/series.json](../patches/series.json) is the sole source of Firefox patch
 order. `pnpm run firefox:patches:apply` applies it to the live engine without
 committing. The import wrapper resets prior applications before replaying it.
-
-Native Bento Settings lives in the dedicated
-`patches/core-ui/15-bento-native-preferences.patch`. Its protocol artifacts are
-generated from one canonical JSON contract; run `pnpm native-protocol:check:all`
-against a materialized patch worktree before export. Patch 15 must not absorb
-the large `bento-shell-mount.js` source overlay, and existing chrome-layout
-patches must remain byte-identical when the native patch is updated.
-
-## Settings rollback variants
-
-The consolidated Settings rollback is built from the committed source snapshot in `rollback/legacy-source`; see [settings-consolidation-rollback.md](settings-consolidation-rollback.md). Transition r1 has build/update/release commands, while final r2 has build/package/release commands and deliberately has no automatic-update command. CI runs `pnpm run rollback:check` (ESLint over the archived extension sources plus the read-only `check` action for both variants), so the archive cannot silently stop building against the current dependency graph.
 
 `pnpm dev` launches Bento without opening Browser Toolbox. Set
 `BENTO_JSDEBUGGER=1` when the launch should also start Browser Toolbox; Firefox

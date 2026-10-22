@@ -17,7 +17,7 @@ Bento exposes three selectable privacy levels and one computed state.
 - Custom: detected when live browser settings diverge from every preset. It is
   not selectable.
 
-The native Bento category in Firefox Settings shows the benefits and caveats
+The Settings palette's protection level list shows the benefits and caveats
 for all three selectable levels.
 Onboarding lists each level with its one-line summary and marks Standard as
 Recommended; the user can change the level at once and continue.
@@ -61,11 +61,11 @@ outside the static allowlist. It also hosts `consumeAddPanelGrant`, the
 one-time check behind the Add panel button, which does not read or write
 privacy state.
 
-Native Settings uses the separate tools-owned
-`browser.bentoNativePreferences` bridge. The parent adapter authenticates the
-system-principal Settings document and derives its window/private binding;
-private sessions may change safe profile settings but cannot read or mutate
-backup storage.
+The Settings palette reaches these operations through the tools-owned settings
+domain service. The shell background relays a request from the palette's document
+with a window and privacy binding that chrome derived, not the page; private
+windows may change safe profile settings but cannot read or mutate backup
+storage.
 
 Settings dispatches these protocol actions:
 
