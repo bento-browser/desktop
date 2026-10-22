@@ -2336,7 +2336,9 @@
 
   // `target` is an optional root row id of the Settings palette ('privacy:level',
   // 'setting:panelCornerRadiusPx'): the document opens there, and on its first list for an unknown id.
-  function showSettingsPalette(target) {
+  // `origin` is 'palette' when the command palette opened it (a result or its Open Settings command):
+  // the document then offers a way back to the command palette. Any other opener passes nothing.
+  function showSettingsPalette(target, origin) {
     const host = document.getElementById('bento-settings-palette-host');
     if (!host) {
       console.warn('[bento-shell-mount] showSettingsPalette: host missing');
@@ -2353,7 +2355,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       // The show goes out with the reveal, to a document that is listening.
-      dispatchSettingsPaletteShow(target);
+      dispatchSettingsPaletteShow(target, origin);
       const frame = document.getElementById('bento-settings-palette-frame');
       setTimeout(() => frame?.focus(), 0);
     });
@@ -2373,10 +2375,11 @@
 
   // A command palette result: BENTO_OPEN_SETTING:<id>:<ts>. The id comes from a page's title, so
   // it is checked before it goes on; the Settings document ignores one it does not know.
+  // Only the command palette sends it, so Settings opens with that origin.
   function handleSettingsTargetTitle(title) {
     const rest = title.slice(SETTINGS_TARGET_OPEN_PREFIX.length);
     const id = rest.slice(0, Math.max(rest.lastIndexOf(':'), 0));
-    showSettingsPalette(SETTINGS_TARGET_ID_PATTERN.test(id) ? id : undefined);
+    showSettingsPalette(SETTINGS_TARGET_ID_PATTERN.test(id) ? id : undefined, 'palette');
   }
 
   // Firefox's own search settings, for adding engines Bento does not list. A Settings tab that
@@ -3775,6 +3778,9 @@
   const SETTINGS_TARGET_OPEN_PREFIX = 'BENTO_OPEN_SETTING:';
   const SETTINGS_TARGET_ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
   const SETTINGS_PALETTE_CLOSE_PREFIX = 'BENTO_CLOSE_SETTINGS_PALETTE';
+  // The Settings document's back button at its root, when the command palette opened it: hide
+  // Settings and show the command palette again, which still holds its query.
+  const SETTINGS_BACK_TO_PALETTE_PREFIX = 'BENTO_SETTINGS_BACK_TO_PALETTE';
   const FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_FIREFOX_SEARCH_SETTINGS';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
@@ -9329,8 +9335,9 @@
     'addMessageListener("BentoSettingsPaletteShow", function(msg) {' +
     '  try {' +
     '    var target = msg.data && typeof msg.data.target === "string" ? msg.data.target : null;' +
+    '    var origin = msg.data && msg.data.origin === "palette" ? "palette" : null;' +
     '    content.dispatchEvent(new content.CustomEvent("bento-settings-show", {' +
-    '      detail: JSON.stringify({ target: target })' +
+    '      detail: JSON.stringify({ target: target, origin: origin })' +
     '    }));' +
     '  } catch (e) {}' +
     '});' +
@@ -9572,8 +9579,11 @@
     }
   }
 
-  function dispatchSettingsPaletteShow(target) {
-    return sendSettingsPaletteMessage('BentoSettingsPaletteShow', { target: target || null });
+  function dispatchSettingsPaletteShow(target, origin) {
+    return sendSettingsPaletteMessage('BentoSettingsPaletteShow', {
+      target: target || null,
+      origin: origin === 'palette' ? 'palette' : null,
+    });
   }
 
   // Only a document that was shown has anything to put back, so a hide before the first show is
@@ -17282,8 +17292,9 @@
     const handlePaletteFrameTitle = (title) => {
       if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
-      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) showSettingsPalette('privacy:level');
-      else if (title.startsWith(SETTINGS_OPEN_PREFIX)) showSettingsPalette();
+      else if (title.startsWith(SETTINGS_PRIVACY_OPEN_PREFIX)) {
+        showSettingsPalette('privacy:level', 'palette');
+      } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) showSettingsPalette(undefined, 'palette');
       else if (title.startsWith(SETTINGS_TARGET_OPEN_PREFIX)) handleSettingsTargetTitle(title);
     };
 
@@ -17364,6 +17375,7 @@
         'bento-settings-palette-frame',
         (title) => {
           if (title.startsWith(SETTINGS_PALETTE_CLOSE_PREFIX)) hideSettingsPalette();
+          else if (title.startsWith(SETTINGS_BACK_TO_PALETTE_PREFIX)) showPalette();
           else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
           else if (title.startsWith(FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX)) {
             hideSettingsPalette();
@@ -17569,11 +17581,16 @@
         ) {
           return consume(hideWorkspacePalette);
         }
-        // The Settings document handles its own Esc (a stage back, then close) while it has focus;
-        // this covers focus left in chrome, and an open still waiting for its document.
+        // The Settings document handles its own Esc (clear the search, a stage back, then close)
+        // while its frame has focus. Chrome sees that key first, because the parent process gets
+        // the key events of a remote <browser> before the document does, so consuming it here
+        // would close Settings from every stage. Chrome takes Esc only for an open still waiting
+        // for its document, and when focus is somewhere else in the window.
         if (
           isOverlayOpen('bento-settings-palette-host', isSettingsPaletteVisible, 'settings-palette')
         ) {
+          const inSettingsFrame = e.target?.id === 'bento-settings-palette-frame';
+          if (inSettingsFrame && !overlays.hasPendingOpen('settings-palette')) return;
           return consume(hideSettingsPalette);
         }
         const embeddedImportHost = document.getElementById('bento-embedded-import-host');
