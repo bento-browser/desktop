@@ -1978,3 +1978,69 @@ describe('protocol handler external merge', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('protocol handler settings and privacy actions', () => {
+  function domainContext() {
+    const settingsDomain = {
+      updateSettings: vi.fn().mockResolvedValue({}),
+      reset: vi.fn().mockResolvedValue({}),
+      setProtectionLevel: vi.fn().mockResolvedValue({}),
+      setAdvanced: vi.fn().mockResolvedValue({}),
+      setSearchEngine: vi.fn().mockResolvedValue({}),
+    };
+    // Snapshot reads fail without a browser.privacy API; the handlers must shrug that off.
+    vi.stubGlobal('browser', {});
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ctx = createCloseContext({
+      settingsDomain: settingsDomain as unknown as HandlerContext['settingsDomain'],
+      sourceWindowId: 6,
+    });
+    return { ctx, settingsDomain };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('sends the full shell settings set (welcome, sidebar) through the shared mutation', async () => {
+    const { ctx, settingsDomain } = domainContext();
+    handle({ type: 'settings/update', changes: { welcomeSeen: true, sidebarHidden: true } }, ctx);
+    expect(settingsDomain.updateSettings).toHaveBeenCalledWith({
+      welcomeSeen: true,
+      sidebarHidden: true,
+    });
+  });
+
+  it('runs a reset as a retained operation owned by the shell port', async () => {
+    const { ctx, settingsDomain } = domainContext();
+    handle({ type: 'settings/reset' }, ctx);
+    await vi.waitFor(() => expect(settingsDomain.reset).toHaveBeenCalledTimes(1));
+    const [operationId, caller] = settingsDomain.reset.mock.calls[0]!;
+    expect(operationId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(caller).toMatchObject({ ownerId: 'shell-port', windowId: 6, isPrivate: false });
+  });
+
+  it('applies privacy and search changes through the domain service', async () => {
+    const { ctx, settingsDomain } = domainContext();
+    handle({ type: 'privacy/setProtectionLevel', level: 'hardened' }, ctx);
+    handle({ type: 'privacy/setAdvanced', key: 'drmEnabled', value: false }, ctx);
+    handle({ type: 'privacy/setDefaultSearchEngine', id: 'ddg' }, ctx);
+    expect(settingsDomain.setProtectionLevel).toHaveBeenCalledWith('hardened');
+    expect(settingsDomain.setAdvanced).toHaveBeenCalledWith('drmEnabled', false);
+    expect(settingsDomain.setSearchEngine).toHaveBeenCalledWith('ddg');
+  });
+
+  it('logs a failed mutation instead of throwing', async () => {
+    const { ctx, settingsDomain } = domainContext();
+    settingsDomain.setProtectionLevel.mockRejectedValue(new Error('nope'));
+    expect(() =>
+      handle({ type: 'privacy/setProtectionLevel', level: 'standard' }, ctx),
+    ).not.toThrow();
+    await vi.waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith(
+        '[bento-tools] privacy/setProtectionLevel failed:',
+        expect.any(Error),
+      ),
+    );
+  });
+});

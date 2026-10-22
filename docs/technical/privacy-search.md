@@ -112,6 +112,132 @@ Firefox persists the choice, and once Start browsing sets `welcomeSeen` nothing 
 applied at boot. `settings/reset` applies `ddg` unconditionally and returns
 `welcomeSeen` to false, so a reset profile matches a fresh one.
 
+Settings, privacy, search and backup operations run in one transport-free
+service, `extensions/bento-tools/src/settings-domain/SettingsDomainService.ts`.
+It owns payload validation, the private-window policy, serialization through
+`BentoMutationCoordinator`, the durable operation records
+(`OperationRegistry`, key `bento.nativeOperations.v1`), the graph journal for
+imports and restores (`GraphOperationJournal`, keys `bento.graphOperation.v1`,
+`bento.graphOperation.sources.v1`, `bento.graphPublication.v1`), import
+validation tokens, the revision counter, and the change notices. Three callers
+share it, so a change cannot behave differently by the way it arrived:
+
+- The native observer bridge (`native-preferences/NativePreferencesService.ts`)
+  keeps only its sessions, hello and resume tokens, envelope validation,
+  deadlines, publication and the two operations only it offers
+  (`operation/reconcile`, `request/cancel`). It passes every other operation to
+  `execute` with the session's client instance id as both `clientId` and
+  `ownerId`, and renames the domain's error codes to the generated contract's
+  (`schema_invalid` to `invalid_payload`, `token_invalid` to
+  `validation_token_invalid`, `caller_unbound` to `target_window_unavailable`).
+- The overlay transport (`settings-domain/SettingsClientTransport.ts`) accepts
+  `settings-client/request` messages (`extensions/_shared/settings-client-protocol.ts`)
+  that the shell background relays on the authenticated tools port. The
+  `caller` block (`documentId`, `windowId`, `isPrivate`) is derived in chrome,
+  never by the document; tools only checks that the window exists
+  (`caller_unbound` otherwise). The answer is a `settings/result` posted on that
+  port only, never through the broadcast set. Nothing sends these requests until
+  the Settings overlay and the relay land.
+- The ordinary shell-port handlers (`settings/update`, `settings/reset`,
+  `privacy/setProtectionLevel`, `privacy/setAdvanced`,
+  `privacy/setDefaultSearchEngine`) call the service's typed mutations. A reset
+  from that port gets a registry record owned by `shell-port`.
+
+Two entry points validate settings differently on purpose. The overlay and
+native `settings/update` accept exactly the editable inventory of the contract
+(`validateSettingsChanges`), while the ordinary action keeps the full shell set
+that welcome (`welcomeSeen`) and the sidebar (`sidebarHidden`,
+`sidebarCollapsed`) write. Both call the same `updateSettings`, which takes the
+`settings` slot of the coordinator and writes through `SettingsStore`.
+
+After any privacy, search, reset or settings-applying import, the service
+broadcasts `privacy/changed` (a full `PrivacySettings`) and
+`searchEngines/changed` to every shell document. Settings changes keep their
+existing `settings/changed` broadcast from `SettingsStore`.
+
+Durable operations (`settings/reset`, `backup/importValidated`,
+`backup/restore`, `backup/delete`) follow one lifecycle in `#runOperation`:
+reserve (ownership, kind and payload hash are checked, and a repeat of the same
+operation id replays the retained result), then run the effect once. Sources an
+effect needs, the import validation token and the stored backup, are resolved
+inside the effect, so a replay never reads them. The record ends `succeeded`,
+`partial` (a live effect failed: privacy or search for a reset, an import or a
+recovered import; `components` names the failed ones and `reconcileComponents`
+lists them) or `failed` (every component failed). `components` is final for
+every kind; `phase` is the progress indicator while it runs.
+
+Ownership of a durable operation is the caller's `ownerId`. For the overlay it is
+the parent-process session id, the boot id and the window id, so a reloaded
+Settings document in the same window can read its predecessor's status and
+`snapshot/get` lists the window's running and recently finished operations
+(`pendingOperations`, ten minutes) for it to resume polling. Native-owned
+records (client instance id) are readable through the native transport only.
+Window ids repeat across browser sessions, which is why the boot identity is part
+of the key. `recoveredOperationNotices` lists only records recovery or startup
+settlement closed (`recovered: true`).
+
+Backup operations and `recovery/acknowledgeNotice` are refused to a private
+caller (`private_window_forbidden`), `snapshot/get` omits the backup domain and
+the notices for one, and `operation/status` hides backup records from it. The
+UI hiding of backup actions is presentation only.
+
+Manual verification surface: the native pane (open Settings, change a setting
+and a privacy level, reset, export, import with Replace) until the overlay
+replaces it. The overlay transport has no runtime consumer yet; its behavior is
+covered by `settings-domain/*.test.ts`.
+
+### Settings palette (shell side)
+
+The Settings palette is the shell-side replacement for the native pane (the chrome
+frame, the relay attachment and the entry points come in later phases; until then
+`settings-palette.html` is built and nothing opens it). It is a staged quick pick on
+the public Mux `CommandPalette` parts, and it is split so each piece is testable
+without the browser:
+
+- `extensions/bento-shell/src/components/SettingsPalette/` is presentational. It takes a
+  `SettingsPaletteView` (loading, error or a `SettingsPaletteModel`) and a
+  `SettingsPaletteActions` object and keeps only navigation state: a stack of stages
+  (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
+  search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
+  compares the bounds with `native-preferences-contract.json`), and `rows.ts` turns the
+  model and a stage into rows, each carrying an intent, so what every stage shows is
+  asserted in `rows.test.ts` and the component only renders and dispatches them.
+- `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
+  over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
+  `requestId`, rejects a non-durable request after 15 s, and follows a durable operation
+  (`settings/reset`, `backup/importValidated`, `backup/restore`, `backup/delete`) by its
+  own result and by polling `operation/status`. A status record tools does not know
+  means the request was lost on the way, so the original is sent again under the same
+  operation id (tools replays it). `resume` follows the `pendingOperations` of a
+  `snapshot/get` so a reloaded document finds what a previous one left running.
+- `settingsStore.ts` is the store over that client: `snapshot/get` for every domain on
+  each show, `settings/changed`, `privacy/changed` and `searchEngines/changed` applied
+  as they arrive, one `pending` count per write key, a `notice` for the latest failure
+  and the import preview. The private-window state is read from the snapshot: tools
+  omits the `backup` domain for a private caller, so `isPrivate` is `backup ===
+undefined`, and the palette then shows no backup rows or automatic-backup
+  preferences. Files over 8 Mi characters are refused before sending because the relay
+  actor drops a longer message (`BentoShellBusChild.sys.mjs`).
+- `relayTransport.ts` is the only file that knows how Settings traffic is shaped on the
+  private-window relay (`bento-bus-up` and `bento-bus-down` events carrying JSON
+  strings). It sends `hello` until acknowledged, holds requests until then (for at most
+  the client deadline) and posts each request as a `settings/request` action. The relay
+  defines no Settings kind yet; the shapes are documented at the top of the file and
+  are the one thing to adjust when the relay branch and this one are joined.
+
+Editor stages (a number or a workspace name typed in the search field) behave as
+follows. A valid number applies live after 180 ms without typing (and at once for an
+arrow-key preset), Enter keeps it, Esc and dismissal put back the value the stage
+started with, and an invalid draft is shown with its reason and never sent. They do not
+share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,
+because the field holds the value being typed.
+
+Manual verification (until the overlay is wired, in Ladle:
+`pnpm --filter @bento/shell ladle:serve`, stories under "Settings palette"): each mock
+step renders in dark and light, the keyboard model works (first row focused on open,
+arrows move, Enter runs, Esc goes back one stage and closes from the root), and a
+number edit reverts on Esc.
+
 Native Bento Settings is registered by
 `patches/core-ui/15-bento-native-preferences.patch`. Its config module uses
 Firefox `SettingGroupManager` controls and a generated observer protocol to the
@@ -242,6 +368,29 @@ Use a dev build on a throwaway profile; the tools extension must be running.
    an engine that Firefox ships an icon for means the pipeline failed silently
    (see the pitfalls below).
 
+## Settings Palette Pitfalls
+
+- Mux `CommandPalette.Input` runs its own `onKeyDown` first and skips the list's
+  arrow and Enter handling when the event is default-prevented. The palette uses that
+  for editor stages (arrows step presets, Enter keeps the value) and handles Escape
+  there with `preventDefault` and `stopPropagation`, or the modal's own Escape closes
+  the whole palette instead of going back one stage.
+- The Mux `ListBox` forwards its props to the React Aria list box, whose `autoFocus`
+  takes `'first'`; the DOM attribute type only has a boolean, so it is passed as a plain
+  props object (`FOCUS_FIRST_ROW`). Without it nothing is focused on open, Enter does
+  nothing, and the main palette's Enter-runs-the-first-result workaround would be
+  needed. The list is remounted with `key={stageKey}` on each stage so focus starts on
+  the first row; it does not return to the row a stage was opened from.
+- A replayed durable request that is still running answers with the status record, not
+  the final result. The client reads `state` and keeps polling instead of treating any
+  `ok` result as done (`readDurableOutcome`).
+- Static rows (explanations, the Custom protection level) are `disabled` Mux items, so
+  keyboard navigation skips them; the palette restyles `[data-info]` so they do not
+  look disabled.
+- Mux has no `--muxui-semantic-color-error-N` token (only `-fg`). Danger text uses
+  `--muxui-semantic-action-danger-foreground` and invalid text
+  `--muxui-semantic-feedback-invalid-content`.
+
 ## Privacy Pitfalls
 
 - `SettingsStore` stores only deltas from its defaults (`#persistAndPublish`
@@ -277,6 +426,41 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   global, add it to that list; `scripts/bento-privacy-security.test.mjs` loads
   `api.js` in a scope that has only what the file imports, so a missing one fails
   the icon tests.
+- Do not send the ordinary `settings/update` through the editable-inventory
+  validator: welcome writes `welcomeSeen` and the sidebar controls write
+  `sidebarHidden` and `sidebarCollapsed`, none of which the Settings surface
+  edits. Share `SettingsDomainService.updateSettings`, not the validator.
+- A durable operation resolves nothing before it is reserved. The validation token
+  was once deleted before the reservation (and a stored backup read before it), so
+  a retry with the same operation id, the normal answer to a lost reply, failed
+  with an internal error or `not_found` instead of replaying. Keep ownership, the
+  payload-hash check and the replay lookup ahead of any source lookup.
+- Map failures to the shared catalogue (`SettingsError`). Oversize files and
+  exports, unreadable or invalid files, and bad or spent tokens used to reach the
+  client as `internal_error` because the service matched error text against a
+  list that did not contain them. `conflict` (same operation id, different
+  payload) stays in the catalogue as non-retryable.
+- A live effect that does not stick makes the operation `partial`, never
+  `succeeded`. `executeImport` reports the failed privacy or search components
+  through `onLiveEffectFailures` (it used to fold them into
+  `summary.settingsApplied=false`, and the wrapper still recorded `succeeded`), and
+  the recovery path in `GraphOperationJournal.ts` does the same when it re-applies
+  settings after a restart.
+- Settle what a restart cut off. A reservation is persisted before the effect
+  runs and before the journal exists, so a restart can leave a `reserved` or
+  `running` record of any kind (a reset, a delete, an import that never reached its
+  journal) that nothing would ever finish, and the rollback adapter treats such a
+  record as blocking. `SettingsDomainService` calls
+  `OperationRegistry.settleInterrupted` once startup recovery has run; it fails them
+  as `backend_restarted` and leaves the record a surviving journal still covers
+  to `GraphOperationRecovery`.
+- When recovery can only record a `partial` outcome it must release the journal.
+  The terminal record used to stay, and `GraphOperationJournal.begin` then refused
+  every other import or restore with `graph_reserved`, also after restarts. A
+  terminal journal an earlier build left behind is cleared on the next startup.
+- Window ids are unique only within one browser session. Never key a retained
+  operation on the window id alone; the overlay owner key includes the parent
+  session and boot ids.
 - Do not accept blob URLs other than `blob:system/<uuid>`, and do not widen the
   other schemes to make an icon appear: the experiment runs with the system
   principal, so what it fetches has to stay an explicit list.

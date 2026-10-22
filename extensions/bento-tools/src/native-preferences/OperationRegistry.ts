@@ -4,18 +4,10 @@ const RESULT_RETENTION_MS = 24 * 60 * 60 * 1000;
 const TOMBSTONE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type NativeOperationKind =
-  | 'settings/reset'
-  | 'backup/importValidated'
-  | 'backup/restore'
-  | 'backup/delete';
+  'settings/reset' | 'backup/importValidated' | 'backup/restore' | 'backup/delete';
 
 export type NativeOperationState =
-  | 'reserved'
-  | 'running'
-  | 'partial'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
+  'reserved' | 'running' | 'partial' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface NativeOperationComponent {
   component: string;
@@ -42,6 +34,8 @@ export interface NativeOperationRecord {
   updatedAt: number;
   terminalAt?: number;
   noticeAcknowledged?: boolean;
+  /** Set when startup recovery, not the running operation, settled the record. */
+  recovered?: boolean;
 }
 
 interface StoredOperations {
@@ -69,6 +63,42 @@ function isRecord(value: unknown): value is NativeOperationRecord {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+/**
+ * Final component states of an operation that ran to completion: reported failures as given,
+ * skipped components marked, the rest succeeded.
+ */
+export function finishComponents(
+  components: readonly NativeOperationComponent[],
+  failed: readonly NativeOperationComponent[] = [],
+  skipped: ReadonlySet<string> = new Set(),
+): NativeOperationComponent[] {
+  const failures = new Map(failed.map((entry) => [entry.component, entry]));
+  return components.map((entry) => {
+    const failure = failures.get(entry.component);
+    if (failure) return { ...entry, ...failure };
+    return { ...entry, state: skipped.has(entry.component) ? 'skipped' : 'succeeded' };
+  });
+}
+
+/**
+ * Component states of an operation that stopped on an error: whatever is not known to have
+ * finished (or been skipped) counts as failed. `only` limits that to the named components.
+ */
+export function failComponents(
+  components: readonly NativeOperationComponent[],
+  errorCode: string,
+  retryable: boolean,
+  only?: readonly string[],
+): NativeOperationComponent[] {
+  return components.map((entry) =>
+    entry.state === 'succeeded' ||
+    entry.state === 'skipped' ||
+    (only !== undefined && !only.includes(entry.component))
+      ? entry
+      : { ...entry, state: 'failed', retryable, errorCode },
+  );
 }
 
 export class OperationConflictError extends Error {}
@@ -148,6 +178,54 @@ export class OperationRegistry {
     return clone(record);
   }
 
+  /** Record lookup for tools-internal callers (recovery); no ownership check. */
+  peek(operationId: string): NativeOperationRecord | null {
+    const record = this.#records.get(operationId);
+    return record ? clone(record) : null;
+  }
+
+  /** An owner's records that are still running or finished within `recentMs`. */
+  listOwned(ownerClientInstanceId: string, recentMs: number): NativeOperationRecord[] {
+    const now = this.#now();
+    return Array.from(this.#records.values())
+      .filter(
+        (record) =>
+          record.ownerClientInstanceId === ownerClientInstanceId &&
+          (record.terminalAt === undefined || now - record.terminalAt <= recentMs),
+      )
+      .map(clone);
+  }
+
+  /**
+   * Startup settlement: a record still `reserved` or `running` was cut off by a restart (a
+   * reservation is persisted before the effect starts, so even a graph operation that never
+   * reached its journal is left behind). Fails them as `backend_restarted`, except the one the
+   * graph journal still covers, which `GraphOperationRecovery` settles itself.
+   */
+  async settleInterrupted(coveredOperationId?: string | null): Promise<number> {
+    const now = this.#now();
+    let settled = 0;
+    for (const record of this.#records.values()) {
+      if (
+        record.operationId === coveredOperationId ||
+        (record.state !== 'reserved' && record.state !== 'running')
+      ) {
+        continue;
+      }
+      record.state = 'failed';
+      record.phase = 'terminal';
+      record.errorCode = 'backend_restarted';
+      record.components = failComponents(record.components, 'backend_restarted', true);
+      record.reconcileComponents = [];
+      record.recovered = true;
+      record.updatedAt = now;
+      record.terminalAt ??= now;
+      settled += 1;
+    }
+    if (settled > 0) await this.#persist();
+    return settled;
+  }
+
   async update(
     operationId: string,
     changes: Partial<
@@ -160,6 +238,7 @@ export class OperationRegistry {
         | 'result'
         | 'errorCode'
         | 'noticeAcknowledged'
+        | 'recovered'
       >
     >,
   ): Promise<NativeOperationRecord> {
@@ -194,12 +273,14 @@ export class OperationRegistry {
     return clone(record);
   }
 
+  /** Finished records the owner could not have seen settle: those recovery settled. */
   recoveredNotices(clientInstanceId: string, isPrivate: boolean): NativeOperationRecord[] {
     if (isPrivate) return [];
     return Array.from(this.#records.values())
       .filter(
         (record) =>
           record.ownerClientInstanceId === clientInstanceId &&
+          record.recovered === true &&
           record.terminalAt !== undefined &&
           record.noticeAcknowledged !== true,
       )
