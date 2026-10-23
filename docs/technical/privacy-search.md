@@ -242,9 +242,41 @@ parts, and it is split so each piece is testable without the browser:
   `SettingsPaletteActions` object and keeps only navigation state: a stack of stages
   (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
   search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
-  compares the bounds with `_shared/settings-rules.ts`), and `rows.ts` turns the
+  compares the bounds with `_shared/settings-rules.ts`), `settingsCopy.ts` all page and option
+  copy (below), and `rows.ts` turns the
   model and a stage into rows, each carrying an intent, so what every stage shows is
   asserted in `rows.test.ts` and the component only renders and dispatches them.
+- Page descriptions and option lines. Copy lives only in `settingsCopy.ts`, typed by the
+  catalog's keys (`NUMBER_DESCRIPTIONS`, `ENUM_DESCRIPTIONS`, `ENUM_OPTION_DESCRIPTIONS`,
+  `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text) plus
+  `STAGE_DESCRIPTIONS`, `CONFIRM_DESCRIPTIONS`, `SIZE_ACTION_DESCRIPTIONS`,
+  `BACKUP_ROW_DESCRIPTIONS` and `CUSTOM_PROTECTION_DESCRIPTION`. It is a module of its own so
+  the catalog stays labels, keys and bounds; only `rows.ts` imports it. The protection levels' second
+  line is `summary` from `_shared/privacy-levels.ts` (not copied), and their `detail` is only
+  benefits and caveats. `pageDescription(stage)` in `rows.ts` returns the page text (null on
+  the root and the shortcuts); the component renders it as `CommandPalette.Description` between
+  the nav row and the field row, outside the list so it does not scroll, and the search field
+  and input carry `aria-describedby` to it. An option's `PaletteRow.description` renders as
+  `CommandPalette.ItemDescription`, a flex-wrapped second line under the row. The Mux item
+  parts register no description slot with React Aria and the item forwards no
+  `aria-describedby`, so `describeOptions` (`SettingsPalette.tsx`, a `MutationObserver` on the
+  list) sets each option's `aria-describedby` to its line (and the protection detail) on the
+  rendered element, and `rowAriaLabel` names such a row by its label, note and value only. The root
+  search results drop the advanced rows' lines, and a confirmation's explanation is its page
+  description (its rows are only Cancel and the action). `rows.test.ts` asserts that every
+  stage where a value or option changes has a description and that the listed rows carry
+  lines, and `settingsCopy.test.ts` that the copy covers the catalog exactly and has no em
+  dashes. When a setting's behaviour changes in tools or chrome, change its line in
+  `settingsCopy.ts` in the same change.
+- Field row. `showsFieldRow(stage, listRowCount, query)` (`rows.ts`) keeps the field on the
+  root, in editors, on lists of more than four rows (counted before any filter) and while a
+  filter is typed (a model update can shrink a filtered list to four rows, and its Clear
+  button must not become an invisible tab stop), and drops it on a shorter list (the choices,
+  protection level, a stored backup, size actions, a confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
+  Esc and Backspace for the list (React Aria drives the virtual focus from it), so the field
+  gets `data-hidden` (visually hidden, still in the tab order and read, labelled with the
+  page name) and the input `readOnly`; `onFieldChange` ignores typing there, so a list never
+  filters invisibly.
 - `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
   over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
   `requestId`, rejects a non-durable request after 15 s, and follows a durable operation
@@ -255,8 +287,8 @@ parts, and it is split so each piece is testable without the browser:
   `snapshot/get` so a reloaded document finds what a previous one left running.
 - `settingsStore.ts` is the store over that client: `snapshot/get` for every domain on
   each show, `settings/changed`, `privacy/changed` and `searchEngines/changed` applied
-  as they arrive, one `pending` count per write key, a `notice` for the latest failure
-  and the import preview. The private-window state is read from the snapshot: tools
+  as they arrive, one `pending` count per write key with the on/off a switch write asked
+  for (`pendingTargets`), a `notice` for the latest failure and the import preview. The private-window state is read from the snapshot: tools
   omits the `backup` domain for a private caller, so `isPrivate` is `backup ===
 undefined`, and the palette then shows no backup rows or automatic-backup
   preferences. A backup file is refused before sending (`That file is too large to
@@ -300,7 +332,9 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   `{kind: 'settings-request', request}`; results arrive as `settings-result`, change
   notices as `event`. The background side is `bridge/settingsRelay.ts`.
 - `useShowSignal.ts` listens for chrome's `bento-settings-show` and `bento-settings-hide`
-  events (see overlay-documents.md). A hide bumps `hideToken`, which makes the palette put
+  events (see overlay-documents.md). A show also carries who opened Settings (`origin`
+  'palette' for the command palette): `main.tsx` then gives the palette `onBackToPalette`,
+  and its path starts with "Command palette". A hide bumps `hideToken`, which makes the palette put
   back an unfinished number edit and stop its live-apply timer at once (chrome hides the
   overlay when another overlay opens, on Esc and on an outside click, and the document
   stays loaded; waiting for the next show would let that revert overwrite a value saved
@@ -310,12 +344,30 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
   so the first show is never lost.
 
-Editor stages (a number or a workspace name typed in the search field) behave as
-follows. A valid number applies live after 180 ms without typing (and at once for an
+Editor stages (a number typed in the search field) behave as follows. A valid number applies live after 180 ms without typing (and at once for an
 arrow-key preset), Enter keeps it, Esc and dismissal put back the value the stage
 started with, and an invalid draft is shown with its reason and never sent. They do not
 share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,
 because the field holds the value being typed.
+
+A number whose range is at most `SLIDER_MAX_SPAN` (50) wide is a slider page instead
+(`usesSlider` and `sliderSpecFor`; today Keep alive per workspace, Panel corner radius,
+Panel gap and splitter size, Backups to retain), decided by the range alone in
+`settingsCatalog.ts`. The page renders `RangeSlider`, a native range input (step 1,
+`aria-label` the setting's label, `aria-describedby` the page description, `aria-valuetext` the
+value with its unit) drawn with our own track, fill and thumb, and no search field or list, so no
+hidden input competes for the focus or the keys. The input is focused on open (and again on a
+new show or when the window regains focus); arrows, Page keys, Home and End are the browser's.
+Its `keydown` keeps the value on Enter (`editor.commit`), and Esc, Back, Close and a hide go
+through the same `editor.revert` as the field pages. Slider changes go through
+`EditorSession.slide`, a leading-and-trailing throttle (`LIVE_SLIDE_INTERVAL_MS`, 100 ms): the
+first change is sent at once and the latest follows every interval, so a drag across 36 steps is
+about six `settings/update` writes, and the value written last is always the one shown. Esc after
+a drag drops the waiting write and writes the opening value back once (nothing, if nothing was
+sent). The footer reads "←→ adjust", "Home End min max", "Enter keep", "Esc cancel" with the
+"Live preview" status; the field pages keep their own hints. Tab order: Back, the path, Close,
+the slider. Why native, and how the drawn thumb glides, are in the recorded exception in
+[mux-ui-component-customisations.md](../mux-ui-component-customisations.md).
 
 Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories under
 "Settings palette") each mock step renders in dark and light. In Bento: open Settings
@@ -415,27 +467,77 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 
 - Mux `CommandPalette.Input` runs its own `onKeyDown` first and skips the list's
   arrow and Enter handling when the event is default-prevented. The palette uses that
-  for editor stages (arrows step presets, Enter keeps the value) and handles Escape
-  there with `preventDefault` and `stopPropagation`, or the modal's own Escape closes
-  the whole palette instead of going back one stage.
+  for editor stages (arrows step presets, Enter keeps the value). Escape is not handled
+  there but by a capturing `keydown` listener on the window (`preventDefault` and
+  `stopPropagation`), because the focus can be on Back, a path button, Close or Clear, and
+  the modal's own Escape would close the whole palette instead of going back one stage.
+  Chrome must not consume that key first: see "Esc: chrome sees the key first" in
+  [palettes-and-address-bar.md](palettes-and-address-bar.md#esc-chrome-sees-the-key-first).
+- Tab never left the field because the SearchField gives every button inside it
+  `tabindex="-1"` (React Aria's `excludeFromTabOrder` through its button context), Clear
+  and Close included, and its press-start focuses the input, which also stopped Enter and
+  Space from activating such a button (focus left it before the key-up). In Settings, Back,
+  the path and Close live in a nav row above the field, outside it, and Clear stays in the
+  field. The command palette keeps Clear and Close in its field. Both use `IN_TAB_ORDER`
+  (`components/primitives/inTabOrder.ts`) on the buttons inside the field:
+  `excludeFromTabOrder: false` and an `onPressStart` that keeps the focus on the button for a
+  key press. The tab order is the DOM order: in Settings Back (disabled at the first list), the
+  path buttons, Close, the field, Clear; in the command palette the field, Clear, Close.
+- A switch row shows its state while a write is pending from the target the toggle asked
+  for (`pendingTargets`, kept until the write settles), not from the inverse of the stored
+  value: a `settings/changed` broadcast can update the stored value before the write's reply,
+  and inverting it then flipped the switch back for a moment. A failed write drops the target,
+  so the row returns to the stored value.
+- The On/Off switch inside a row is `aria-hidden` and inert, so the row's accessible name does
+  not include it. `rowAriaLabel` (`rows.ts`) sets the option's `aria-label` to the label and
+  the shown state ("Sleep idle tabs, On"), following the pending target. `textValue` only
+  drives type-ahead.
+- In a number stage a click on a preset keeps the value and leaves the stage
+  (`useStageEditor.keep`); the arrow keys only preview it (Esc puts the starting value back),
+  and Enter in the field commits the typed value.
+- Do not use the Mux `Slider` for these pages: it sits in the `collections` module, so the Settings
+  entry's cold-start JS grew by about 109 KB gzip and every entry that loads the chunk by about
+  16 KB; a lazy import left the 16 KB (one module, one chunk), and a `manualChunks` rule cannot
+  split it. The native range input costs nothing and announces the unit.
+- The drawn thumb and the native thumb must stay on the same travel. The native thumb is the
+  drawn thumb's size and its centre runs from half a thumb to the width less half a thumb; the
+  drawn one is `translateX((100cqw - thumb) * ratio)` from the left edge. Change the size or the
+  travel in one and the hit area parts from what the eye follows. The transition is on only
+  after `data-settled`, or a page that opens on its value would slide in from the default.
+- The drawn thumb must not transition while the handle is dragged: every input step would
+  restart the 120 ms transition, the drawn thumb would trail the native one by tens of pixels in
+  a fast sweep, and a quick re-grab at the drawn thumb could set the value backward. A press that
+  travels past the slop sets `data-dragging` (no transition), so a click on the track still
+  glides.
+- The drawn thumb and fill are direction-aware (`--bento-slider-direction`, `:dir(rtl)`),
+  because Gecko inverts a native range in RTL; a logical start anchor with an always-positive
+  translation moved the drawn thumb the wrong way and out of its hit area.
+- A list opens on a chosen row (the row that opened the page when going back, the current
+  choice of a list of choices) by mounting with that row selected: React Aria focuses the
+  first selected row on mount. `StageList` drops the selection a frame later; leaving it would
+  stop `onAction` from running on press (a toggle-mode list with a selection makes a press a
+  selection change).
+- A path button's click moves the DOM focus to the button and blurs the field, which clears
+  the list's virtual focus; `goToDepth` puts the focus back on the field.
 - Esc is one step (`escapeOutcome` in `stageStack.ts`): it clears a search, else dismisses
   an import preview, else goes back one stage, else closes from the root. An import
   preview is a state of the Backups stage, not a pushed stage, so a plain "pop" left
   Backups for the root and dropped the preview's file; `escapeNavigation.test.ts`
   walks every stack the rows can push and expects one stage per Esc. A new pushed
   stage needs no change there; new in-stage state that Esc should leave first does.
-- The list is a flex column under the dialog's `max-height` (84vh), so a row with
+- The popup is the command palette's size (37.5rem by 30rem, fixed height). The list is a
+  flex column under it, so a row with
   `min-block-size: 0` shrinks instead of letting the list scroll, and the focused
   protection level's detail text (312 px for Standard) is drawn over the rows below it
   (a 256 px row seen in Bento, with the dialog at 482 px). Rows and sections keep
-  `flex-shrink: 0`; the "3 Protection level (short window)" story holds the dialog to
-  30rem to show it.
+  `flex-shrink: 0`, so the list scrolls instead.
 - The Mux `ListBox` forwards its props to the React Aria list box, whose `autoFocus`
   takes `'first'`; the DOM attribute type only has a boolean, so it is passed as a plain
   props object (`FOCUS_FIRST_ROW`). Without it nothing is focused on open, Enter does
   nothing, and the main palette's Enter-runs-the-first-result workaround would be
-  needed. The list is remounted with `key={stageKey}` on each stage so focus starts on
-  the first row; it does not return to the row a stage was opened from.
+  needed. The list is remounted per stage and per show (`StageList`, keyed by the show,
+  the view and `stageKey`), so focus starts on the first row unless the stage names one (see
+  the selection seeding above).
 - A replayed durable request that is still running answers with the status record, not
   the final result. The client reads `state` and keeps polling instead of treating any
   `ok` result as done (`readDurableOutcome`).

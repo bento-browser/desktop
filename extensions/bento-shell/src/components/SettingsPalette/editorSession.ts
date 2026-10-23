@@ -1,5 +1,6 @@
 // The unfinished edit behind an editor stage, kept free of React so its timing is tested with
-// fake timers. A number applies live after a short pause, Enter keeps it, and anything that
+// fake timers. A typed number applies live after a short pause and a slider's at a steady
+// rate, Enter keeps it, and anything that
 // ends the edit any other way (Esc, a new show, the palette being hidden) puts back what the
 // stage started with and stops the pending apply.
 
@@ -12,11 +13,15 @@ import type { SettingsPaletteModel } from './types';
 /** Delay between the last keystroke and the live apply, so typing 24 does not apply 2. */
 export const LIVE_APPLY_DELAY_MS = 180;
 
+/** Shortest gap between two live applies while a slider moves: the first change goes out at
+ * once and the latest one follows, so a drag across the range is a few writes a second, not one
+ * per step. */
+export const LIVE_SLIDE_INTERVAL_MS = 100;
+
 /** What the open editor started with, and the last number it sent (null: nothing yet). */
 type Session =
   | { kind: 'number'; key: NumberSettingKey; entry: number; applied: number | null }
-  | { kind: 'size'; index: number; entry: number[]; applied: number | null }
-  | { kind: 'name'; entry: string };
+  | { kind: 'size'; index: number; entry: number[]; applied: number | null };
 
 export interface EditorSessionDeps {
   /** The latest model, read when a delayed apply fires. */
@@ -31,8 +36,10 @@ export interface EditorSession {
   type(text: string, spec: EditorSpec): void;
   /** Applies a number now. */
   apply(next: number): void;
-  /** Keeps the value (a number, or a name). False when there is no session. */
-  commit(value: number | string): boolean;
+  /** Applies a slider's number: at once if none went out lately, else after the interval. */
+  slide(next: number): void;
+  /** Keeps the value. False when there is no session. */
+  commit(value: number): boolean;
   /** Stops any pending apply and puts back what the session started with. */
   revert(): void;
   /** Stops any pending apply. */
@@ -42,6 +49,7 @@ export interface EditorSession {
 export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   let session: Session | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastSlideAt = -Infinity;
 
   const cancelPending = () => {
     clearTimeout(timer);
@@ -49,7 +57,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   };
 
   const send = (current: Session, next: number) => {
-    if (current.kind === 'name' || current.applied === next) return;
+    if (current.applied === next) return;
     current.applied = next;
     if (current.kind === 'number') {
       void deps.update(numberChange(current.key, next));
@@ -66,6 +74,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   return {
     begin(stage, model) {
       cancelPending();
+      lastSlideAt = -Infinity;
       if (stage.kind === 'number') {
         const entry = model.settings[stage.key];
         session = { kind: 'number', key: stage.key, entry, applied: null };
@@ -76,11 +85,6 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
         session = { kind: 'size', index: stage.index, entry, applied: null };
         return String(entry[stage.index] ?? '');
       }
-      if (stage.kind === 'text') {
-        const entry = model.settings.defaultWorkspaceName;
-        session = { kind: 'name', entry };
-        return entry;
-      }
       session = null;
       return '';
     },
@@ -88,7 +92,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
     type(text, spec) {
       cancelPending();
       const current = session;
-      if (!current || current.kind === 'name') return;
+      if (!current) return;
       const result = parseNumber(text, spec);
       if (!result.ok) return;
       timer = setTimeout(() => send(current, result.value), LIVE_APPLY_DELAY_MS);
@@ -99,18 +103,25 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
       if (session) send(session, next);
     },
 
+    slide(next) {
+      cancelPending();
+      const current = session;
+      if (!current) return;
+      const fire = () => {
+        lastSlideAt = Date.now();
+        send(current, next);
+      };
+      const wait = lastSlideAt + LIVE_SLIDE_INTERVAL_MS - Date.now();
+      if (wait <= 0) fire();
+      else timer = setTimeout(fire, wait);
+    },
+
     commit(value) {
       const current = session;
       if (!current) return false;
       cancelPending();
-      if (current.kind === 'name') {
-        if (typeof value === 'string' && value !== current.entry) {
-          void deps.update({ defaultWorkspaceName: value });
-        }
-      } else if (typeof value === 'number') {
-        const started = current.kind === 'number' ? current.entry : current.entry[current.index];
-        if (current.applied !== null || value !== started) send(current, value);
-      }
+      const started = current.kind === 'number' ? current.entry : current.entry[current.index];
+      if (current.applied !== null || value !== started) send(current, value);
       session = null;
       return true;
     },
@@ -119,7 +130,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
       const current = session;
       cancelPending();
       session = null;
-      if (!current || current.kind === 'name' || current.applied === null) return;
+      if (!current || current.applied === null) return;
       if (current.kind === 'number') {
         void deps.update(numberChange(current.key, current.entry));
       } else {

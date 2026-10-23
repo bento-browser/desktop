@@ -107,7 +107,9 @@ export default tseslint.config(
   {
     files: ['scripts/**/*.mjs', '.agents/**/*.mjs'],
     languageOptions: {
-      globals: globals.node,
+      // WebSocket is a global in Node 22 and later (scripts/check-palette-hover.mjs); the
+      // `globals` package does not list it yet.
+      globals: { ...globals.node, WebSocket: 'readonly' },
     },
     rules: {
       // Explicit 'node:process' style imports of Node globals are allowed.

@@ -14,14 +14,21 @@ import {
   footerFor,
   formatBackupDate,
   isFilterable,
+  pageDescription,
   rootRows,
+  rowAriaLabel,
   rowsForStage,
   searchableRows,
+  showsFieldRow,
+  sliderSpecFor,
   stageLabel,
   statusRows,
   type PaletteRow,
 } from './rows';
-import { PANEL_SIZE_LIMITS } from './settingsCatalog';
+import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
+import { ENUM_SPECS, NUMBER_SPECS, PANEL_SIZE_LIMITS, type EnumKey } from './settingsCatalog';
+import { ENUM_DESCRIPTIONS, ENUM_OPTION_DESCRIPTIONS, NUMBER_DESCRIPTIONS } from './settingsCopy';
+import type { Stage } from './stageStack';
 import type { SettingsPaletteModel } from './types';
 
 const labels = (rows: readonly PaletteRow[]) => rows.map((row) => row.label);
@@ -136,16 +143,27 @@ describe('search', () => {
 
 describe('number stages', () => {
   it('lists presets with Min, Default and Max markers and applies the value', () => {
-    const rows = rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL);
-    expect(rows.map((row) => `${row.label}${row.value ? ` ${row.value}` : ''}`)).toEqual([
-      '0 px Min',
-      '8 px',
-      '12 px Default',
-      '16 px',
-      '24 px',
-      '36 px Max',
+    const rows = rowsForStage({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL);
+    expect(rows.map((row) => `${row.label}${row.note ? ` ${row.note}` : ''}`)).toEqual([
+      '1 min Min',
+      '5 min',
+      '15 min',
+      '30 min Default',
+      '60 min',
+      '120 min',
+      '240 min',
+      '1440 min Max',
     ]);
-    expect(rows[1]!.intent).toEqual({ type: 'applyNumber', value: 8 });
+    expect(rows[1]!.intent).toEqual({ type: 'applyNumber', value: 5 });
+  });
+
+  it('shows no second line under a preset', () => {
+    const rows = rowsForStage({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL);
+    expect(rows.some((row) => row.description !== undefined)).toBe(false);
+  });
+
+  it('lists nothing on a slider page: the slider replaces the presets', () => {
+    expect(rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL)).toEqual([]);
   });
 
   it('has an editor for numbers, panel size entries and nothing else', () => {
@@ -157,8 +175,30 @@ describe('number stages', () => {
       min: PANEL_SIZE_LIMITS.min,
       max: PANEL_SIZE_LIMITS.max,
     });
-    expect(editorSpecFor({ kind: 'text', key: 'defaultWorkspaceName' })).toBeNull();
     expect(editorSpecFor({ kind: 'sizes' })).toBeNull();
+  });
+
+  it('gives a slider to the small-range numbers and to no other stage', () => {
+    for (const key of [
+      'tabSleepKeepAlivePerWorkspace',
+      'panelCornerRadiusPx',
+      'panelSplitterSizePx',
+      'autoBackupMaxCount',
+    ] as const) {
+      expect(sliderSpecFor({ kind: 'number', key }), key).toMatchObject({
+        min: NUMBER_SPECS[key].min,
+        max: NUMBER_SPECS[key].max,
+      });
+    }
+    for (const key of [
+      'tabSleepAfterMinutes',
+      'autoBackupIntervalMinutes',
+      'defaultPanelWidthPx',
+    ] as const) {
+      expect(sliderSpecFor({ kind: 'number', key }), key).toBeNull();
+    }
+    expect(sliderSpecFor({ kind: 'sizeEdit', index: 0 })).toBeNull();
+    expect(sliderSpecFor({ kind: 'sizes' })).toBeNull();
   });
 });
 
@@ -185,7 +225,7 @@ describe('choice stages', () => {
     expect(rows[1]!.detail?.benefits.length).toBeGreaterThan(0);
     expect(rows[1]!.detail?.caveats.length).toBeGreaterThan(0);
     expect(rows[1]!.intent).toEqual({ type: 'setProtection', level: 'enhanced' });
-    expect(rows[3]).toMatchObject({ info: true, value: 'Detected only', intent: { type: 'none' } });
+    expect(rows[3]).toMatchObject({ info: true, note: 'Detected only', intent: { type: 'none' } });
     const custom: SettingsPaletteModel = {
       ...REGULAR_MODEL,
       privacy: { ...REGULAR_MODEL.privacy!, protectionLevel: 'custom' },
@@ -204,7 +244,7 @@ describe('choice stages', () => {
       'Wikipedia (en)',
       'Manage search engines',
     ]);
-    expect(rows[0]).toMatchObject({ radio: 'on', value: 'Current' });
+    expect(rows[0]).toMatchObject({ radio: 'on', note: 'Current' });
     expect(rows[1]!.intent).toEqual({ type: 'setSearch', id: 'google' });
     expect(rows.at(-1)).toMatchObject({
       trail: '↗',
@@ -255,7 +295,7 @@ describe('advanced privacy and shortcuts', () => {
   it('lists the 15 keys in the mock order; two open a choice and the rest toggle', () => {
     const rows = advancedRows(REGULAR_MODEL);
     expect(rows).toHaveLength(15);
-    expect(rows[0]).toMatchObject({ label: 'Local Safe Browsing', value: 'On' });
+    expect(rows[0]).toMatchObject({ label: 'Local Safe Browsing', value: 'On', switchOn: true });
     expect(find(rows, 'advanced:remoteSafeBrowsingEnabled')).toMatchObject({
       value: 'Off',
       intent: { type: 'toggleAdvanced', key: 'remoteSafeBrowsingEnabled', current: false },
@@ -349,14 +389,10 @@ describe('backups', () => {
 describe('confirmations', () => {
   it('asks the reset question with Cancel first and the danger action last', () => {
     const rows = rowsForStage({ kind: 'confirm', action: { kind: 'reset' } }, REGULAR_MODEL);
-    expect(labels(rows)).toEqual([
-      'This restores Bento settings, privacy protection, and search to their defaults.',
-      'Onboarding opens again from Welcome.',
-      'Cancel',
-      'Reset Bento settings',
-    ]);
-    expect(rows[2]!.intent).toEqual({ type: 'back' });
-    expect(rows[3]).toMatchObject({
+    // What the reset does is the page description, so the list holds only the two actions.
+    expect(labels(rows)).toEqual(['Cancel', 'Reset Bento settings']);
+    expect(rows[0]!.intent).toEqual({ type: 'back' });
+    expect(rows[1]).toMatchObject({
       tone: 'danger',
       intent: { type: 'confirm', action: { kind: 'reset' } },
     });
@@ -397,8 +433,12 @@ describe('stage chrome', () => {
   });
 
   it('describes the editor footers as in the mock', () => {
-    expect(footerFor({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL, 6)).toEqual({
-      hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc revert'],
+    expect(footerFor({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL, 6)).toEqual({
+      hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc cancel'],
+      status: 'Live preview',
+    });
+    expect(footerFor({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL, 0)).toEqual({
+      hints: ['←→ adjust', 'Home End min max', 'Enter keep', 'Esc cancel'],
       status: 'Live preview',
     });
     expect(footerFor({ kind: 'sizes' }, REGULAR_MODEL, 6).status).toBe('5 of 64 sizes');
@@ -416,10 +456,266 @@ describe('stage chrome', () => {
     expect(footerFor({ kind: 'backups' }, waiting, 4).hints.at(-1)).toBe('Esc cancel import');
   });
 
+  it('says what Esc does in the state the palette is in', () => {
+    const esc = (stage: Stage, query = '', model = REGULAR_MODEL) =>
+      footerFor(stage, model, 4, query).hints.at(-1);
+    expect(esc({ kind: 'root' })).toBe('Esc close');
+    expect(esc({ kind: 'root' }, 'radius')).toBe('Esc clear');
+    expect(esc({ kind: 'advanced' })).toBe('Esc back');
+    expect(esc({ kind: 'advanced' }, 'web')).toBe('Esc clear');
+    expect(esc({ kind: 'number', key: 'panelCornerRadiusPx' })).toBe('Esc cancel');
+    expect(esc({ kind: 'sizeEdit', index: 0 })).toBe('Esc cancel');
+  });
+
+  it('offers no arrows on the static shortcuts list', () => {
+    expect(footerFor({ kind: 'shortcuts' }, REGULAR_MODEL, 8).hints).toEqual(['Esc back']);
+  });
+
+  it('shows the target state on a switch while its write is in flight', () => {
+    const off = rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelShadowsEnabled');
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    expect(off).toMatchObject({ switchOn: stored, pending: false });
+    const writing: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['panelShadowsEnabled']),
+      pendingTargets: new Map([['panelShadowsEnabled', !stored]]),
+    };
+    const during = rootRows(writing).find((row) => row.id === 'setting:panelShadowsEnabled');
+    expect(during).toMatchObject({ switchOn: !stored, pending: true });
+    // The row keeps the stored On or Off as its text value, and only toggle rows carry a switch.
+    expect(during?.value).toBe(stored ? 'On' : 'Off');
+    expect(
+      rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelCornerRadiusPx'),
+    ).not.toHaveProperty('switchOn');
+  });
+
+  it('keeps showing what the write asked for when the stored value already changed', () => {
+    // A change notice can store the new value before the reply: the switch is not flipped back.
+    const asked = !REGULAR_MODEL.settings.panelShadowsEnabled;
+    const broadcast: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      settings: { ...REGULAR_MODEL.settings, panelShadowsEnabled: asked },
+      pending: new Set(['panelShadowsEnabled']),
+      pendingTargets: new Map([['panelShadowsEnabled', asked]]),
+    };
+    expect(find(rootRows(broadcast), 'setting:panelShadowsEnabled').switchOn).toBe(asked);
+  });
+
+  it('shows the stored state once the write is over, and on a pending key with no target', () => {
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    // A failed write leaves the stored value and no target.
+    expect(find(rootRows(REGULAR_MODEL), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+    const noTarget: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['panelShadowsEnabled']),
+    };
+    expect(find(rootRows(noTarget), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+  });
+
+  it('follows the target of an advanced privacy switch too', () => {
+    const stored = find(advancedRows(REGULAR_MODEL), 'advanced:remoteSafeBrowsingEnabled');
+    const writing: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      pending: new Set(['advanced:remoteSafeBrowsingEnabled']),
+      pendingTargets: new Map([['advanced:remoteSafeBrowsingEnabled', !stored.switchOn]]),
+    };
+    expect(find(advancedRows(writing), 'advanced:remoteSafeBrowsingEnabled').switchOn).toBe(
+      !stored.switchOn,
+    );
+  });
+
+  it('names a switch row with its state, following the state the switch shows', () => {
+    const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
+    const label = (model: SettingsPaletteModel) =>
+      rowAriaLabel(find(rootRows(model), 'setting:panelShadowsEnabled'));
+    expect(label(REGULAR_MODEL)).toBe(`Show panel shadows, ${stored ? 'On' : 'Off'}`);
+    expect(
+      label({
+        ...REGULAR_MODEL,
+        pending: new Set(['panelShadowsEnabled']),
+        pendingTargets: new Map([['panelShadowsEnabled', !stored]]),
+      }),
+    ).toBe(`Show panel shadows, ${stored ? 'Off' : 'On'}`);
+    // Any other row is named by its content.
+    expect(
+      rowAriaLabel(find(rootRows(REGULAR_MODEL), 'setting:panelCornerRadiusPx')),
+    ).toBeUndefined();
+  });
+
   it('shows only a retry while the snapshot is missing', () => {
     expect(statusRows({ kind: 'loading' })).toHaveLength(1);
     const failed = statusRows({ kind: 'error', message: 'No answer' });
     expect(failed.map((row) => row.label)).toEqual(['No answer', 'Try again']);
     expect(failed[1]!.intent).toEqual({ type: 'retry' });
+  });
+});
+
+describe('page descriptions', () => {
+  const stagesWithKeys = (): Stage[] => [
+    ...(Object.keys(NUMBER_SPECS) as (keyof typeof NUMBER_SPECS)[]).map((key): Stage => ({
+      kind: 'number',
+      key,
+    })),
+    ...(Object.keys(ENUM_SPECS) as EnumKey[]).map((key): Stage => ({ kind: 'enum', key })),
+    { kind: 'protection' },
+    { kind: 'search' },
+    { kind: 'sizes' },
+    { kind: 'sizeActions', index: 0 },
+    { kind: 'sizeEdit', index: 0 },
+    { kind: 'advanced' },
+    { kind: 'backups' },
+    { kind: 'backupRow', backupId: 'b1', label: 'L' },
+    { kind: 'confirm', action: { kind: 'reset' } },
+    { kind: 'confirm', action: { kind: 'restore', backupId: 'b1', label: 'L' } },
+    { kind: 'confirm', action: { kind: 'delete', backupId: 'b1', label: 'L' } },
+  ];
+
+  it('describes every stage where a value or option changes', () => {
+    for (const stage of stagesWithKeys()) {
+      const text = pageDescription(stage);
+      expect(text, JSON.stringify(stage)).toBeTruthy();
+    }
+  });
+
+  it('leaves the root and the shortcuts without one', () => {
+    expect(pageDescription({ kind: 'root' })).toBeNull();
+    expect(pageDescription({ kind: 'shortcuts' })).toBeNull();
+  });
+
+  it('takes a number page from its spec and the size editor from the size limits', () => {
+    expect(pageDescription({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })).toBe(
+      NUMBER_DESCRIPTIONS.tabSleepKeepAlivePerWorkspace,
+    );
+    expect(pageDescription({ kind: 'sizeEdit', index: 0 })).toContain(
+      `${PANEL_SIZE_LIMITS.min} to ${PANEL_SIZE_LIMITS.max}`,
+    );
+  });
+
+  it('writes no em dashes anywhere in the copy', () => {
+    const everything = [
+      ...stagesWithKeys().map((stage) => pageDescription(stage)),
+      ...Object.values(ENUM_OPTION_DESCRIPTIONS).flatMap((lines) => Object.values(lines)),
+      ...advancedRows(REGULAR_MODEL).map((row) => row.description),
+      ...rowsForStage({ kind: 'protection' }, REGULAR_MODEL).map((row) => row.description),
+    ];
+    for (const text of everything) expect(text ?? '').not.toContain('\u2014');
+  });
+});
+
+describe('option lines', () => {
+  const lines = (stage: Stage) =>
+    rowsForStage(stage, REGULAR_MODEL).map((row) => [row.label, row.description]);
+
+  it('gives every option of a choice stage a line', () => {
+    for (const key of Object.keys(ENUM_SPECS) as EnumKey[]) {
+      const rows = rowsForStage({ kind: 'enum', key }, REGULAR_MODEL);
+      expect(rows.length, key).toBeGreaterThan(1);
+      for (const row of rows) expect(row.description, `${key} ${row.label}`).toBeTruthy();
+    }
+    expect(lines({ kind: 'enum', key: 'httpsOnlyMode' })).toEqual([
+      ['Off', expect.stringContaining('over HTTP')],
+      ['Always', expect.stringContaining('warns you')],
+    ]);
+  });
+
+  it('puts each protection level summary under its row and the benefits and caveats in the detail', () => {
+    const rows = rowsForStage({ kind: 'protection' }, REGULAR_MODEL);
+    for (const level of ['standard', 'enhanced', 'hardened'] as const) {
+      const row = find(rows, `level:${level}`);
+      expect(row.description).toBe(PRIVACY_LEVEL_DETAILS[level].summary);
+      expect(row.detail).toEqual({
+        benefits: PRIVACY_LEVEL_DETAILS[level].benefits,
+        caveats: PRIVACY_LEVEL_DETAILS[level].caveats,
+      });
+    }
+    expect(find(rows, 'level:custom').description).toContain('cannot be chosen');
+    expect(find(rows, 'level:custom').detail).toBeUndefined();
+  });
+
+  it('describes every advanced privacy row, and keeps the root search results to one line', () => {
+    const rows = advancedRows(REGULAR_MODEL);
+    expect(rows).toHaveLength(15);
+    for (const row of rows) expect(row.description, row.label).toBeTruthy();
+    // The two choices say what their page says.
+    expect(find(rows, 'advanced:httpsOnlyMode').description).toBe(ENUM_DESCRIPTIONS.httpsOnlyMode);
+    const searched = searchableRows(REGULAR_MODEL).filter((row) => row.id.startsWith('advanced:'));
+    expect(searched).toHaveLength(15);
+    expect(searched.every((row) => row.description === undefined)).toBe(true);
+  });
+
+  it('describes the size actions, the backup rows that start something and a stored backup', () => {
+    const actions = rowsForStage({ kind: 'sizeActions', index: 2 }, REGULAR_MODEL);
+    for (const row of actions) expect(row.description, row.label).toBeTruthy();
+    const backups = rowsForStage({ kind: 'backups' }, REGULAR_MODEL);
+    for (const id of ['backup:export', 'backup:import', 'backup:merge']) {
+      expect(find(backups, id).description, id).toBeTruthy();
+    }
+    expect(backups.filter((row) => row.id.startsWith('stored:')).some((r) => r.description)).toBe(
+      false,
+    );
+    const stored = rowsForStage({ kind: 'backupRow', backupId: 'b1', label: 'L' }, REGULAR_MODEL);
+    for (const row of stored) expect(row.description, row.label).toBeTruthy();
+  });
+
+  it('leaves search engines and the sizes list without a second line', () => {
+    for (const stage of [{ kind: 'search' }, { kind: 'sizes' }] as const) {
+      expect(rowsForStage(stage, REGULAR_MODEL).some((row) => row.description)).toBe(false);
+    }
+  });
+
+  it('names a row with a line by its own text, so the line is read as its description', () => {
+    const row = find(
+      rowsForStage({ kind: 'enum', key: 'uiColorMode' }, REGULAR_MODEL),
+      'option:system',
+    );
+    expect(rowAriaLabel(row)).toBe('Follow system, Current');
+    const toggle = find(advancedRows(REGULAR_MODEL), 'advanced:safeBrowsingEnabled');
+    expect(rowAriaLabel(toggle)).toBe('Local Safe Browsing, On');
+    const choice = find(advancedRows(REGULAR_MODEL), 'advanced:httpsOnlyMode');
+    expect(rowAriaLabel(choice)).toBe('HTTPS-only mode, Always');
+  });
+});
+
+describe('field row', () => {
+  const shown = (stage: Stage, model = REGULAR_MODEL) =>
+    showsFieldRow(stage, rowsForStage(stage, model).length);
+
+  it('is dropped on a list of four rows or fewer, decided by the count', () => {
+    for (const stage of [
+      { kind: 'protection' },
+      { kind: 'enum', key: 'uiColorMode' },
+      { kind: 'enum', key: 'sidebarShortcutBehavior' },
+      { kind: 'enum', key: 'webRTCIPHandlingPolicy' },
+      { kind: 'enum', key: 'httpsOnlyMode' },
+      { kind: 'sizeActions', index: 2 },
+      { kind: 'backupRow', backupId: 'b1', label: 'L' },
+      { kind: 'confirm', action: { kind: 'reset' } },
+    ] as const satisfies readonly Stage[]) {
+      expect(rowsForStage(stage, REGULAR_MODEL).length, stage.kind).toBeLessThanOrEqual(4);
+      expect(shown(stage), stage.kind).toBe(false);
+    }
+  });
+
+  it('is kept on the root, in editors and on longer lists', () => {
+    expect(showsFieldRow({ kind: 'root' }, 0)).toBe(true);
+    for (const stage of [
+      { kind: 'number', key: 'panelCornerRadiusPx' },
+      { kind: 'sizeEdit', index: 0 },
+      { kind: 'advanced' },
+      { kind: 'shortcuts' },
+      { kind: 'search' },
+      { kind: 'sizes' },
+    ] as const satisfies readonly Stage[]) {
+      expect(shown(stage), stage.kind).toBe(true);
+    }
+  });
+
+  it('keeps the field while a filter is typed, even when the list shrinks to four rows', () => {
+    // A model update (an engine removed in Firefox settings) can drop the unfiltered count
+    // while the user has filtered: the field and its Clear button must stay in view.
+    const search: Stage = { kind: 'search' };
+    expect(showsFieldRow(search, 4)).toBe(false);
+    expect(showsFieldRow(search, 4, 'goo')).toBe(true);
+    expect(showsFieldRow(search, 4, '')).toBe(false);
   });
 });

@@ -24,8 +24,20 @@ import {
   type EditorSpec,
   type EnumKey,
   type NumberSettingKey,
+  usesSlider,
 } from './settingsCatalog';
-import type { ConfirmAction, Stage } from './stageStack';
+import {
+  ADVANCED_DESCRIPTIONS,
+  BACKUP_ROW_DESCRIPTIONS,
+  CONFIRM_DESCRIPTIONS,
+  CUSTOM_PROTECTION_DESCRIPTION,
+  ENUM_DESCRIPTIONS,
+  ENUM_OPTION_DESCRIPTIONS,
+  NUMBER_DESCRIPTIONS,
+  SIZE_ACTION_DESCRIPTIONS,
+  STAGE_DESCRIPTIONS,
+} from './settingsCopy';
+import { isEditorStage, type ConfirmAction, type Stage } from './stageStack';
 import type { EditableSettings } from './model';
 import type { SelectablePrivacyLevel, SettingsPaletteModel, SettingsPaletteView } from './types';
 
@@ -52,7 +64,6 @@ export type Intent =
   | { type: 'none' };
 
 export interface ProtectionDetail {
-  summary: string;
   benefits: readonly string[];
   caveats: readonly string[];
 }
@@ -63,6 +74,15 @@ export interface PaletteRow {
   label: string;
   /** Current value, right-aligned and muted. */
   value?: string;
+  /** A short remark right after the label: `Current` on a choice, `Min`, `Default` or `Max` on a
+   * preset. */
+  note?: string;
+  /** A switch row: what its switch shows, which is the new state at once while a write is in
+   * flight. The row stays the control; `value` keeps On or Off for the row's text value. */
+  switchOn?: boolean;
+  /** A second line under the label, always visible: what the option does when that differs
+   * between its siblings. Part of the row's accessible description, not its name. */
+  description?: string;
   /** What the row does: `›` opens a stage, `↗` leaves Bento, `+` adds. */
   trail?: '›' | '↗' | '+';
   radio?: 'on' | 'off';
@@ -72,7 +92,8 @@ export interface PaletteRow {
   info?: boolean;
   /** Drawn under a rule, setting the row apart from the ones above. */
   separated?: boolean;
-  /** Shown only while the row is focused (the protection levels' benefits and caveats). */
+  /** Shown only while the row is focused: the protection levels' benefits and caveats, below
+   * the row's `description`. */
   detail?: ProtectionDetail;
   pending?: boolean;
   keywords: readonly string[];
@@ -112,14 +133,34 @@ function settingPending(model: SettingsPaletteModel, key: string): boolean {
 
 const NO_KEYWORDS: readonly string[] = [];
 
+/** What a switch shows: the state its write in flight asked for, else the stored one. The
+ * target is what was asked for, not the opposite of the latest stored value, so a change notice
+ * that stores the new value before the reply does not flip the switch back; a write that
+ * fails drops its target and leaves the stored state. */
+function switchState(stored: boolean, pending: boolean, target: boolean | undefined): boolean {
+  return pending && target !== undefined ? target : stored;
+}
+
+/** What assistive technology reads as a row's name. A switch row names its state, "Sleep idle
+ * tabs, On" (the switch itself is hidden from it), and follows the state the switch shows. A
+ * row with a `description` is named by its own label, note and value, so the description is
+ * read as its description and not twice. Any other row is named by its content. */
+export function rowAriaLabel(row: PaletteRow): string | undefined {
+  if (row.switchOn !== undefined) return `${row.label}, ${onOff(row.switchOn)}`;
+  if (row.description === undefined) return undefined;
+  return [row.label, row.note, row.value].filter(Boolean).join(', ');
+}
+
 function toggleRow(model: SettingsPaletteModel, group: string, key: BooleanSettingKey): PaletteRow {
   const spec = BOOLEAN_SPECS[key];
+  const pending = settingPending(model, key);
   return {
     id: `setting:${key}`,
     group,
     label: spec.label,
     value: onOff(model.settings[key]),
-    pending: settingPending(model, key),
+    switchOn: switchState(model.settings[key], pending, model.pendingTargets.get(key)),
+    pending,
     keywords: spec.keywords,
     intent: { type: 'toggle', key },
   };
@@ -171,6 +212,7 @@ export function advancedRows(
         id: `advanced:${spec.key}`,
         group,
         label: spec.label,
+        description: ADVANCED_DESCRIPTIONS[spec.key],
         value: enumLabel(spec.enumKey, String(value)),
         trail: '›',
         pending,
@@ -182,7 +224,13 @@ export function advancedRows(
       id: `advanced:${spec.key}`,
       group,
       label: spec.label,
+      description: ADVANCED_DESCRIPTIONS[spec.key],
       value: onOff(value === true),
+      switchOn: switchState(
+        value === true,
+        pending,
+        model.pendingTargets.get(`advanced:${spec.key}`),
+      ),
       pending,
       keywords: ['advanced privacy', ...spec.keywords],
       intent: { type: 'toggleAdvanced', key: spec.key, current: value === true },
@@ -223,16 +271,6 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
     toggleRow(model, 'Performance', 'tabSleepEnabled'),
     numberRow(model, 'Performance', 'tabSleepAfterMinutes'),
     numberRow(model, 'Performance', 'tabSleepKeepAlivePerWorkspace'),
-    {
-      id: 'setting:defaultWorkspaceName',
-      group: 'Workspaces',
-      label: 'Default workspace name',
-      value: model.settings.defaultWorkspaceName,
-      trail: '›',
-      pending: settingPending(model, 'defaultWorkspaceName'),
-      keywords: ['workspace', 'name', 'first workspace'],
-      intent: { type: 'push', stage: { kind: 'text', key: 'defaultWorkspaceName' } },
-    },
     enumRow(model, 'Workspaces', 'sidebarShortcutBehavior'),
     numberRow(model, 'Panels', 'defaultPanelWidthPx'),
     toggleRow(model, 'Panels', 'panelCycleWraparound'),
@@ -340,11 +378,11 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
 }
 
 /** Everything the root search can reach: the root rows, the advanced privacy rows and the
- * shortcuts. */
+ * shortcuts. The results stay one line each: the advanced rows lose their description. */
 export function searchableRows(model: SettingsPaletteModel): PaletteRow[] {
   return [
     ...rootRows(model),
-    ...advancedRows(model),
+    ...advancedRows(model).map((row) => ({ ...row, description: undefined })),
     ...shortcutRows().map((row) => ({ ...row, info: false, intent: pushShortcuts })),
   ];
 }
@@ -372,12 +410,20 @@ export function editorSpecFor(stage: Stage): EditorSpec | null {
   return null;
 }
 
+/** The slider a stage shows, or null when it is a field with presets or not an editor. */
+export function sliderSpecFor(stage: Stage): EditorSpec | null {
+  const spec = editorSpecFor(stage);
+  return spec && usesSlider(spec) ? spec : null;
+}
+
+/** A slider page lists nothing: the slider holds the focus and the keys. */
 function numberStageRows(spec: EditorSpec): PaletteRow[] {
+  if (usesSlider(spec)) return [];
   return presetValues(spec).map((value) => ({
     id: `preset:${value}`,
     group: 'Presets',
     label: formatNumber(spec, value),
-    value: presetMarker(spec, value),
+    note: presetMarker(spec, value),
     keywords: NO_KEYWORDS,
     intent: { type: 'applyNumber', value },
   }));
@@ -393,7 +439,8 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
       id: `option:${option.value}`,
       group: ENUM_SPECS[key].label,
       label: option.label,
-      value: option.value === current ? 'Current' : undefined,
+      description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
+      note: option.value === current ? 'Current' : undefined,
       radio: option.value === current ? 'on' : 'off',
       keywords: NO_KEYWORDS,
       intent: intentOf(option.value),
@@ -404,7 +451,8 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
         id: `option:${option.value}`,
         group: ENUM_SPECS[key].label,
         label: option.label,
-        value: option.value === model.settings.uiColorMode ? 'Current' : undefined,
+        description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
+        note: option.value === model.settings.uiColorMode ? 'Current' : undefined,
         radio: option.value === model.settings.uiColorMode ? 'on' : 'off',
         keywords: NO_KEYWORDS,
         intent: { type: 'change', changes: { uiColorMode: option.value } },
@@ -414,7 +462,8 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
         id: `option:${option.value}`,
         group: ENUM_SPECS[key].label,
         label: option.label,
-        value: option.value === model.settings.sidebarShortcutBehavior ? 'Current' : undefined,
+        description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
+        note: option.value === model.settings.sidebarShortcutBehavior ? 'Current' : undefined,
         radio: option.value === model.settings.sidebarShortcutBehavior ? 'on' : 'off',
         keywords: NO_KEYWORDS,
         intent: { type: 'change', changes: { sidebarShortcutBehavior: option.value } },
@@ -442,10 +491,10 @@ function protectionStageRows(model: SettingsPaletteModel): PaletteRow[] {
       id: `level:${level}`,
       group: 'Protection level',
       label: details.label,
-      value: current === level ? 'Current' : undefined,
+      description: details.summary,
+      note: current === level ? 'Current' : undefined,
       radio: current === level ? 'on' : 'off',
       detail: {
-        summary: details.summary,
         benefits: details.benefits,
         caveats: details.caveats,
       },
@@ -457,7 +506,8 @@ function protectionStageRows(model: SettingsPaletteModel): PaletteRow[] {
     id: 'level:custom',
     group: 'Protection level',
     label: 'Custom',
-    value: current === 'custom' ? 'Current' : 'Detected only',
+    description: CUSTOM_PROTECTION_DESCRIPTION,
+    note: current === 'custom' ? 'Current' : 'Detected only',
     radio: current === 'custom' ? 'on' : 'off',
     tone: 'muted',
     info: true,
@@ -473,7 +523,7 @@ function searchStageRows(model: SettingsPaletteModel): PaletteRow[] {
     id: `engine:${engine.id}`,
     group: 'Default search engine',
     label: engine.name,
-    value: engine.id === search?.defaultSearchEngine ? 'Current' : undefined,
+    note: engine.id === search?.defaultSearchEngine ? 'Current' : undefined,
     radio: engine.id === search?.defaultSearchEngine ? 'on' : 'off',
     engine: { name: engine.name },
     keywords: NO_KEYWORDS,
@@ -529,6 +579,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:edit',
       group,
       label: 'Edit size',
+      description: SIZE_ACTION_DESCRIPTIONS.edit,
       value: `${PANEL_SIZE_LIMITS.min} to ${PANEL_SIZE_LIMITS.max}`,
       trail: '›',
       keywords: NO_KEYWORDS,
@@ -540,6 +591,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:up',
       group,
       label: 'Move up',
+      description: SIZE_ACTION_DESCRIPTIONS.move,
       value: `To position ${index}`,
       keywords: NO_KEYWORDS,
       intent: { type: 'moveSize', index, delta: -1 },
@@ -550,6 +602,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:down',
       group,
       label: 'Move down',
+      description: SIZE_ACTION_DESCRIPTIONS.move,
       value: `To position ${index + 2}`,
       keywords: NO_KEYWORDS,
       intent: { type: 'moveSize', index, delta: 1 },
@@ -559,6 +612,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
     id: 'size-action:remove',
     group,
     label: 'Remove',
+    description: SIZE_ACTION_DESCRIPTIONS.remove,
     tone: 'danger',
     keywords: NO_KEYWORDS,
     intent: { type: 'removeSize', index },
@@ -615,6 +669,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:export',
         group,
         label: 'Export Bento data',
+        description: BACKUP_ROW_DESCRIPTIONS.export,
         value: plural(workspaces, 'workspace'),
         pending: model.pending.has('backup'),
         keywords: ['download', 'save', 'file'],
@@ -624,6 +679,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:import',
         group,
         label: 'Import Bento data',
+        description: BACKUP_ROW_DESCRIPTIONS.import,
         value: 'Choose a file',
         keywords: ['upload', 'open', 'file', 'json'],
         intent: { type: 'pickFile' },
@@ -632,6 +688,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:merge',
         group,
         label: 'Merge browser session',
+        description: BACKUP_ROW_DESCRIPTIONS.merge,
         trail: '↗',
         keywords: NO_KEYWORDS,
         intent: { type: 'link', target: 'mergePalette' },
@@ -690,6 +747,7 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       id: 'stored-action:restore',
       group: label,
       label: 'Restore…',
+      description: BACKUP_ROW_DESCRIPTIONS.restore,
       keywords: NO_KEYWORDS,
       intent: {
         type: 'push',
@@ -700,6 +758,7 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       id: 'stored-action:delete',
       group: label,
       label: 'Delete…',
+      description: BACKUP_ROW_DESCRIPTIONS.delete,
       tone: 'danger',
       keywords: NO_KEYWORDS,
       intent: {
@@ -712,7 +771,6 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
 
 export interface ConfirmCopy {
   title: string;
-  lines: readonly string[];
   confirmLabel: string;
   danger: boolean;
 }
@@ -720,44 +778,19 @@ export interface ConfirmCopy {
 export function confirmCopy(action: ConfirmAction): ConfirmCopy {
   switch (action.kind) {
     case 'reset':
-      return {
-        title: 'Reset Bento settings?',
-        lines: [
-          'This restores Bento settings, privacy protection, and search to their defaults.',
-          'Onboarding opens again from Welcome.',
-        ],
-        confirmLabel: 'Reset Bento settings',
-        danger: true,
-      };
+      return { title: 'Reset Bento settings?', confirmLabel: 'Reset Bento settings', danger: true };
     case 'restore':
-      return {
-        title: 'Restore this backup?',
-        lines: ["This adds the backup's workspaces and tabs to the current window."],
-        confirmLabel: 'Restore backup',
-        danger: false,
-      };
+      return { title: 'Restore this backup?', confirmLabel: 'Restore backup', danger: false };
     case 'delete':
-      return {
-        title: 'Delete this backup?',
-        lines: ['This permanently removes the selected stored backup.'],
-        confirmLabel: 'Delete backup',
-        danger: true,
-      };
+      return { title: 'Delete this backup?', confirmLabel: 'Delete backup', danger: true };
   }
 }
 
+/** The actions of a confirmation; what it does is the page description above the list. */
 function confirmStageRows(action: ConfirmAction, busy: boolean): PaletteRow[] {
   const copy = confirmCopy(action);
   const group = copy.title;
   return [
-    ...copy.lines.map((line, index): PaletteRow => ({
-      id: `confirm:line:${index}`,
-      group,
-      label: line,
-      info: true,
-      keywords: NO_KEYWORDS,
-      intent: { type: 'none' },
-    })),
     {
       id: 'confirm:cancel',
       group,
@@ -786,8 +819,6 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
       return numberStageRows(NUMBER_SPECS[stage.key]);
     case 'sizeEdit':
       return numberStageRows(PANEL_SIZE_EDITOR);
-    case 'text':
-      return [];
     case 'enum':
       return enumStageRows(model, stage.key);
     case 'protection':
@@ -814,6 +845,23 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
   }
 }
 
+/** A list this short is read at a glance: its field row is dropped. */
+const MAX_ROWS_WITHOUT_FIELD = 4;
+
+/** Whether the stage shows its field row. The root, an editor (the field holds the value), any
+ * list of more than four rows and any list with a filter typed do; a shorter list keeps the
+ * field only as the keyboard's hidden focus holder. `listRowCount` is the stage's rows before
+ * the filter, so a list that shrinks while a filter is active (a model update) keeps the field
+ * and its Clear button in view until the filter is cleared. */
+export function showsFieldRow(stage: Stage, listRowCount: number, query = ''): boolean {
+  return (
+    stage.kind === 'root' ||
+    isEditorStage(stage) ||
+    listRowCount > MAX_ROWS_WITHOUT_FIELD ||
+    query !== ''
+  );
+}
+
 /** Whether typing in the stage's field narrows its rows. */
 export function isFilterable(stage: Stage): boolean {
   return (
@@ -825,6 +873,24 @@ export function isFilterable(stage: Stage): boolean {
   );
 }
 
+/** What a page is for, shown under the path where a value or option changes; null on the root
+ * and the shortcuts, which change nothing. */
+export function pageDescription(stage: Stage): string | null {
+  switch (stage.kind) {
+    case 'root':
+    case 'shortcuts':
+      return null;
+    case 'number':
+      return NUMBER_DESCRIPTIONS[stage.key];
+    case 'enum':
+      return ENUM_DESCRIPTIONS[stage.key];
+    case 'confirm':
+      return CONFIRM_DESCRIPTIONS[stage.action.kind];
+    default:
+      return STAGE_DESCRIPTIONS[stage.kind];
+  }
+}
+
 export interface FooterCopy {
   /** A standing notice, shown first and in full contrast. */
   note?: string;
@@ -833,58 +899,67 @@ export interface FooterCopy {
   status?: string;
 }
 
-export function footerFor(stage: Stage, model: SettingsPaletteModel, rowCount: number): FooterCopy {
+/** The Esc hint, which says what Esc will do in the state the palette is in. */
+function escHint(stage: Stage, model: SettingsPaletteModel, query: string): string {
+  if (isEditorStage(stage)) return 'Esc cancel';
+  if (query !== '') return 'Esc clear';
+  if (stage.kind === 'backups' && model.importPreview) return 'Esc cancel import';
+  return stage.kind === 'root' ? 'Esc close' : 'Esc back';
+}
+
+/** The footer of a stage. `query` is the text in its field when the field is a filter. */
+export function footerFor(
+  stage: Stage,
+  model: SettingsPaletteModel,
+  rowCount: number,
+  query = '',
+): FooterCopy {
   const move = '↑↓ move';
+  const esc = escHint(stage, model, query);
   switch (stage.kind) {
     case 'root':
       return {
         note: model.isPrivate ? 'Backup management is unavailable in private windows.' : undefined,
-        hints: [move, 'Enter edit or toggle', 'Esc close'],
+        hints: [move, 'Enter open or toggle', esc],
         status: model.isPrivate ? undefined : plural(rowCount, 'setting'),
       };
     case 'number':
     case 'sizeEdit':
       return {
-        hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc revert'],
+        hints: sliderSpecFor(stage)
+          ? ['←→ adjust', 'Home End min max', 'Enter keep', esc]
+          : ['Type a value', '↑↓ presets', 'Enter keep', esc],
         status: 'Live preview',
       };
-    case 'text':
-      return { hints: ['Type a name', 'Enter save', 'Esc cancel'] };
     case 'enum':
     case 'protection':
-      return { hints: [move, 'Enter apply', 'Esc back'] };
+      return { hints: [move, 'Enter apply', esc] };
     case 'search':
-      return { hints: [move, 'Enter apply or open', 'Esc back'] };
+      return { hints: [move, 'Enter apply or open', esc] };
     case 'sizes':
       return {
-        hints: [move, 'Enter row actions', 'Esc back'],
+        hints: [move, 'Enter row actions', esc],
         status: `${model.settings.customPanelSizes.length} of ${PANEL_SIZE_LIMITS.maxItems} sizes`,
       };
     case 'sizeActions':
       return {
-        hints: [move, 'Enter run', 'Esc back'],
+        hints: [move, 'Enter run', esc],
         status: `Size ${stage.index + 1} of ${model.settings.customPanelSizes.length}`,
       };
     case 'advanced':
       return {
-        hints: [move, 'Enter toggle, or open enum', 'Esc back'],
+        hints: [move, 'Enter toggle, or open enum', esc],
         status: plural(rowCount, 'setting'),
       };
     case 'shortcuts':
-      return { hints: [move, 'Esc back'], status: plural(rowCount, 'shortcut') };
+      // The rows are static: nothing moves, so there is no arrow hint.
+      return { hints: [esc], status: plural(rowCount, 'shortcut') };
     case 'backups':
-      // An import preview waits on this stage: Esc dismisses it before it leaves the stage.
-      return {
-        hints: [
-          move,
-          'Enter run or open row',
-          model.importPreview ? 'Esc cancel import' : 'Esc back',
-        ],
-      };
+      return { hints: [move, 'Enter run or open row', esc] };
     case 'backupRow':
-      return { hints: [move, 'Enter run', 'Esc back'] };
+      return { hints: [move, 'Enter run', esc] };
     case 'confirm':
-      return { hints: [move, 'Enter confirm', 'Esc back'] };
+      return { hints: [move, 'Enter confirm', esc] };
   }
 }
 
@@ -895,8 +970,6 @@ export function stageLabel(stage: Stage, model: SettingsPaletteModel): string {
       return 'Settings';
     case 'number':
       return NUMBER_SPECS[stage.key].label;
-    case 'text':
-      return 'Default workspace name';
     case 'enum':
       return ENUM_SPECS[stage.key].label;
     case 'protection':

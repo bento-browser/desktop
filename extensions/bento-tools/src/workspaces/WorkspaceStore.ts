@@ -15,7 +15,8 @@ type Listener = (deltas: WorkspaceDelta[]) => unknown;
 /** Receives the deltas of one private window's temporary workspace. */
 type PrivateListener = (windowId: number, deltas: WorkspaceDelta[]) => void;
 
-const DEFAULT_WORKSPACE_NAME = 'Personal';
+/** The built-in name of the first workspace, and of an import's fallback workspace. */
+export const DEFAULT_WORKSPACE_NAME = 'Personal';
 
 // Per-window active workspace persistence. Rides Firefox SessionStore's
 // extData via browser.sessions.setWindowValue, the same way per-tab

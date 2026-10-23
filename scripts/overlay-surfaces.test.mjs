@@ -496,12 +496,16 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
       }
       clock = target;
     },
-    /** Esc as the chrome window sees it; returns whether Esc was consumed. */
-    pressEscape() {
+    /**
+     * Esc as the chrome window sees it; returns whether Esc was consumed. `targetId` is the id of
+     * the <browser> that has focus (the parent process reports a remote document's keys against it).
+     */
+    pressEscape(targetId) {
       api.attachPaletteEscListener();
       const { handler } = listeners.findLast((entry) => entry.type === 'keydown');
       const event = {
         key: 'Escape',
+        target: targetId === undefined ? null : { id: targetId },
         consumed: false,
         preventDefault() {
           this.consumed = true;
@@ -1010,12 +1014,15 @@ test('a cold Settings palette open waits for its document, then shows and sends 
   world.ready('settings-palette');
   assert.equal(world.isShown('settings-palette'), true);
   assert.deepEqual([...world.events.scrim], ['settings-palette']);
-  assert.deepEqual(world.settingsShows(), [{ target: 'privacy:level' }]);
+  assert.deepEqual(world.settingsShows(), [{ target: 'privacy:level', origin: null }]);
   assert.deepEqual(world.events.navigations, ['settings-palette']);
 
   // Shown again (a link while it is open) sends another show, so the document returns to its start.
   world.showSettingsPalette();
-  assert.deepEqual(world.settingsShows(), [{ target: 'privacy:level' }, { target: null }]);
+  assert.deepEqual(world.settingsShows(), [
+    { target: 'privacy:level', origin: null },
+    { target: null, origin: null },
+  ]);
 });
 
 test('a command palette result opens the Settings palette at its row, and an odd id opens the first list', () => {
@@ -1024,10 +1031,24 @@ test('a command palette result opens the Settings palette at its row, and an odd
   world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:setting:panelCornerRadiusPx:1792650000000');
   world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:bad id with spaces:1792650000001');
   world.handleSettingsTargetTitle('BENTO_OPEN_SETTING:');
+  // A result of the command palette opens Settings with that origin, so the document can offer a way back.
   assert.deepEqual(world.settingsShows(), [
-    { target: 'setting:panelCornerRadiusPx' },
-    { target: null },
-    { target: null },
+    { target: 'setting:panelCornerRadiusPx', origin: 'palette' },
+    { target: null, origin: 'palette' },
+    { target: null, origin: 'palette' },
+  ]);
+});
+
+test('only the command palette gives the Settings palette an origin', () => {
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.showSettingsPalette();
+  world.showSettingsPalette('privacy:level', 'palette');
+  world.showSettingsPalette('privacy:level', 'something else');
+  assert.deepEqual(world.settingsShows(), [
+    { target: null, origin: null },
+    { target: 'privacy:level', origin: 'palette' },
+    { target: 'privacy:level', origin: null },
   ]);
 });
 
@@ -1047,6 +1068,37 @@ test('Esc cancels a cold Settings palette open, and hides a shown one', () => {
   assert.equal(warm.pressEscape(), true);
   warm.advance(1000);
   assert.equal(warm.isShown('settings-palette'), false);
+});
+
+test('Esc in the Settings frame is left to the document, which steps back before it closes', () => {
+  // The parent process sees the keys of a remote <browser> first. Consuming Esc there would close
+  // Settings from every stage, so a shown Settings palette whose frame has focus keeps it.
+  const world = warmWorld();
+  world.ready('settings-palette');
+  world.showSettingsPalette();
+  assert.equal(world.pressEscape('bento-settings-palette-frame'), false);
+  world.advance(1000);
+  assert.equal(world.isShown('settings-palette'), true);
+  assert.deepEqual(world.settingsHides(), []);
+
+  // The stack below it stays shut too: the document alone answers that Esc.
+  world.showPalette();
+  world.showSettingsPalette();
+  assert.equal(world.pressEscape('bento-settings-palette-frame'), false);
+
+  // With focus somewhere else in the window, chrome closes it.
+  assert.equal(world.pressEscape('bento-shell-frame'), true);
+  world.advance(1000);
+  assert.equal(world.isShown('settings-palette'), false);
+});
+
+test('Esc in the Settings frame still cancels an open that waits for the document', () => {
+  const world = makeWorld();
+  world.showSettingsPalette();
+  assert.equal(world.pressEscape('bento-settings-palette-frame'), true);
+  world.ready('settings-palette');
+  world.advance(10_000);
+  assert.equal(world.isShown('settings-palette'), false);
 });
 
 test('hiding the Settings palette tells its document, however it is dismissed', () => {
@@ -1087,7 +1139,7 @@ test('a Hide that waited for the frame does not land after the Show that came la
   world.showSettingsPalette('privacy:level');
   world.advance(2000);
   assert.deepEqual(world.settingsHides(), [], 'the older Hide is dropped, not sent after the Show');
-  assert.deepEqual(world.settingsShows().at(-1), { target: 'privacy:level' });
+  assert.deepEqual(world.settingsShows().at(-1), { target: 'privacy:level', origin: null });
 });
 
 test('a Show that waited for the frame does not land after the Hide that came later', () => {
@@ -1150,10 +1202,13 @@ test('the Settings frame script turns the hide message into the document event',
       dispatchEvent: (event) => events.push({ type: event.type, detail: event.detail }),
     },
   });
-  listeners.get('BentoSettingsPaletteShow')({ data: { target: 'privacy:level' } });
+  listeners.get('BentoSettingsPaletteShow')({ data: { target: 'privacy:level', origin: 'palette' } });
   listeners.get('BentoSettingsPaletteHide')({ data: {} });
   assert.deepEqual(events, [
-    { type: 'bento-settings-show', detail: JSON.stringify({ target: 'privacy:level' }) },
+    {
+      type: 'bento-settings-show',
+      detail: JSON.stringify({ target: 'privacy:level', origin: 'palette' }),
+    },
     { type: 'bento-settings-hide', detail: undefined },
   ]);
 });

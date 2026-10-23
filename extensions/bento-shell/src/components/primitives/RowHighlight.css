@@ -1,0 +1,72 @@
+/* The single highlight of a palette list (useRowHighlight.ts). Mux's unlayered item rules set
+ * the row fills, so the overrides here are unlayered with selectors scoped to the opted-in list. */
+
+.bento-row-highlight {
+  position: relative;
+  isolation: isolate;
+}
+
+/* The slab: a pseudo-element of the scrolling list, so it scrolls with the rows. Its box is
+ * written by the hook. Geometry only changes through transform and height, on the Mux
+ * state pair, the speed of the sidebar's hover highlight; the first placement and a stage change are instant. */
+.bento-row-highlight::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  /* Physical: the hook measures offsetLeft, so the slab anchors at the left edge in RTL too. */
+  left: 0;
+  inline-size: var(--bento-row-highlight-width, 0);
+  block-size: var(--bento-row-highlight-height, 0);
+  transform: translate(var(--bento-row-highlight-x, 0), var(--bento-row-highlight-y, 0));
+  border-radius: var(--muxui-item-radius);
+  background-color: var(--bento-palette-highlight-bg);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bento-row-highlight[data-highlight]::before {
+  opacity: 1;
+}
+
+.bento-row-highlight[data-highlight-motion]::before {
+  transition:
+    transform var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    block-size var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    inline-size var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    background-color var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    opacity var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing);
+}
+
+.bento-row-highlight:has([data-pressed])::before {
+  background-color: var(--bento-palette-highlight-pressed-bg);
+}
+
+/* Section headings sit above the slab too, so it never covers one while it slides past. */
+.bento-row-highlight .muxui-command-palette__section-header {
+  position: relative;
+}
+
+/* Rows sit above the slab and paint no fill of their own: the slab is the fill for the keyboard
+ * row, the hovered row and the pressed row alike. Text keeps Mux's focus colour on the row that
+ * holds the focus. */
+.bento-row-highlight [role='option'] {
+  position: relative;
+}
+
+.bento-row-highlight
+  [role='option']:is([data-focused], [data-hovered], [data-pressed], [data-selected]),
+.bento-row-highlight [role='option'][data-focus-visible] {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-row-highlight[data-highlight-motion]::before {
+    transition: none;
+  }
+}

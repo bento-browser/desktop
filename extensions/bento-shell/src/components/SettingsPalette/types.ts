@@ -28,6 +28,9 @@ export interface SettingsPaletteModel {
   backup: BackupContext | null;
   /** Writes in flight: a setting key, `protection`, `search`, `advanced:<key>`, `reset`, `backup`. */
   pending: ReadonlySet<string>;
+  /** The on or off a switch write asked for, under the same key as `pending`, until the write
+   * ends. A switch shows it while the write runs, whatever a change notice stores meanwhile. */
+  pendingTargets: ReadonlyMap<string, boolean>;
   /** The latest failed write, until the next action. */
   notice: string | null;
   importPreview: ImportPreviewState | null;

@@ -124,11 +124,37 @@
     --bento-command-palette-height: 30rem;
     --bento-command-palette-max-inline: 90vw;
     --bento-command-palette-max-block: 80vh;
-    /* Settings palette: the popup takes its width from its content up to this; its height is
-       the list's, up to the Mux popup limit. Mark: the radio and the search engine tile. */
-    --bento-settings-palette-width: 40rem;
-    --bento-settings-palette-max-inline: 90vw;
+    /* The Settings palette is the command palette's size (above). Mark: the radio and the
+       search engine tile. */
     --bento-settings-palette-mark-size: 1rem;
+    /* The box Mux gives a row's leading mark (.muxui-command-palette__item-icon). A row's
+       description and the protection detail start past it and the row's gap, under the label. */
+    --bento-settings-palette-lead-size: 1.25rem;
+    /* The most one level of the Settings path takes before it ends in an ellipsis. */
+    --bento-settings-palette-path-item-max: 10rem;
+    /* A Settings number input keeps one width whatever is typed: the longest bound in
+       NUMBER_SPECS is four digits, plus half a digit of room for the caret, plus the
+       Mux input's own inline padding (the input is border-box; start is inset-tight, end is
+       the field padding). ch is left unresolved here and resolves against the input's font
+       where this is used. Raise the digits when a bound gets longer. */
+    --bento-settings-palette-number-input-width: calc(
+      4.5ch + var(--muxui-semantic-layout-inset-tight) + var(--muxui-field-padding-inline)
+    );
+    /* The Settings slider page's drawn slider (over a native range input), sized as the Mux Slider is
+       (.muxui-slider-control is 1.25rem tall, its track 0.25rem, and its thumb 1.125rem plus a
+       2px border on each side, with Mux's focus ring 2px and 4px outside the thumb). The
+       drawn thumb and fill move from --bento-slider-ratio, which RangeSlider sets inline. */
+    --bento-settings-palette-range-control-height: 1.25rem;
+    --bento-settings-palette-range-track-height: 0.25rem;
+    --bento-settings-palette-range-thumb-size: 1.375rem;
+    --bento-settings-palette-range-thumb-border: 0.125rem;
+    --bento-settings-palette-range-ring-inner: 0.125rem;
+    --bento-settings-palette-range-ring-outer: 0.25rem;
+    /* The palettes' single row highlight (components/primitives/useRowHighlight.ts): a step
+       stronger than Mux's item focus fill (neutral-14) in both modes, because the semantic
+       neutral steps flip with the colour scheme. Pressed is a little further. */
+    --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-26);
+    --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-30);
     --bento-merge-progress-log-min-height: 8rem;
     --bento-merge-progress-log-max-height: 14rem;
     /* Floating sidebar cards (components/SidebarCards), laid over the bottom of the tab

@@ -11,10 +11,8 @@ describe('settings targets', () => {
       kind: 'enum',
       key: 'uiColorMode',
     });
-    expect(resolveSettingsTarget('setting:defaultWorkspaceName')?.stages.at(-1)).toEqual({
-      kind: 'text',
-      key: 'defaultWorkspaceName',
-    });
+    // A setting this build no longer has is not a target: it opens the first list.
+    expect(resolveSettingsTarget('setting:defaultWorkspaceName')).toBeNull();
   });
 
   it('opens the privacy rows on their lists', () => {

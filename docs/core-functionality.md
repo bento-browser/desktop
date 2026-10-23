@@ -409,14 +409,16 @@ that tab in the main content slot, switching to its workspace first when needed.
 Choosing a panel switches to the panel's workspace, scrolls the panel strip to
 that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
-active states so mouse and keyboard navigation both have visible feedback. Rows
+active states so mouse and keyboard navigation both have visible feedback: one
+highlight slides between rows, and the pointer and the arrow keys move that same
+highlight, so there is never a second one. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an
 icon-only clear affordance. While you type, a Settings group lists the settings
 that match by name (not in the empty palette, and without their values);
 choosing one opens the Settings palette at that setting: on its own list for a
-number, choice, name, search engine, privacy or shortcuts setting, and on the
+number, choice, search engine, privacy or shortcuts setting, and on the
 first list with its name typed in for a switch. A private window's results leave
 out the backup settings.
 
@@ -769,13 +771,49 @@ Privacy command opens it on the protection level list, and a matching setting
 in the command palette's results opens it at that setting. It is a searchable list
 of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
 Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
-current value on each row. Enter flips a switch or opens a short list of
-choices. A number or name opens a value field with preset rows where they help;
-the value applies live while typing (panel corners move as you type), Enter
-keeps it, and Esc puts the previous value back. Esc steps back one list and
-closes the palette from the first one, and opening it again starts at the first
-list. Settings changed in one window appear in the Settings palette of every
-other window.
+current value on each row. Enter flips a switch (the row shows the new state at
+once and returns to the old one if the change cannot be saved) or opens a short
+list of choices, which opens on the current choice. A number with a wide range
+(Sleep tabs after, Backup interval, Default new panel width, a custom size) opens a value
+field with preset rows (Min, Default and Max sit beside the number); the value applies live
+while typing (panel corners move as you type) and while arrowing over the presets, Enter
+keeps it, clicking a preset keeps it and returns to the list, and Back or Esc puts the
+previous value back. A number with a small range (Keep alive per workspace, Panel corner
+radius, Panel gap and splitter size, Backups to retain; at most 50 steps wide) opens a
+slider instead, with the thumb focused: the value and its unit show above the track, and
+"Default N" and the range show under it. Dragging, a click on the track or the arrow keys apply
+the value live (the panel corners follow the thumb, which glides between values on a key press
+or a click on the track and follows the pointer exactly while dragged), Page keys move it by a tenth of the range, Home and End jump to the ends, Enter keeps
+it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
+announces the value with its unit.
+
+Every list where a value or choice changes (each number, the choices,
+protection level, default search engine, custom panel sizes and their actions, Advanced
+privacy, Backups and a stored backup, and each confirmation) opens with a short plain
+description of what the setting does, between the path and the field. It is static text:
+it does not scroll with the list and takes no focus, and a screen reader reads it with the
+field. The first list and the keyboard shortcuts have none. Where the options of a list
+behave differently (the choices, the protection levels, each Advanced privacy row, the
+size actions, the Backups rows and a stored backup's actions) every option carries a
+second, always visible line saying what it does, and the highlighted protection level
+still adds its benefits and caveats in two columns below that. Search engines and number
+presets have no second line. A list of four rows or fewer (the choices, protection level,
+a stored backup, size actions, a confirmation) has no search field: Up and Down move
+through it, Enter picks, and Esc and Back work as before. A confirmation puts what it does in that description, above
+its Cancel and confirm rows.
+
+Settings is the size of the command palette and keeps it on every list. A bar above
+the search field holds Back, the path to the current list (every level before it is
+a button that goes straight there) and Close. Esc, Back and Backspace in an empty
+field all step back one list; Esc first clears a search, and from the first list Esc
+closes the palette, and opening it again starts at the first list. When the command
+palette opened Settings (its Open Settings command or a Settings result), the path
+starts with "Command palette" and Back from the first list returns there, with the
+query it had; from the app menu or onboarding Back is unavailable on the first list.
+Going back lands on the row that opened the list, Tab cycles through Back, the path,
+Close and the field (and Clear while a search is typed), and the footer says what Esc
+does in the current state. A list slides in from the side it was reached from.
+Settings changed in one window appear in the Settings palette of every other window.
 
 The protection level list shows the current level and the benefits and caveats
 of Standard, Enhanced, and Hardened, so users can compare compatibility impact
@@ -792,8 +830,8 @@ not apply it, the palette says so. The first-run onboarding privacy step lists
 each level with a one-line summary and marks Standard as recommended, and its
 search step shows each visible engine's icon and tags privacy-oriented ones as
 Private when Firefox exposes them. The Keyboard shortcuts list is searchable
-and shows each command's title and key tokens, and Settings lets users choose
-whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
+and shows each command's title and key tokens, and the Sidebar collapse type
+setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
 left-edge hover access. Bento bundles uBlock Origin enabled by default and
 leaves it removable/disableable by the user.
 

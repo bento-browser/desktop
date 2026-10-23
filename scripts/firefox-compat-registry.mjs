@@ -86,6 +86,7 @@ const FF = {
   bookmarksSidebarJs: 'browser/components/places/content/bookmarksSidebar.js',
   bookmarksSidebarXhtml: 'browser/components/places/content/bookmarksSidebar.xhtml',
   windowGlobalParent: 'dom/ipc/WindowGlobalParent.cpp',
+  eventStateManager: 'dom/events/EventStateManager.cpp',
   nsGlobalWindowOuter: 'dom/base/nsGlobalWindowOuter.cpp',
   browserMain: 'browser/base/content/browser-main.js',
   browserElementParent: 'toolkit/actors/BrowserElementParent.sys.mjs',
@@ -585,6 +586,15 @@ export const MEMBERS = [
     sites: ['attachWindowCloseHandover', 'handOverTabsBeforeClose'],
     use: 'The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled.',
     at: [FF.browserMain, '^window\\.onclose = WindowIsClosing;', 44],
+  },
+  {
+    id: 'remote <browser> key events reach the parent first',
+    kind: 'source',
+    how: 'listens',
+    probe: 'E',
+    sites: ['attachPaletteEscListener'],
+    use: "The chrome process sees a key event for a remote <browser> before that browser's document does: EventStateManager dispatches it in the parent, with the <browser> element as event.target, and only then forwards it to the child with SendRealKeyEvent. The capture-phase Esc listener relies on this to skip an Esc aimed at the Settings frame (event.target.id) and leave it to the Settings document; if the order changed, it would either miss the frame or consume Esc for every stage.",
+    at: [FF.eventStateManager, 'remote->SendRealKeyEvent\\(\\*keyboardEvent\\)', 2306],
   },
 
   {

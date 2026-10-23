@@ -1,5 +1,5 @@
-// Navigation of the Settings palette: a stack of stages, Esc pops one, and the search field
-// shows the path. Pure so the rules are tested without rendering.
+// Navigation of the Settings palette: a stack of stages, Esc pops one, and the nav row shows
+// the path. Pure so the rules are tested without rendering.
 
 import type { EnumKey, NumberSettingKey } from './settingsCatalog';
 
@@ -11,7 +11,6 @@ export type ConfirmAction =
 export type Stage =
   | { kind: 'root' }
   | { kind: 'number'; key: NumberSettingKey }
-  | { kind: 'text'; key: 'defaultWorkspaceName' }
   | { kind: 'enum'; key: EnumKey }
   | { kind: 'protection' }
   | { kind: 'search' }
@@ -72,14 +71,13 @@ export function escapeOutcome(
 
 /** Stages whose field edits a value instead of filtering a list. */
 export function isEditorStage(stage: Stage): boolean {
-  return stage.kind === 'number' || stage.kind === 'text' || stage.kind === 'sizeEdit';
+  return stage.kind === 'number' || stage.kind === 'sizeEdit';
 }
 
 /** Identity of a stage, used to remount the list when the stage changes. */
 export function stageKey(stage: Stage): string {
   switch (stage.kind) {
     case 'number':
-    case 'text':
     case 'enum':
       return `${stage.kind}:${stage.key}`;
     case 'sizeActions':
@@ -94,21 +92,13 @@ export function stageKey(stage: Stage): string {
   }
 }
 
-export interface Crumbs {
-  /** Labels of the stages between the root and the current one. */
-  trail: string[];
-  /** The current stage's label. */
-  current: string | null;
+/** The stack with only the stages up to and including `index` (the root stays). */
+export function popToIndex(stack: readonly Stage[], index: number): Stage[] {
+  return stack.slice(0, Math.max(1, Math.min(index + 1, stack.length)));
 }
 
-/** The path for the search field: `Settings / <trail> / ` then the current label. */
-export function crumbsFor(stack: readonly Stage[], labelOf: (stage: Stage) => string): Crumbs {
-  const labels = stack.filter((stage) => stage.kind !== 'root').map(labelOf);
-  const current = labels.length > 0 ? labels[labels.length - 1]! : null;
-  return { trail: labels.slice(0, -1), current };
-}
-
-/** `Settings / Custom panel sizes / ` for the given trail. */
-export function crumbPrefix(trail: readonly string[]): string {
-  return ['Settings', ...trail].join(' / ') + ' / ';
+/** The labels of the path to the current stage, root first: `Settings`, then each stage. The
+ * last is the current page; every earlier one is a stage the user can go back to. */
+export function pathLabels(stack: readonly Stage[], labelOf: (stage: Stage) => string): string[] {
+  return stack.map(labelOf);
 }

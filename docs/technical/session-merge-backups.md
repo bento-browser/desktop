@@ -299,7 +299,11 @@ validator re-exported by both shell and tools. Manual imports are limited to
 10 MB before `FileReader` allocation. The shared validator caps collection and
 string sizes, validates the complete panel-layout tree and references, permits
 only supported navigation URL schemes, and rejects unknown or out-of-range
-settings. `SettingsStore` also rejects invalid stored or runtime settings
+settings. A key Bento retired is neither: `dropRetiredSettings` in `export-schema.ts`
+(`RETIRED_SETTING_KEYS`, today `defaultWorkspaceName`) removes it from a backup's
+`settings` before validation (the caller's object is not changed) and from a profile's stored
+overrides when `SettingsStore` loads, so older backups and profiles still load and the rest
+of their settings apply. `SettingsStore` also rejects invalid stored or runtime settings
 patches so import validation cannot be bypassed through another action path.
 Every imported normal, panel, and fallback tab is created explicitly in the
 Settings caller's window. Snapshot collection filters

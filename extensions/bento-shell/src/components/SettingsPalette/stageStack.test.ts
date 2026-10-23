@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  crumbPrefix,
-  crumbsFor,
+  pathLabels,
+  popToIndex,
   initialStack,
   isEditorStage,
   popStage,
@@ -10,6 +10,7 @@ import {
   replaceTop,
   stageKey,
   topStage,
+  ROOT_STAGE,
   type Stage,
 } from './stageStack';
 
@@ -65,7 +66,6 @@ describe('stage stack', () => {
 
   it('knows which stages edit a value in the field', () => {
     expect(isEditorStage({ kind: 'number', key: 'panelCornerRadiusPx' })).toBe(true);
-    expect(isEditorStage({ kind: 'text', key: 'defaultWorkspaceName' })).toBe(true);
     expect(isEditorStage({ kind: 'sizeEdit', index: 0 })).toBe(true);
     expect(isEditorStage({ kind: 'protection' })).toBe(false);
     expect(isEditorStage({ kind: 'root' })).toBe(false);
@@ -82,7 +82,7 @@ describe('stage stack', () => {
   });
 });
 
-describe('path in the field', () => {
+describe('path', () => {
   const label = (stage: Stage) =>
     stage.kind === 'sizeActions'
       ? '640 px'
@@ -90,15 +90,20 @@ describe('path in the field', () => {
         ? 'Custom panel sizes'
         : 'Settings';
 
-  it('has no path at the root', () => {
-    expect(crumbsFor(initialStack(), label)).toEqual({ trail: [], current: null });
+  it('is the root alone at the root', () => {
+    expect(pathLabels(initialStack(), label)).toEqual(['Settings']);
   });
 
-  it('keeps the stages between the root and the current one as the trail', () => {
+  it('lists every stage from the root to the current one', () => {
     const stack = pushStage(pushStage(initialStack(), sizes), actions);
-    const crumbs = crumbsFor(stack, label);
-    expect(crumbs).toEqual({ trail: ['Custom panel sizes'], current: '640 px' });
-    expect(crumbPrefix(crumbs.trail)).toBe('Settings / Custom panel sizes / ');
-    expect(crumbPrefix([])).toBe('Settings / ');
+    expect(pathLabels(stack, label)).toEqual(['Settings', 'Custom panel sizes', '640 px']);
+  });
+
+  it('goes back to any stage on it, and never past the root', () => {
+    const stack = pushStage(pushStage(initialStack(), sizes), actions);
+    expect(popToIndex(stack, 1)).toEqual(stack.slice(0, 2));
+    expect(popToIndex(stack, 0)).toEqual([ROOT_STAGE]);
+    expect(popToIndex(stack, -3)).toEqual([ROOT_STAGE]);
+    expect(popToIndex(stack, 9)).toEqual(stack);
   });
 });
