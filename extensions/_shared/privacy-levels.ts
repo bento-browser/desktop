@@ -94,7 +94,7 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
         'Includes Enhanced protections.',
         'Adds letterboxing and disables WebRTC peer connections.',
         'Disables DRM, disk cache, WebGL/WebGPU, password saving, and form history.',
-        'Sends the Referer header only to the same site.',
+        'Sends the Referer header only when the hostname matches exactly.',
         'Clears cookies, site data, and cache when Bento quits.',
       ],
       caveats: [

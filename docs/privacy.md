@@ -12,7 +12,7 @@ Bento exposes three selectable privacy levels and one computed state.
   disable non-proxied UDP.
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing retained, the Referer header sent only to the same site, and
+  Browsing retained, the Referer header sent only when the hostname matches exactly, and
   cookies, site data and cache cleared when Bento quits (history, downloads and
   form data are kept).
 - Custom: detected when live browser settings diverge from every preset. It is

@@ -737,7 +737,7 @@ behind `about:config`. The selectable protection levels are:
   (your local network address is hidden during calls).
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing retained, the Referer header sent only to the same site, and
+  Browsing retained, the Referer header sent only when the hostname matches exactly, and
   cookies, site data and cache cleared when Bento quits (history, downloads and
   form data are kept).
 

@@ -33,7 +33,17 @@ turning the switch off, Standard and Enhanced write only the master pref `false`
 Hardened also sets `network.http.referer.XOriginPolicy` 2 and
 `dom.security.https_only_mode_send_http_background_request` false; Standard and
 Enhanced write Firefox's defaults (0 and true) so a step down undoes them, and
-detection reads all of them. `browser.safebrowsing.downloads.remote.enabled` is
+detection reads all of them.
+
+The switch and the HTTPS-only choice change several prefs together, so
+`applyAdvancedSetting` writes them with `writePrefsVerified` (read every pref back)
+and `PrivacyMutationService.setAdvanced` takes `snapshotAdvancedPrefs(key)` before
+the write and restores it on any failure. `ShutdownClearingRepair.ts` is the
+one-time startup repair for profiles that turned the switch on under the old
+build: if the master pref is on it writes `SHUTDOWN_CLEAR_PREFS`, then sets the
+`bento.shutdownClearingRepaired` flag in `browser.storage.local`. `background.ts`
+runs it after the stored protection level is applied, so a Standard or Enhanced
+level that turns clearing off is not undone. `browser.safebrowsing.downloads.remote.enabled` is
 allowlisted and exposed as `remoteSafeBrowsingEnabled`, but deliberately stays
 outside every preset map. This keeps remote download reputation independently
 user-controlled: applying or detecting Standard, Enhanced, or Hardened neither
@@ -467,6 +477,22 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   `dom.security.https_only_mode` and `dom.security.https_only_mode_pbm` through
   `bentoPrivacy.setPrefs`; the getter still reports `never`, `private_browsing` or
   `always` from them.
+- A failed change to a pref group must restore the raw values, not replay the old
+  boolean or mode. Rollback by replaying `applyAdvancedSetting(key, true)` wrote
+  the whole shutdown bundle over a user's own v2 item choices (or `always` over a
+  main/private split). `snapshotAdvancedPrefs` captures the effective values first
+  and writes them back; writing a value equal to the default drops the user
+  value, so that also restores "no user value" (checked at runtime).
+- A locked pref (enterprise policy `Preferences` with `Status: locked`) ignores
+  `Services.prefs.set*Pref` without throwing (checked at runtime), so verifying
+  only the master pref reported success while a locked
+  `privacy.clearOnShutdown_v2.browsingHistoryAndDownloads=true` still cleared
+  history. Read back every pref of the group and treat any difference as a failed
+  change.
+- The one-time repair runs after the stored level is applied and sets its flag
+  even when the master pref is off. Running it before the level apply made it read
+  the pre-apply master pref, and not setting the flag would let a later, unrelated
+  turn-on by the user under Firefox's own settings be rewritten at the next boot.
 - A preset that raises a pref above Firefox's default (Hardened's Referer policy
   and HTTPS-only background request) must be matched by the lower presets writing
   the default, or stepping down keeps it and detection still reads the lower
