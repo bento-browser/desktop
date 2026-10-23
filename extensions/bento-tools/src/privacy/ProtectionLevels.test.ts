@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ALLOWED_PRIVACY_PREFS, PRIVACY_PRESETS } from '@shared/privacy-levels';
+import {
+  ALLOWED_PRIVACY_PREFS,
+  PRIVACY_PRESETS,
+  SHUTDOWN_CLEAR_PREFS,
+} from '@shared/privacy-levels';
 import {
   applyAdvancedSetting,
   detectPrivacyLevelFromSnapshot,
@@ -67,6 +71,85 @@ describe('privacy protection levels', () => {
     expect(setPrefs).toHaveBeenCalledWith({
       'browser.safebrowsing.downloads.remote.enabled': true,
     });
+  });
+
+  it('clears only cookies, site data and cache on quit in Hardened', () => {
+    const { prefs } = PRIVACY_PRESETS.hardened;
+    expect(prefs['privacy.sanitize.sanitizeOnShutdown']).toBe(true);
+    expect(prefs['privacy.clearOnShutdown_v2.cookiesAndStorage']).toBe(true);
+    expect(prefs['privacy.clearOnShutdown_v2.cache']).toBe(true);
+    expect(prefs['privacy.clearOnShutdown_v2.browsingHistoryAndDownloads']).toBe(false);
+    expect(prefs['privacy.clearOnShutdown_v2.formdata']).toBe(false);
+    expect(prefs['privacy.clearOnShutdown_v2.siteSettings']).toBe(false);
+    // Without this the first shutdown rewrites the v2 prefs from Firefox's legacy defaults.
+    expect(prefs['privacy.sanitize.clearOnShutdown.hasMigratedToNewPrefs3']).toBe(true);
+    expect(PRIVACY_PRESETS.standard.prefs['privacy.sanitize.sanitizeOnShutdown']).toBe(false);
+    expect(PRIVACY_PRESETS.enhanced.prefs['privacy.sanitize.sanitizeOnShutdown']).toBe(false);
+  });
+
+  it('puts the Hardened-only prefs back to Firefox defaults in Standard and Enhanced', () => {
+    for (const level of ['standard', 'enhanced'] as const) {
+      const { prefs } = PRIVACY_PRESETS[level];
+      expect(prefs['network.http.referer.XOriginPolicy']).toBe(0);
+      expect(prefs['dom.security.https_only_mode_send_http_background_request']).toBe(true);
+    }
+    const { hardened, standard } = PRIVACY_PRESETS;
+    expect(hardened.prefs['network.http.referer.XOriginPolicy']).toBe(2);
+    expect(hardened.prefs['dom.security.https_only_mode_send_http_background_request']).toBe(false);
+    // Detection tells a stepped-up Standard from Standard.
+    expect(
+      detectPrivacyLevelFromSnapshot(standard.browserPrivacy, {
+        ...standard.prefs,
+        'network.http.referer.XOriginPolicy': 2,
+      }),
+    ).toBe('custom');
+    expect(
+      detectPrivacyLevelFromSnapshot(hardened.browserPrivacy, {
+        ...hardened.prefs,
+        'dom.security.https_only_mode_send_http_background_request': true,
+      }),
+    ).toBe('custom');
+  });
+
+  it('turns shutdown clearing on with the whole pref set and off with the master pref', async () => {
+    const setPrefs = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('browser', { bentoPrivacy: { setPrefs } });
+
+    await applyAdvancedSetting('sanitizeOnShutdown', true);
+    expect(setPrefs).toHaveBeenLastCalledWith(SHUTDOWN_CLEAR_PREFS);
+
+    await applyAdvancedSetting('sanitizeOnShutdown', false);
+    expect(setPrefs).toHaveBeenLastCalledWith({ 'privacy.sanitize.sanitizeOnShutdown': false });
+  });
+
+  it('writes the HTTPS-only prefs because browser.privacy cannot set the mode', async () => {
+    const setPrefs = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockResolvedValue(false);
+    vi.stubGlobal('browser', {
+      bentoPrivacy: { setPrefs },
+      privacy: { network: { httpsOnlyMode: { set } } },
+    });
+
+    await applyAdvancedSetting('httpsOnlyMode', 'never');
+    expect(setPrefs).toHaveBeenLastCalledWith({
+      'dom.security.https_only_mode': false,
+      'dom.security.https_only_mode_pbm': false,
+    });
+
+    await applyAdvancedSetting('httpsOnlyMode', 'always');
+    expect(setPrefs).toHaveBeenLastCalledWith({
+      'dom.security.https_only_mode': true,
+      'dom.security.https_only_mode_pbm': true,
+    });
+
+    await applyAdvancedSetting('httpsOnlyMode', 'private_browsing');
+    expect(setPrefs).toHaveBeenLastCalledWith({
+      'dom.security.https_only_mode': false,
+      'dom.security.https_only_mode_pbm': true,
+    });
+
+    await expect(applyAdvancedSetting('httpsOnlyMode', 'sometimes')).rejects.toThrow();
+    expect(set).not.toHaveBeenCalled();
   });
 
   it('keeps all preset prefs in the privileged allowlist', () => {

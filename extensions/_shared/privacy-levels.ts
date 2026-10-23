@@ -56,7 +56,7 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
       summary: 'Strong defaults with HTTPS-only protection and broad site compatibility.',
       bestFor: 'Best for most users and the default for fresh profiles.',
       benefits: [
-        'Strict tracking protection, tracker-cookie partitioning, GPC, query stripping, and uBlock Origin are enabled.',
+        'Strict tracking protection, tracker-cookie partitioning, GPC, and query stripping are enabled.',
         'Search suggestions and speculative network connections are off.',
         'Local Safe Browsing and HTTPS-only protection are enabled.',
         'Remote download reputation is controlled separately and stays off until enabled.',
@@ -76,7 +76,7 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
       benefits: [
         'Includes Standard protections.',
         'Turns on resist fingerprinting.',
-        'Restricts WebRTC IP handling with disable_non_proxied_udp.',
+        'Hides your local network address during calls.',
       ],
       caveats: [
         'HTTP-only sites and local device pages may need manual approval.',
@@ -94,7 +94,8 @@ export const PRIVACY_LEVEL_DETAILS: Record<SelectablePrivacyProtectionLevel, Pri
         'Includes Enhanced protections.',
         'Adds letterboxing and disables WebRTC peer connections.',
         'Disables DRM, disk cache, WebGL/WebGPU, password saving, and form history.',
-        'Clears cookies, offline site data, and cache on shutdown.',
+        'Sends the Referer header only to the same site.',
+        'Clears cookies, site data, and cache when Bento quits.',
       ],
       caveats: [
         'Video calls, WebRTC apps, and DRM streaming sites will break.',
@@ -138,6 +139,35 @@ const BASE_BROWSER_PRIVACY = {
   'services.passwordSavingEnabled': true,
 } satisfies Record<string, BrowserPrivacyValue>;
 
+/**
+ * Cookies, site data and cache cleared on quit, and nothing else. Firefox 158 reads
+ * `privacy.sanitize.sanitizeOnShutdown` plus the `privacy.clearOnShutdown_v2.*` item prefs.
+ * `hasMigratedToNewPrefs3` must be true: until it is, the first shutdown (even with the master pref
+ * off) rewrites the v2 prefs from the legacy `privacy.clearOnShutdown.*` defaults, which also select
+ * history, downloads and form data.
+ */
+export const SHUTDOWN_CLEAR_PREFS = {
+  'privacy.clearOnShutdown_v2.browsingHistoryAndDownloads': false,
+  'privacy.clearOnShutdown_v2.cache': true,
+  'privacy.clearOnShutdown_v2.cookiesAndStorage': true,
+  'privacy.clearOnShutdown_v2.formdata': false,
+  'privacy.clearOnShutdown_v2.siteSettings': false,
+  'privacy.sanitize.clearOnShutdown.hasMigratedToNewPrefs3': true,
+  'privacy.sanitize.sanitizeOnShutdown': true,
+} satisfies PrivacyPrefMap;
+
+/** Both prefs behind `browser.privacy.network.httpsOnlyMode`, which extensions can read but not set. */
+export const HTTPS_ONLY_MODE_PREFS = {
+  always: { 'dom.security.https_only_mode': true, 'dom.security.https_only_mode_pbm': true },
+  private_browsing: {
+    'dom.security.https_only_mode': false,
+    'dom.security.https_only_mode_pbm': true,
+  },
+  never: { 'dom.security.https_only_mode': false, 'dom.security.https_only_mode_pbm': false },
+} satisfies Record<string, PrivacyPrefMap>;
+
+// Standard and Enhanced write Firefox's own defaults for the prefs only Hardened changes, so
+// stepping down undoes Hardened (and detection tells the levels apart).
 const STANDARD_PREFS = {
   'browser.cache.disk.enable': true,
   'browser.formfill.enable': true,
@@ -157,9 +187,11 @@ const STANDARD_PREFS = {
   'browser.urlbar.suggest.searches': false,
   'dom.security.https_only_mode': true,
   'dom.security.https_only_mode_pbm': true,
+  'dom.security.https_only_mode_send_http_background_request': true,
   'dom.webgpu.enabled': true,
   'media.eme.enabled': true,
   'network.dns.disablePrefetch': true,
+  'network.http.referer.XOriginPolicy': 0,
   'network.http.speculative-parallel-limit': 0,
   'network.prefetch-next': false,
   'network.trr.mode': 5,
@@ -167,9 +199,6 @@ const STANDARD_PREFS = {
   'privacy.query_stripping.enabled': true,
   'privacy.query_stripping.enabled.pbmode': true,
   'privacy.resistFingerprinting.letterboxing': false,
-  'privacy.sanitize.clearOnShutdown.cache': false,
-  'privacy.sanitize.clearOnShutdown.cookies': false,
-  'privacy.sanitize.clearOnShutdown.offlineApps': false,
   'privacy.sanitize.sanitizeOnShutdown': false,
   'webgl.disabled': false,
 } satisfies PrivacyPrefMap;
@@ -216,10 +245,7 @@ export const PRIVACY_PRESETS: Record<SelectablePrivacyProtectionLevel, PrivacyPr
       'dom.webgpu.enabled': false,
       'media.eme.enabled': false,
       'privacy.resistFingerprinting.letterboxing': true,
-      'privacy.sanitize.clearOnShutdown.cache': true,
-      'privacy.sanitize.clearOnShutdown.cookies': true,
-      'privacy.sanitize.clearOnShutdown.offlineApps': true,
-      'privacy.sanitize.sanitizeOnShutdown': true,
+      ...SHUTDOWN_CLEAR_PREFS,
       'network.http.referer.XOriginPolicy': 2,
       'webgl.disabled': true,
     },
@@ -239,6 +265,10 @@ export function isSelectablePrivacyLevel(
   value: unknown,
 ): value is SelectablePrivacyProtectionLevel {
   return SELECTABLE_PRIVACY_LEVELS.includes(value as SelectablePrivacyProtectionLevel);
+}
+
+export function isHttpsOnlyMode(value: unknown): value is keyof typeof HTTPS_ONLY_MODE_PREFS {
+  return typeof value === 'string' && Object.hasOwn(HTTPS_ONLY_MODE_PREFS, value);
 }
 
 export function browserPrivacyPathForAdvancedKey(key: PrivacyAdvancedKey): string | undefined {

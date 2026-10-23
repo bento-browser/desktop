@@ -8,8 +8,11 @@ import type {
 } from '@shared/protocol';
 import {
   ALLOWED_PRIVACY_PREFS,
+  HTTPS_ONLY_MODE_PREFS,
   PRIVACY_PRESETS,
+  SHUTDOWN_CLEAR_PREFS,
   browserPrivacyPathForAdvancedKey,
+  isHttpsOnlyMode,
   isSelectablePrivacyLevel,
   prefNameForAdvancedKey,
   type BrowserPrivacyValue,
@@ -76,6 +79,23 @@ export async function applyAdvancedSetting(
     await browser.bentoPrivacy.setPrefs(
       Object.fromEntries(SAFE_BROWSING_PREFS.map((pref) => [pref, value])),
     );
+    return;
+  }
+
+  // Turning it on writes the whole shutdown set; off only clears the master pref, which is
+  // Firefox's off state (the item prefs are inert without it).
+  if (key === 'sanitizeOnShutdown') {
+    if (typeof value !== 'boolean') throw new Error('sanitizeOnShutdown expects a boolean');
+    await browser.bentoPrivacy.setPrefs(
+      value ? SHUTDOWN_CLEAR_PREFS : { 'privacy.sanitize.sanitizeOnShutdown': false },
+    );
+    return;
+  }
+
+  // network.httpsOnlyMode is read-only to extensions (set() returns false), so write the prefs.
+  if (key === 'httpsOnlyMode') {
+    if (!isHttpsOnlyMode(value)) throw new Error(`Unsupported httpsOnlyMode: ${value}`);
+    await browser.bentoPrivacy.setPrefs(HTTPS_ONLY_MODE_PREFS[value]);
     return;
   }
 

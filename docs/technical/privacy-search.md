@@ -19,7 +19,21 @@ differs. Advanced settings dispatch the same path and then emit a fresh
 
 Standard sets both `network.httpsOnlyMode='always'` and Firefox's underlying
 HTTPS-only prefs; Firefox continues to own the HTTP exception interstitial and
-per-site exception UI. `browser.safebrowsing.downloads.remote.enabled` is
+per-site exception UI. The `network.httpsOnlyMode` write is a no-op (the setting
+is read-only to extensions); the prefs are what take effect, and the HTTPS-only
+advanced choice writes the same two prefs (`HTTPS_ONLY_MODE_PREFS`) and reads the
+mode back through the `browser.privacy` getter.
+
+Shutdown clearing is `SHUTDOWN_CLEAR_PREFS` in `privacy-levels.ts`: the master
+`privacy.sanitize.sanitizeOnShutdown`, the `privacy.clearOnShutdown_v2.*` item
+prefs (cookies and storage, cache on; history and downloads, form data, site
+settings off) and `privacy.sanitize.clearOnShutdown.hasMigratedToNewPrefs3`.
+Hardened includes it as a whole and the advanced switch writes it when turned on;
+turning the switch off, Standard and Enhanced write only the master pref `false`.
+Hardened also sets `network.http.referer.XOriginPolicy` 2 and
+`dom.security.https_only_mode_send_http_background_request` false; Standard and
+Enhanced write Firefox's defaults (0 and true) so a step down undoes them, and
+detection reads all of them. `browser.safebrowsing.downloads.remote.enabled` is
 allowlisted and exposed as `remoteSafeBrowsingEnabled`, but deliberately stays
 outside every preset map. This keeps remote download reputation independently
 user-controlled: applying or detecting Standard, Enhanced, or Hardened neither
@@ -431,6 +445,32 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   `SearchService.defaultEngine.id` and `SearchService.appDefaultEngine.id` in the
   Browser Toolbox Console (a seeded profile reports `ddg` and Firefox's own
   `google`).
+- Shutdown clearing needs Firefox 158's prefs, not Bento-named ones. Bento wrote
+  `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}`, which nothing
+  reads, so the switch only set the master pref and a quit cleared history, form
+  history, cookies, site data and cache (measured on a fresh profile; Firefox's
+  default also selects downloads).
+  Firefox clears what `privacy.clearOnShutdown_v2.*` selects (`Sanitizer.items`
+  names with a `true` v2 pref). `Sanitizer.maybeMigratePrefs("clearOnShutdown")` runs
+  on every shutdown, master pref on or off, until
+  `privacy.sanitize.clearOnShutdown.hasMigratedToNewPrefs3` is true, and rewrites
+  the v2 prefs from the legacy `privacy.clearOnShutdown.*` defaults (history and
+  form data on). Writing the v2 prefs without that flag is silently undone at the
+  first quit (measured: history and form history were cleared). The switch, the
+  Hardened preset and the allowlist in `api.js` all use `SHUTDOWN_CLEAR_PREFS`;
+  `scripts/bento-privacy-security.test.mjs` fails when a preset pref is missing
+  from the allowlist.
+- `browser.privacy.network.httpsOnlyMode` is `readOnly`: `set()` resolves `false`
+  without changing a pref and without throwing. Using it for the HTTPS-only
+  choice made Off a read-back mismatch, so `PrivacyMutationService.setAdvanced`
+  reverted and the palette said "Saved, but Firefox did not apply it yet." Write
+  `dom.security.https_only_mode` and `dom.security.https_only_mode_pbm` through
+  `bentoPrivacy.setPrefs`; the getter still reports `never`, `private_browsing` or
+  `always` from them.
+- A preset that raises a pref above Firefox's default (Hardened's Referer policy
+  and HTTPS-only background request) must be matched by the lower presets writing
+  the default, or stepping down keeps it and detection still reads the lower
+  level.
 - Do not add arbitrary prefs to the experiment API. Additions must be explicit
   in both `privacy-levels.ts` and `experiments/bento-privacy/api.js`.
 - Do not auto-apply Standard on every boot. That would overwrite users who
