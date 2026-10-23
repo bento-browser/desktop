@@ -86,6 +86,19 @@
   flex: 0 0 auto;
 }
 
+/* What the page is for, between the path and the field. Static text on the palette's own
+ * surface; it does not scroll with the list. */
+.muxui-command-palette__description.bento-settings-palette__page-description {
+  flex: 0 0 auto;
+  margin: 0;
+  padding-block: var(--muxui-semantic-layout-inset-tight);
+  padding-inline: var(--muxui-semantic-layout-inset-large);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+  color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
+  line-height: var(--muxui-semantic-typography-supporting-line-height);
+}
+
 /* The field row holds the filter or the value being typed, never the path. */
 .bento-settings-palette__unit,
 .bento-settings-palette__bounds {
@@ -252,19 +265,38 @@
   line-height: 1;
 }
 
-/* Protection levels: the focused level shows what it adds and costs under its row. */
-.bento-settings-palette__item[data-detail] {
+/* A row with a description keeps it under its label, always visible: the row wraps, and the
+ * second line takes the full width, indented past the leading mark. Its colour is Mux's own
+ * item description (muted, one step lighter on the focused and hovered row). The row's height
+ * is its content's; the single highlight measures it. */
+.muxui-command-palette__item.bento-settings-palette__item:is([data-described], [data-detail]) {
   flex-wrap: wrap;
+  row-gap: var(--muxui-semantic-layout-micro-gap);
 }
+
+.bento-settings-palette__item .bento-settings-palette__line {
+  flex: 1 0 100%;
+  overflow: visible;
+  white-space: normal;
+}
+
+.bento-settings-palette__item:has(.muxui-command-palette__item-icon) .bento-settings-palette__line {
+  padding-inline-start: calc(
+    var(--bento-settings-palette-lead-size) + var(--muxui-semantic-layout-action-gap)
+  );
+}
+
+/* Protection levels: the focused level shows what it adds and costs under its description,
+ * in two columns. */
 
 .bento-settings-palette__detail {
   display: none;
   box-sizing: border-box;
   min-width: 0;
   flex: 1 0 100%;
-  padding-block-end: var(--muxui-semantic-layout-inset-tight);
+  padding-block: var(--muxui-semantic-layout-inset-tiny) var(--muxui-semantic-layout-inset-tight);
   padding-inline-start: calc(
-    var(--bento-settings-palette-mark-size) + var(--muxui-semantic-layout-action-gap)
+    var(--bento-settings-palette-lead-size) + var(--muxui-semantic-layout-action-gap)
   );
   color: var(--muxui-semantic-color-neutral-70);
   font-size: var(--muxui-semantic-typography-small-size);
@@ -272,7 +304,9 @@
 }
 
 .bento-settings-palette__item[data-focused] .bento-settings-palette__detail {
-  display: block;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--muxui-semantic-layout-inset-large);
 }
 
 .bento-settings-palette__detail :is(p, ul) {

@@ -180,7 +180,8 @@ export interface BentoSettings {
   tabSleepAfterMinutes: number;
   /** Last-N most-recently-active tabs per workspace that stay warm. */
   tabSleepKeepAlivePerWorkspace: number;
-  /** Name used when creating the first workspace on a fresh profile. */
+  /** Name of the first workspace on a fresh profile, and of a workspace Bento adds for an import
+   * that has none or leaves one unnamed. Existing workspaces are never renamed. */
   defaultWorkspaceName: string;
   /** Cmd+K command palette enabled (M2 future feature). */
   commandPaletteEnabled: boolean;

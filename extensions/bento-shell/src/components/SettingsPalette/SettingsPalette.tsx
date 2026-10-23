@@ -16,6 +16,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -43,6 +44,7 @@ import {
   filterRows,
   footerFor,
   isFilterable,
+  pageDescription,
   rootRows,
   rowAriaLabel,
   rowsForStage,
@@ -98,13 +100,27 @@ const TRAIL_ICONS = {
 /** The stages whose rows are headed by their group (the others are one plain list). */
 function showsGroupHeaders(stage: Stage, searching: boolean): boolean {
   if (searching) return true;
-  return (
-    stage.kind === 'root' ||
-    stage.kind === 'number' ||
-    stage.kind === 'sizeEdit' ||
-    stage.kind === 'backups' ||
-    stage.kind === 'confirm'
-  );
+  return stage.kind === 'root' || stage.kind === 'backups' || stage.kind === 'confirm';
+}
+
+/** Links every option of the list to its own description line (and the protection detail), as
+ * its `aria-describedby`. React Aria forwards no `aria-describedby` from an item and its
+ * description slot is not registered by Mux's plain item parts, so the link is made on the
+ * elements the list renders, now and whenever it renders again. Returns the stop function. */
+function describeOptions(list: HTMLElement): () => void {
+  const link = () => {
+    for (const option of list.querySelectorAll<HTMLElement>('[role="option"]')) {
+      const ids = Array.from(
+        option.querySelectorAll('.bento-settings-palette__line, .bento-settings-palette__detail'),
+        (part) => part.id,
+      ).filter(Boolean);
+      if (ids.length > 0) option.setAttribute('aria-describedby', ids.join(' '));
+    }
+  };
+  const observer = new MutationObserver(link);
+  observer.observe(list, { childList: true, subtree: true });
+  link();
+  return () => observer.disconnect();
 }
 
 interface RowGroup {
@@ -162,6 +178,15 @@ function StageList({
   children: ReactNode;
 }) {
   const [seeded, setSeeded] = useState(focusRow !== null);
+  const stopDescribing = useRef<() => void>(undefined);
+  const listRef = useCallback(
+    (list: HTMLElement | null) => {
+      highlightRef(list);
+      stopDescribing.current?.();
+      stopDescribing.current = list ? describeOptions(list) : undefined;
+    },
+    [highlightRef],
+  );
   useEffect(() => {
     if (!seeded) return;
     // After the frame in which the list has its rows and has taken its focus.
@@ -172,7 +197,7 @@ function StageList({
     seeded && focusRow !== null ? { selectionMode: 'single', selectedKeys: [focusRow] } : {};
   return (
     <Palette.ListBox
-      ref={highlightRef}
+      ref={listRef}
       aria-label={label}
       className={`bento-settings-palette__listbox ${ROW_HIGHLIGHT_CLASS}`}
       data-travel={travel ?? undefined}
@@ -218,6 +243,7 @@ export default function SettingsPalette({
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const idBase = useId();
   const editing = isEditorStage(stage);
   const spec = editorSpecFor(stage);
   // An editor stage keeps no focus of its own: its highlight marks the preset that matches the value.
@@ -545,6 +571,11 @@ export default function SettingsPalette({
     ? null
     : (returnTo ?? rows.find((row) => row.radio === 'on' && !row.info)?.id ?? null);
 
+  const description = pageDescription(stage);
+  const descriptionId = `${idBase}-page`;
+  const lineId = (row: PaletteRow) => `${idBase}-${row.id}-line`;
+  const detailId = (row: PaletteRow) => `${idBase}-${row.id}-detail`;
+
   const renderRow = (row: PaletteRow) => (
     <Palette.Item
       key={row.id}
@@ -560,6 +591,7 @@ export default function SettingsPalette({
       data-switch={row.switchOn !== undefined ? '' : undefined}
       data-separated={row.separated ? '' : undefined}
       data-detail={row.detail ? '' : undefined}
+      data-described={row.description ? '' : undefined}
       data-current={
         spec && row.intent.type === 'applyNumber' && row.intent.value === editor.value
           ? ''
@@ -610,21 +642,29 @@ export default function SettingsPalette({
           <BentoIcon icon={TRAIL_ICONS[row.trail]} size="xs" />
         </span>
       ) : null}
+      {row.description ? (
+        <Palette.ItemDescription id={lineId(row)} className="bento-settings-palette__line">
+          {row.description}
+        </Palette.ItemDescription>
+      ) : null}
       {row.detail ? (
-        <div className="bento-settings-palette__detail">
-          <p>{row.detail.summary}</p>
-          <p className="bento-settings-palette__detail-heading">Benefits</p>
-          <ul data-kind="benefits">
-            {row.detail.benefits.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          <p className="bento-settings-palette__detail-heading">Caveats</p>
-          <ul data-kind="caveats">
-            {row.detail.caveats.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+        <div id={detailId(row)} className="bento-settings-palette__detail">
+          <div>
+            <p className="bento-settings-palette__detail-heading">Benefits</p>
+            <ul data-kind="benefits">
+              {row.detail.benefits.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="bento-settings-palette__detail-heading">Caveats</p>
+            <ul data-kind="caveats">
+              {row.detail.caveats.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
     </Palette.Item>
@@ -702,7 +742,20 @@ export default function SettingsPalette({
                 className="bento-settings-palette__close"
               />
             </div>
-            <Palette.SearchField className="bento-settings-palette__field" aria-label={fieldLabel}>
+            {description ? (
+              // Static text, not focusable and not in the tab order; the field is described by it.
+              <Palette.Description
+                id={descriptionId}
+                className="bento-settings-palette__page-description"
+              >
+                {description}
+              </Palette.Description>
+            ) : null}
+            <Palette.SearchField
+              className="bento-settings-palette__field"
+              aria-label={fieldLabel}
+              aria-describedby={description ? descriptionId : undefined}
+            >
               <Palette.Input
                 ref={inputRef}
                 className="bento-settings-palette__input"
@@ -711,6 +764,7 @@ export default function SettingsPalette({
                 onChange={onFieldChange}
                 onKeyDown={handleKeyDown}
                 aria-label={fieldLabel}
+                aria-describedby={description ? descriptionId : undefined}
                 aria-invalid={editing && editor.problem ? true : undefined}
                 inputMode={spec ? 'numeric' : undefined}
                 data-editing={editing ? '' : undefined}

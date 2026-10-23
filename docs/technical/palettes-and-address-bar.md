@@ -77,7 +77,10 @@ into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLe
 popup's enter transform does not skew it. Pointer hover moves that same focus through React
 Aria's `shouldFocusOnHover` (passed as a props object, `FOCUS_ON_HOVER`), so the pointer
 and the keyboard never show two highlights. Its colour is `--bento-palette-highlight-bg`
-(two steps above Mux's item focus fill, both modes).
+(two steps above Mux's item focus fill, both modes). The slab takes its height from the row
+(`offsetHeight`), so rows of different heights need nothing more: the Settings palette's
+two-line option rows and the focused protection level, which grows by its benefits and
+caveats, make the slab change size as it moves, on the same `interaction` pair.
 
 Pitfalls:
 

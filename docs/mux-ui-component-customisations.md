@@ -192,8 +192,17 @@ is the control, and the row keeps On or Off in its text value. The root `Switch`
 dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Settings entry,
 where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
-A protection level carries its benefits and caveats inside the item and shows them
-only under `[data-focused]`. The search field is the command palette's stock one: no
+A page description is `CommandPalette.Description` between the nav row and the field
+(`.bento-settings-palette__page-description`: no Mux margins, a bottom rule like the nav
+row), outside the list so it does not scroll. An option's second line is
+`CommandPalette.ItemDescription` placed in the item (not in `ItemContent`, so it can take
+the full row width under the note and value): a row with a description or a detail
+(`[data-described]`, `[data-detail]`) wraps (`flex-wrap`, `row-gap` the micro gap), the line
+is `flex: 1 0 100%` with Mux's muted colour (one step lighter on the focused and hovered
+row) and wrapping instead of Mux's one-line ellipsis, and it is indented past the leading
+mark by `--bento-settings-palette-lead-size` (the 1.25rem Mux gives `.muxui-command-palette__item-icon`)
+plus the row gap. A protection level carries its benefits and caveats inside the item and
+shows them in two columns under `[data-focused]`. The search field is the command palette's stock one: no
 leading icon, and the Input keeps Mux's own padding in every stage. A name stage keeps the
 stock full-width Input. A number stage gives it one fixed width,
 `--bento-settings-palette-number-input-width` (the longest `NUMBER_SPECS` bound in digits,
@@ -227,6 +236,14 @@ pinned Mux version documents the prop:
   React Aria focuses the first selected row when the list mounts, which is how a stage opens
   on the row that opened it or on the current choice. The selection is dropped at once; a
   list left in single selection would not run `onAction` on press.
+- `aria-describedby` on a Settings option (`describeOptions` in `SettingsPalette.tsx`, a
+  `MutationObserver` on the list that writes the attribute on the rendered options): a Mux
+  `Item` forwards no `aria-describedby` to React Aria (its item props keep only `id` and
+  `data-*`; setting it from a `ref` on the item did not take effect in the built app), and Mux's plain `ItemDescription`
+  span registers no description slot. The observer links each option to its own description
+  line (and the protection detail), and the row is named by `aria-label` (label, note, value)
+  so the line is read once, as the description. Replaced if Mux registers the slot from
+  `ItemDescription`.
 - `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
   (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
   the keyboard and the pointer share the one highlight. React Aria only does this once its

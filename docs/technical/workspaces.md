@@ -6,6 +6,21 @@ Workspace metadata lives in `extensions/bento-tools/src/workspaces/WorkspaceStor
 Each workspace has an `id`, `name`, optional `themeId`, optional `icon`, and
 `createdAt` timestamp.
 
+The store takes a getter for the `defaultWorkspaceName` setting (`new WorkspaceStore(() =>
+settings.snapshot().defaultWorkspaceName)` in `background.ts`; tests and callers without
+one get `DEFAULT_SETTINGS.defaultWorkspaceName`, `Personal`). It names the first-boot
+workspace and an imported-session workspace that arrives without a name; the backup
+import's no-workspace fallback (`ImportExecutor.ts`) reads the same setting. Workspaces
+Bento numbers itself ("Workspace N" for a new window, a stranded window or Move to new
+workspace) are not named by it, and a workspace is never renamed when the setting
+changes. `#shouldReplaceDefaultWorkspace` treats the lone workspace as the untouched
+first-run default when its name is the setting's current value or the built-in default
+and it has no theme or icon.
+Load order: `background.ts` runs `settings.init()` first and `workspaces.init()` after
+it (`settingsReady.then(...)` in `storesReady`). Run concurrently, as they once were,
+`workspaces.init()` could decide to bootstrap while the settings store still held its
+defaults, and a profile with a stored name but no stored workspaces would get `Personal`.
+
 The store tracks two active-workspace concepts:
 
 - `#lastGlobalActiveId`: persisted fallback for legacy or not-yet-window-scoped

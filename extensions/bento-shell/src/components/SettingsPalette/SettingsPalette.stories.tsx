@@ -272,3 +272,36 @@ export const LightDeepPath = () => (
   />
 );
 LightDeepPath.storyName = 'Light mode (deep path)';
+
+/** Page descriptions and option lines in light mode (the dark ones are the stories above). */
+export const LightText = () => (
+  <Story mode="light" stages={at({ kind: 'text', key: 'defaultWorkspaceName' })} />
+);
+LightText.storyName = 'Light mode (name, description)';
+
+export const LightEnum = () => (
+  <Story mode="light" stages={at({ kind: 'enum', key: 'sidebarShortcutBehavior' })} />
+);
+LightEnum.storyName = 'Light mode (choice with option lines)';
+
+export const LightProtection = () => <Story mode="light" stages={at({ kind: 'protection' })} />;
+LightProtection.storyName = 'Light mode (protection level)';
+
+export const LightAdvanced = () => <Story mode="light" stages={at({ kind: 'advanced' })} />;
+LightAdvanced.storyName = 'Light mode (advanced privacy)';
+
+/** A choice with two-line options, opened from Advanced privacy. */
+export const WebRtcChoice = () => (
+  <Story stages={at({ kind: 'advanced' }, { kind: 'enum', key: 'webRTCIPHandlingPolicy' })} />
+);
+WebRtcChoice.storyName = 'Choice (WebRTC IP handling, long option lines)';
+
+export const BackupRowActions = () => (
+  <Story
+    stages={at(
+      { kind: 'backups' },
+      { kind: 'backupRow', backupId: 'b2', label: '22 Oct 2026, 14:00' },
+    )}
+  />
+);
+BackupRowActions.storyName = 'A stored backup (actions with lines)';

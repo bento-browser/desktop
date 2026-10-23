@@ -127,6 +127,9 @@
     /* The Settings palette is the command palette's size (above). Mark: the radio and the
        search engine tile. */
     --bento-settings-palette-mark-size: 1rem;
+    /* The box Mux gives a row's leading mark (.muxui-command-palette__item-icon). A row's
+       description and the protection detail start past it and the row's gap, under the label. */
+    --bento-settings-palette-lead-size: 1.25rem;
     /* The most one level of the Settings path takes before it ends in an ellipsis. */
     --bento-settings-palette-path-item-max: 10rem;
     /* A Settings number input keeps one width whatever is typed: the longest bound in

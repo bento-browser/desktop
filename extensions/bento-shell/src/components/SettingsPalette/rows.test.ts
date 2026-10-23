@@ -14,6 +14,7 @@ import {
   footerFor,
   formatBackupDate,
   isFilterable,
+  pageDescription,
   rootRows,
   rowAriaLabel,
   rowsForStage,
@@ -22,7 +23,9 @@ import {
   statusRows,
   type PaletteRow,
 } from './rows';
-import { PANEL_SIZE_LIMITS } from './settingsCatalog';
+import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
+import { ENUM_SPECS, NUMBER_SPECS, PANEL_SIZE_LIMITS, type EnumKey } from './settingsCatalog';
+import { ENUM_DESCRIPTIONS, ENUM_OPTION_DESCRIPTIONS, NUMBER_DESCRIPTIONS } from './settingsCopy';
 import type { Stage } from './stageStack';
 import type { SettingsPaletteModel } from './types';
 
@@ -148,6 +151,11 @@ describe('number stages', () => {
       '36 px Max',
     ]);
     expect(rows[1]!.intent).toEqual({ type: 'applyNumber', value: 8 });
+  });
+
+  it('shows no second line under a preset', () => {
+    const rows = rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL);
+    expect(rows.some((row) => row.description !== undefined)).toBe(false);
   });
 
   it('has an editor for numbers, panel size entries and nothing else', () => {
@@ -351,14 +359,10 @@ describe('backups', () => {
 describe('confirmations', () => {
   it('asks the reset question with Cancel first and the danger action last', () => {
     const rows = rowsForStage({ kind: 'confirm', action: { kind: 'reset' } }, REGULAR_MODEL);
-    expect(labels(rows)).toEqual([
-      'This restores Bento settings, privacy protection, and search to their defaults.',
-      'Onboarding opens again from Welcome.',
-      'Cancel',
-      'Reset Bento settings',
-    ]);
-    expect(rows[2]!.intent).toEqual({ type: 'back' });
-    expect(rows[3]).toMatchObject({
+    // What the reset does is the page description, so the list holds only the two actions.
+    expect(labels(rows)).toEqual(['Cancel', 'Reset Bento settings']);
+    expect(rows[0]!.intent).toEqual({ type: 'back' });
+    expect(rows[1]).toMatchObject({
       tone: 'danger',
       intent: { type: 'confirm', action: { kind: 'reset' } },
     });
@@ -510,5 +514,138 @@ describe('stage chrome', () => {
     const failed = statusRows({ kind: 'error', message: 'No answer' });
     expect(failed.map((row) => row.label)).toEqual(['No answer', 'Try again']);
     expect(failed[1]!.intent).toEqual({ type: 'retry' });
+  });
+});
+
+describe('page descriptions', () => {
+  const stagesWithKeys = (): Stage[] => [
+    ...(Object.keys(NUMBER_SPECS) as (keyof typeof NUMBER_SPECS)[]).map((key): Stage => ({
+      kind: 'number',
+      key,
+    })),
+    { kind: 'text', key: 'defaultWorkspaceName' },
+    ...(Object.keys(ENUM_SPECS) as EnumKey[]).map((key): Stage => ({ kind: 'enum', key })),
+    { kind: 'protection' },
+    { kind: 'search' },
+    { kind: 'sizes' },
+    { kind: 'sizeActions', index: 0 },
+    { kind: 'sizeEdit', index: 0 },
+    { kind: 'advanced' },
+    { kind: 'backups' },
+    { kind: 'backupRow', backupId: 'b1', label: 'L' },
+    { kind: 'confirm', action: { kind: 'reset' } },
+    { kind: 'confirm', action: { kind: 'restore', backupId: 'b1', label: 'L' } },
+    { kind: 'confirm', action: { kind: 'delete', backupId: 'b1', label: 'L' } },
+  ];
+
+  it('describes every stage where a value or option changes', () => {
+    for (const stage of stagesWithKeys()) {
+      const text = pageDescription(stage);
+      expect(text, JSON.stringify(stage)).toBeTruthy();
+    }
+  });
+
+  it('leaves the root and the shortcuts without one', () => {
+    expect(pageDescription({ kind: 'root' })).toBeNull();
+    expect(pageDescription({ kind: 'shortcuts' })).toBeNull();
+  });
+
+  it('takes a number page from its spec and the size editor from the size limits', () => {
+    expect(pageDescription({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })).toBe(
+      NUMBER_DESCRIPTIONS.tabSleepKeepAlivePerWorkspace,
+    );
+    expect(pageDescription({ kind: 'sizeEdit', index: 0 })).toContain(
+      `${PANEL_SIZE_LIMITS.min} to ${PANEL_SIZE_LIMITS.max}`,
+    );
+  });
+
+  it('says the default workspace name names the first workspace and leaves existing ones alone', () => {
+    const text = pageDescription({ kind: 'text', key: 'defaultWorkspaceName' })!;
+    expect(text).toContain('first workspace');
+    expect(text).toContain('never renamed');
+  });
+
+  it('writes no em dashes anywhere in the copy', () => {
+    const everything = [
+      ...stagesWithKeys().map((stage) => pageDescription(stage)),
+      ...Object.values(ENUM_OPTION_DESCRIPTIONS).flatMap((lines) => Object.values(lines)),
+      ...advancedRows(REGULAR_MODEL).map((row) => row.description),
+      ...rowsForStage({ kind: 'protection' }, REGULAR_MODEL).map((row) => row.description),
+    ];
+    for (const text of everything) expect(text ?? '').not.toContain('\u2014');
+  });
+});
+
+describe('option lines', () => {
+  const lines = (stage: Stage) =>
+    rowsForStage(stage, REGULAR_MODEL).map((row) => [row.label, row.description]);
+
+  it('gives every option of a choice stage a line', () => {
+    for (const key of Object.keys(ENUM_SPECS) as EnumKey[]) {
+      const rows = rowsForStage({ kind: 'enum', key }, REGULAR_MODEL);
+      expect(rows.length, key).toBeGreaterThan(1);
+      for (const row of rows) expect(row.description, `${key} ${row.label}`).toBeTruthy();
+    }
+    expect(lines({ kind: 'enum', key: 'httpsOnlyMode' })).toEqual([
+      ['Off', expect.stringContaining('over HTTP')],
+      ['Always', expect.stringContaining('warns you')],
+    ]);
+  });
+
+  it('puts each protection level summary under its row and the benefits and caveats in the detail', () => {
+    const rows = rowsForStage({ kind: 'protection' }, REGULAR_MODEL);
+    for (const level of ['standard', 'enhanced', 'hardened'] as const) {
+      const row = find(rows, `level:${level}`);
+      expect(row.description).toBe(PRIVACY_LEVEL_DETAILS[level].summary);
+      expect(row.detail).toEqual({
+        benefits: PRIVACY_LEVEL_DETAILS[level].benefits,
+        caveats: PRIVACY_LEVEL_DETAILS[level].caveats,
+      });
+    }
+    expect(find(rows, 'level:custom').description).toContain('cannot be chosen');
+    expect(find(rows, 'level:custom').detail).toBeUndefined();
+  });
+
+  it('describes every advanced privacy row, and keeps the root search results to one line', () => {
+    const rows = advancedRows(REGULAR_MODEL);
+    expect(rows).toHaveLength(15);
+    for (const row of rows) expect(row.description, row.label).toBeTruthy();
+    // The two choices say what their page says.
+    expect(find(rows, 'advanced:httpsOnlyMode').description).toBe(ENUM_DESCRIPTIONS.httpsOnlyMode);
+    const searched = searchableRows(REGULAR_MODEL).filter((row) => row.id.startsWith('advanced:'));
+    expect(searched).toHaveLength(15);
+    expect(searched.every((row) => row.description === undefined)).toBe(true);
+  });
+
+  it('describes the size actions, the backup rows that start something and a stored backup', () => {
+    const actions = rowsForStage({ kind: 'sizeActions', index: 2 }, REGULAR_MODEL);
+    for (const row of actions) expect(row.description, row.label).toBeTruthy();
+    const backups = rowsForStage({ kind: 'backups' }, REGULAR_MODEL);
+    for (const id of ['backup:export', 'backup:import', 'backup:merge']) {
+      expect(find(backups, id).description, id).toBeTruthy();
+    }
+    expect(backups.filter((row) => row.id.startsWith('stored:')).some((r) => r.description)).toBe(
+      false,
+    );
+    const stored = rowsForStage({ kind: 'backupRow', backupId: 'b1', label: 'L' }, REGULAR_MODEL);
+    for (const row of stored) expect(row.description, row.label).toBeTruthy();
+  });
+
+  it('leaves search engines and the sizes list without a second line', () => {
+    for (const stage of [{ kind: 'search' }, { kind: 'sizes' }] as const) {
+      expect(rowsForStage(stage, REGULAR_MODEL).some((row) => row.description)).toBe(false);
+    }
+  });
+
+  it('names a row with a line by its own text, so the line is read as its description', () => {
+    const row = find(
+      rowsForStage({ kind: 'enum', key: 'uiColorMode' }, REGULAR_MODEL),
+      'option:system',
+    );
+    expect(rowAriaLabel(row)).toBe('Follow system, Current');
+    const toggle = find(advancedRows(REGULAR_MODEL), 'advanced:safeBrowsingEnabled');
+    expect(rowAriaLabel(toggle)).toBe('Local Safe Browsing, On');
+    const choice = find(advancedRows(REGULAR_MODEL), 'advanced:httpsOnlyMode');
+    expect(rowAriaLabel(choice)).toBe('HTTPS-only mode, Always');
   });
 });
