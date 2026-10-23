@@ -992,3 +992,27 @@ test('the push colour transition skips a toolbox whose fullscreen reveal is anim
     'no other rule may set a transition on the plain toolbox',
   );
 });
+
+// The host is stacked over the page for the slide, and the card's drop shadow spills left into
+// the host's area from inside #bento-strip-container (issue #85): the strip has to be stacked
+// above the host for the push, or the shadow is cut to the gutter until the push ends.
+test('the strip container stays stacked above the host for the push so the card shadow is not covered', () => {
+  const css = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../src/browser/base/content/bento-shell-mount.css',
+    ),
+    'utf8',
+  );
+  const zIndex = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rule = new RegExp(`^${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(css);
+    assert.ok(rule, `${selector} rule is missing`);
+    const value = /z-index:\s*(\d+);/.exec(rule[1]);
+    assert.ok(value, `${selector} has no z-index`);
+    return Number(value[1]);
+  };
+  const host = zIndex(':root[bento-sidebar-push] #bento-shell-host');
+  const strip = zIndex(':root[bento-sidebar-push] #bento-strip-container');
+  assert.ok(strip > host, `strip z-index ${strip} must be above the host's ${host}`);
+});
