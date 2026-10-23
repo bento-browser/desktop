@@ -464,8 +464,14 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   drawn one is `translateX((100cqw - thumb) * ratio)` from the left edge. Change the size or the
   travel in one and the hit area parts from what the eye follows. The transition is on only
   after `data-settled`, or a page that opens on its value would slide in from the default.
-- A sweeping drag trails: the thumb re-targets a 120 ms transition at every step, so a fast
-  drag (about 900 px/s) leaves it tens of pixels behind the pointer, and a slow one a few.
+- The drawn thumb must not transition while the handle is dragged: every input step would
+  restart the 120 ms transition, the drawn thumb would trail the native one by tens of pixels in
+  a fast sweep, and a quick re-grab at the drawn thumb could set the value backward. A press that
+  travels past the slop sets `data-dragging` (no transition), so a click on the track still
+  glides.
+- The drawn thumb and fill are direction-aware (`--bento-slider-direction`, `:dir(rtl)`),
+  because Gecko inverts a native range in RTL; a logical start anchor with an always-positive
+  translation moved the drawn thumb the wrong way and out of its hit area.
 - A list opens on a chosen row (the row that opened the page when going back, the current
   choice of a list of choices) by mounting with that row selected: React Aria focuses the
   first selected row on mount. `StageList` drops the selection a frame later; leaving it would

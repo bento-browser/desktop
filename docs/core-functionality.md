@@ -771,8 +771,8 @@ previous value back. A number with a small range (Keep alive per workspace, Pane
 radius, Panel gap and splitter size, Backups to retain; at most 50 steps wide) opens a
 slider instead, with the thumb focused: the value and its unit show above the track, and
 "Default N" and the range show under it. Dragging, a click on the track or the arrow keys apply
-the value live (the panel corners follow the thumb, which glides between values rather than
-jumping), Page keys move it by a tenth of the range, Home and End jump to the ends, Enter keeps
+the value live (the panel corners follow the thumb, which glides between values on a key press
+or a click on the track and follows the pointer exactly while dragged), Page keys move it by a tenth of the range, Home and End jump to the ends, Enter keeps
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 

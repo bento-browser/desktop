@@ -13,7 +13,8 @@
   content: '';
   position: absolute;
   inset-block-start: 0;
-  inset-inline-start: 0;
+  /* Physical: the hook measures offsetLeft, so the slab anchors at the left edge in RTL too. */
+  left: 0;
   inline-size: var(--bento-row-highlight-width, 0);
   block-size: var(--bento-row-highlight-height, 0);
   transform: translate(var(--bento-row-highlight-x, 0), var(--bento-row-highlight-y, 0));

@@ -3,9 +3,19 @@
 // track, fill and thumb drawn as elements of our own. A native thumb cannot be transitioned, so
 // the input is full size and invisible, and the drawn thumb and fill move with `transform` from
 // one custom property, `--bento-slider-ratio` (0 to 1), on the motion `state` pair: they glide
-// between values while dragging, on a key press and on a track click.
+// between values on a key press and on a track click, and follow the pointer without a transition
+// while the handle is dragged (a transition per step would leave the drawn thumb behind the native
+// one, which is what the pointer hits).
 
-import { useEffect, useState, type CSSProperties, type KeyboardEvent, type RefObject } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  type RefObject,
+} from 'react';
 
 export interface RangeSliderProps {
   /** The input, for the page to put the focus on it. */
@@ -21,6 +31,9 @@ export interface RangeSliderProps {
   /** Enter keeps the value. */
   onEnter(): void;
 }
+
+/** How far a pressed pointer must travel before the press is a drag and not a click on the track. */
+const DRAG_SLOP_PX = 3;
 
 /** The thumb's place along its travel, as a custom property for the stylesheet. */
 function ratioStyle(ratio: number): CSSProperties & Record<`--${string}`, number> {
@@ -46,6 +59,34 @@ export default function RangeSlider({
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  // A press that travels past the slop is a drag until the pointer is released. The listeners are
+  // on the window: the range input keeps the pointer while it is dragged.
+  const [dragging, setDragging] = useState(false);
+  const stopDrag = useRef<() => void>(undefined);
+  useEffect(() => () => stopDrag.current?.(), []);
+  const onPointerDown = (event: PointerEvent<HTMLInputElement>) => {
+    if (event.button !== 0) return;
+    stopDrag.current?.();
+    const { clientX, clientY } = event;
+    const view = event.currentTarget.ownerDocument.defaultView ?? window;
+    const move = (next: globalThis.PointerEvent) => {
+      if (Math.hypot(next.clientX - clientX, next.clientY - clientY) > DRAG_SLOP_PX) {
+        setDragging(true);
+      }
+    };
+    const end = () => stopDrag.current?.();
+    view.addEventListener('pointermove', move);
+    view.addEventListener('pointerup', end);
+    view.addEventListener('pointercancel', end);
+    stopDrag.current = () => {
+      view.removeEventListener('pointermove', move);
+      view.removeEventListener('pointerup', end);
+      view.removeEventListener('pointercancel', end);
+      stopDrag.current = undefined;
+      setDragging(false);
+    };
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -56,6 +97,7 @@ export default function RangeSlider({
     <div
       className="bento-settings-palette__slider"
       data-settled={settled ? '' : undefined}
+      data-dragging={dragging ? '' : undefined}
       style={ratioStyle((value - min) / (max - min))}
     >
       <div className="bento-settings-palette__slider-track" aria-hidden="true">
@@ -75,6 +117,7 @@ export default function RangeSlider({
         value={value}
         onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
         onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
       />
     </div>
   );
