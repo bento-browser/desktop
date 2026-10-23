@@ -71,7 +71,7 @@ palette document stays loaded, so it shows with the query it had.
 The command palette and the Settings palette share one highlight
 (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
 own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
-(transform and block-size on the Mux `interaction` pair) to the row holding the virtual
+(transform and block-size on the Mux `state` pair, the sidebar hover highlight's 120 ms) to the row holding the virtual
 focus. The hook only measures: a `MutationObserver` on `data-focused` writes the row's box
 into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
 popup's enter transform does not skew it. Pointer hover moves that same focus through React
@@ -80,7 +80,7 @@ and the keyboard never show two highlights. Its colour is `--bento-palette-highl
 (two steps above Mux's item focus fill, both modes). The slab takes its height from the row
 (`offsetHeight`), so rows of different heights need nothing more: the Settings palette's
 two-line option rows and the focused protection level, which grows by its benefits and
-caveats, make the slab change size as it moves, on the same `interaction` pair.
+caveats, make the slab change size as it moves, on the same `state` pair.
 
 Pitfalls:
 
