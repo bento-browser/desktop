@@ -993,7 +993,8 @@ reaches chrome later), and the choreography persists nothing.
   or the shell is already the rail. With transitions off it reads the expanded boxes,
   lays the shell out as the rail for one synchronous read (the app root at
   `measureRailWidth()` rounded to whole pixels, the host's settled rail width, with
-  `data-bento-collapsed` set, then both restored, and the list's `scrollTop` put back if
+  `data-bento-collapsed` set (which also drops the root's divider border width, so its
+  content box is that whole width, as in the settled rail), then both restored, and the list's `scrollTop` put back if
   the shorter rail list clamped it), writes the offsets and the per-row delays, and sets
   the phase. The layout stays the expanded one; every element animates to its rail place
   and holds it. The phase ends in the resize-observer callback that sees the rail width
@@ -1015,7 +1016,9 @@ reaches chrome later), and the choreography persists nothing.
   at the rail and widens in one go), so it starts at once from the rail boxes the
   collapse measured. A rail width reported during an expand (chrome's collapse ended
   after the shell's expand began) shows the rail and waits for the next widen.
-- Offsets: positions are rounded to device pixels before differencing, and each offset
+- Offsets: positions are rounded to device pixels before differencing (a translated icon
+  then lands on the pixel its settled layout snaps to; exact fractional offsets blurred
+  it, see the pitfalls), and each offset
   is relative to the nearest moving ancestor (main column, list region, scroller,
   list viewport for the scroll change, row). Rows share geometry: one plain tab row, one
   folder child (indented) and one folder row are measured and their offsets go on the
@@ -1061,11 +1064,14 @@ reaches chrome later), and the choreography persists nothing.
   fade out and the rail form appears at the switch), the footer toggle's icon, which
   follows the setting, and the active row's highlight when a collapse starts in a
   workspace with no tab rows and a populated workspace mounts before the switch (the
-  stored row offsets are zero, so the new rows hold their expanded form). At a device
-  pixel ratio of 1 the rail's half-pixel positions (9.5
-  px in a 52 px rail) also leave sub-pixel residue: the avatar letter's anti-aliasing,
-  and rows, which Gecko paints at 9 inside the virtualizer's translated wrappers while
-  the end frame lands on 10, so an active row's square moves 1 px at the switch. With
+  stored row offsets are zero, so the new rows hold their expanded form). The rail's
+  content box is the host's whole 52 px (`app.css` drops the divider border's width in the
+  rail), so the avatar, rail squares, New icon and rows sit on whole pixels (x 10, 18) at
+  any device pixel ratio. What stays at a ratio of 1: the footer buttons' expanded places
+  are fractional (x 108.3, 145.5, 182.7 ...), so their held end differs from the rail by up
+  to 0.5 px in layout while painting on the same pixel, and the active row's square
+  corners and a favicon's sampling differ by a few anti-aliased pixels (46 to 54 in the
+  rail strip, see the pitfalls). With
   pinned panels (39.6 px wide) the main column sits at a fractional x and row text
   renders at another sub-pixel offset for the whole phase. At a ratio of 2 the collapse
   end frame matched the settled rail exactly.
@@ -1086,7 +1092,9 @@ item) and the manual verification below.
 
 Manual verification (a Bento build; the unit tests cover the sequencing only):
 in the collapsed rail, the host's computed width is the shell's `measureRailWidth()`
-(51.8 px) rounded to whole pixels (52 px), the New button is centred in the rail, and the pinned and folder band
+(51.8 px) rounded to whole pixels (52 px), the app root is 52 px wide with no border
+(`getComputedStyle` `borderInlineEndWidth` is `0px`; the avatar frame, rail squares and tab rows start at x 10),
+the New button is centred in the rail, and the pinned and folder band
 behind the folder squares is 32 px wide; collapse and expand with Cmd+S at the
 default width and after resizing the sidebar to its minimum and maximum; press Cmd+S repeatedly (ten times, quickly, then wait):
 the sidebar, page, toolbar band and footer end in the last state with no stuck
@@ -1465,6 +1473,31 @@ workspaces.
   turned into a 1 px jump at the switch at a ratio of 1 (measured: footer buttons at
   x 8.5 to 9.3 against 9.5; 737 differing pixels in the rail strip against 498 after
   rounding the width, the rest anti-aliasing).
+- Do not give the rail's content box less than the host's width. The shell's root keeps
+  a 1 px divider border (transparent in the rail), so the rail was a 51 px content box in
+  the 52 px host and a 32 px control sat at x 9.5. At a ratio of 1 the held end of a
+  collapse (and the start of an expand) moves items by whole device pixels while the
+  settled rail paints the half pixel its own way, so the switch stepped. Measured on
+  the held row against the first rail row (`getBoundingClientRect`, 5 runs, identical):
+  avatar frame, rail square, active-row cap and tab row x 10 to 9.5; New icon and favicons
+  17.9 to 17.5; footer toggle icon 18.3 to 17.5; footer divider 792.0 to 792.4; and the
+  52 px strip differed by 575 to 579 pixels between the held end and the settled rail (avatar
+  letter anti-aliasing, the active row's square and favicons a pixel apart; the settled
+  rail itself had the avatar at x 10 and the rows at 9). The rail read was not the cause:
+  `readAsRail` at 52 px measured what the settled rail has (main 51, avatar 9.5, New icon
+  17.5, toggle 9.5), so a width mismatch (51 against 52) is not it. `border-inline-end-width: 0`
+  under `data-bento-collapsed` (`app.css`) makes the box 52 px; the same measurement gives
+  avatar and tab row 0, New icon and favicons 0.1, footer icons up to 0.5 (their
+  expanded places are fractional and paint on the same pixel), 46 to 54 differing pixels
+  (active-row square corners and one favicon's sampling), and the expand start mirrors it
+  (0.5 to 0, 0.8 to 0.3). At a ratio of 2 the numbers were already this small and are
+  unchanged. Pixels: held end taken with the frame pinned at its expanded width and the
+  spring slowed, settled rail from a normal collapse, both `screencapture` of the window.
+- Do not make the offsets exact to close the layout gap. Unrounded offsets (with the 51 px
+  box) zeroed the layout steps but a translated icon then sits off the pixel grid its
+  settled layout snaps to: the strip differed by 289 pixels, 128 of them the footer toggle's
+  icon (compositor translation at a fractional offset blurs it), where rounded offsets
+  paint the footer on identical pixels.
 - Do not leave scroll anchoring on the list scroller during a phase. An expand from the
   bottom of the rail clamps the scroll position (the expanded list has less to scroll)
   and offsets the list viewport by the change; anchoring took that translate for a
