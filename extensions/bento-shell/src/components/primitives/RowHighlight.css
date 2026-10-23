@@ -8,7 +8,7 @@
 
 /* The slab: a pseudo-element of the scrolling list, so it scrolls with the rows. Its box is
  * written by the hook. Geometry only changes through transform and height, on the Mux
- * interaction pair; the first placement and a stage change are instant. */
+ * state pair, the speed of the sidebar's hover highlight; the first placement and a stage change are instant. */
 .bento-row-highlight::before {
   content: '';
   position: absolute;
@@ -29,16 +29,16 @@
 
 .bento-row-highlight[data-highlight-motion]::before {
   transition:
-    transform var(--muxui-semantic-motion-interaction-transition-duration)
-      var(--muxui-semantic-motion-interaction-transition-easing),
-    block-size var(--muxui-semantic-motion-interaction-transition-duration)
-      var(--muxui-semantic-motion-interaction-transition-easing),
-    inline-size var(--muxui-semantic-motion-interaction-transition-duration)
-      var(--muxui-semantic-motion-interaction-transition-easing),
-    background-color var(--muxui-semantic-motion-interaction-transition-duration)
-      var(--muxui-semantic-motion-interaction-transition-easing),
-    opacity var(--muxui-semantic-motion-interaction-transition-duration)
-      var(--muxui-semantic-motion-interaction-transition-easing);
+    transform var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    block-size var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    inline-size var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    background-color var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing),
+    opacity var(--muxui-semantic-motion-state-transition-duration)
+      var(--muxui-semantic-motion-state-transition-easing);
 }
 
 .bento-row-highlight:has([data-pressed])::before {
