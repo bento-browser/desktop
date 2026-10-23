@@ -30,7 +30,7 @@ export const ENUM_DESCRIPTIONS: Record<EnumKey, string> = {
   uiColorMode:
     "Light or dark for Bento's own interface: the sidebar, panels, and Settings. It does not change how websites look.",
   sidebarShortcutBehavior:
-    'What Cmd/Ctrl+S does to the sidebar. Pressing it again brings the full sidebar back.',
+    'How the sidebar collapses when you press Cmd/Ctrl+S. Pressing it again brings the full sidebar back.',
   webRTCIPHandlingPolicy:
     'Which of your network addresses websites can see during video calls and peer-to-peer features.',
   httpsOnlyMode:

@@ -172,9 +172,9 @@ export const ENUM_SPECS: Record<EnumKey, EnumSpec> = {
   },
   sidebarShortcutBehavior: {
     key: 'sidebarShortcutBehavior',
-    label: 'Cmd/Ctrl+S action',
+    label: 'Sidebar collapse type',
     options: SHORTCUT_BEHAVIOR_OPTIONS,
-    keywords: ['sidebar', 'minimize', 'shortcut'],
+    keywords: ['sidebar', 'minimize', 'shortcut', 'cmd s', 'ctrl s'],
   },
   webRTCIPHandlingPolicy: {
     key: 'webRTCIPHandlingPolicy',
