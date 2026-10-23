@@ -813,7 +813,21 @@ names `show` except the shell-document ones below (a test keeps it that way).
 
 - The host keeps its width for the whole slide and holds only the narrow
   end's layout space through `margin-right: -delta`, stacked over the page
-  (`:root[bento-sidebar-push]`). The page lays out once, at its final geometry.
+  (`:root[bento-sidebar-push]`, `z-index: 5`). The page lays out once, at its final
+  geometry. The one exception to "host over page" is `#bento-strip-container`
+  (`:root[bento-sidebar-push] #bento-strip-container { z-index: 6 }`): it is the stacking
+  context that holds the main frame, the panel frames and their drop shadows
+  (`--bento-panel-frame-shadow`, about 40 px wide beside the card), and that shadow spills
+  left into the host's area. Stacking the strip one level above the host keeps the shadow
+  painting over the host exactly as it does outside a push (the strip's `z-index: 1` over
+  the host's `auto`), so its width and darkness do not change during the slide or at the
+  settle, in both the no-side-panels view and the panel view, and with the Panel shadows
+  setting off nothing is added. The page group abuts the host's moving edge (same keyframe
+  timing, opposite directions), so the strip's opaque background covers none of the host.
+  The splitters and the affordance (pointer events off for the slide), the chrome divider
+  line (`z-index: 3`) and the host with its `::after` edge line keep their levels; the
+  hidden host's reveal (`z-index: 7`) is outside a push and unchanged; the overlay hosts
+  (`z-index` 99994 and up) stay above everything.
 - The page group is every in-flow child of `#browser` right of the host (the
   splitters, a native sidebar, the panel strip), found by computed style rather
   than a fixed id list, plus the splitter affordance and `#PersonalToolbar`
@@ -1393,6 +1407,24 @@ workspaces.
   `.bento-sidebar-push-fade` and fade keyframes are gone). It only masked a shell that
   switched layout at the settle with the document in motion; the shell document now stays
   still and handles its own reorganisation.
+- Do not raise the host above the page group's strip container for the slide without
+  accounting for the card's drop shadow (issue #85). The host's `z-index: 5` in
+  `:root[bento-sidebar-push]` painted the opaque host (a background, and `overflow: clip` on
+  a collapse or expand) over the shadow that spills left from the main frame and the panel
+  frames into the host's area: for the whole slide the shadow was cut from about 40 px to
+  about 7 px (the strip's own gutter) and snapped back to 40 px in the first frame after the
+  push ended, in rail and hide modes alike, with Settings active too. A manual sidebar drag
+  has no push attribute, so it never showed it. The strip container's push-time
+  `z-index: 6` is the fix; any new element that must paint over the host during a push needs
+  the same check. Found by measuring the shadow's width beside the card in screen
+  recordings of the slide. Guard: the static test in `scripts/mount-sidebar-push.test.mjs`
+  keeps the strip's push level above the host's. To check a change or a Firefox bump,
+  compare the shadow beside the card in recorded frames of a collapse, expand, hide and
+  show against the settled state (see the Sidebar push entry of
+  `docs/firefox-core-touchpoints.md`). The edge line is the one thing that can still differ:
+  the host's `::after` line sits under the shadow during a collapse or expand, and the chrome
+  divider (`z-index: 3`, above the strip outside a push) draws it above the shadow once
+  settled.
 - A new push direction needs every direction selector and branch audited, not only the
   CSS: the page group, the `#nav-bar::before` band, Back/Forward/Reload,
   `#PersonalToolbar`, `SIDEBAR_PUSH_SLIDE_ANIMATION`, `expands` in `startSidebarPush` and
