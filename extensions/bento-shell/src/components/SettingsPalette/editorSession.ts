@@ -15,8 +15,7 @@ export const LIVE_APPLY_DELAY_MS = 180;
 /** What the open editor started with, and the last number it sent (null: nothing yet). */
 type Session =
   | { kind: 'number'; key: NumberSettingKey; entry: number; applied: number | null }
-  | { kind: 'size'; index: number; entry: number[]; applied: number | null }
-  | { kind: 'name'; entry: string };
+  | { kind: 'size'; index: number; entry: number[]; applied: number | null };
 
 export interface EditorSessionDeps {
   /** The latest model, read when a delayed apply fires. */
@@ -31,8 +30,8 @@ export interface EditorSession {
   type(text: string, spec: EditorSpec): void;
   /** Applies a number now. */
   apply(next: number): void;
-  /** Keeps the value (a number, or a name). False when there is no session. */
-  commit(value: number | string): boolean;
+  /** Keeps the value. False when there is no session. */
+  commit(value: number): boolean;
   /** Stops any pending apply and puts back what the session started with. */
   revert(): void;
   /** Stops any pending apply. */
@@ -49,7 +48,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   };
 
   const send = (current: Session, next: number) => {
-    if (current.kind === 'name' || current.applied === next) return;
+    if (current.applied === next) return;
     current.applied = next;
     if (current.kind === 'number') {
       void deps.update(numberChange(current.key, next));
@@ -76,11 +75,6 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
         session = { kind: 'size', index: stage.index, entry, applied: null };
         return String(entry[stage.index] ?? '');
       }
-      if (stage.kind === 'text') {
-        const entry = model.settings.defaultWorkspaceName;
-        session = { kind: 'name', entry };
-        return entry;
-      }
       session = null;
       return '';
     },
@@ -88,7 +82,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
     type(text, spec) {
       cancelPending();
       const current = session;
-      if (!current || current.kind === 'name') return;
+      if (!current) return;
       const result = parseNumber(text, spec);
       if (!result.ok) return;
       timer = setTimeout(() => send(current, result.value), LIVE_APPLY_DELAY_MS);
@@ -103,14 +97,8 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
       const current = session;
       if (!current) return false;
       cancelPending();
-      if (current.kind === 'name') {
-        if (typeof value === 'string' && value !== current.entry) {
-          void deps.update({ defaultWorkspaceName: value });
-        }
-      } else if (typeof value === 'number') {
-        const started = current.kind === 'number' ? current.entry : current.entry[current.index];
-        if (current.applied !== null || value !== started) send(current, value);
-      }
+      const started = current.kind === 'number' ? current.entry : current.entry[current.index];
+      if (current.applied !== null || value !== started) send(current, value);
       session = null;
       return true;
     },
@@ -119,7 +107,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
       const current = session;
       cancelPending();
       session = null;
-      if (!current || current.kind === 'name' || current.applied === null) return;
+      if (!current || current.applied === null) return;
       if (current.kind === 'number') {
         void deps.update(numberChange(current.key, current.entry));
       } else {

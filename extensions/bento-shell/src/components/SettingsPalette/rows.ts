@@ -270,16 +270,6 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
     toggleRow(model, 'Performance', 'tabSleepEnabled'),
     numberRow(model, 'Performance', 'tabSleepAfterMinutes'),
     numberRow(model, 'Performance', 'tabSleepKeepAlivePerWorkspace'),
-    {
-      id: 'setting:defaultWorkspaceName',
-      group: 'Workspaces',
-      label: 'Default workspace name',
-      value: model.settings.defaultWorkspaceName,
-      trail: '›',
-      pending: settingPending(model, 'defaultWorkspaceName'),
-      keywords: ['workspace', 'name', 'first workspace'],
-      intent: { type: 'push', stage: { kind: 'text', key: 'defaultWorkspaceName' } },
-    },
     enumRow(model, 'Workspaces', 'sidebarShortcutBehavior'),
     numberRow(model, 'Panels', 'defaultPanelWidthPx'),
     toggleRow(model, 'Panels', 'panelCycleWraparound'),
@@ -820,8 +810,6 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
       return numberStageRows(NUMBER_SPECS[stage.key]);
     case 'sizeEdit':
       return numberStageRows(PANEL_SIZE_EDITOR);
-    case 'text':
-      return [];
     case 'enum':
       return enumStageRows(model, stage.key);
     case 'protection':
@@ -851,11 +839,18 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
 /** A list this short is read at a glance: its field row is dropped. */
 const MAX_ROWS_WITHOUT_FIELD = 4;
 
-/** Whether the stage shows its field row. The root, an editor (the field holds the value) and
- * any list of more than four rows do; a shorter list keeps the field only as the keyboard's
- * hidden focus holder. `listRowCount` is the stage's rows before any filter. */
-export function showsFieldRow(stage: Stage, listRowCount: number): boolean {
-  return stage.kind === 'root' || isEditorStage(stage) || listRowCount > MAX_ROWS_WITHOUT_FIELD;
+/** Whether the stage shows its field row. The root, an editor (the field holds the value), any
+ * list of more than four rows and any list with a filter typed do; a shorter list keeps the
+ * field only as the keyboard's hidden focus holder. `listRowCount` is the stage's rows before
+ * the filter, so a list that shrinks while a filter is active (a model update) keeps the field
+ * and its Clear button in view until the filter is cleared. */
+export function showsFieldRow(stage: Stage, listRowCount: number, query = ''): boolean {
+  return (
+    stage.kind === 'root' ||
+    isEditorStage(stage) ||
+    listRowCount > MAX_ROWS_WITHOUT_FIELD ||
+    query !== ''
+  );
 }
 
 /** Whether typing in the stage's field narrows its rows. */
@@ -878,8 +873,6 @@ export function pageDescription(stage: Stage): string | null {
       return null;
     case 'number':
       return NUMBER_DESCRIPTIONS[stage.key];
-    case 'text':
-      return STAGE_DESCRIPTIONS.defaultWorkspaceName;
     case 'enum':
       return ENUM_DESCRIPTIONS[stage.key];
     case 'confirm':
@@ -924,8 +917,6 @@ export function footerFor(
     case 'number':
     case 'sizeEdit':
       return { hints: ['Type a value', '↑↓ presets', 'Enter keep', esc], status: 'Live preview' };
-    case 'text':
-      return { hints: ['Type a name', 'Enter save', esc] };
     case 'enum':
     case 'protection':
       return { hints: [move, 'Enter apply', esc] };
@@ -965,8 +956,6 @@ export function stageLabel(stage: Stage, model: SettingsPaletteModel): string {
       return 'Settings';
     case 'number':
       return NUMBER_SPECS[stage.key].label;
-    case 'text':
-      return 'Default workspace name';
     case 'enum':
       return ENUM_SPECS[stage.key].label;
     case 'protection':

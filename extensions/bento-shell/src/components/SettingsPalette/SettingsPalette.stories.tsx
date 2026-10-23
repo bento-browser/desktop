@@ -182,9 +182,6 @@ ResetConfirmation.storyName = '8 Reset confirmation';
 export const EnumStage = () => <Story stages={at({ kind: 'enum', key: 'uiColorMode' })} />;
 EnumStage.storyName = 'Choice (color mode)';
 
-export const TextStage = () => <Story stages={at({ kind: 'text', key: 'defaultWorkspaceName' })} />;
-TextStage.storyName = 'Name (default workspace)';
-
 export const SizeEdit = () => (
   <Story
     stages={at(
@@ -274,11 +271,6 @@ export const LightDeepPath = () => (
 LightDeepPath.storyName = 'Light mode (deep path)';
 
 /** Page descriptions and option lines in light mode (the dark ones are the stories above). */
-export const LightText = () => (
-  <Story mode="light" stages={at({ kind: 'text', key: 'defaultWorkspaceName' })} />
-);
-LightText.storyName = 'Light mode (name, description)';
-
 export const LightEnum = () => (
   <Story mode="light" stages={at({ kind: 'enum', key: 'sidebarShortcutBehavior' })} />
 );

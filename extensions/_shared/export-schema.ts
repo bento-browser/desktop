@@ -163,7 +163,6 @@ const NUMERIC_SETTING_RANGES: Partial<Record<keyof BentoSettings, readonly [numb
 const ALL_SETTING_KEYS = new Set<keyof BentoSettings>([
   ...BOOLEAN_SETTING_KEYS,
   ...(Object.keys(NUMERIC_SETTING_RANGES) as Array<keyof BentoSettings>),
-  'defaultWorkspaceName',
   'uiColorMode',
   'contentColorMode',
   'sidebarShortcutBehavior',
@@ -171,6 +170,16 @@ const ALL_SETTING_KEYS = new Set<keyof BentoSettings>([
   'privacyProtectionLevel',
   'defaultSearchEngine',
 ]);
+
+/** Settings that no longer exist. A stored profile or a backup file written by an older Bento
+ * may still carry them: they are dropped, not rejected, so the rest still loads. */
+const RETIRED_SETTING_KEYS: readonly string[] = ['defaultWorkspaceName'];
+
+/** `settings` without the retired keys (the same object when it has none). */
+export function dropRetiredSettings<T extends object>(settings: T): T {
+  const kept = Object.entries(settings).filter(([key]) => !RETIRED_SETTING_KEYS.includes(key));
+  return kept.length === Object.keys(settings).length ? settings : (Object.fromEntries(kept) as T);
+}
 
 export function isValidBentoSettingsPatch(value: unknown): value is Partial<BentoSettings> {
   if (!isRecord(value)) return false;
@@ -187,9 +196,6 @@ export function isValidBentoSettingsPatch(value: unknown): value is Partial<Bent
       continue;
     }
     switch (key) {
-      case 'defaultWorkspaceName':
-        if (!isBoundedString(settingValue, MAX_NAME_LENGTH)) return false;
-        break;
       case 'uiColorMode':
         if (settingValue !== 'light' && settingValue !== 'dark' && settingValue !== 'system') {
           return false;
@@ -320,7 +326,8 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
     }
   }
 
-  if (raw.settings !== undefined && !isValidBentoSettingsPatch(raw.settings)) return null;
+  const settings = isRecord(raw.settings) ? dropRetiredSettings(raw.settings) : raw.settings;
+  if (settings !== undefined && !isValidBentoSettingsPatch(settings)) return null;
   if (!Array.isArray(raw.savedPanels) || raw.savedPanels.length > MAX_SAVED_PANELS) return null;
   for (const savedPanel of raw.savedPanels) {
     if (!isRecord(savedPanel)) return null;
@@ -328,5 +335,5 @@ export function validateExportSchema(raw: unknown): BentoExportSchema | null {
     if (!isSafeUrl(savedPanel.url)) return null;
   }
 
-  return raw as unknown as BentoExportSchema;
+  return (settings === raw.settings ? raw : { ...raw, settings }) as unknown as BentoExportSchema;
 }

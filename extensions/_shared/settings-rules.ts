@@ -30,7 +30,6 @@ export const SNAPSHOT_DOMAINS: readonly SettingsDomain[] = [
 
 export type SettingRule =
   | { type: 'boolean' }
-  | { type: 'string'; maxLength: number }
   | { type: 'integer'; min: number; max: number }
   | { type: 'enum'; values: readonly string[] }
   | { type: 'integerArray'; min: number; max: number; maxItems: number };
@@ -39,7 +38,6 @@ export const EDITABLE_SETTING_RULES = {
   tabSleepEnabled: { type: 'boolean' },
   tabSleepAfterMinutes: { type: 'integer', min: 1, max: 1440 },
   tabSleepKeepAlivePerWorkspace: { type: 'integer', min: 1, max: 50 },
-  defaultWorkspaceName: { type: 'string', maxLength: 1024 },
   uiColorMode: { type: 'enum', values: ['light', 'dark', 'system'] },
   sidebarShortcutBehavior: { type: 'enum', values: ['collapse', 'hide'] },
   defaultPanelWidthPx: { type: 'integer', min: 200, max: 2400 },
@@ -81,8 +79,6 @@ export function validateValue(rule: SettingRule, value: unknown): boolean {
   switch (rule.type) {
     case 'boolean':
       return typeof value === 'boolean';
-    case 'string':
-      return typeof value === 'string' && value.length <= rule.maxLength;
     case 'integer':
       return (
         Number.isInteger(value) && (value as number) >= rule.min && (value as number) <= rule.max

@@ -418,7 +418,7 @@ Command-palette search fields use a visible "Clear" button instead of an
 icon-only clear affordance. While you type, a Settings group lists the settings
 that match by name (not in the empty palette, and without their values);
 choosing one opens the Settings palette at that setting: on its own list for a
-number, choice, name, search engine, privacy or shortcuts setting, and on the
+number, choice, search engine, privacy or shortcuts setting, and on the
 first list with its name typed in for a switch. A private window's results leave
 out the backup settings.
 
@@ -762,13 +762,13 @@ of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
 Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
 current value on each row. Enter flips a switch (the row shows the new state at
 once and returns to the old one if the change cannot be saved) or opens a short
-list of choices, which opens on the current choice. A number or name opens a value
+list of choices, which opens on the current choice. A number opens a value
 field with preset rows where they help (Min, Default and Max sit beside the
 number); the value applies live while typing (panel corners move as you type) and
 while arrowing over the presets, Enter keeps it, clicking a preset keeps it and returns to
 the list, and Back or Esc puts the previous value back.
 
-Every list where a value or choice changes (each number and the name, the choices,
+Every list where a value or choice changes (each number, the choices,
 protection level, default search engine, custom panel sizes and their actions, Advanced
 privacy, Backups and a stored backup, and each confirmation) opens with a short plain
 description of what the setting does, between the path and the field. It is static text:
@@ -828,14 +828,6 @@ other setting changed there is saved for the whole profile as usual.
 
 Firefox's own Settings page (`about:preferences`) has no Bento category; the
 Settings palette is the only place Bento's settings live.
-
-Default workspace name (Workspaces group) is the name Bento gives the first workspace in a
-new profile and the workspaces it creates itself: one for a window that has none, one for
-a window left without a workspace when its workspace is deleted, the one "Move to new
-workspace" makes, and one for an import that has none or leaves one unnamed. When a
-workspace already has that name, Bento adds a number, so the next ones are "Personal 2",
-"Personal 3". Changing it never renames a workspace that exists. Workspaces made with
-a New workspace button are still numbered "Workspace 2", "Workspace 3".
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.

@@ -245,8 +245,6 @@ export function advancedValue(
 /** Bounds that apply to the list of custom panel sizes. */
 export const PANEL_SIZE_LIMITS = { min: 120, max: 2400, maxItems: 64 } as const;
 
-export const MAX_WORKSPACE_NAME_LENGTH = 1024;
-
 export interface ShortcutEntry {
   label: string;
   keys: string;

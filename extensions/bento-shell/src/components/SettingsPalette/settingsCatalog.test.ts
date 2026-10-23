@@ -3,7 +3,6 @@ import { ADVANCED_PRIVACY_RULES, EDITABLE_SETTING_RULES } from '@shared/settings
 import {
   ADVANCED_PRIVACY_SPECS,
   BOOLEAN_SPECS,
-  MAX_WORKSPACE_NAME_LENGTH,
   NUMBER_SPECS,
   PANEL_SIZE_LIMITS,
   SHORTCUTS,
@@ -41,7 +40,6 @@ describe('catalog against the tools rules', () => {
       max: PANEL_SIZE_LIMITS.max,
       maxItems: PANEL_SIZE_LIMITS.maxItems,
     });
-    expect(EDITABLE_SETTING_RULES.defaultWorkspaceName.maxLength).toBe(MAX_WORKSPACE_NAME_LENGTH);
   });
 
   it('lists every advanced privacy key of the rules once', () => {

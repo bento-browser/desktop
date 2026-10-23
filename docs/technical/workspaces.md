@@ -6,24 +6,6 @@ Workspace metadata lives in `extensions/bento-tools/src/workspaces/WorkspaceStor
 Each workspace has an `id`, `name`, optional `themeId`, optional `icon`, and
 `createdAt` timestamp.
 
-The store takes a getter for the `defaultWorkspaceName` setting (`new WorkspaceStore(() =>
-settings.snapshot().defaultWorkspaceName)` in `background.ts`; tests and callers without
-one get `DEFAULT_SETTINGS.defaultWorkspaceName`, `Personal`). It names the first-boot
-workspace and an imported-session workspace that arrives without a name, reading the
-snapshot when it does; `workspaces.init()` and `settings.init()` still run concurrently
-(see the pitfall below), and on a true first boot nothing is stored, so the snapshot is the
-default. The backup import's no-workspace fallback (`ImportExecutor.ts`) reads the same
-setting. The workspaces `protocol-handler.ts` creates (`shell/hello` for a window with none,
-a window stranded by `workspace/delete`, `tabs/moveToNewWorkspace` without a name) are named
-by `defaultWorkspaceName(setting, existing names)`: the setting when no workspace has it,
-else the setting numbered ("Personal 2"), starting at the workspace count plus one and
-skipping taken names (the rule "Workspace N" used). The shell's own New workspace buttons
-still send "Workspace N". A workspace is never renamed when the setting changes.
-`#shouldReplaceDefaultWorkspace` stays as it was: the lone workspace is replaced by an
-imported set only when it is named the built-in `Personal` and has no theme or icon, never
-because it shares the setting's name (a used workspace would be deleted with its panels, pins
-and folders).
-
 The store tracks two active-workspace concepts:
 
 - `#lastGlobalActiveId`: persisted fallback for legacy or not-yet-window-scoped
@@ -1283,15 +1265,6 @@ workspaces.
 
 ## Workspace pitfalls
 
-- Do not make `workspaces.init()` wait for `settings.init()` in `background.ts`'s `storesReady`.
-  Delaying the workspace store let tab listeners adopt imported workspaces against the still
-  empty store, and the persistence debounce could then overwrite the persisted workspaces. The
-  stores init concurrently; the name getter reads whatever snapshot exists when a workspace is
-  named.
-- Do not let `#shouldReplaceDefaultWorkspace` match the `defaultWorkspaceName` setting. A lone
-  workspace a user named like the setting is a real, used workspace; replacing it on an import
-  deletes its panels, pins, folders and parked tabs. Only the built-in `Personal` (no theme, no
-  icon) is the untouched default.
 - Do not give tab or folder rows their own plain `:hover` background, and do not
   mix `--bento-surface-hover` into a row state that composites over the hover
   highlight. The highlight already supplies that tint: a selected row's `:hover`

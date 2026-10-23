@@ -8,7 +8,7 @@
 // storage payload small and lets us evolve defaults without migrating data.
 
 import type { BentoSettings } from '@shared/protocol';
-import { isValidBentoSettingsPatch } from '@shared/export-schema';
+import { dropRetiredSettings, isValidBentoSettingsPatch } from '@shared/export-schema';
 
 const STORAGE_KEY = 'bento.settings';
 const VERSION = 2;
@@ -17,7 +17,6 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
-  defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
   welcomeSeen: false,
   // Fresh profiles start light; UI can also follow the OS via 'system'
@@ -74,7 +73,7 @@ async function load(): Promise<{
       console.warn('[bento-tools] settings: unknown version', stored.version, '— ignoring');
       return { overrides: {}, overrideKeys: new Set() };
     }
-    const overrides = stored.overrides ?? {};
+    const overrides = dropRetiredSettings(stored.overrides ?? {});
     return {
       overrides,
       overrideKeys: new Set(Object.keys(overrides) as Array<keyof BentoSettings>),

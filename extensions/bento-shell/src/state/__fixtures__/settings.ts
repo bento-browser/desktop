@@ -9,7 +9,6 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
-  defaultWorkspaceName: 'Personal',
   commandPaletteEnabled: true,
   // Default to seen=true so existing stories aren't covered by the
   // welcome banner. The WelcomeBanner stories provide their own state.

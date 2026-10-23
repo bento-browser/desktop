@@ -1,23 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  moveEntry,
-  numberChange,
-  parseName,
-  removeAt,
-  replaceAt,
-  stepPreset,
-  toggleChange,
-} from './editing';
+import { moveEntry, numberChange, removeAt, replaceAt, stepPreset, toggleChange } from './editing';
 import { NUMBER_SPECS, PANEL_SIZE_EDITOR } from './settingsCatalog';
-
-describe('parseName', () => {
-  it('trims and refuses an empty or too long name', () => {
-    expect(parseName('  Work ')).toEqual({ ok: true, value: 'Work' });
-    expect(parseName('   ')).toMatchObject({ ok: false });
-    expect(parseName('x'.repeat(1024))).toMatchObject({ ok: true });
-    expect(parseName('x'.repeat(1025))).toMatchObject({ ok: false });
-  });
-});
 
 describe('stepPreset', () => {
   const spec = NUMBER_SPECS.panelCornerRadiusPx; // 0 8 12 16 24 36

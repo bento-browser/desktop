@@ -22,7 +22,6 @@ export interface SettingsTarget {
 export const ROOT_TARGET: SettingsTarget = { stages: [ROOT_STAGE], query: '' };
 
 const STAGE_BY_ROW_ID: Readonly<Record<string, Stage>> = {
-  'setting:defaultWorkspaceName': { kind: 'text', key: 'defaultWorkspaceName' },
   'setting:customPanelSizes': { kind: 'sizes' },
   'privacy:level': { kind: 'protection' },
   'privacy:search': { kind: 'search' },
