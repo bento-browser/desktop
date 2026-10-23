@@ -808,8 +808,8 @@ not apply it, the palette says so. The first-run onboarding privacy step lists
 each level with a one-line summary and marks Standard as recommended, and its
 search step shows each visible engine's icon and tags privacy-oriented ones as
 Private when Firefox exposes them. The Keyboard shortcuts list is searchable
-and shows each command's title and key tokens, and Settings lets users choose
-whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
+and shows each command's title and key tokens, and the Sidebar collapse type
+setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
 left-edge hover access. Bento bundles uBlock Origin enabled by default and
 leaves it removable/disableable by the user.
 
