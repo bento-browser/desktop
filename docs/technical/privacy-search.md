@@ -226,16 +226,17 @@ parts, and it is split so each piece is testable without the browser:
   description (its rows are only Cancel and the action). `rows.test.ts` asserts that every
   stage where a value or option changes has a description and that the listed rows carry
   lines, and `settingsCopy.test.ts` that the copy covers the catalog exactly and has no em
-  dashes.
-- Field row. `showsFieldRow(stage, listRowCount)` (`rows.ts`) keeps the field on the root, in
-  editors and on lists of more than four rows, counted before any filter, and drops it on a
-  shorter list (the choices, protection level, a stored backup, size actions, a
-  confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
+  dashes. When a setting's behaviour changes in tools or chrome, change its line in
+  `settingsCopy.ts` in the same change.
+- Field row. `showsFieldRow(stage, listRowCount, query)` (`rows.ts`) keeps the field on the
+  root, in editors, on lists of more than four rows (counted before any filter) and while a
+  filter is typed (a model update can shrink a filtered list to four rows, and its Clear
+  button must not become an invisible tab stop), and drops it on a shorter list (the choices,
+  protection level, a stored backup, size actions, a confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
   Esc and Backspace for the list (React Aria drives the virtual focus from it), so the field
   gets `data-hidden` (visually hidden, still in the tab order and read, labelled with the
   page name) and the input `readOnly`; `onFieldChange` ignores typing there, so a list never
-  filters invisibly. When a setting's behaviour changes
-  in tools or chrome, change its line here in the same change.
+  filters invisibly.
 - `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
   over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
   `requestId`, rejects a non-durable request after 15 s, and follows a durable operation
@@ -303,8 +304,7 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
   so the first show is never lost.
 
-Editor stages (a number or a workspace name typed in the search field) behave as
-follows. A valid number applies live after 180 ms without typing (and at once for an
+Editor stages (a number typed in the search field) behave as follows. A valid number applies live after 180 ms without typing (and at once for an
 arrow-key preset), Enter keeps it, Esc and dismissal put back the value the stage
 started with, and an invalid draft is shown with its reason and never sent. They do not
 share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,

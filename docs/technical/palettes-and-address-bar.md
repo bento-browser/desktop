@@ -49,7 +49,7 @@ no settings state, because the palette chunk is size-ratcheted; `settingsIndex.t
 keeps it equal to `rootRows`). Choosing one writes `BENTO_OPEN_SETTING:<row id>:<ts>`;
 `handleSettingsTargetTitle` checks the id against a pattern and opens the Settings
 palette with it as the show's `target`, and the Settings document resolves it
-(`SettingsPalette/targets.ts`): a number, choice or name setting opens its own list, the
+(`SettingsPalette/targets.ts`): a number or choice setting opens its own list, the
 privacy rows and shortcuts their lists, and a switch or the search-engine link the first
 list with the label typed in. An id the document does not know opens the first list.
 Opening any of the command palette, workspace palette, merge palette or Settings palette

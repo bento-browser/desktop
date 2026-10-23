@@ -11,7 +11,6 @@ export type ConfirmAction =
 export type Stage =
   | { kind: 'root' }
   | { kind: 'number'; key: NumberSettingKey }
-  | { kind: 'text'; key: 'defaultWorkspaceName' }
   | { kind: 'enum'; key: EnumKey }
   | { kind: 'protection' }
   | { kind: 'search' }
@@ -72,14 +71,13 @@ export function escapeOutcome(
 
 /** Stages whose field edits a value instead of filtering a list. */
 export function isEditorStage(stage: Stage): boolean {
-  return stage.kind === 'number' || stage.kind === 'text' || stage.kind === 'sizeEdit';
+  return stage.kind === 'number' || stage.kind === 'sizeEdit';
 }
 
 /** Identity of a stage, used to remount the list when the stage changes. */
 export function stageKey(stage: Stage): string {
   switch (stage.kind) {
     case 'number':
-    case 'text':
     case 'enum':
       return `${stage.kind}:${stage.key}`;
     case 'sizeActions':

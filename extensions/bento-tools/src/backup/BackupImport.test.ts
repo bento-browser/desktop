@@ -623,6 +623,24 @@ describe('workspace backup import/export', () => {
     expect(validateExportSchema({ ...valid, settings: { unexpected: true } })).toBeNull();
   });
 
+  it('still accepts a backup that carries the retired default workspace name, and drops it', () => {
+    const backup = {
+      schemaVersion: 2,
+      bentoVersion: '0.0.0',
+      exportedAt: 1,
+      workspaces: [],
+      settings: { autoBackupMaxCount: 5, defaultWorkspaceName: 'Work' },
+      savedPanels: [],
+    };
+
+    const validated = validateExportSchema(backup);
+
+    expect(validated).not.toBeNull();
+    expect(validated?.settings).toEqual({ autoBackupMaxCount: 5 });
+    // The caller's object is left as it was.
+    expect(backup.settings).toEqual({ autoBackupMaxCount: 5, defaultWorkspaceName: 'Work' });
+  });
+
   it('accepts tab URLs up to the Firefox standard-URL length', () => {
     const backupWithTabUrl = (url: string): BentoExportSchema => ({
       schemaVersion: 2,

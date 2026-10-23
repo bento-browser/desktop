@@ -90,8 +90,6 @@ export const ADVANCED_DESCRIPTIONS: Record<
 
 /** Under the path on the page of a stage that is not a number or a choice setting. */
 export const STAGE_DESCRIPTIONS = {
-  defaultWorkspaceName:
-    'The name Bento gives the first workspace in a new profile, and the workspaces it creates itself: for a new window, Move to new workspace, or an import that has none or no name. If the name is taken, it adds a number, like Personal 2. Existing workspaces are never renamed.',
   protection:
     'How much Bento restricts tracking, fingerprinting and some web features. Picking a level sets the switches under Advanced privacy to match, except Remote download reputation.',
   search:

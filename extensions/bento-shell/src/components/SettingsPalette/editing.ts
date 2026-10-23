@@ -1,8 +1,7 @@
-// Rules of the editor stages (a number or a name typed in the search field), kept free of
-// React so they are tested directly.
+// Rules of the editor stages (a number typed in the search field), kept free of React so they
+// are tested directly.
 
 import {
-  MAX_WORKSPACE_NAME_LENGTH,
   parseNumber,
   presetValues,
   type BooleanSettingKey,
@@ -10,18 +9,6 @@ import {
   type NumberSettingKey,
 } from './settingsCatalog';
 import type { EditableSettings } from './model';
-
-export type NameDraft = { ok: true; value: string } | { ok: false; reason: string };
-
-/** A workspace name: trimmed, not empty, within the stored limit. */
-export function parseName(text: string): NameDraft {
-  const value = text.trim();
-  if (value === '') return { ok: false, reason: 'Enter a name' };
-  if (value.length > MAX_WORKSPACE_NAME_LENGTH) {
-    return { ok: false, reason: `Use ${MAX_WORKSPACE_NAME_LENGTH} characters or fewer` };
-  }
-  return { ok: true, value };
-}
 
 /** The preset one arrow key press away: the next larger or smaller value, or the first or
  * last when nothing valid is typed. Null at either end of the list. */

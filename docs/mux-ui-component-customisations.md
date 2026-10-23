@@ -206,8 +206,7 @@ row) and wrapping instead of Mux's one-line ellipsis, and it is indented past th
 mark by `--bento-settings-palette-lead-size` (the 1.25rem Mux gives `.muxui-command-palette__item-icon`)
 plus the row gap. A protection level carries its benefits and caveats inside the item and
 shows them in two columns under `[data-focused]`. The search field is the command palette's stock one: no
-leading icon, and the Input keeps Mux's own padding in every stage. A name stage keeps the
-stock full-width Input. A number stage gives it one fixed width,
+leading icon, and the Input keeps Mux's own padding in every stage. A number stage gives it one fixed width,
 `--bento-settings-palette-number-input-width` (the longest `NUMBER_SPECS` bound in digits,
 half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
 font where it is used), so the box never changes with what is typed. A longer value scrolls

@@ -2,7 +2,7 @@
 //
 // Bento's settings as a staged quick pick on the Mux CommandPalette parts. The root lists every
 // setting grouped, with its value on the right; choosing a row toggles it in place or opens a
-// stage (a list of choices, or a number or name typed in the search field). A nav row above the
+// stage (a list of choices, or a number typed in the search field). A nav row above the
 // field holds Back, the path to the current page (every ancestor a button) and Close, and Esc
 // goes back one stage, closing from the root.
 //
@@ -550,7 +550,7 @@ export default function SettingsPalette({
     () => (model ? rowsForStage(stage, model).length : 0),
     [model, stage],
   );
-  const fieldShown = showsFieldRow(stage, listRowCount);
+  const fieldShown = showsFieldRow(stage, listRowCount, query);
   const onFieldChange = (event: ChangeEvent<HTMLInputElement>) => {
     const text = event.currentTarget.value;
     if (editing) editor.type(text);
@@ -798,11 +798,6 @@ export default function SettingsPalette({
                   </span>
                 </>
               ) : null}
-              {stage.kind === 'text' && editor.problem ? (
-                <span className="bento-settings-palette__bounds" data-invalid="" role="status">
-                  {editor.problem}
-                </span>
-              ) : null}
               {!editing && query.length > 0 ? (
                 <Palette.ClearButton
                   aria-label="Clear search"
@@ -831,7 +826,7 @@ export default function SettingsPalette({
                   ))
                 : rows.map(renderRow)}
             </StageList>
-            {view.kind === 'ready' && rows.length === 0 && !editing && stage.kind !== 'text' ? (
+            {view.kind === 'ready' && rows.length === 0 && !editing ? (
               <Palette.Empty>No matching settings.</Palette.Empty>
             ) : null}
             <Palette.Footer className="bento-settings-palette__footer">

@@ -66,7 +66,6 @@ describe('stage stack', () => {
 
   it('knows which stages edit a value in the field', () => {
     expect(isEditorStage({ kind: 'number', key: 'panelCornerRadiusPx' })).toBe(true);
-    expect(isEditorStage({ kind: 'text', key: 'defaultWorkspaceName' })).toBe(true);
     expect(isEditorStage({ kind: 'sizeEdit', index: 0 })).toBe(true);
     expect(isEditorStage({ kind: 'protection' })).toBe(false);
     expect(isEditorStage({ kind: 'root' })).toBe(false);

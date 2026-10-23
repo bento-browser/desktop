@@ -74,9 +74,7 @@ import {
 } from './messaging/audience';
 
 const tabs = new TabRegistry();
-const settings = new SettingsStore();
-// The workspaces Bento names itself take the Default workspace name from this store's snapshot.
-const workspaces = new WorkspaceStore(() => settings.snapshot().defaultWorkspaceName);
+const workspaces = new WorkspaceStore();
 // Windows that exist before startup has settled never adopt unassigned tabs: those may be
 // restored tabs whose session values are not read yet (see tabs/AdoptedTab.ts).
 const adoptionGate = createAdoptionGate();
@@ -84,6 +82,7 @@ browser.windows.onCreated.addListener((win) => {
   if (typeof win.id === 'number') adoptionGate.noteWindow(win.id);
 });
 const windowHandoff = createWindowHandoffGuard();
+const settings = new SettingsStore();
 const panels = new PanelStore();
 const pinnedPanels = new PinnedPanelsStore({
   getPanelKey: (workspaceId, tabId) => panels.getPanelKey(workspaceId, tabId),

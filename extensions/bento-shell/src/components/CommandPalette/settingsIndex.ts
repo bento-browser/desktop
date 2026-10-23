@@ -42,12 +42,6 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     keywords: ['awake'],
   },
   {
-    id: 'setting:defaultWorkspaceName',
-    label: 'Default workspace name',
-    group: 'Workspaces',
-    keywords: ['first workspace'],
-  },
-  {
     id: 'setting:sidebarShortcutBehavior',
     label: 'Cmd/Ctrl+S action',
     group: 'Workspaces',

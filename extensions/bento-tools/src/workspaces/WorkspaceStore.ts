@@ -2,19 +2,21 @@
 // in-memory Map<id, Workspace>, batched delta listeners, persistence via
 // storage.local. UI never mutates this directly — it dispatches Actions.
 //
-// First-boot bootstrap: if persistence is empty, creates a default workspace
-// (named by the Default workspace name setting) and assigns no tabs to it
-// (per-tab assignment lives in the browser.sessions layer, see step 3b).
+// First-boot bootstrap: if persistence is empty, creates a default "Personal"
+// workspace and assigns no tabs to it (per-tab assignment lives in the
+// browser.sessions layer, see step 3b).
 
 import type { Workspace, WorkspaceDelta } from '@shared/protocol';
 import { Persistence, load } from './Persistence';
 import { PRIVATE_WORKSPACE_NAME, makePrivateWorkspaceId } from './ephemeral';
-import { DEFAULT_SETTINGS } from '../settings/SettingsStore';
 
 /** A listener may return a promise for work it starts, which `flush()` waits for. */
 type Listener = (deltas: WorkspaceDelta[]) => unknown;
 /** Receives the deltas of one private window's temporary workspace. */
 type PrivateListener = (windowId: number, deltas: WorkspaceDelta[]) => void;
+
+/** The built-in name of the first workspace, and of an import's fallback workspace. */
+export const DEFAULT_WORKSPACE_NAME = 'Personal';
 
 // Per-window active workspace persistence. Rides Firefox SessionStore's
 // extData via browser.sessions.setWindowValue, the same way per-tab
@@ -65,15 +67,6 @@ export class WorkspaceStore {
   #privateByWindow = new Map<number, Workspace>();
   #privateListeners = new Set<PrivateListener>();
 
-  /** `defaultName` reads the Default workspace name setting. It is read when a workspace is
-   * named, from whatever the settings snapshot holds then; on a true first boot nothing is
-   * stored yet, so that is the built-in default anyway. */
-  readonly #defaultName: () => string;
-
-  constructor(defaultName: () => string = () => DEFAULT_SETTINGS.defaultWorkspaceName) {
-    this.#defaultName = defaultName;
-  }
-
   async init(): Promise<void> {
     const persisted = await load();
     if (persisted && persisted.workspaces.length > 0) {
@@ -88,7 +81,7 @@ export class WorkspaceStore {
       // First boot — bootstrap with one default workspace.
       const w: Workspace = {
         id: makeId(),
-        name: this.#defaultName(),
+        name: DEFAULT_WORKSPACE_NAME,
         createdAt: Date.now(),
       };
       this.#workspaces.set(w.id, w);
@@ -133,7 +126,7 @@ export class WorkspaceStore {
       const name =
         typeof candidate.name === 'string' && candidate.name.trim()
           ? candidate.name.trim()
-          : this.#defaultName();
+          : DEFAULT_WORKSPACE_NAME;
       const workspace: Workspace = {
         id,
         name,
@@ -205,9 +198,7 @@ export class WorkspaceStore {
     if (Array.from(this.#activeIdByWindow.values()).some((id) => id !== only.id)) {
       return false;
     }
-    // The built-in name only, never the setting: a real workspace that happens to share the
-    // setting's name must not be replaced by an import.
-    return only.name === DEFAULT_SETTINGS.defaultWorkspaceName && !only.themeId && !only.icon;
+    return only.name === DEFAULT_WORKSPACE_NAME && !only.themeId && !only.icon;
   }
 
   snapshot(): {

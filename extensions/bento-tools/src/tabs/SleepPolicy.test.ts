@@ -35,7 +35,6 @@ function makeSettings(overrides: Partial<BentoSettings> = {}): SettingsStore {
     tabSleepEnabled: true,
     tabSleepAfterMinutes: 1,
     tabSleepKeepAlivePerWorkspace: 1,
-    defaultWorkspaceName: 'Personal',
     commandPaletteEnabled: true,
     welcomeSeen: true,
     uiColorMode: 'light',

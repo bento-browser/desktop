@@ -128,8 +128,7 @@
 /* An editor input keeps Mux's own padding, like the stock search field. A number input has
  * one fixed width (a token sized for the longest bound plus the padding), so the box never
  * changes with what is typed: a longer value scrolls inside it, and the unit and the bounds
- * after it stay where they are. A name keeps the stock full-width input. A search input in
- * Chromium reserves room for its own clear button, which would clip the value (the palette
+ * after it stay where they are. A search input in Chromium reserves room for its own clear button, which would clip the value (the palette
  * has its own Clear); Firefox has no such area. */
 .muxui-command-palette__input.bento-settings-palette__input[data-number] {
   flex: none;

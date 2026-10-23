@@ -168,7 +168,6 @@ describe('number stages', () => {
       min: PANEL_SIZE_LIMITS.min,
       max: PANEL_SIZE_LIMITS.max,
     });
-    expect(editorSpecFor({ kind: 'text', key: 'defaultWorkspaceName' })).toBeNull();
     expect(editorSpecFor({ kind: 'sizes' })).toBeNull();
   });
 });
@@ -431,7 +430,6 @@ describe('stage chrome', () => {
     expect(esc({ kind: 'advanced' })).toBe('Esc back');
     expect(esc({ kind: 'advanced' }, 'web')).toBe('Esc clear');
     expect(esc({ kind: 'number', key: 'panelCornerRadiusPx' })).toBe('Esc cancel');
-    expect(esc({ kind: 'text', key: 'defaultWorkspaceName' })).toBe('Esc cancel');
     expect(esc({ kind: 'sizeEdit', index: 0 })).toBe('Esc cancel');
   });
 
@@ -524,7 +522,6 @@ describe('page descriptions', () => {
       kind: 'number',
       key,
     })),
-    { kind: 'text', key: 'defaultWorkspaceName' },
     ...(Object.keys(ENUM_SPECS) as EnumKey[]).map((key): Stage => ({ kind: 'enum', key })),
     { kind: 'protection' },
     { kind: 'search' },
@@ -558,12 +555,6 @@ describe('page descriptions', () => {
     expect(pageDescription({ kind: 'sizeEdit', index: 0 })).toContain(
       `${PANEL_SIZE_LIMITS.min} to ${PANEL_SIZE_LIMITS.max}`,
     );
-  });
-
-  it('says the default workspace name names the first workspace and leaves existing ones alone', () => {
-    const text = pageDescription({ kind: 'text', key: 'defaultWorkspaceName' })!;
-    expect(text).toContain('first workspace');
-    expect(text).toContain('never renamed');
   });
 
   it('writes no em dashes anywhere in the copy', () => {
@@ -675,7 +666,6 @@ describe('field row', () => {
     expect(showsFieldRow({ kind: 'root' }, 0)).toBe(true);
     for (const stage of [
       { kind: 'number', key: 'panelCornerRadiusPx' },
-      { kind: 'text', key: 'defaultWorkspaceName' },
       { kind: 'sizeEdit', index: 0 },
       { kind: 'advanced' },
       { kind: 'shortcuts' },
@@ -684,5 +674,14 @@ describe('field row', () => {
     ] as const satisfies readonly Stage[]) {
       expect(shown(stage), stage.kind).toBe(true);
     }
+  });
+
+  it('keeps the field while a filter is typed, even when the list shrinks to four rows', () => {
+    // A model update (an engine removed in Firefox settings) can drop the unfiltered count
+    // while the user has filtered: the field and its Clear button must stay in view.
+    const search: Stage = { kind: 'search' };
+    expect(showsFieldRow(search, 4)).toBe(false);
+    expect(showsFieldRow(search, 4, 'goo')).toBe(true);
+    expect(showsFieldRow(search, 4, '')).toBe(false);
   });
 });
