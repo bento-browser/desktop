@@ -65,6 +65,13 @@ export class WorkspaceStore {
    * construction. Never persisted, never listed to another window. */
   #privateByWindow = new Map<number, Workspace>();
   #privateListeners = new Set<PrivateListener>();
+  #firstLaunch = false;
+
+  /** True when `init()` found no persisted workspaces: this is the profile's first launch. The
+   * bootstrap persists a workspace, so no later launch reads true. */
+  get firstLaunch(): boolean {
+    return this.#firstLaunch;
+  }
 
   async init(): Promise<void> {
     const persisted = await load();
@@ -76,8 +83,10 @@ export class WorkspaceStore {
           : (persisted.workspaces[0]?.id ?? null);
     } else if (await this.adoptImportedWorkspacesFromSession()) {
       // adoptImportedWorkspacesFromSession persists the imported set.
+      this.#firstLaunch = true;
     } else {
       // First boot — bootstrap with one default workspace.
+      this.#firstLaunch = true;
       const w: Workspace = {
         id: makeId(),
         name: DEFAULT_WORKSPACE_NAME,
