@@ -98,16 +98,15 @@
   flex: 0 0 auto;
 }
 
-/* An editor input keeps Mux's own padding, like the stock search field. A number sizes
- * the input to its digits, so the unit hugs it and the bounds follow right after; field-sizing
- * measures the content box, so the padding is added around the digits and nothing is clipped.
- * A name keeps the stock full-width input. A search input in Chromium reserves room for its
- * own clear button, which would clip the value (the palette has its own Clear); Firefox has
- * no such area. */
-.muxui-command-palette__input.bento-settings-palette__input[data-fit] {
+/* An editor input keeps Mux's own padding, like the stock search field. A number input has
+ * one fixed width (a token sized for the longest bound plus the padding), so the box never
+ * changes with what is typed: a longer value scrolls inside it, and the unit and the bounds
+ * after it stay where they are. A name keeps the stock full-width input. A search input in
+ * Chromium reserves room for its own clear button, which would clip the value (the palette
+ * has its own Clear); Firefox has no such area. */
+.muxui-command-palette__input.bento-settings-palette__input[data-number] {
   flex: none;
-  width: auto;
-  field-sizing: content;
+  width: var(--bento-settings-palette-number-input-width);
 }
 
 .bento-settings-palette__input[data-editing]::-webkit-search-cancel-button {

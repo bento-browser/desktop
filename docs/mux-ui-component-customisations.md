@@ -195,9 +195,11 @@ are `disabled` items, which keyboard navigation skips, restyled so they read as 
 A protection level carries its benefits and caveats inside the item and shows them
 only under `[data-focused]`. The search field is the command palette's stock one: no
 leading icon, and the Input keeps Mux's own padding in every stage. A name stage keeps the
-stock full-width Input. A number stage sets `field-sizing: content` on it (Firefox 158 and
-Chromium both support it on an `<input>`) so the Input is as wide as its digits plus that
-padding, with no inline size in script, and the unit and bounds sit after it in the field.
+stock full-width Input. A number stage gives it one fixed width,
+`--bento-settings-palette-number-input-width` (the longest `NUMBER_SPECS` bound in digits,
+half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
+font where it is used), so the box never changes with what is typed. A longer value scrolls
+inside it, and the unit and bounds after it in the field do not move.
 Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
 `--muxui-semantic-feedback-invalid-content` and the warning mark
 `--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than

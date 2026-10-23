@@ -48,12 +48,25 @@ function useForcedColorMode(mode: 'light' | 'dark' | null) {
   }, [mode]);
 }
 
+/** Types `text` into the field once the stage has mounted, as a user would. */
+function useTypedValue(text: string | null) {
+  useEffect(() => {
+    if (text === null) return;
+    const input = document.querySelector<HTMLInputElement>('.bento-settings-palette__input');
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (!input || !setValue) return;
+    setValue.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, [text]);
+}
+
 function Story({
   model = REGULAR_MODEL,
   stages,
   view,
   fromPalette = false,
   mode = null,
+  typed = null,
 }: {
   model?: SettingsPaletteModel;
   stages?: readonly Stage[];
@@ -61,9 +74,12 @@ function Story({
   /** Opened from the command palette: the path starts there and Back at the root returns. */
   fromPalette?: boolean;
   mode?: 'light' | 'dark' | null;
+  /** A value typed into the field after the stage opens. */
+  typed?: string | null;
 }) {
   const fake = useFakeSettingsPalette(model);
   useForcedColorMode(mode);
+  useTypedValue(typed);
   return (
     <SettingsPalette
       view={view ?? fake.view}
@@ -86,6 +102,15 @@ export const NumberStage = () => (
   <Story stages={at({ kind: 'number', key: 'panelCornerRadiusPx' })} />
 );
 NumberStage.storyName = '2 Number (panel corner radius)';
+
+/** The input keeps one width: a long, out-of-range value scrolls inside it. */
+export const NumberStageLongValue = () => (
+  <Story
+    stages={at({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })}
+    typed="3321213123123123"
+  />
+);
+NumberStageLongValue.storyName = 'Number (long invalid value, fixed width)';
 
 /** Step 3: protection level with the focused level's benefits and caveats. */
 export const ProtectionLevel = () => <Story stages={at({ kind: 'protection' })} />;

@@ -714,8 +714,8 @@ export default function SettingsPalette({
                 aria-invalid={editing && editor.problem ? true : undefined}
                 inputMode={spec ? 'numeric' : undefined}
                 data-editing={editing ? '' : undefined}
-                // A number stage sizes the input to its digits (see the stylesheet).
-                data-fit={spec ? '' : undefined}
+                // A number stage gives the input one fixed width (see the stylesheet).
+                data-number={spec ? '' : undefined}
                 autoFocus
               />
               {spec ? (
