@@ -24,8 +24,11 @@ let nextId = 0;
 const pending = new Map();
 socket.onmessage = (message) => {
   const data = JSON.parse(message.data);
-  pending.get(data.id)?.(data);
+  // Only answers to our own numbered requests resolve a waiting call; events carry no id.
+  if (typeof data.id !== 'number' || !pending.has(data.id)) return;
+  const resolve = pending.get(data.id);
   pending.delete(data.id);
+  if (typeof resolve === 'function') resolve(data);
 };
 const send = (method, params = {}) =>
   new Promise((resolve) => {
