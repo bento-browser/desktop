@@ -1107,10 +1107,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `network.http.referer.XOriginPolicy` 2 and
   `dom.security.https_only_mode_send_http_background_request` false; Standard and
   Enhanced write Firefox's defaults (0 and true) so stepping down undoes them.
-  The switch and the HTTPS-only choice read back every pref they wrote (Firefox
-  ignores a write to a locked pref without an error) and, on any mismatch or
-  later failure, restore the values captured before the write instead of
-  replaying the old boolean or mode.
+  The switch and the HTTPS-only choice read back every pref they wrote (a write
+  to a locked pref neither throws nor changes the effective value) and, on any
+  mismatch or later failure, restore the effective values captured before the
+  write instead of replaying the old boolean or mode. A fresh profile gets
+  Standard applied at boot while onboarding is unfinished, because Firefox's own
+  prefs plus `prefs/bento.js` are not Standard (tracking protection only in
+  private windows, Discovery Stream on, `privacy.resistFingerprinting.letterboxing`
+  absent in 158).
 - Vanilla Firefox surface touched or depended on:
   `browser/modules/Sanitizer.sys.mjs` (`PREF_SANITIZE_ON_SHUTDOWN`,
   `PREF_SHUTDOWN_BRANCH`, `maybeMigratePrefs`, `getItemsToClearFromPrefBranch`,
@@ -1134,14 +1138,22 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   HTTPS-only prefs are false and `always` after both are true. For the repair,
   take a profile with only `privacy.sanitize.sanitizeOnShutdown` true and no
   `bento.shutdownClearingRepaired` in `browser.storage.local`, launch, and
-  confirm the item prefs match the bundle above.
+  confirm the item prefs match the bundle above; a profile whose item prefs were
+  changed (for example history on, cookies off) must keep them. On a fresh
+  profile (`user_pref("remote.prefs.recommended", false);`, since Marionette turns
+  Safe Browsing off) the Settings palette must mark Standard before onboarding
+  finishes, and `PrivacySettings.protectionLevel` must read `standard`.
 - Rollback or migration notes: a one-time startup repair
   (`extensions/bento-tools/src/privacy/ShutdownClearingRepair.ts`, run from
   `background.ts` after the stored protection level is applied) writes the whole
-  bundle when `privacy.sanitize.sanitizeOnShutdown` is true, so profiles that
-  turned the switch on under the old build stop clearing history, downloads and
-  form data. It sets `bento.shutdownClearingRepaired` in `browser.storage.local`
-  and never runs again, whether or not it had anything to fix. Profiles that
+  bundle when `privacy.sanitize.sanitizeOnShutdown` is true and the item prefs
+  are at Firefox's defaults (or the values Firefox's own first-quit migration
+  derives from them), so profiles that turned the switch on under the old build
+  stop clearing history, downloads and form data while a deliberate custom setup
+  is left alone. The write is read back; if a pref does not take, the prefs are
+  put back and the repair retries at the next launch. It sets
+  `bento.shutdownClearingRepaired` in `browser.storage.local` once the profile is
+  settled (repaired, or nothing to repair) and then never runs again. Profiles that
   applied Hardened before this change get the same prefs from the boot re-apply of
   the stored level. The dead
   `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}` user prefs stay
