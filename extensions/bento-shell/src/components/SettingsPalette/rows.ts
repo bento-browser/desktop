@@ -25,6 +25,17 @@ import {
   type EnumKey,
   type NumberSettingKey,
 } from './settingsCatalog';
+import {
+  ADVANCED_DESCRIPTIONS,
+  BACKUP_ROW_DESCRIPTIONS,
+  CONFIRM_DESCRIPTIONS,
+  CUSTOM_PROTECTION_DESCRIPTION,
+  ENUM_DESCRIPTIONS,
+  ENUM_OPTION_DESCRIPTIONS,
+  NUMBER_DESCRIPTIONS,
+  SIZE_ACTION_DESCRIPTIONS,
+  STAGE_DESCRIPTIONS,
+} from './settingsCopy';
 import { isEditorStage, type ConfirmAction, type Stage } from './stageStack';
 import type { EditableSettings } from './model';
 import type { SelectablePrivacyLevel, SettingsPaletteModel, SettingsPaletteView } from './types';
@@ -52,7 +63,6 @@ export type Intent =
   | { type: 'none' };
 
 export interface ProtectionDetail {
-  summary: string;
   benefits: readonly string[];
   caveats: readonly string[];
 }
@@ -69,6 +79,9 @@ export interface PaletteRow {
   /** A switch row: what its switch shows, which is the new state at once while a write is in
    * flight. The row stays the control; `value` keeps On or Off for the row's text value. */
   switchOn?: boolean;
+  /** A second line under the label, always visible: what the option does when that differs
+   * between its siblings. Part of the row's accessible description, not its name. */
+  description?: string;
   /** What the row does: `›` opens a stage, `↗` leaves Bento, `+` adds. */
   trail?: '›' | '↗' | '+';
   radio?: 'on' | 'off';
@@ -78,7 +91,8 @@ export interface PaletteRow {
   info?: boolean;
   /** Drawn under a rule, setting the row apart from the ones above. */
   separated?: boolean;
-  /** Shown only while the row is focused (the protection levels' benefits and caveats). */
+  /** Shown only while the row is focused: the protection levels' benefits and caveats, below
+   * the row's `description`. */
   detail?: ProtectionDetail;
   pending?: boolean;
   keywords: readonly string[];
@@ -126,11 +140,14 @@ function switchState(stored: boolean, pending: boolean, target: boolean | undefi
   return pending && target !== undefined ? target : stored;
 }
 
-/** What assistive technology reads for a row. A switch row names its state, "Sleep idle tabs,
- * On" (the switch itself is hidden from it), and follows the state the switch shows; any other
- * row is named by its content. */
+/** What assistive technology reads as a row's name. A switch row names its state, "Sleep idle
+ * tabs, On" (the switch itself is hidden from it), and follows the state the switch shows. A
+ * row with a `description` is named by its own label, note and value, so the description is
+ * read as its description and not twice. Any other row is named by its content. */
 export function rowAriaLabel(row: PaletteRow): string | undefined {
-  return row.switchOn === undefined ? undefined : `${row.label}, ${onOff(row.switchOn)}`;
+  if (row.switchOn !== undefined) return `${row.label}, ${onOff(row.switchOn)}`;
+  if (row.description === undefined) return undefined;
+  return [row.label, row.note, row.value].filter(Boolean).join(', ');
 }
 
 function toggleRow(model: SettingsPaletteModel, group: string, key: BooleanSettingKey): PaletteRow {
@@ -194,6 +211,7 @@ export function advancedRows(
         id: `advanced:${spec.key}`,
         group,
         label: spec.label,
+        description: ADVANCED_DESCRIPTIONS[spec.key],
         value: enumLabel(spec.enumKey, String(value)),
         trail: '›',
         pending,
@@ -205,6 +223,7 @@ export function advancedRows(
       id: `advanced:${spec.key}`,
       group,
       label: spec.label,
+      description: ADVANCED_DESCRIPTIONS[spec.key],
       value: onOff(value === true),
       switchOn: switchState(
         value === true,
@@ -368,11 +387,11 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
 }
 
 /** Everything the root search can reach: the root rows, the advanced privacy rows and the
- * shortcuts. */
+ * shortcuts. The results stay one line each: the advanced rows lose their description. */
 export function searchableRows(model: SettingsPaletteModel): PaletteRow[] {
   return [
     ...rootRows(model),
-    ...advancedRows(model),
+    ...advancedRows(model).map((row) => ({ ...row, description: undefined })),
     ...shortcutRows().map((row) => ({ ...row, info: false, intent: pushShortcuts })),
   ];
 }
@@ -421,6 +440,7 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
       id: `option:${option.value}`,
       group: ENUM_SPECS[key].label,
       label: option.label,
+      description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
       note: option.value === current ? 'Current' : undefined,
       radio: option.value === current ? 'on' : 'off',
       keywords: NO_KEYWORDS,
@@ -432,6 +452,7 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
         id: `option:${option.value}`,
         group: ENUM_SPECS[key].label,
         label: option.label,
+        description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
         note: option.value === model.settings.uiColorMode ? 'Current' : undefined,
         radio: option.value === model.settings.uiColorMode ? 'on' : 'off',
         keywords: NO_KEYWORDS,
@@ -442,6 +463,7 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
         id: `option:${option.value}`,
         group: ENUM_SPECS[key].label,
         label: option.label,
+        description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
         note: option.value === model.settings.sidebarShortcutBehavior ? 'Current' : undefined,
         radio: option.value === model.settings.sidebarShortcutBehavior ? 'on' : 'off',
         keywords: NO_KEYWORDS,
@@ -470,10 +492,10 @@ function protectionStageRows(model: SettingsPaletteModel): PaletteRow[] {
       id: `level:${level}`,
       group: 'Protection level',
       label: details.label,
+      description: details.summary,
       note: current === level ? 'Current' : undefined,
       radio: current === level ? 'on' : 'off',
       detail: {
-        summary: details.summary,
         benefits: details.benefits,
         caveats: details.caveats,
       },
@@ -485,6 +507,7 @@ function protectionStageRows(model: SettingsPaletteModel): PaletteRow[] {
     id: 'level:custom',
     group: 'Protection level',
     label: 'Custom',
+    description: CUSTOM_PROTECTION_DESCRIPTION,
     note: current === 'custom' ? 'Current' : 'Detected only',
     radio: current === 'custom' ? 'on' : 'off',
     tone: 'muted',
@@ -557,6 +580,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:edit',
       group,
       label: 'Edit size',
+      description: SIZE_ACTION_DESCRIPTIONS.edit,
       value: `${PANEL_SIZE_LIMITS.min} to ${PANEL_SIZE_LIMITS.max}`,
       trail: '›',
       keywords: NO_KEYWORDS,
@@ -568,6 +592,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:up',
       group,
       label: 'Move up',
+      description: SIZE_ACTION_DESCRIPTIONS.move,
       value: `To position ${index}`,
       keywords: NO_KEYWORDS,
       intent: { type: 'moveSize', index, delta: -1 },
@@ -578,6 +603,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
       id: 'size-action:down',
       group,
       label: 'Move down',
+      description: SIZE_ACTION_DESCRIPTIONS.move,
       value: `To position ${index + 2}`,
       keywords: NO_KEYWORDS,
       intent: { type: 'moveSize', index, delta: 1 },
@@ -587,6 +613,7 @@ function sizeActionRows(model: SettingsPaletteModel, index: number): PaletteRow[
     id: 'size-action:remove',
     group,
     label: 'Remove',
+    description: SIZE_ACTION_DESCRIPTIONS.remove,
     tone: 'danger',
     keywords: NO_KEYWORDS,
     intent: { type: 'removeSize', index },
@@ -643,6 +670,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:export',
         group,
         label: 'Export Bento data',
+        description: BACKUP_ROW_DESCRIPTIONS.export,
         value: plural(workspaces, 'workspace'),
         pending: model.pending.has('backup'),
         keywords: ['download', 'save', 'file'],
@@ -652,6 +680,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:import',
         group,
         label: 'Import Bento data',
+        description: BACKUP_ROW_DESCRIPTIONS.import,
         value: 'Choose a file',
         keywords: ['upload', 'open', 'file', 'json'],
         intent: { type: 'pickFile' },
@@ -660,6 +689,7 @@ function backupRows(model: SettingsPaletteModel): PaletteRow[] {
         id: 'backup:merge',
         group,
         label: 'Merge browser session',
+        description: BACKUP_ROW_DESCRIPTIONS.merge,
         trail: '↗',
         keywords: NO_KEYWORDS,
         intent: { type: 'link', target: 'mergePalette' },
@@ -718,6 +748,7 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       id: 'stored-action:restore',
       group: label,
       label: 'Restore…',
+      description: BACKUP_ROW_DESCRIPTIONS.restore,
       keywords: NO_KEYWORDS,
       intent: {
         type: 'push',
@@ -728,6 +759,7 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
       id: 'stored-action:delete',
       group: label,
       label: 'Delete…',
+      description: BACKUP_ROW_DESCRIPTIONS.delete,
       tone: 'danger',
       keywords: NO_KEYWORDS,
       intent: {
@@ -740,7 +772,6 @@ function backupRowStageRows(backupId: string, label: string): PaletteRow[] {
 
 export interface ConfirmCopy {
   title: string;
-  lines: readonly string[];
   confirmLabel: string;
   danger: boolean;
 }
@@ -748,44 +779,19 @@ export interface ConfirmCopy {
 export function confirmCopy(action: ConfirmAction): ConfirmCopy {
   switch (action.kind) {
     case 'reset':
-      return {
-        title: 'Reset Bento settings?',
-        lines: [
-          'This restores Bento settings, privacy protection, and search to their defaults.',
-          'Onboarding opens again from Welcome.',
-        ],
-        confirmLabel: 'Reset Bento settings',
-        danger: true,
-      };
+      return { title: 'Reset Bento settings?', confirmLabel: 'Reset Bento settings', danger: true };
     case 'restore':
-      return {
-        title: 'Restore this backup?',
-        lines: ["This adds the backup's workspaces and tabs to the current window."],
-        confirmLabel: 'Restore backup',
-        danger: false,
-      };
+      return { title: 'Restore this backup?', confirmLabel: 'Restore backup', danger: false };
     case 'delete':
-      return {
-        title: 'Delete this backup?',
-        lines: ['This permanently removes the selected stored backup.'],
-        confirmLabel: 'Delete backup',
-        danger: true,
-      };
+      return { title: 'Delete this backup?', confirmLabel: 'Delete backup', danger: true };
   }
 }
 
+/** The actions of a confirmation; what it does is the page description above the list. */
 function confirmStageRows(action: ConfirmAction, busy: boolean): PaletteRow[] {
   const copy = confirmCopy(action);
   const group = copy.title;
   return [
-    ...copy.lines.map((line, index): PaletteRow => ({
-      id: `confirm:line:${index}`,
-      group,
-      label: line,
-      info: true,
-      keywords: NO_KEYWORDS,
-      intent: { type: 'none' },
-    })),
     {
       id: 'confirm:cancel',
       group,
@@ -851,6 +857,26 @@ export function isFilterable(stage: Stage): boolean {
     stage.kind === 'search' ||
     stage.kind === 'enum'
   );
+}
+
+/** What a page is for, shown under the path where a value or option changes; null on the root
+ * and the shortcuts, which change nothing. */
+export function pageDescription(stage: Stage): string | null {
+  switch (stage.kind) {
+    case 'root':
+    case 'shortcuts':
+      return null;
+    case 'number':
+      return NUMBER_DESCRIPTIONS[stage.key];
+    case 'text':
+      return STAGE_DESCRIPTIONS.defaultWorkspaceName;
+    case 'enum':
+      return ENUM_DESCRIPTIONS[stage.key];
+    case 'confirm':
+      return CONFIRM_DESCRIPTIONS[stage.action.kind];
+    default:
+      return STAGE_DESCRIPTIONS[stage.kind];
+  }
 }
 
 export interface FooterCopy {

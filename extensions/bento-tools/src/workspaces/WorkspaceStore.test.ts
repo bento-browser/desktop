@@ -247,4 +247,58 @@ describe('WorkspaceStore active workspace persistence', () => {
       themeId: '',
     });
   });
+
+  describe('Default workspace name setting', () => {
+    it('names the first-run workspace', async () => {
+      const store = new WorkspaceStore(() => 'Work');
+      await store.init();
+
+      expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Work']);
+    });
+
+    it('is read when init runs, so it can load before the store does', async () => {
+      let name = 'Personal';
+      const store = new WorkspaceStore(() => name);
+      name = 'Studio';
+      await store.init();
+
+      expect(store.snapshot().workspaces[0]?.name).toBe('Studio');
+    });
+
+    it('names an imported workspace that arrives without a name', async () => {
+      vi.mocked(browser.windows.getAll).mockResolvedValue([{ id: 7 } as browser.windows.Window]);
+      vi.mocked(browser.sessions.getWindowValue).mockResolvedValue([
+        { id: '{space-1}', name: '   ' },
+        { id: '{space-2}', name: 'Research' },
+      ]);
+
+      const store = new WorkspaceStore(() => 'Work');
+      await store.init();
+
+      expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Work', 'Research']);
+    });
+
+    it('does not rename existing workspaces when the setting changes', async () => {
+      let name = 'Personal';
+      const store = new WorkspaceStore(() => name);
+      await store.init();
+      name = 'Work';
+
+      expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Personal']);
+    });
+
+    it('replaces the untouched first-run workspace, named by the setting, with an imported set', async () => {
+      const store = new WorkspaceStore(() => 'Work');
+      await store.init();
+      store.assignAvailable(7);
+      vi.mocked(browser.windows.getAll).mockResolvedValue([{ id: 7 } as browser.windows.Window]);
+      vi.mocked(browser.sessions.getWindowValue).mockImplementation(async (_windowId, key) =>
+        key === 'bento.importedWorkspaces' ? [{ id: '{space-1}', name: 'Research' }] : undefined,
+      );
+
+      await store.adoptImportedWorkspacesFromSession(7);
+
+      expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Research']);
+    });
+  });
 });

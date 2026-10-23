@@ -768,6 +768,19 @@ number); the value applies live while typing (panel corners move as you type) an
 while arrowing over the presets, Enter keeps it, clicking a preset keeps it and returns to
 the list, and Back or Esc puts the previous value back.
 
+Every list where a value or choice changes (each number and the name, the choices,
+protection level, default search engine, custom panel sizes and their actions, Advanced
+privacy, Backups and a stored backup, and each confirmation) opens with a short plain
+description of what the setting does, between the path and the field. It is static text:
+it does not scroll with the list and takes no focus, and a screen reader reads it with the
+field. The first list and the keyboard shortcuts have none. Where the options of a list
+behave differently (the choices, the protection levels, each Advanced privacy row, the
+size actions, the Backups rows and a stored backup's actions) every option carries a
+second, always visible line saying what it does, and the highlighted protection level
+still adds its benefits and caveats in two columns below that. Search engines and number
+presets have no second line. A confirmation puts what it does in that description, above
+its Cancel and confirm rows.
+
 Settings is the size of the command palette and keeps it on every list. A bar above
 the search field holds Back, the path to the current list (every level before it is
 a button that goes straight there) and Close. Esc, Back and Backspace in an empty
@@ -813,6 +826,12 @@ other setting changed there is saved for the whole profile as usual.
 
 Firefox's own Settings page (`about:preferences`) has no Bento category; the
 Settings palette is the only place Bento's settings live.
+
+Default workspace name (Workspaces group) is the name Bento gives the first workspace in a
+new profile, and any workspace it adds when an import has none or leaves one unnamed
+(importing a backup that holds no workspace, or a browser session with an unnamed
+space). Changing it never renames a workspace that exists. New workspaces made from the
+sidebar are still numbered "Workspace 2", "Workspace 3".
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.

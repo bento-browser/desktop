@@ -202,9 +202,33 @@ parts, and it is split so each piece is testable without the browser:
   `SettingsPaletteActions` object and keeps only navigation state: a stack of stages
   (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
   search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
-  compares the bounds with `_shared/settings-rules.ts`), and `rows.ts` turns the
+  compares the bounds with `_shared/settings-rules.ts`), `settingsCopy.ts` all page and option
+  copy (below), and `rows.ts` turns the
   model and a stage into rows, each carrying an intent, so what every stage shows is
   asserted in `rows.test.ts` and the component only renders and dispatches them.
+- Page descriptions and option lines. Copy lives only in `settingsCopy.ts`, typed by the
+  catalog's keys (`NUMBER_DESCRIPTIONS`, `ENUM_DESCRIPTIONS`, `ENUM_OPTION_DESCRIPTIONS`,
+  `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text) plus
+  `STAGE_DESCRIPTIONS`, `CONFIRM_DESCRIPTIONS`, `SIZE_ACTION_DESCRIPTIONS`,
+  `BACKUP_ROW_DESCRIPTIONS` and `CUSTOM_PROTECTION_DESCRIPTION`. It is a module of its own
+  because the command palette bundle reads `settingsCatalog.ts` for labels (through
+  `targets.ts`) and must not carry the copy; only `rows.ts` imports it. The protection levels' second
+  line is `summary` from `_shared/privacy-levels.ts` (not copied), and their `detail` is only
+  benefits and caveats. `pageDescription(stage)` in `rows.ts` returns the page text (null on
+  the root and the shortcuts); the component renders it as `CommandPalette.Description` between
+  the nav row and the field row, outside the list so it does not scroll, and the search field
+  and input carry `aria-describedby` to it. An option's `PaletteRow.description` renders as
+  `CommandPalette.ItemDescription`, a flex-wrapped second line under the row. The Mux item
+  parts register no description slot with React Aria and the item forwards no
+  `aria-describedby`, so `describeOptions` (`SettingsPalette.tsx`, a `MutationObserver` on the
+  list) sets each option's `aria-describedby` to its line (and the protection detail) on the
+  rendered element, and `rowAriaLabel` names such a row by its label, note and value only. The root
+  search results drop the advanced rows' lines, and a confirmation's explanation is its page
+  description (its rows are only Cancel and the action). `rows.test.ts` asserts that every
+  stage where a value or option changes has a description and that the listed rows carry
+  lines, and `settingsCopy.test.ts` that the copy covers the catalog exactly and has no em
+  dashes. When a setting's behaviour changes
+  in tools or chrome, change its line here in the same change.
 - `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
   over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
   `requestId`, rejects a non-durable request after 15 s, and follows a durable operation
