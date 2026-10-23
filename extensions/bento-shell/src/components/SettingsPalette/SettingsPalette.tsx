@@ -49,6 +49,7 @@ import {
   rowAriaLabel,
   rowsForStage,
   searchableRows,
+  showsFieldRow,
   stageLabel,
   statusRows,
   type FooterCopy,
@@ -543,10 +544,17 @@ export default function SettingsPalette({
         ? 'Back to Command palette'
         : 'Back';
   const fieldValue = editing ? editor.draft : query;
+  // A short list has no field row. The input stays, hidden and read-only, because it holds the
+  // focus and carries the arrow keys, Enter, Esc and Backspace for the list.
+  const listRowCount = useMemo(
+    () => (model ? rowsForStage(stage, model).length : 0),
+    [model, stage],
+  );
+  const fieldShown = showsFieldRow(stage, listRowCount);
   const onFieldChange = (event: ChangeEvent<HTMLInputElement>) => {
     const text = event.currentTarget.value;
     if (editing) editor.type(text);
-    else setQuery(text);
+    else if (fieldShown) setQuery(text);
   };
 
   const searching = stage.kind === 'root' && query !== '';
@@ -563,7 +571,9 @@ export default function SettingsPalette({
     ? `${currentLabel} value`
     : stage.kind === 'root'
       ? 'Search settings'
-      : `Filter ${currentLabel}`;
+      : fieldShown
+        ? `Filter ${currentLabel}`
+        : currentLabel;
   // The row a stage opens on: the one that opened the page when going back, else the current
   // choice of a list of choices. An editor stage focuses no row.
   const returnTo = returnRow?.show === openToken ? returnRow.id : null;
@@ -753,6 +763,7 @@ export default function SettingsPalette({
             ) : null}
             <Palette.SearchField
               className="bento-settings-palette__field"
+              data-hidden={fieldShown ? undefined : ''}
               aria-label={fieldLabel}
               aria-describedby={description ? descriptionId : undefined}
             >
@@ -765,6 +776,7 @@ export default function SettingsPalette({
                 onKeyDown={handleKeyDown}
                 aria-label={fieldLabel}
                 aria-describedby={description ? descriptionId : undefined}
+                readOnly={fieldShown ? undefined : true}
                 aria-invalid={editing && editor.problem ? true : undefined}
                 inputMode={spec ? 'numeric' : undefined}
                 data-editing={editing ? '' : undefined}

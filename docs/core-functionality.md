@@ -778,7 +778,9 @@ behave differently (the choices, the protection levels, each Advanced privacy ro
 size actions, the Backups rows and a stored backup's actions) every option carries a
 second, always visible line saying what it does, and the highlighted protection level
 still adds its benefits and caveats in two columns below that. Search engines and number
-presets have no second line. A confirmation puts what it does in that description, above
+presets have no second line. A list of four rows or fewer (the choices, protection level,
+a stored backup, size actions, a confirmation) has no search field: Up and Down move
+through it, Enter picks, and Esc and Back work as before. A confirmation puts what it does in that description, above
 its Cancel and confirm rows.
 
 Settings is the size of the command palette and keeps it on every list. A bar above
@@ -828,10 +830,12 @@ Firefox's own Settings page (`about:preferences`) has no Bento category; the
 Settings palette is the only place Bento's settings live.
 
 Default workspace name (Workspaces group) is the name Bento gives the first workspace in a
-new profile, and any workspace it adds when an import has none or leaves one unnamed
-(importing a backup that holds no workspace, or a browser session with an unnamed
-space). Changing it never renames a workspace that exists. New workspaces made from the
-sidebar are still numbered "Workspace 2", "Workspace 3".
+new profile and the workspaces it creates itself: one for a window that has none, one for
+a window left without a workspace when its workspace is deleted, the one "Move to new
+workspace" makes, and one for an import that has none or leaves one unnamed. When a
+workspace already has that name, Bento adds a number, so the next ones are "Personal 2",
+"Personal 3". Changing it never renames a workspace that exists. Workspaces made with
+a New workspace button are still numbered "Workspace 2", "Workspace 3".
 
 Bento has no automatic updater yet, so the About page shows no Updates section
 (no heading, description, or status message); it keeps the support links.

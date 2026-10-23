@@ -75,7 +75,7 @@ import {
 
 const tabs = new TabRegistry();
 const settings = new SettingsStore();
-// The first workspace is named by a setting, so `workspaces.init()` waits for `settings.init()`.
+// The workspaces Bento names itself take the Default workspace name from this store's snapshot.
 const workspaces = new WorkspaceStore(() => settings.snapshot().defaultWorkspaceName);
 // Windows that exist before startup has settled never adopt unassigned tabs: those may be
 // restored tabs whose session values are not read yet (see tabs/AdoptedTab.ts).
@@ -911,18 +911,10 @@ const sleep = new SleepPolicy(tabs, settings, {
 // panels/sync (the in-memory store hasn't received restorePanelsForWorkspace's
 // adds yet), and the shell renders the unfiltered tab list for the
 // few hundred ms between that empty sync and the post-restore broadcast.
-// Settings load before workspaces: the first workspace is named by a setting.
-const settingsReady = settings
-  .init()
-  .catch((err) => console.error('[bento-tools] SettingsStore init failed:', err));
 const storesReady = Promise.all([
   tabs.init().catch((err) => console.error('[bento-tools] TabRegistry init failed:', err)),
-  settingsReady,
-  settingsReady.then(() =>
-    workspaces
-      .init()
-      .catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
-  ),
+  workspaces.init().catch((err) => console.error('[bento-tools] WorkspaceStore init failed:', err)),
+  settings.init().catch((err) => console.error('[bento-tools] SettingsStore init failed:', err)),
   panels.init().catch((err) => console.error('[bento-tools] PanelStore init failed:', err)),
   pinnedPanels
     .init()

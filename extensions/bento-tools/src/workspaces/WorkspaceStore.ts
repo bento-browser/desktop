@@ -65,8 +65,9 @@ export class WorkspaceStore {
   #privateByWindow = new Map<number, Workspace>();
   #privateListeners = new Set<PrivateListener>();
 
-  /** `defaultName` reads the Default workspace name setting. `init()` must run after the
-   * settings have loaded, or a profile that changed the setting still gets the built-in name. */
+  /** `defaultName` reads the Default workspace name setting. It is read when a workspace is
+   * named, from whatever the settings snapshot holds then; on a true first boot nothing is
+   * stored yet, so that is the built-in default anyway. */
   readonly #defaultName: () => string;
 
   constructor(defaultName: () => string = () => DEFAULT_SETTINGS.defaultWorkspaceName) {
@@ -204,10 +205,9 @@ export class WorkspaceStore {
     if (Array.from(this.#activeIdByWindow.values()).some((id) => id !== only.id)) {
       return false;
     }
-    // Untouched means named by the setting now or by the built-in default.
-    const untouchedName =
-      only.name === this.#defaultName() || only.name === DEFAULT_SETTINGS.defaultWorkspaceName;
-    return untouchedName && !only.themeId && !only.icon;
+    // The built-in name only, never the setting: a real workspace that happens to share the
+    // setting's name must not be replaced by an import.
+    return only.name === DEFAULT_SETTINGS.defaultWorkspaceName && !only.themeId && !only.icon;
   }
 
   snapshot(): {

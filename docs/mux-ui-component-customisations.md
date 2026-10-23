@@ -192,6 +192,9 @@ is the control, and the row keeps On or Off in its text value. The root `Switch`
 dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Settings entry,
 where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
+A list of four rows or fewer has no visible field row: the `SearchField` keeps `data-hidden`
+(`position: absolute`, 1px, `clip-path: inset(50%)`, the usual visually-hidden recipe) and the
+`Input` is `readOnly`, because the Autocomplete input is what drives the list's virtual focus.
 A page description is `CommandPalette.Description` between the nav row and the field
 (`.bento-settings-palette__page-description`: no Mux margins, a bottom rule like the nav
 row), outside the list so it does not scroll. An option's second line is

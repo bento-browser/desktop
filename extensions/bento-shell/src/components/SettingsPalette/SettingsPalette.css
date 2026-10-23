@@ -99,6 +99,20 @@
   line-height: var(--muxui-semantic-typography-supporting-line-height);
 }
 
+/* A short list has no field row: the field stays as the keyboard's focus holder, visually
+ * hidden (the list's highlight is the focus the eye follows) and still read. */
+.muxui-command-palette__search-field.bento-settings-palette__field[data-hidden] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The field row holds the filter or the value being typed, never the path. */
 .bento-settings-palette__unit,
 .bento-settings-palette__bounds {
@@ -275,6 +289,7 @@
 }
 
 .bento-settings-palette__item .bento-settings-palette__line {
+  box-sizing: border-box;
   flex: 1 0 100%;
   overflow: visible;
   white-space: normal;
@@ -287,7 +302,7 @@
 }
 
 /* Protection levels: the focused level shows what it adds and costs under its description,
- * in two columns. */
+ * in two columns, at the size of the option lines. */
 
 .bento-settings-palette__detail {
   display: none;
@@ -299,13 +314,17 @@
     var(--bento-settings-palette-lead-size) + var(--muxui-semantic-layout-action-gap)
   );
   color: var(--muxui-semantic-color-neutral-70);
-  font-size: var(--muxui-semantic-typography-small-size);
+  font-size: var(--muxui-semantic-typography-tiny-size);
+  line-height: var(--muxui-semantic-typography-supporting-line-height);
   white-space: normal;
 }
 
+/* Benefits are the longer list, so they get the wider column: with the description above and
+ * no field row, the focused level (Standard) stays short enough for the next level to show
+ * under it in the fixed-height palette. */
 .bento-settings-palette__item[data-focused] .bento-settings-palette__detail {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   column-gap: var(--muxui-semantic-layout-inset-large);
 }
 

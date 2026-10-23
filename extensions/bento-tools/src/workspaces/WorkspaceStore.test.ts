@@ -256,7 +256,7 @@ describe('WorkspaceStore active workspace persistence', () => {
       expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Work']);
     });
 
-    it('is read when init runs, so it can load before the store does', async () => {
+    it('reads the setting when the workspace is named, not when the store is built', async () => {
       let name = 'Personal';
       const store = new WorkspaceStore(() => name);
       name = 'Studio';
@@ -287,16 +287,31 @@ describe('WorkspaceStore active workspace persistence', () => {
       expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Personal']);
     });
 
-    it('replaces the untouched first-run workspace, named by the setting, with an imported set', async () => {
-      const store = new WorkspaceStore(() => 'Work');
-      await store.init();
+    const importSession = async (store: WorkspaceStore) => {
       store.assignAvailable(7);
       vi.mocked(browser.windows.getAll).mockResolvedValue([{ id: 7 } as browser.windows.Window]);
       vi.mocked(browser.sessions.getWindowValue).mockImplementation(async (_windowId, key) =>
         key === 'bento.importedWorkspaces' ? [{ id: '{space-1}', name: 'Research' }] : undefined,
       );
-
       await store.adoptImportedWorkspacesFromSession(7);
+    };
+
+    it('does not replace a lone workspace that merely shares the setting name', async () => {
+      const store = new WorkspaceStore(() => 'Work');
+      await store.init();
+
+      await importSession(store);
+
+      expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Work', 'Research']);
+    });
+
+    it('still replaces the lone built-in default workspace, whatever the setting says', async () => {
+      const store = new WorkspaceStore(() => 'Work');
+      await store.init();
+      const [first] = store.snapshot().workspaces;
+      store.rename(first!.id, 'Personal');
+
+      await importSession(store);
 
       expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Research']);
     });

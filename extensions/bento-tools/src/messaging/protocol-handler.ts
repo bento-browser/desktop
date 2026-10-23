@@ -291,16 +291,27 @@ function pickAvailableWorkspaceAfterDeleting(
   );
 }
 
-function nextDefaultWorkspaceName(ctx: HandlerContext): string {
-  const existing = ctx.workspaces.snapshot().workspaces;
-  const taken = new Set(existing.map((w) => w.name));
-  let idx = existing.length + 1;
-  let name = `Workspace ${idx}`;
+/** The name of a workspace Bento makes on its own: the Default workspace name setting when no
+ * workspace has it, else the setting numbered ("Personal 2", "Personal 3", ...). The number
+ * starts at the workspace count plus one and skips names already taken, so a
+ * delete-and-recreate cycle does not collide. */
+export function defaultWorkspaceName(base: string, existingNames: readonly string[]): string {
+  const taken = new Set(existingNames);
+  if (!taken.has(base)) return base;
+  let idx = existingNames.length + 1;
+  let name = `${base} ${idx}`;
   while (taken.has(name)) {
     idx += 1;
-    name = `Workspace ${idx}`;
+    name = `${base} ${idx}`;
   }
   return name;
+}
+
+function nextDefaultWorkspaceName(ctx: HandlerContext): string {
+  return defaultWorkspaceName(
+    ctx.settings.snapshot().defaultWorkspaceName,
+    ctx.workspaces.snapshot().workspaces.map((w) => w.name),
+  );
 }
 
 function uniqueTabIds(ids: readonly unknown[] | undefined): number[] {
@@ -1012,8 +1023,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       if (typeof wid === 'number' && wid >= 0) {
         let picked = ctx.workspaces.assignAvailable(wid);
         if (!picked) {
-          // Pick "Workspace 2", "Workspace 3", … skipping names already
-          // taken so a delete-and-recreate cycle doesn't collide.
+          // Name it by the Default workspace name setting, numbered ("Personal 2", ...)
+          // when that name is taken.
           const name = nextDefaultWorkspaceName(ctx);
           const ws = ctx.workspaces.create({ name }, wid);
           picked = ws.id;

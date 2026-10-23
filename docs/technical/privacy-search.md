@@ -210,9 +210,8 @@ parts, and it is split so each piece is testable without the browser:
   catalog's keys (`NUMBER_DESCRIPTIONS`, `ENUM_DESCRIPTIONS`, `ENUM_OPTION_DESCRIPTIONS`,
   `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text) plus
   `STAGE_DESCRIPTIONS`, `CONFIRM_DESCRIPTIONS`, `SIZE_ACTION_DESCRIPTIONS`,
-  `BACKUP_ROW_DESCRIPTIONS` and `CUSTOM_PROTECTION_DESCRIPTION`. It is a module of its own
-  because the command palette bundle reads `settingsCatalog.ts` for labels (through
-  `targets.ts`) and must not carry the copy; only `rows.ts` imports it. The protection levels' second
+  `BACKUP_ROW_DESCRIPTIONS` and `CUSTOM_PROTECTION_DESCRIPTION`. It is a module of its own so
+  the catalog stays labels, keys and bounds; only `rows.ts` imports it. The protection levels' second
   line is `summary` from `_shared/privacy-levels.ts` (not copied), and their `detail` is only
   benefits and caveats. `pageDescription(stage)` in `rows.ts` returns the page text (null on
   the root and the shortcuts); the component renders it as `CommandPalette.Description` between
@@ -227,7 +226,15 @@ parts, and it is split so each piece is testable without the browser:
   description (its rows are only Cancel and the action). `rows.test.ts` asserts that every
   stage where a value or option changes has a description and that the listed rows carry
   lines, and `settingsCopy.test.ts` that the copy covers the catalog exactly and has no em
-  dashes. When a setting's behaviour changes
+  dashes.
+- Field row. `showsFieldRow(stage, listRowCount)` (`rows.ts`) keeps the field on the root, in
+  editors and on lists of more than four rows, counted before any filter, and drops it on a
+  shorter list (the choices, protection level, a stored backup, size actions, a
+  confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
+  Esc and Backspace for the list (React Aria drives the virtual focus from it), so the field
+  gets `data-hidden` (visually hidden, still in the tab order and read, labelled with the
+  page name) and the input `readOnly`; `onFieldChange` ignores typing there, so a list never
+  filters invisibly. When a setting's behaviour changes
   in tools or chrome, change its line here in the same change.
 - `extensions/bento-shell/src/settings-palette/settingsClient.ts` is the request client
   over an injected `SettingsTransport` (`send`, `onMessage`). It correlates results by
