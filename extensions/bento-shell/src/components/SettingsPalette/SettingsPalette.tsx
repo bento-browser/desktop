@@ -28,7 +28,6 @@ import ChevronLeftIcon from 'lucide-react/dist/esm/icons/chevron-left';
 import ChevronRightIcon from 'lucide-react/dist/esm/icons/chevron-right';
 import ExternalLinkIcon from 'lucide-react/dist/esm/icons/external-link';
 import PlusIcon from 'lucide-react/dist/esm/icons/plus';
-import SearchIcon from 'lucide-react/dist/esm/icons/search';
 import TriangleAlertIcon from 'lucide-react/dist/esm/icons/triangle-alert';
 
 import { BentoIcon } from '../primitives';
@@ -704,13 +703,6 @@ export default function SettingsPalette({
               />
             </div>
             <Palette.SearchField className="bento-settings-palette__field" aria-label={fieldLabel}>
-              {editing ? null : (
-                <BentoIcon
-                  icon={SearchIcon}
-                  size="sm"
-                  className="bento-settings-palette__search-icon"
-                />
-              )}
               <Palette.Input
                 ref={inputRef}
                 className="bento-settings-palette__input"
@@ -721,11 +713,9 @@ export default function SettingsPalette({
                 aria-label={fieldLabel}
                 aria-invalid={editing && editor.problem ? true : undefined}
                 inputMode={spec ? 'numeric' : undefined}
-                // The number or name sizes the field to itself (the digits' width, plus one for the caret).
-                style={
-                  spec ? { inlineSize: `${Math.max(1, editor.draft.length) + 1}ch` } : undefined
-                }
                 data-editing={editing ? '' : undefined}
+                // A number stage sizes the input to its digits (see the stylesheet).
+                data-fit={spec ? '' : undefined}
                 autoFocus
               />
               {spec ? (
