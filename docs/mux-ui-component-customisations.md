@@ -193,10 +193,13 @@ dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Set
 where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
 A protection level carries its benefits and caveats inside the item and shows them
-only under `[data-focused]`. In an editor stage the Input hugs its value (an inline
-`inline-size` in `ch`, the one inline dimension) and the unit and bounds sit around it in
-the search field. Danger text uses `--muxui-semantic-action-danger-foreground`, invalid
-text `--muxui-semantic-feedback-invalid-content` and the warning mark
+only under `[data-focused]`. The search field is the command palette's stock one: no
+leading icon, and the Input keeps Mux's own padding in every stage. A name stage keeps the
+stock full-width Input. A number stage sets `field-sizing: content` on it (Firefox 158 and
+Chromium both support it on an `<input>`) so the Input is as wide as its digits plus that
+padding, with no inline size in script, and the unit and bounds sit after it in the field.
+Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
+`--muxui-semantic-feedback-invalid-content` and the warning mark
 `--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than
 animating (a switch row shows its target state instead). A stage change slides the list in
 from the side it came from with one keyframe animation on the `reveal` pair
