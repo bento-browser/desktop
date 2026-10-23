@@ -211,18 +211,13 @@ leading icon, and the Input keeps Mux's own padding in every stage. A number sta
 half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
 font where it is used), so the box never changes with what is typed. A longer value scrolls
 inside it, and the unit and bounds after it in the field do not move.
-A number with a range of at most 50 (`usesSlider`) is a page of its own kind: the Mux `Slider`
-(root export, experimental; `step` 1, `min` and `max` the setting's bounds, controlled `value`)
-replaces the field row and the preset list. Bento wraps it in a plain `div` that carries the Enter
-`keydown` (the Slider exposes no key handler) and the footer-pinning flex, and sets
-`aria-label` (the setting's label) and `data-unit`. The readout is Mux's own header output
-(no `label`, so the header holds only the output, which `.bento-settings-palette__slider`
-left-aligns, in `neutral-90` at the control weight); the unit is the output's `::after`, chosen by
-the root's `data-unit` (`px` or `min`), because Mux gives the output no `formatOptions` and a
-pseudo-element cannot read an attribute of an ancestor. "Default N" and the range are a plain
-`p` under the track in `neutral-60`, left aligned, not Mux text parts. The page keeps the
-Back, path and Close nav row and the description. Overrides of Mux slider internals: the header
-justification and output colour and weight above, and the thumb ring below.
+A number with a range of at most 50 (`usesSlider`) is a page of its own kind: a slider in place of
+the field row and the preset list. It is not the Mux `Slider`; see the recorded exception below.
+The page keeps the Back, path and Close nav row and the description. Above the track is the value
+in `neutral-90` at the control weight with its unit in `neutral-60` (an `aria-hidden` `p`, since the
+input announces the value and unit itself through `aria-valuetext`, "12 px"). Under the track is a
+plain `p` in `neutral-60`, left aligned: "Default N unit" and "min to max unit". The stage is a flex
+column that takes the rest of the dialog, so the footer stays at the bottom as on a list page.
 Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
 `--muxui-semantic-feedback-invalid-content` and the warning mark
 `--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than
@@ -258,17 +253,6 @@ pinned Mux version documents the prop:
   line (and the protection detail), and the row is named by `aria-label` (label, note, value)
   so the line is read once, as the description. Replaced if Mux registers the slot from
   `ItemDescription`.
-- `aria-describedby` on the Settings `Slider` (a hyphenated JSX attribute, so it type-checks
-  without a cast): the declaration lists `aria-label` and `aria-labelledby` only, but the Mux
-  part spreads its props onto the React Aria slider, which links the description to the thumb's
-  `input`. Verified in the DOM; replaced if a pinned Mux version drops the spread.
-- The thumb's focus ring on `.muxui-slider-thumb:has(input:focus)` (`SettingsPalette.css`):
-  Mux draws it on `[data-focus-visible]`, which React Aria withholds when the last input was a
-  click, and the slider page opens with a programmatic focus (a click on the row that opened it
-  is as common as Enter). The rule uses Mux's own ring tokens, `--muxui-focus-ring-inner` and
-  `-outer`.
-- The focus itself: the Slider has no `autoFocus`, so the page focuses the thumb's
-  `input[type="range"]` from an effect, found through the Slider's `ref` (the root `div`).
 - `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
   (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
   the keyboard and the pointer share the one highlight. React Aria only does this once its
@@ -281,6 +265,42 @@ pinned Mux version documents the prop:
   context makes every button in it `tabindex="-1"`; and an `onPressStart` that takes the focus
   back for a key press, because the context's press-start focuses the input, which moved the
   focus off the button before its key-up and left Enter and Space doing nothing.
+
+Recorded exception to the layering rule: the Settings slider is a native `<input type="range">`
+(`components/SettingsPalette/RangeSlider.tsx`), not the Mux `Slider`. Why: Mux's `Slider` lives in
+the `collections` module that most entries share, and building the page with it cost about 109 KB
+gzip on the Settings entry (which did not load that chunk before) and about 16 KB on the shell and
+most overlays; a lazy import does not help, because Rollup keeps one module in one chunk. The
+native control gives the same behaviour at no JavaScript cost: arrows, Page keys (a tenth of the
+range, 4 on 0 to 36), Home and End, focus, pointer drag and track click are the browser's (Gecko
+steps one on Shift+arrow, so nothing is added for it), and `aria-valuetext` carries the unit, which
+the Mux slider could not (it has no `formatOptions`). Enter is the only key Bento handles on it
+(keep), on the input's `keydown`. The accessible name is `aria-label` (the setting's label) and
+`aria-describedby` the page description. The page focuses the input with a ref, and the ring shows
+whenever the input has the focus (`:has(input:focus)`), not only after a key press, because the page
+opens by programmatic focus and a click on the row that opened it is as common as Enter.
+
+Because a native thumb cannot be transitioned, the input is full size and invisible
+(`opacity: 0`, `appearance: none`, transparent `::-moz-range-*` and `::-webkit-slider-*` parts;
+its thumb is the drawn thumb's size and its track the slider's height, so the hit area is the
+drawn thumb and a press anywhere on the row lands on the input) over a track, fill and thumb drawn
+as elements of our own, in the Mux slider's tokens (`surface-track`, `selection-track`,
+`border-indicator`, `border-dragging`, `surface-canvas`, `elevation-indicator`, `shape-pill-radius`,
+and the focus ring `--muxui-focus-ring-inner` and `-outer`) and sized by the
+`--bento-settings-palette-range-*` tokens in `bento-tokens.css`, which copy the Mux slider's
+dimensions (control 1.25rem, track 0.25rem, thumb 1.125rem plus a 2px border, ring 2px and 4px).
+`RangeSlider` sets one custom property on the wrapper, `--bento-slider-ratio` (0 to 1, from the
+value), and the thumb and the fill move only by `transform` from it: the thumb by
+`translateX((100cqw - thumb) * ratio)` and the fill, which is as wide as the track and parked one
+width to the left, by `translateX(-100% + thumb / 2 + (100cqw - thumb) * ratio)`, with the wrapper
+as the `container-type: inline-size` that gives `cqw`. They transition on the `state` motion pair
+(`--muxui-semantic-motion-state-transition-duration` and `-easing`, 120 ms, the speed of the
+sidebar hover highlight) during drags, key presses and track clicks, so the thumb glides between
+steps instead of jumping a step's width. The transition is on only after the slider has settled
+(`data-settled`, set a frame after mount, so a page opening on its value does not slide in), and
+`prefers-reduced-motion: reduce` turns it off. The wrapper must stay a container with a definite
+inline size, and the drawn thumb must keep the native thumb's size and travel (centre from half
+a thumb to the width less half a thumb), or the drawn thumb and the hit area part.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
