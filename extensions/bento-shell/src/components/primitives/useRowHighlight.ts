@@ -135,7 +135,9 @@ function follow(list: HTMLElement, selector: string): () => void {
 
   let handedBack = false;
   const handHoverBack = (event: Event) => {
-    if (handedBack || !gate.open || !(event instanceof PointerEvent)) return;
+    // Only a real event hands back: the synthetic pointermove above has no position and would
+    // use up the hand-back on whatever sits at the top-left corner.
+    if (handedBack || !gate.open || !(event instanceof PointerEvent) || !event.isTrusted) return;
     handedBack = true;
     const { clientX, clientY, pointerType } = event;
     const row = doc.elementFromPoint(clientX, clientY)?.closest('[role="option"]');
