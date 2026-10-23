@@ -6,9 +6,10 @@
 // with the rows) that slides to the row holding the virtual focus. Pointer hover moves that same
 // focus, so the keyboard and the pointer share the slab and there are never two.
 //
-// The hook only measures. It reads the focused row from the DOM (React Aria marks it
-// `data-focused`; a stage that keeps no focus of its own marks its row `data-current`) and
-// writes its box into custom properties on the list.
+// The hook measures: it reads the focused row from the DOM (React Aria marks it `data-focused`; a
+// stage that keeps no focus of its own marks its row `data-current`) and writes its box into
+// custom properties on the list. It also keeps a list that appears under a stationary pointer
+// from taking the hover, and hands hover back at the first real movement (see `follow`).
 
 import { useCallback, useRef } from 'react';
 import { createPointerTracker, type PointerTracker } from './pointerGate';
@@ -100,41 +101,66 @@ function follow(list: HTMLElement, selector: string): () => void {
   const resizes = new ResizeObserver(place);
   resizes.observe(list);
 
-  // React Aria moves the focus on hover only once it knows the pointer was the last input, and
-  // it learns that from a pointermove, which arrives after the pointerover that starts the
-  // hover: the first row entered after a key press would not take the focus. Tell it first.
-  // The out event comes first and carries the hover of the row being entered, so both are told.
-  const hoverIsPointer = (event: PointerEvent) => {
-    if (!gate.open) return;
-    list.ownerDocument.dispatchEvent(
-      new PointerEvent('pointermove', { pointerType: event.pointerType }),
-    );
-  };
-  list.addEventListener('pointerover', hoverIsPointer, true);
-  list.addEventListener('pointerout', hoverIsPointer, true);
-
-  // Until the pointer has really moved since this list appeared, hover is kept from React: it
-  // makes `onPointerEnter` from the over and out events, and the out of the element the pointer
-  // was on (often outside the list, after a stage change) names the row it is on now. Those
-  // events are stopped in the capture phase, before React's listeners see them, when they touch
-  // the list. The list then opens on the row its stage chose, not on the row that landed under a
-  // stationary pointer.
+  // Hover is made by React from the over and out events (`onPointerEnter`, which React Aria turns
+  // into a focus move), and it moves the focus only once its last input was the pointer. Three
+  // things are done to those events here, all on the document in the capture phase so they come
+  // before React's listeners:
+  //
+  // - Until the pointer has really moved since this list appeared, the events that touch the
+  //   list are stopped. A browser reports the element under a stationary pointer after a layout
+  //   change, and the out of the element the pointer was on (often outside the list) names the
+  //   row entered, so a stage would lose the row it chose to whichever row landed under the
+  //   pointer.
+  // - Once it has, a pointermove tells React Aria the pointer is the input, before the event
+  //   that enters the list reaches React. The out event comes first and may come from outside
+  //   the list (the Close button, say), so listening on the list was too late.
+  // - At that first real movement the hover the stopped events never made is made: a pointerover
+  //   on the row under the pointer, so it takes the focus at once, even if the pointer only moved
+  //   within it.
   const doc = list.ownerDocument;
   const inList = (node: EventTarget | null) => node instanceof Node && list.contains(node);
-  const keepHoverOut = (event: Event) => {
-    if (gate.open) return;
+  const touchesList = (event: Event) => {
     const { target, relatedTarget } = event as MouseEvent;
-    if (inList(target) || inList(relatedTarget)) event.stopPropagation();
+    return inList(target) || inList(relatedTarget);
   };
-  for (const type of HOVER_EVENTS) doc.addEventListener(type, keepHoverOut, true);
+  const tellPointer = (pointerType: string) => {
+    doc.dispatchEvent(new PointerEvent('pointermove', { pointerType }));
+  };
+  const onHover = (event: Event) => {
+    if (!touchesList(event)) return;
+    if (!gate.open) event.stopPropagation();
+    else if (event instanceof PointerEvent) tellPointer(event.pointerType);
+  };
+  for (const type of HOVER_EVENTS) doc.addEventListener(type, onHover, true);
+
+  let handedBack = false;
+  const handHoverBack = (event: Event) => {
+    if (handedBack || !gate.open || !(event instanceof PointerEvent)) return;
+    handedBack = true;
+    const { clientX, clientY, pointerType } = event;
+    const row = doc.elementFromPoint(clientX, clientY)?.closest('[role="option"]');
+    if (!row || !list.contains(row)) return;
+    tellPointer(pointerType);
+    row.dispatchEvent(
+      new PointerEvent('pointerover', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerType,
+        clientX,
+        clientY,
+      }),
+    );
+  };
+  const HAND_BACK_EVENTS = ['pointermove', 'pointerover', 'pointerout', 'pointerdown'];
+  for (const type of HAND_BACK_EVENTS) doc.addEventListener(type, handHoverBack, true);
   place();
 
   return () => {
     mutations.disconnect();
     resizes.disconnect();
-    list.removeEventListener('pointerover', hoverIsPointer, true);
-    list.removeEventListener('pointerout', hoverIsPointer, true);
-    for (const type of HOVER_EVENTS) doc.removeEventListener(type, keepHoverOut, true);
+    for (const type of HOVER_EVENTS) doc.removeEventListener(type, onHover, true);
+    for (const type of HAND_BACK_EVENTS) doc.removeEventListener(type, handHoverBack, true);
   };
 }
 

@@ -91,20 +91,31 @@ Pitfalls:
   the first row entered after a key press took no focus. The hook dispatches a synthetic
   `pointermove` on the document from a capturing `pointerover` listener so the modality is
   known first. Remove that shim and the first hover after typing shows no highlight.
-- A list that appears under a stationary pointer must not take the hover: the browser reports
-  the element under the pointer after a layout change (a `pointerover`, and the `pointerout` of
-  the element the pointer was on, with the old coordinates), React makes `onPointerEnter` from
-  them, and React Aria moves the focus to that row, so an enum opened on the wrong option (Enter
-  then applied it) and Back landed on the wrong row. The hook keeps a hover gate per list
-  (`pointerGate.ts`, one `PointerTracker` per document): closed when the list appears, opened by
-  the first trusted `pointermove`, `pointerover` or `pointerout` whose coordinates differ from
-  the last seen, or by a press. While it is closed the over and out events that touch the list are
-  stopped on the document in the capture phase, before React's listeners (stopping `pointerover`
-  alone is not enough: the `pointerout` of an element outside the list names the row entered).
-  The synthetic `pointermove` is sent on both over and out, because the out arrives first and
-  carries the enter. The first `pointerover` of a document, with no position to compare, waits
-  for a `pointermove`. The command palette keeps its hover: its list is one element that opens
-  on the first real move.
+- A list that appears under a stationary pointer must not take the hover, and the first real
+  movement must hand it back. The browser reports the element under the pointer after a layout
+  change (a `pointerover`, and the `pointerout` of the element the pointer was on, with the old
+  coordinates), React makes `onPointerEnter` from them, and React Aria moves the focus to that
+  row, so an enum opened on the wrong option (Enter then applied it) and Back landed on the wrong
+  row. The hook keeps a hover gate per list (`pointerGate.ts`, one `PointerTracker` per
+  document): closed when the list appears, opened by the first trusted `pointermove`,
+  `pointerover` or `pointerout` whose coordinates differ from the last seen, or by a press. A
+  boundary event with no position to compare does not become the baseline (the `pointermove`
+  that follows it in the same spot is the first real movement). All of this is on the document in
+  the capture phase, before React's listeners:
+  - While the gate is closed, the over and out events that touch the list (target or
+    `relatedTarget` inside it) are stopped. Stopping `pointerover` alone is not enough: the
+    `pointerout` of an element outside the list names the row entered.
+  - Once it is open, a synthetic `pointermove` is sent for those events so React Aria's last
+    input is the pointer. It must be on the document, not the list: after keyboard input the
+    pointer may enter the list from outside (the Close button), and React handles that element's
+    `pointerout`, which carries the enter, before any listener on the list sees the next event.
+  - When the gate opens, the hover the stopped events never made is made: a synthetic
+    `pointerover` on the row under the pointer (`elementFromPoint`), so it takes the focus at
+    once, also when the pointer only moved a pixel inside it.
+    The command palette keeps its hover: its list is one element that opens on the first real move,
+    and under a pointer already in place no row takes the focus until then.
+    `scripts/check-palette-hover.mjs` runs these cases in Chromium against Ladle (not in CI); the
+    tracker's logic is in `pointerGate.test.ts`.
 - Rows must sit above the slab (`position: relative`, also the section headings), or the
   slab covers their text while it slides past.
 - The slab is measured, not CSS-positioned from a row: a stage that keeps no focus of its

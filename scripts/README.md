@@ -29,6 +29,10 @@ Build, packaging, and release helper scripts.
   `BENTO_RELEASE=1` (release), then `BENTO_BUILD_MODE`, then `bento.json`
   `build.mode`. The build driver's mozconfig, the shell background build, the
   add-on installer, the package guard, and the `MUXUI_LOCAL` guard all use it.
+- `check-palette-hover.mjs` — manual Chromium check (Ladle plus a remote-debugging browser,
+  not part of CI) of the palettes' hover rules: a list under a stationary pointer keeps the row
+  its stage chose, the first movement hands hover back, and entering from outside after keys
+  takes the focus; see `docs/technical/palettes-and-address-bar.md`.
 - `dev-reload.mjs` — strips and detects the shell's dev-only `dev-reload`
   command (Alt+Shift+R). The add-on installer drops it from release manifests,
   `pnpm run release:security-check:shell` fails if a release shell still has it,
