@@ -57,12 +57,14 @@ describe('createPointerTracker', () => {
     expect(gate.open).toBe(true);
   });
 
-  it('cannot tell the first pointerover after a load from a layout report, and waits', () => {
+  it('cannot tell the first pointerover after a load from a layout report, and waits for a move', () => {
     const tracker = createPointerTracker();
     const first = tracker.gate();
     tracker.observe(sample('pointerover', 50, 60));
     expect(first.open).toBe(false);
-    tracker.observe(sample('pointermove', 52, 60));
+    // The pointermove that follows in the same spot is the first real movement: the over must not
+    // have used up the position.
+    tracker.observe(sample('pointermove', 50, 60));
     expect(first.open).toBe(true);
   });
 

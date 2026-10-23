@@ -46,7 +46,11 @@ export function createPointerTracker(): PointerTracker {
       else if ((sample.type === 'pointerover' || sample.type === 'pointerout') && moved && last) {
         open();
       }
-      last = { x: sample.x, y: sample.y };
+      // With no position yet, an over or out cannot be told from a layout report, and must not
+      // become the position the next move is compared with (the move that follows it in the same
+      // spot would then look like no movement at all).
+      const boundary = sample.type === 'pointerover' || sample.type === 'pointerout';
+      if (!(boundary && last === null)) last = { x: sample.x, y: sample.y };
     },
 
     gate() {

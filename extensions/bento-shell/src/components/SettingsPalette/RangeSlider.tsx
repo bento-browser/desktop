@@ -7,6 +7,7 @@
 // while the handle is dragged (a transition per step would leave the drawn thumb behind the native
 // one, which is what the pointer hits).
 
+import { startDrag, type DragTracker } from './dragTracker';
 import {
   useEffect,
   useRef,
@@ -32,9 +33,6 @@ export interface RangeSliderProps {
   onEnter(): void;
 }
 
-/** How far a pressed pointer must travel before the press is a drag and not a click on the track. */
-const DRAG_SLOP_PX = 3;
-
 /** The thumb's place along its travel, as a custom property for the stylesheet. */
 function ratioStyle(ratio: number): CSSProperties & Record<`--${string}`, number> {
   return { '--bento-slider-ratio': ratio };
@@ -59,31 +57,44 @@ export default function RangeSlider({
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  // A press that travels past the slop is a drag until the pointer is released. The listeners are
-  // on the window: the range input keeps the pointer while it is dragged.
+  // A press is a drag once its pointer travels past the slop, until that pointer is released
+  // (`dragTracker.ts`). The listeners are on the window: the range input keeps the pointer while
+  // it is dragged. A second pointer's press does not replace a drag in progress.
   const [dragging, setDragging] = useState(false);
-  const stopDrag = useRef<() => void>(undefined);
-  useEffect(() => () => stopDrag.current?.(), []);
+  const active = useRef<{ drag: DragTracker; stop: () => void } | undefined>(undefined);
+  useEffect(() => () => active.current?.stop(), []);
   const onPointerDown = (event: PointerEvent<HTMLInputElement>) => {
     if (event.button !== 0) return;
-    stopDrag.current?.();
-    const { clientX, clientY } = event;
+    if (active.current && active.current.drag.pointerId !== event.pointerId) return;
+    active.current?.stop();
+    const drag = startDrag({ pointerId: event.pointerId, x: event.clientX, y: event.clientY });
     const view = event.currentTarget.ownerDocument.defaultView ?? window;
-    const move = (next: globalThis.PointerEvent) => {
-      if (Math.hypot(next.clientX - clientX, next.clientY - clientY) > DRAG_SLOP_PX) {
-        setDragging(true);
+    const observe = (next: globalThis.PointerEvent) => {
+      if (
+        next.type !== 'pointermove' &&
+        next.type !== 'pointerup' &&
+        next.type !== 'pointercancel'
+      ) {
+        return;
       }
+      drag.observe({
+        type: next.type,
+        pointerId: next.pointerId,
+        x: next.clientX,
+        y: next.clientY,
+      });
+      if (drag.ended) active.current?.stop();
+      else setDragging(drag.dragging);
     };
-    const end = () => stopDrag.current?.();
-    view.addEventListener('pointermove', move);
-    view.addEventListener('pointerup', end);
-    view.addEventListener('pointercancel', end);
-    stopDrag.current = () => {
-      view.removeEventListener('pointermove', move);
-      view.removeEventListener('pointerup', end);
-      view.removeEventListener('pointercancel', end);
-      stopDrag.current = undefined;
-      setDragging(false);
+    const types = ['pointermove', 'pointerup', 'pointercancel'] as const;
+    for (const type of types) view.addEventListener(type, observe);
+    active.current = {
+      drag,
+      stop() {
+        for (const type of types) view.removeEventListener(type, observe);
+        active.current = undefined;
+        setDragging(false);
+      },
     };
   };
 
