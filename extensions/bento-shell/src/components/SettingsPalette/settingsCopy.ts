@@ -1,7 +1,7 @@
 // The text the Settings palette shows about a setting: a page description under the path, and
 // a second line under options whose behaviour differs. Plain, short and true to the code, with
-// no em dashes. It lives apart from `settingsCatalog.ts` because the command palette bundle
-// reads that catalog for labels and must not carry this copy; only `rows.ts` imports it.
+// no em dashes. It lives apart from `settingsCatalog.ts` so the catalog stays labels, keys and
+// bounds; only `rows.ts` imports it.
 //
 // When a setting's behaviour changes in tools or chrome, change its line here in the same
 // change. The code each line rests on is recorded in docs/technical/privacy-search.md.
@@ -91,11 +91,11 @@ export const ADVANCED_DESCRIPTIONS: Record<
 /** Under the path on the page of a stage that is not a number or a choice setting. */
 export const STAGE_DESCRIPTIONS = {
   defaultWorkspaceName:
-    'The name Bento gives the first workspace in a new profile, and any workspace it adds for an import that has none or no name. Existing workspaces are never renamed.',
+    'The name Bento gives the first workspace in a new profile, and the workspaces it creates itself: for a new window, Move to new workspace, or an import that has none or no name. If the name is taken, it adds a number, like Personal 2. Existing workspaces are never renamed.',
   protection:
     'How much Bento restricts tracking, fingerprinting and some web features. Picking a level sets the switches under Advanced privacy to match, except Remote download reputation.',
   search:
-    'The engine used when you search from the address bar, in regular and private windows. Engines you add in Firefox settings appear here.',
+    'The engine used when you search from the address bar. Private windows use it too, unless Firefox keeps a separate private default. Engines you add in Firefox settings appear here.',
   sizes:
     "The widths offered in each side panel's menu under Custom panel widths. Choosing one resizes that panel only.",
   sizeActions: 'Change this width, move it up or down in the panel menu, or remove it.',

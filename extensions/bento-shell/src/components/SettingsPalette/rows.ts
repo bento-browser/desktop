@@ -848,6 +848,16 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
   }
 }
 
+/** A list this short is read at a glance: its field row is dropped. */
+const MAX_ROWS_WITHOUT_FIELD = 4;
+
+/** Whether the stage shows its field row. The root, an editor (the field holds the value) and
+ * any list of more than four rows do; a shorter list keeps the field only as the keyboard's
+ * hidden focus holder. `listRowCount` is the stage's rows before any filter. */
+export function showsFieldRow(stage: Stage, listRowCount: number): boolean {
+  return stage.kind === 'root' || isEditorStage(stage) || listRowCount > MAX_ROWS_WITHOUT_FIELD;
+}
+
 /** Whether typing in the stage's field narrows its rows. */
 export function isFilterable(stage: Stage): boolean {
   return (

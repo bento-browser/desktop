@@ -19,6 +19,7 @@ import {
   rowAriaLabel,
   rowsForStage,
   searchableRows,
+  showsFieldRow,
   stageLabel,
   statusRows,
   type PaletteRow,
@@ -647,5 +648,41 @@ describe('option lines', () => {
     expect(rowAriaLabel(toggle)).toBe('Local Safe Browsing, On');
     const choice = find(advancedRows(REGULAR_MODEL), 'advanced:httpsOnlyMode');
     expect(rowAriaLabel(choice)).toBe('HTTPS-only mode, Always');
+  });
+});
+
+describe('field row', () => {
+  const shown = (stage: Stage, model = REGULAR_MODEL) =>
+    showsFieldRow(stage, rowsForStage(stage, model).length);
+
+  it('is dropped on a list of four rows or fewer, decided by the count', () => {
+    for (const stage of [
+      { kind: 'protection' },
+      { kind: 'enum', key: 'uiColorMode' },
+      { kind: 'enum', key: 'sidebarShortcutBehavior' },
+      { kind: 'enum', key: 'webRTCIPHandlingPolicy' },
+      { kind: 'enum', key: 'httpsOnlyMode' },
+      { kind: 'sizeActions', index: 2 },
+      { kind: 'backupRow', backupId: 'b1', label: 'L' },
+      { kind: 'confirm', action: { kind: 'reset' } },
+    ] as const satisfies readonly Stage[]) {
+      expect(rowsForStage(stage, REGULAR_MODEL).length, stage.kind).toBeLessThanOrEqual(4);
+      expect(shown(stage), stage.kind).toBe(false);
+    }
+  });
+
+  it('is kept on the root, in editors and on longer lists', () => {
+    expect(showsFieldRow({ kind: 'root' }, 0)).toBe(true);
+    for (const stage of [
+      { kind: 'number', key: 'panelCornerRadiusPx' },
+      { kind: 'text', key: 'defaultWorkspaceName' },
+      { kind: 'sizeEdit', index: 0 },
+      { kind: 'advanced' },
+      { kind: 'shortcuts' },
+      { kind: 'search' },
+      { kind: 'sizes' },
+    ] as const satisfies readonly Stage[]) {
+      expect(shown(stage), stage.kind).toBe(true);
+    }
   });
 });

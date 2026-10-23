@@ -240,8 +240,7 @@ Converted tabs carry Bento's WebExtension session keys:
 window, and `extension:bento-tools@bento.app:bento.importedWorkspaces` on the
 window. `WorkspaceStore` consumes `bento.importedWorkspaces` at boot and can
 adopt it later from live restored window session data; when the only existing
-workspace is the untouched first-run default (named by the Default workspace name setting,
-"Personal" unless changed), the imported Zen spaces
+workspace is the untouched first-run "Personal" default, the imported Zen spaces
 replace that default before being persisted through normal `bento.workspaces`
 storage. `background.ts` retries WebExtension session-value reads for
 session-restored tabs before assigning workspace fallback state, because

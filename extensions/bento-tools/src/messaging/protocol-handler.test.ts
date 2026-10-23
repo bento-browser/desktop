@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { handle, type HandlerContext } from './protocol-handler';
+import { defaultWorkspaceName, handle, type HandlerContext } from './protocol-handler';
 import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
@@ -18,7 +18,7 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
       has: vi.fn().mockReturnValue(true),
       hasForWindow: vi.fn().mockReturnValue(true),
     },
-    settings: {},
+    settings: { snapshot: vi.fn(() => ({ defaultWorkspaceName: 'Personal' })) },
     panels: {
       findWorkspacesContainingTab: vi.fn().mockReturnValue(['ws-1']),
       getPanelLayoutStatus: vi.fn().mockReturnValue('root-panel'),
@@ -555,9 +555,7 @@ describe('protocol handler workspace delete', () => {
         getActiveIdByWindow: vi
           .fn()
           .mockReturnValue(options.ownerAfter === null ? {} : { 1: 'ws-other' }),
-        snapshot: vi
-          .fn()
-          .mockReturnValue({ workspaces: [{ id: 'ws-other', name: 'Workspace 1' }] }),
+        snapshot: vi.fn().mockReturnValue({ workspaces: [{ id: 'ws-other', name: 'Personal' }] }),
         create: vi.fn(),
       } as unknown as HandlerContext['workspaces'],
       tabs: {
@@ -674,7 +672,7 @@ describe('protocol handler workspace delete', () => {
     handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: false }, ctx);
 
     await vi.waitFor(() => {
-      expect(ctx.workspaces.create).toHaveBeenCalledWith({ name: 'Workspace 2' }, 1);
+      expect(ctx.workspaces.create).toHaveBeenCalledWith({ name: 'Personal 2' }, 1);
     });
     expect(browser.windows.remove).not.toHaveBeenCalled();
     expect(browser.tabs.remove).not.toHaveBeenCalled();
@@ -1015,7 +1013,7 @@ describe('protocol handler batch tab workspace moves', () => {
           activeId: 'ws-old',
           activeIdByWindow: { 1: 'ws-old' },
         })),
-        create: vi.fn(() => ({ id: 'ws-new', name: 'Workspace 2', createdAt: 2 })),
+        create: vi.fn(() => ({ id: 'ws-new', name: 'Personal 2', createdAt: 2 })),
         activate: vi.fn((id: string) => {
           activeWorkspaceId = id;
           return 'activated';
@@ -1023,7 +1021,7 @@ describe('protocol handler batch tab workspace moves', () => {
         getActiveId: vi.fn(() => activeWorkspaceId),
         delete: vi.fn(),
       },
-      settings: {},
+      settings: { snapshot: vi.fn(() => ({ defaultWorkspaceName: 'Personal' })) },
       panels: {
         getPanels: vi.fn(() => []),
       },
@@ -1042,7 +1040,7 @@ describe('protocol handler batch tab workspace moves', () => {
     await vi.waitFor(() => {
       expect(assignWorkspace).toHaveBeenCalledTimes(2);
     });
-    expect(ctx.workspaces.create).toHaveBeenCalledWith({ name: 'Workspace 2' }, 1, {
+    expect(ctx.workspaces.create).toHaveBeenCalledWith({ name: 'Personal 2' }, 1, {
       activate: false,
     });
     expect(ctx.workspaces.activate).toHaveBeenCalledWith('ws-new', 1);
@@ -1075,7 +1073,7 @@ describe('protocol handler batch tab workspace moves', () => {
         })),
         getActiveIdByWindow: vi.fn(() => ({ 1: 'ws-old' })),
         getActiveId: vi.fn(() => 'ws-old'),
-        create: vi.fn(() => ({ id: 'ws-new', name: 'Workspace 2', createdAt: 2 })),
+        create: vi.fn(() => ({ id: 'ws-new', name: 'Personal 2', createdAt: 2 })),
         forgetWindow: vi.fn(() => calls.push('forget')),
         delete: vi.fn(() => calls.push('delete')),
         activate: vi.fn(() => {
@@ -1083,7 +1081,7 @@ describe('protocol handler batch tab workspace moves', () => {
           return 'activated';
         }),
       },
-      settings: {},
+      settings: { snapshot: vi.fn(() => ({ defaultWorkspaceName: 'Personal' })) },
       panels: { getPanels: vi.fn(() => []) },
       pinnedPanels: { removeForTab: vi.fn() },
       savedPanels: {},
@@ -1229,7 +1227,7 @@ describe('protocol handler tab folders', () => {
         delete: vi.fn(),
         activate: vi.fn(() => 'activated'),
       },
-      settings: {},
+      settings: { snapshot: vi.fn(() => ({ defaultWorkspaceName: 'Personal' })) },
       panels: {
         getPanels: vi.fn(() => []),
       },
@@ -2034,5 +2032,42 @@ describe('protocol handler settings and privacy actions', () => {
         expect.any(Error),
       ),
     );
+  });
+});
+
+describe('default names of workspaces Bento creates', () => {
+  it('uses the setting when no workspace has it', () => {
+    expect(defaultWorkspaceName('Personal', [])).toBe('Personal');
+    expect(defaultWorkspaceName('Studio', ['Personal', 'Work'])).toBe('Studio');
+  });
+
+  it('numbers the setting from the workspace count plus one when it is taken', () => {
+    expect(defaultWorkspaceName('Personal', ['Personal'])).toBe('Personal 2');
+    expect(defaultWorkspaceName('Personal', ['Work', 'Personal'])).toBe('Personal 3');
+  });
+
+  it('skips numbered names already taken', () => {
+    expect(defaultWorkspaceName('Personal', ['Personal', 'Personal 2'])).toBe('Personal 3');
+    expect(defaultWorkspaceName('Personal', ['Personal', 'Personal 3'])).toBe('Personal 4');
+  });
+
+  it('names the workspace made for a window that has none by the setting', () => {
+    const create = vi.fn(() => ({ id: 'ws-new', name: 'x', createdAt: 2 }));
+    const ctx = {
+      workspaces: {
+        snapshot: vi.fn(() => ({ workspaces: [{ id: 'ws-1', name: 'Work', createdAt: 1 }] })),
+        assignAvailable: vi.fn(() => null),
+        create,
+        ensurePrivate: vi.fn(),
+      },
+      tabs: { isPrivate: vi.fn(() => false) },
+      settings: { snapshot: vi.fn(() => ({ defaultWorkspaceName: 'Studio' })) },
+      send: vi.fn(),
+      sourceWindowId: 3,
+    } as unknown as HandlerContext;
+
+    handle({ type: 'shell/hello', windowId: 3 }, ctx);
+
+    expect(create).toHaveBeenCalledWith({ name: 'Studio' }, 3);
   });
 });
