@@ -11,6 +11,7 @@
 // writes its box into custom properties on the list.
 
 import { useCallback, useRef } from 'react';
+import { createPointerTracker, type PointerTracker } from './pointerGate';
 import './RowHighlight.css';
 
 /** The class that opts a list into the slab. */
@@ -38,8 +39,36 @@ function offsetWithin(list: HTMLElement, el: HTMLElement): { x: number; y: numbe
   return node === list ? { x, y } : null;
 }
 
+/** The over and out events React makes hover from. */
+const HOVER_EVENTS = ['pointerover', 'pointerout', 'mouseover', 'mouseout'];
+
+/** One tracker per document: where the pointer last was, across every list the document shows. */
+const trackers = new WeakMap<Document, PointerTracker>();
+
+function trackerFor(doc: Document): PointerTracker {
+  let tracker = trackers.get(doc);
+  if (!tracker) {
+    const created = createPointerTracker();
+    tracker = created;
+    trackers.set(doc, created);
+    // Capturing, on the document, so the tracker has seen an event before any list's handler.
+    for (const type of ['pointermove', 'pointerdown', 'pointerover', 'pointerout']) {
+      doc.addEventListener(
+        type,
+        (event) => {
+          const { clientX, clientY, isTrusted } = event as PointerEvent;
+          created.observe({ type, x: clientX, y: clientY, trusted: isTrusted });
+        },
+        true,
+      );
+    }
+  }
+  return tracker;
+}
+
 function follow(list: HTMLElement, selector: string): () => void {
   let moving = false;
+  const gate = trackerFor(list.ownerDocument).gate();
 
   const place = () => {
     const row = list.querySelector<HTMLElement>(selector);
@@ -74,18 +103,38 @@ function follow(list: HTMLElement, selector: string): () => void {
   // React Aria moves the focus on hover only once it knows the pointer was the last input, and
   // it learns that from a pointermove, which arrives after the pointerover that starts the
   // hover: the first row entered after a key press would not take the focus. Tell it first.
+  // The out event comes first and carries the hover of the row being entered, so both are told.
   const hoverIsPointer = (event: PointerEvent) => {
+    if (!gate.open) return;
     list.ownerDocument.dispatchEvent(
       new PointerEvent('pointermove', { pointerType: event.pointerType }),
     );
   };
   list.addEventListener('pointerover', hoverIsPointer, true);
+  list.addEventListener('pointerout', hoverIsPointer, true);
+
+  // Until the pointer has really moved since this list appeared, hover is kept from React: it
+  // makes `onPointerEnter` from the over and out events, and the out of the element the pointer
+  // was on (often outside the list, after a stage change) names the row it is on now. Those
+  // events are stopped in the capture phase, before React's listeners see them, when they touch
+  // the list. The list then opens on the row its stage chose, not on the row that landed under a
+  // stationary pointer.
+  const doc = list.ownerDocument;
+  const inList = (node: EventTarget | null) => node instanceof Node && list.contains(node);
+  const keepHoverOut = (event: Event) => {
+    if (gate.open) return;
+    const { target, relatedTarget } = event as MouseEvent;
+    if (inList(target) || inList(relatedTarget)) event.stopPropagation();
+  };
+  for (const type of HOVER_EVENTS) doc.addEventListener(type, keepHoverOut, true);
   place();
 
   return () => {
     mutations.disconnect();
     resizes.disconnect();
     list.removeEventListener('pointerover', hoverIsPointer, true);
+    list.removeEventListener('pointerout', hoverIsPointer, true);
+    for (const type of HOVER_EVENTS) doc.removeEventListener(type, keepHoverOut, true);
   };
 }
 

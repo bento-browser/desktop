@@ -74,7 +74,9 @@ own, and the list carries a single slab, a pseudo-element of the scrolling list,
 (transform and block-size on the Mux `state` pair, the sidebar hover highlight's 120 ms) to the row holding the virtual
 focus. The hook only measures: a `MutationObserver` on `data-focused` writes the row's box
 into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
-popup's enter transform does not skew it. Pointer hover moves that same focus through React
+popup's enter transform does not skew it. The slab anchors at the physical `left: 0` because
+those offsets are physical: a logical inline-start anchor sat at the right edge in RTL, shifted by
+the row's offset (`RowHighlight.test.ts` keeps the rule). Pointer hover moves that same focus through React
 Aria's `shouldFocusOnHover` (passed as a props object, `FOCUS_ON_HOVER`), so the pointer
 and the keyboard never show two highlights. Its colour is `--bento-palette-highlight-bg`
 (two steps above Mux's item focus fill, both modes). The slab takes its height from the row
@@ -89,6 +91,20 @@ Pitfalls:
   the first row entered after a key press took no focus. The hook dispatches a synthetic
   `pointermove` on the document from a capturing `pointerover` listener so the modality is
   known first. Remove that shim and the first hover after typing shows no highlight.
+- A list that appears under a stationary pointer must not take the hover: the browser reports
+  the element under the pointer after a layout change (a `pointerover`, and the `pointerout` of
+  the element the pointer was on, with the old coordinates), React makes `onPointerEnter` from
+  them, and React Aria moves the focus to that row, so an enum opened on the wrong option (Enter
+  then applied it) and Back landed on the wrong row. The hook keeps a hover gate per list
+  (`pointerGate.ts`, one `PointerTracker` per document): closed when the list appears, opened by
+  the first trusted `pointermove`, `pointerover` or `pointerout` whose coordinates differ from
+  the last seen, or by a press. While it is closed the over and out events that touch the list are
+  stopped on the document in the capture phase, before React's listeners (stopping `pointerover`
+  alone is not enough: the `pointerout` of an element outside the list names the row entered).
+  The synthetic `pointermove` is sent on both over and out, because the out arrives first and
+  carries the enter. The first `pointerover` of a document, with no position to compare, waits
+  for a `pointermove`. The command palette keeps its hover: its list is one element that opens
+  on the first real move.
 - Rows must sit above the slab (`position: relative`, also the section headings), or the
   slab covers their text while it slides past.
 - The slab is measured, not CSS-positioned from a row: a stage that keeps no focus of its

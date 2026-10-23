@@ -153,6 +153,9 @@
  * thumb is the drawn thumb's size and travels the same way, so the pointer's hit area is the
  * drawn thumb. The look is the Mux Slider's, in the same tokens. */
 .bento-settings-palette__slider {
+  /* +1 where the value grows to the right, -1 where Gecko inverts the native range (RTL). */
+  --bento-slider-direction: 1;
+
   position: relative;
   container-type: inline-size;
   block-size: var(--bento-settings-palette-range-control-height);
@@ -169,16 +172,23 @@
   transform: translateY(-50%);
 }
 
-/* The fill is as wide as the track and parked one width to the left; it slides right until its
- * edge is under the thumb's centre. 100cqw is the slider's width. */
+.bento-settings-palette__slider:dir(rtl) {
+  --bento-slider-direction: -1;
+}
+
+/* The fill is as wide as the track and parked one width behind its start; it slides along until
+ * its edge is under the thumb's centre. 100cqw is the slider's width. */
 .bento-settings-palette__slider-fill {
   position: absolute;
   inset: 0;
   background-color: var(--muxui-semantic-selection-track);
   transform: translateX(
     calc(
-      -100% + var(--bento-settings-palette-range-thumb-size) / 2 +
-        (100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)
+      var(--bento-slider-direction) *
+        (
+          -100% + var(--bento-settings-palette-range-thumb-size) / 2 +
+            (100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)
+        )
     )
   );
 }
@@ -197,14 +207,19 @@
   box-shadow: var(--muxui-semantic-elevation-indicator);
   pointer-events: none;
   transform: translate(
-    calc((100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)),
+    calc(
+      var(--bento-slider-direction) * (100cqw - var(--bento-settings-palette-range-thumb-size)) *
+        var(--bento-slider-ratio, 0)
+    ),
     -50%
   );
 }
 
-/* Movement glides once the slider has settled (not on the first paint) and only while motion is
- * allowed. The ring and the pressed colour change at once. */
-.bento-settings-palette__slider[data-settled]
+/* Movement glides (a key press, a click on the track) once the slider has settled (not on the
+ * first paint) and only while motion is allowed. While the handle is dragged there is no
+ * transition: the drawn thumb stays on the native one, which is what the pointer hits. The ring
+ * and the pressed colour change at once. */
+.bento-settings-palette__slider[data-settled]:not([data-dragging])
   :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
   transition: transform var(--muxui-semantic-motion-state-transition-duration)
     var(--muxui-semantic-motion-state-transition-easing);
