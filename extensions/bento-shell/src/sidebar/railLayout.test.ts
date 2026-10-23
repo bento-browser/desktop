@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { finishAdded, tabRowShifts } from './railLayout';
 
@@ -70,5 +71,15 @@ describe('finishAdded', () => {
     const prepare = vi.fn();
     finishAdded([{ nodeType: 3 } as unknown as Node], prepare);
     expect(prepare).not.toHaveBeenCalled();
+  });
+});
+
+describe('rail stylesheet', () => {
+  it('gives the rail the divider border width back, so its items sit on whole pixels', () => {
+    // Chrome pins the host at 52 px. With the 1 px border a 51 px content box centred a 32 px
+    // control at 9.5, which the settled rail and the held end of a collapse paint a pixel apart.
+    const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
+    const rail = /html\[data-bento-collapsed='true'\]\s+\.bento-shell-app\s*\{([^}]*)\}/.exec(css);
+    expect(rail?.[1]).toMatch(/border-inline-end-width:\s*0\b/);
   });
 });
