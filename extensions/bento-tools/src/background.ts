@@ -57,6 +57,7 @@ import {
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
+import { repairLegacyShutdownClearing } from './privacy/ShutdownClearingRepair';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { SettingsDomainService } from './settings-domain/SettingsDomainService';
@@ -945,11 +946,14 @@ const bootReady = storesReady.then(async () => {
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
-  if (settings.hasOverride('privacyProtectionLevel')) {
-    void applyPrivacyLevel(settings.snapshot().privacyProtectionLevel).catch((err) =>
-      console.warn('[bento-tools] boot privacy level apply failed:', err),
-    );
-  }
+  const privacyLevelApplied = settings.hasOverride('privacyProtectionLevel')
+    ? applyPrivacyLevel(settings.snapshot().privacyProtectionLevel).catch((err) =>
+        console.warn('[bento-tools] boot privacy level apply failed:', err),
+      )
+    : Promise.resolve();
+  void privacyLevelApplied
+    .then(repairLegacyShutdownClearing)
+    .catch((err) => console.warn('[bento-tools] shutdown clearing repair failed:', err));
   void applyBootDefaultSearchEngine(settings);
   await sweepStaleFolderIds();
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;

@@ -8,7 +8,14 @@ import {
   applyAdvancedSetting,
   detectPrivacyLevelFromSnapshot,
   readSearchEnginesSnapshot,
+  snapshotAdvancedPrefs,
 } from './ProtectionLevels';
+import { FIREFOX_SHUTDOWN_DEFAULTS, createFakePrefs } from './testPrefs';
+
+const FIREFOX_SHUTDOWN_DEFAULTS_WITH_COOKIES_OFF = {
+  ...FIREFOX_SHUTDOWN_DEFAULTS,
+  'privacy.clearOnShutdown_v2.cookiesAndStorage': false,
+};
 
 describe('privacy protection levels', () => {
   beforeEach(() => {
@@ -112,21 +119,48 @@ describe('privacy protection levels', () => {
   });
 
   it('turns shutdown clearing on with the whole pref set and off with the master pref', async () => {
-    const setPrefs = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('browser', { bentoPrivacy: { setPrefs } });
+    const { api } = createFakePrefs(FIREFOX_SHUTDOWN_DEFAULTS);
+    vi.stubGlobal('browser', { bentoPrivacy: api });
 
     await applyAdvancedSetting('sanitizeOnShutdown', true);
-    expect(setPrefs).toHaveBeenLastCalledWith(SHUTDOWN_CLEAR_PREFS);
+    expect(api.setPrefs).toHaveBeenLastCalledWith(SHUTDOWN_CLEAR_PREFS);
 
     await applyAdvancedSetting('sanitizeOnShutdown', false);
-    expect(setPrefs).toHaveBeenLastCalledWith({ 'privacy.sanitize.sanitizeOnShutdown': false });
+    expect(api.setPrefs).toHaveBeenLastCalledWith({ 'privacy.sanitize.sanitizeOnShutdown': false });
+  });
+
+  it('rejects when Firefox keeps its own value for a locked pref', async () => {
+    const { api } = createFakePrefs(FIREFOX_SHUTDOWN_DEFAULTS, [
+      'privacy.clearOnShutdown_v2.browsingHistoryAndDownloads',
+    ]);
+    vi.stubGlobal('browser', { bentoPrivacy: api });
+
+    await expect(applyAdvancedSetting('sanitizeOnShutdown', true)).rejects.toThrow(
+      'privacy.clearOnShutdown_v2.browsingHistoryAndDownloads',
+    );
+  });
+
+  it('snapshots the raw group values and puts them back, and has no snapshot for single prefs', async () => {
+    const { api, store } = createFakePrefs({
+      ...FIREFOX_SHUTDOWN_DEFAULTS,
+      'privacy.clearOnShutdown_v2.cookiesAndStorage': false,
+    });
+    vi.stubGlobal('browser', { bentoPrivacy: api });
+
+    const restore = await snapshotAdvancedPrefs('sanitizeOnShutdown');
+    await applyAdvancedSetting('sanitizeOnShutdown', true);
+    expect(store.get('privacy.clearOnShutdown_v2.cookiesAndStorage')).toBe(true);
+    await restore?.();
+    expect(Object.fromEntries(store)).toEqual(FIREFOX_SHUTDOWN_DEFAULTS_WITH_COOKIES_OFF);
+    await expect(snapshotAdvancedPrefs('drmEnabled')).resolves.toBeNull();
   });
 
   it('writes the HTTPS-only prefs because browser.privacy cannot set the mode', async () => {
-    const setPrefs = vi.fn().mockResolvedValue(undefined);
+    const { api } = createFakePrefs({});
+    const { setPrefs } = api;
     const set = vi.fn().mockResolvedValue(false);
     vi.stubGlobal('browser', {
-      bentoPrivacy: { setPrefs },
+      bentoPrivacy: api,
       privacy: { network: { httpsOnlyMode: { set } } },
     });
 

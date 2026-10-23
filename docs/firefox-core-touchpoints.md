@@ -1107,6 +1107,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `network.http.referer.XOriginPolicy` 2 and
   `dom.security.https_only_mode_send_http_background_request` false; Standard and
   Enhanced write Firefox's defaults (0 and true) so stepping down undoes them.
+  The switch and the HTTPS-only choice read back every pref they wrote (Firefox
+  ignores a write to a locked pref without an error) and, on any mismatch or
+  later failure, restore the values captured before the write instead of
+  replaying the old boolean or mode.
 - Vanilla Firefox surface touched or depended on:
   `browser/modules/Sanitizer.sys.mjs` (`PREF_SANITIZE_ON_SHUTDOWN`,
   `PREF_SHUTDOWN_BRANCH`, `maybeMigratePrefs`, `getItemsToClearFromPrefBranch`,
@@ -1127,13 +1131,21 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   local storage, a history visit and a cached page, quit, relaunch: cookies,
   site data and cache are gone and history and form history remain.
   `browser.privacy.network.httpsOnlyMode.get({})` must read `never` after both
-  HTTPS-only prefs are false and `always` after both are true.
-- Rollback or migration notes: profiles that applied Hardened before this change
-  get the new prefs when bento-tools re-applies the stored level at boot; a
-  profile that only used the switch keeps the master pref with Firefox's default
-  item prefs (history, downloads, form data, cookies, site data and cache
-  cleared) until the switch is turned off and on again. The dead `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}`
-  user prefs stay in old profiles and are ignored.
+  HTTPS-only prefs are false and `always` after both are true. For the repair,
+  take a profile with only `privacy.sanitize.sanitizeOnShutdown` true and no
+  `bento.shutdownClearingRepaired` in `browser.storage.local`, launch, and
+  confirm the item prefs match the bundle above.
+- Rollback or migration notes: a one-time startup repair
+  (`extensions/bento-tools/src/privacy/ShutdownClearingRepair.ts`, run from
+  `background.ts` after the stored protection level is applied) writes the whole
+  bundle when `privacy.sanitize.sanitizeOnShutdown` is true, so profiles that
+  turned the switch on under the old build stop clearing history, downloads and
+  form data. It sets `bento.shutdownClearingRepaired` in `browser.storage.local`
+  and never runs again, whether or not it had anything to fix. Profiles that
+  applied Hardened before this change get the same prefs from the boot re-apply of
+  the stored level. The dead
+  `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}` user prefs stay
+  in old profiles and are ignored.
 
 ### Core UI And Window Sync Patch Stack
 
