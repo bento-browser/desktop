@@ -1072,6 +1072,82 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Rollback or migration notes: none. Removing the experiment's icon code only
   returns the glyph fallback.
 
+### Privacy Prefs (bento-privacy Experiment): Shutdown Clearing, HTTPS-Only, Referrer
+
+- Status: Active
+- Last updated: 2026-10-23
+- Firefox 158.0 review (2026-10-23, runtime-checked in a Bento dev build on a
+  fresh profile): `privacy.sanitize.sanitizeOnShutdown` plus the
+  `privacy.clearOnShutdown_v2.*` item prefs are the only shutdown-clearing prefs
+  Firefox reads; the `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}`
+  prefs Bento used to write do not exist. With only the master pref on, a quit
+  cleared history, form history, cookies, local storage, IndexedDB and the HTTP
+  cache. `Sanitizer.maybeMigratePrefs("clearOnShutdown")` runs at every shutdown
+  until `privacy.sanitize.clearOnShutdown.hasMigratedToNewPrefs3` is true, even
+  with the master pref off, and rewrites the v2 prefs from the legacy
+  `privacy.clearOnShutdown.*` defaults (history, form data, cookies, cache on).
+  `browser.privacy.network.httpsOnlyMode.set()` returns false without changing
+  anything (the setting is `readOnly`), so the single-switch path had no effect.
+- Files or patches:
+  - `extensions/_shared/privacy-levels.ts` (`SHUTDOWN_CLEAR_PREFS`,
+    `HTTPS_ONLY_MODE_PREFS`, the preset pref maps)
+  - `extensions/bento-tools/src/privacy/ProtectionLevels.ts`
+    (`applyAdvancedSetting`) and
+    `extensions/bento-tools/experiments/bento-privacy/api.js` (`ALLOWED_PREFS`)
+  - `scripts/bento-privacy-security.test.mjs` (allowlist covers every preset pref)
+  - No Firefox patch and no firefox-compat registry entry (the registry lists
+    members, not prefs read by name).
+- Bento functionality: the "Clear cookies and cache on shutdown" switch and
+  Hardened set `sanitizeOnShutdown`, `clearOnShutdown_v2.cookiesAndStorage` and
+  `.cache` on, `browsingHistoryAndDownloads`, `formdata` and `siteSettings` off,
+  and `hasMigratedToNewPrefs3` true. Turning the switch off, or choosing
+  Standard or Enhanced, sets only `sanitizeOnShutdown` false. The HTTPS-only
+  switch writes `dom.security.https_only_mode` and `dom.security.https_only_mode_pbm`
+  directly, as the presets do. Hardened also sets
+  `network.http.referer.XOriginPolicy` 2 and
+  `dom.security.https_only_mode_send_http_background_request` false; Standard and
+  Enhanced write Firefox's defaults (0 and true) so stepping down undoes them.
+  The switch and the HTTPS-only choice read back every pref they wrote (a write
+  to a locked pref neither throws nor changes the effective value) and, on any
+  mismatch or later failure, restore the effective values captured before the
+  write instead of replaying the old boolean or mode. A fresh profile gets
+  Standard applied on its first launch (`WorkspaceStore` found no persisted
+  workspaces), because Firefox's own
+  prefs plus `prefs/bento.js` are not Standard (tracking protection only in
+  private windows, Discovery Stream on, `privacy.resistFingerprinting.letterboxing`
+  absent in 158).
+- Vanilla Firefox surface touched or depended on:
+  `browser/modules/Sanitizer.sys.mjs` (`PREF_SANITIZE_ON_SHUTDOWN`,
+  `PREF_SHUTDOWN_BRANCH`, `maybeMigratePrefs`, `getItemsToClearFromPrefBranch`,
+  `sanitizeOnShutdown`), the default values in `browser/app/profile/firefox.js`
+  and `modules/libpref/init/StaticPrefList.yaml`, and
+  `toolkit/components/extensions/parent/ext-privacy.js` (`network.httpsOnlyMode`
+  read-only, its `getCallback`).
+- Why this cannot stay extension-only: the prefs are read by Firefox's sanitizer
+  and network stack; extensions cannot write them, and the experiment is the
+  allowlisted writer.
+- Firefox update risk: a renamed or re-purposed item pref, a new item name in
+  `Sanitizer.items`, a new migration version (a `hasMigratedToNewPrefs4` would
+  rewrite the v2 prefs again on the first shutdown after the update), or
+  `network.httpsOnlyMode` becoming writable or changing its read mapping.
+- Regression checks for future updates: grep the new tree for
+  `PREF_SHUTDOWN_BRANCH`, `hasMigratedToNewPrefs`, and the `privacy.clearOnShutdown_v2.`
+  defaults. In a dev build on a fresh profile apply Hardened, add a cookie,
+  local storage, a history visit and a cached page, quit, relaunch: cookies,
+  site data and cache are gone and history and form history remain.
+  `browser.privacy.network.httpsOnlyMode.get({})` must read `never` after both
+  HTTPS-only prefs are false and `always` after both are true. On a fresh
+  profile (`user_pref("remote.prefs.recommended", false);`, since Marionette turns
+  Safe Browsing off) the Settings palette must mark Standard before onboarding
+  finishes and `PrivacySettings.protectionLevel` must read `standard`; change an
+  Advanced switch, relaunch, and it must stay changed.
+- Rollback or migration notes: there is no repair for profiles that turned the
+  switch on under the old build. They keep Firefox's broader clearing (history,
+  downloads, form data) until the switch is turned off and on once. Profiles on
+  Hardened get the bundle from the boot re-apply of the stored level. The dead
+  `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}` user prefs stay
+  in old profiles and are ignored.
+
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active

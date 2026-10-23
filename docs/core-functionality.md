@@ -730,13 +730,24 @@ behind `about:config`. The selectable protection levels are:
 - Standard: balanced Bento defaults with strict Firefox tracking
   protection, tracker-cookie partitioning, Global Privacy Control, query
   stripping, remote search suggestions off, speculative networking off, local
-  Safe Browsing checks on, HTTPS-only mode, uBlock Origin enabled, and
-  DuckDuckGo as the fresh-profile search default (a profile that already
-  finished onboarding keeps its current engine).
-- Enhanced: Standard plus resist fingerprinting and tighter WebRTC IP handling.
+  Safe Browsing checks on, HTTPS-only mode, and DuckDuckGo as the
+  fresh-profile search default (a profile that already finished onboarding
+  keeps its current engine).
+- Enhanced: Standard plus resist fingerprinting and tighter WebRTC IP handling
+  (your local network address is hidden during calls).
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing retained, and cookies/site data/cache cleared on shutdown.
+  Browsing retained, the Referer header sent only when the hostname matches exactly, and
+  cookies, site data and cache cleared when Bento quits (history, downloads and
+  form data are kept).
+
+A fresh profile starts on Standard: Bento applies it at the first launch only,
+before onboarding finishes, so Settings marks Standard as the current level and the
+onboarding privacy step can change it. Later launches, and profiles that already
+existed, are left as they are. A profile that turned "Clear cookies and cache on
+shutdown" on before the clearing was narrowed to cookies, site data and cache keeps
+Firefox's broader clearing (history, downloads and form data too) until the switch
+is turned off and on once.
 
 Custom is a detected state, not a selectable preset. Bento shows Custom when
 the live browser settings no longer exactly match Standard, Enhanced, or
@@ -773,7 +784,10 @@ engine list offers Firefox's currently visible search engines (DuckDuckGo is
 Bento's default for a fresh profile; a profile that already finished onboarding
 keeps its current engine) and a "Manage search engines" row that opens Firefox's
 own search settings to add more. Advanced privacy lists the main browser-level
-levers as switches and choices. When a privacy change is saved but Firefox could
+levers as switches and choices; the shutdown switch clears cookies, site data
+and cache when Bento quits and keeps history, downloads and form data, and
+HTTPS-only mode's Off and Always apply to normal and private windows. When a
+privacy change is saved but Firefox could
 not apply it, the palette says so. The first-run onboarding privacy step lists
 each level with a one-line summary and marks Standard as recommended, and its
 search step shows each visible engine's icon and tags privacy-oriented ones as

@@ -10,6 +10,7 @@ import {
   readPrivacySnapshot,
   readSearchEnginesSnapshot,
   setDefaultSearchEngine,
+  snapshotAdvancedPrefs,
 } from './ProtectionLevels';
 
 export interface LiveMutationOutcome<T> {
@@ -67,6 +68,7 @@ export class PrivacyMutationService {
     value: boolean | string,
   ): Promise<LiveMutationOutcome<Awaited<ReturnType<typeof readPrivacySnapshot>>>> {
     const before = await readPrivacySnapshot();
+    const restorePrefs = await snapshotAdvancedPrefs(key);
     try {
       await applyAdvancedSetting(key, value);
       const after = await readPrivacySnapshot();
@@ -79,9 +81,13 @@ export class PrivacyMutationService {
         component: { component: 'privacy', state: 'succeeded', retryable: false },
       };
     } catch {
-      const previous = (before as unknown as Record<string, unknown>)[key];
-      if (typeof previous === 'boolean' || typeof previous === 'string') {
-        await applyAdvancedSetting(key, previous).catch(() => undefined);
+      if (restorePrefs) {
+        await restorePrefs().catch(() => undefined);
+      } else {
+        const previous = (before as unknown as Record<string, unknown>)[key];
+        if (typeof previous === 'boolean' || typeof previous === 'string') {
+          await applyAdvancedSetting(key, previous).catch(() => undefined);
+        }
       }
       return {
         state: 'partial',

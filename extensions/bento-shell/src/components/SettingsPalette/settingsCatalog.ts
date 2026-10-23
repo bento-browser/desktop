@@ -257,8 +257,8 @@ export interface ShortcutEntry {
 export const SHORTCUTS: readonly ShortcutEntry[] = [
   { label: 'Switch workspace by index', keys: 'Cmd/Ctrl + Alt + 1–9' },
   { label: 'Minimize sidebar', keys: 'Cmd/Ctrl + S' },
-  { label: 'Previous panel', keys: 'Cmd/Ctrl + Shift + [' },
-  { label: 'Next panel', keys: 'Cmd/Ctrl + Shift + ]' },
+  { label: 'Previous panel', keys: 'Cmd/Ctrl + Shift + Left' },
+  { label: 'Next panel', keys: 'Cmd/Ctrl + Shift + Right' },
   { label: 'Open command palette', keys: 'Cmd/Ctrl + Alt + P' },
   { label: 'Close overlay', keys: 'Escape' },
   { label: 'Close tab with pointer', keys: 'Middle click' },
