@@ -13,8 +13,10 @@ export const FIREFOX_SHUTDOWN_DEFAULTS: PrivacyPrefMap = {
 };
 
 /**
- * An in-memory `browser.bentoPrivacy` pref API. Like Firefox, a write to a locked pref is dropped
- * without an error.
+ * An in-memory `browser.bentoPrivacy` pref API over effective values. A write to a locked pref
+ * throws nothing and does not change the effective value, as in Firefox; Firefox also keeps the
+ * written value as a hidden user value that shows once the pref is unlocked, which this fake
+ * does not model.
  */
 export function createFakePrefs(initial: PrivacyPrefMap, locked: readonly string[] = []) {
   const store = new Map<string, PrivacyPrefValue>(Object.entries(initial));

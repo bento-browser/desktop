@@ -741,6 +741,11 @@ behind `about:config`. The selectable protection levels are:
   cookies, site data and cache cleared when Bento quits (history, downloads and
   form data are kept).
 
+A fresh profile starts on Standard: Bento applies it at the first launch, before
+onboarding finishes, so Settings marks Standard as the current level and the
+onboarding privacy step can change it. A profile that has finished onboarding is
+left as it is.
+
 Custom is a detected state, not a selectable preset. Bento shows Custom when
 the live browser settings no longer exactly match Standard, Enhanced, or
 Hardened.

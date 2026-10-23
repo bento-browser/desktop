@@ -57,6 +57,7 @@ import {
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
+import { seedBootPrivacyLevel } from './privacy/BootPrivacyDefault';
 import { repairLegacyShutdownClearing } from './privacy/ShutdownClearingRepair';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
@@ -946,11 +947,13 @@ const bootReady = storesReady.then(async () => {
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
+  // A stored choice is applied at boot. A profile with none gets Standard only while onboarding is
+  // unfinished (`seedBootPrivacyLevel`); one that finished it is left as it is.
   const privacyLevelApplied = settings.hasOverride('privacyProtectionLevel')
     ? applyPrivacyLevel(settings.snapshot().privacyProtectionLevel).catch((err) =>
         console.warn('[bento-tools] boot privacy level apply failed:', err),
       )
-    : Promise.resolve();
+    : seedBootPrivacyLevel(settings, mutationCoordinator);
   void privacyLevelApplied
     .then(repairLegacyShutdownClearing)
     .catch((err) => console.warn('[bento-tools] shutdown clearing repair failed:', err));

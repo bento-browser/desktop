@@ -43,7 +43,27 @@ one-time startup repair for profiles that turned the switch on under the old
 build: if the master pref is on it writes `SHUTDOWN_CLEAR_PREFS`, then sets the
 `bento.shutdownClearingRepaired` flag in `browser.storage.local`. `background.ts`
 runs it after the stored protection level is applied, so a Standard or Enhanced
-level that turns clearing off is not undone. `browser.safebrowsing.downloads.remote.enabled` is
+level that turns clearing off is not undone.
+
+The repair only touches the state the old switch left: master pref on, the item
+prefs `browsingHistoryAndDownloads`, `cache` and `cookiesAndStorage` at Firefox's
+defaults (true) and `siteSettings` at its default (false), and `formdata` equal to
+the migration flag (false and false before Firefox's first-quit migration, true
+and true after it). Any other combination is somebody's own choice (for example
+history cleared but cookies kept) and is left alone. It writes through
+`writePrefsVerified`; when a pref does not take (a locked pref), the prefs are put
+back, the failure is logged, and the flag stays unset so it retries at the next
+launch. The flag is set only when the profile is settled: repaired, or nothing to
+repair.
+
+A fresh profile starts on Standard: `seedBootPrivacyLevel` (`BootPrivacyDefault.ts`)
+applies the stored default at boot while `welcomeSeen` is false and
+`privacyProtectionLevel` has no override. It runs in the `privacy` lane of the
+mutation coordinator, the lane a pick in onboarding (`setProtectionLevel`) uses, so
+a pick queues behind the seed and wins, and it re-reads the choice when its turn
+comes, so a stored pick is never overwritten. A stored choice is applied by the
+existing boot apply, and a profile that finished onboarding is not touched.
+`browser.safebrowsing.downloads.remote.enabled` is
 allowlisted and exposed as `remoteSafeBrowsingEnabled`, but deliberately stays
 outside every preset map. This keeps remote download reputation independently
 user-controlled: applying or detecting Standard, Enhanced, or Hardened neither
@@ -483,16 +503,40 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   main/private split). `snapshotAdvancedPrefs` captures the effective values first
   and writes them back; writing a value equal to the default drops the user
   value, so that also restores "no user value" (checked at runtime).
-- A locked pref (enterprise policy `Preferences` with `Status: locked`) ignores
-  `Services.prefs.set*Pref` without throwing (checked at runtime), so verifying
-  only the master pref reported success while a locked
+- A write to a locked pref (enterprise policy `Preferences` with `Status: locked`)
+  does not throw and does not change the effective value (checked at runtime), so
+  verifying only the master pref reported success while a locked
   `privacy.clearOnShutdown_v2.browsingHistoryAndDownloads=true` still cleared
   history. Read back every pref of the group and treat any difference as a failed
-  change.
-- The one-time repair runs after the stored level is applied and sets its flag
-  even when the master pref is off. Running it before the level apply made it read
-  the pre-apply master pref, and not setting the flag would let a later, unrelated
-  turn-on by the user under Firefox's own settings be rewritten at the next boot.
+  change. Firefox does not drop the write: `Pref::SetUserValue`
+  (`modules/libpref/Preferences.cpp:922`) still stores or clears the user value,
+  and `GetValue` (`:1284`) returns the default while the pref is locked.
+- Known limitation: `snapshotAdvancedPrefs` snapshots effective values, so undoing
+  a failed change can lose a user value that is hidden under a locked pref. The undo
+  writes the effective (default) value back, and a write equal to the default
+  clears the hidden user value (checked at runtime: a user `false` under a locked
+  default `true` was gone after a write of `true` and an unlock). Bento ships no
+  enterprise policies, so only a policy the user installed can lock these prefs;
+  recording the hidden value would need a user-value read in the experiment.
+- The one-time repair runs after the stored level is applied, repairs only the
+  legacy switch state (see above), and sets its flag when the profile is settled,
+  also when the master pref is off or the item prefs are custom. Running it before
+  the level apply made it read the pre-apply master pref. Repairing any profile
+  whose master pref was on overwrote deliberate setups (history cleared, cookies
+  kept became the reverse), and setting the flag after a write that did not take
+  (a locked migration flag) left Firefox's first-quit migration turning history and
+  form data clearing back on with the repair never running again.
+- A default stored as "no override" never reaches Firefox. `SettingsStore` keeps
+  only deltas, so the default `privacyProtectionLevel: 'standard'` was never
+  applied to a fresh profile: Firefox's own prefs are not Standard (tracking
+  protection only in private windows, Discovery Stream on,
+  `privacy.resistFingerprinting.letterboxing` absent, which `getPrefs` returns as
+  `''`), so detection returned `custom` and the Settings palette marked no level
+  current until onboarding's privacy step applied one. Seed it like
+  `BootSearchDefault.ts`, gated on `welcomeSeen`. Automation hides this on a
+  Marionette profile too: `--marionette` turns the three local Safe Browsing prefs
+  off (`remote/shared/RecommendedPreferences.sys.mjs`), so check a fresh profile
+  with `user_pref("remote.prefs.recommended", false);` in `user.js`.
 - A preset that raises a pref above Firefox's default (Hardened's Referer policy
   and HTTPS-only background request) must be matched by the lower presets writing
   the default, or stepping down keeps it and detection still reads the lower
@@ -501,7 +545,8 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   in both `privacy-levels.ts` and `experiments/bento-privacy/api.js`.
 - Do not auto-apply Standard on every boot. That would overwrite users who
   changed Firefox privacy prefs outside Bento before Bento had stored an
-  explicit level.
+  explicit level. The boot seed is limited to profiles whose onboarding is
+  unfinished.
 - Do not reintroduce a Bento search engine allowlist unless Bento intentionally
   returns to a curated-provider model. Settings and onboarding should follow
   Firefox's visible search engine list.

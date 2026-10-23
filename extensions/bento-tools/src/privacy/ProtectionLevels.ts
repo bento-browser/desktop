@@ -62,10 +62,11 @@ function invertedBoolPref(snapshot: PrivacyPrefMap, name: string): boolean {
 }
 
 /**
- * Writes `values` and reads every one back. Firefox ignores a write to a locked pref without
- * saying so, so a changed group is only believed once each pref holds the value that was written.
+ * Writes `values` and reads every one back. A write to a locked pref does not throw and does not
+ * change the effective value (Firefox stores it as a hidden user value), so a changed group is
+ * only believed once each pref holds the value that was written.
  */
-async function writePrefsVerified(values: PrivacyPrefMap): Promise<void> {
+export async function writePrefsVerified(values: PrivacyPrefMap): Promise<void> {
   const names = Object.keys(values);
   await browser.bentoPrivacy.setPrefs(values);
   const effective = await browser.bentoPrivacy.getPrefs(names);
@@ -83,7 +84,8 @@ const ADVANCED_PREF_GROUPS: Partial<Record<PrivacyAdvancedKey, readonly string[]
  * Captures the effective values of every pref `key` writes, so a failed change can put them back
  * exactly (replaying the old boolean or mode would overwrite raw choices such as the v2 item
  * prefs). Returns null for keys that write one pref. Restoring a value equal to the default drops
- * the user value, so this also restores "no user value".
+ * the user value, so this also restores "no user value". Known limitation: a user value hidden
+ * under a locked pref is not captured and can be lost on restore (docs/technical/privacy-search.md).
  */
 export async function snapshotAdvancedPrefs(
   key: PrivacyAdvancedKey,
