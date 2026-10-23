@@ -8,8 +8,11 @@ import type {
 } from '@shared/protocol';
 import {
   ALLOWED_PRIVACY_PREFS,
+  HTTPS_ONLY_MODE_PREFS,
   PRIVACY_PRESETS,
+  SHUTDOWN_CLEAR_PREFS,
   browserPrivacyPathForAdvancedKey,
+  isHttpsOnlyMode,
   isSelectablePrivacyLevel,
   prefNameForAdvancedKey,
   type BrowserPrivacyValue,
@@ -58,6 +61,41 @@ function invertedBoolPref(snapshot: PrivacyPrefMap, name: string): boolean {
   return snapshot[name] !== true;
 }
 
+/**
+ * Writes `values` and reads every one back. A write to a locked pref does not throw and does not
+ * change the effective value (Firefox stores it as a hidden user value), so a changed group is
+ * only believed once each pref holds the value that was written.
+ */
+async function writePrefsVerified(values: PrivacyPrefMap): Promise<void> {
+  const names = Object.keys(values);
+  await browser.bentoPrivacy.setPrefs(values);
+  const effective = await browser.bentoPrivacy.getPrefs(names);
+  const refused = names.filter((name) => effective[name] !== values[name]);
+  if (refused.length > 0) throw new Error(`Firefox kept its own value for ${refused.join(', ')}`);
+}
+
+/** Advanced keys that write several prefs together, with every pref the key can write. */
+const ADVANCED_PREF_GROUPS: Partial<Record<PrivacyAdvancedKey, readonly string[]>> = {
+  sanitizeOnShutdown: Object.keys(SHUTDOWN_CLEAR_PREFS),
+  httpsOnlyMode: Object.keys(HTTPS_ONLY_MODE_PREFS.always),
+};
+
+/**
+ * Captures the effective values of every pref `key` writes, so a failed change can put them back
+ * exactly (replaying the old boolean or mode would overwrite raw choices such as the v2 item
+ * prefs). Returns null for keys that write one pref. Restoring a value equal to the default drops
+ * the user value, so this also restores "no user value". Known limitation: a user value hidden
+ * under a locked pref is not captured and can be lost on restore (docs/technical/privacy-search.md).
+ */
+export async function snapshotAdvancedPrefs(
+  key: PrivacyAdvancedKey,
+): Promise<(() => Promise<void>) | null> {
+  const names = ADVANCED_PREF_GROUPS[key];
+  if (!names) return null;
+  const raw = await browser.bentoPrivacy.getPrefs([...names]);
+  return () => browser.bentoPrivacy.setPrefs(raw);
+}
+
 export async function applyPrivacyLevel(level: SelectablePrivacyProtectionLevel): Promise<void> {
   if (!isSelectablePrivacyLevel(level)) throw new Error(`Unsupported privacy level: ${level}`);
   const preset = PRIVACY_PRESETS[level];
@@ -76,6 +114,23 @@ export async function applyAdvancedSetting(
     await browser.bentoPrivacy.setPrefs(
       Object.fromEntries(SAFE_BROWSING_PREFS.map((pref) => [pref, value])),
     );
+    return;
+  }
+
+  // Turning it on writes the whole shutdown set; off only clears the master pref, which is
+  // Firefox's off state (the item prefs are inert without it).
+  if (key === 'sanitizeOnShutdown') {
+    if (typeof value !== 'boolean') throw new Error('sanitizeOnShutdown expects a boolean');
+    await writePrefsVerified(
+      value ? SHUTDOWN_CLEAR_PREFS : { 'privacy.sanitize.sanitizeOnShutdown': false },
+    );
+    return;
+  }
+
+  // network.httpsOnlyMode is read-only to extensions (set() returns false), so write the prefs.
+  if (key === 'httpsOnlyMode') {
+    if (!isHttpsOnlyMode(value)) throw new Error(`Unsupported httpsOnlyMode: ${value}`);
+    await writePrefsVerified(HTTPS_ONLY_MODE_PREFS[value]);
     return;
   }
 

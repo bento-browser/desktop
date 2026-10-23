@@ -512,3 +512,14 @@ ${mountFunction(source, 'boundSavedPanelMetadata')}
   assert.equal(bound(atCap, 't', '').url, atCap);
   assert.equal(bound(`${atCap}a`, 't', ''), null);
 });
+
+test('the experiment allowlist covers every pref the privacy presets write', async () => {
+  const { ALLOWED_PRIVACY_PREFS, SHUTDOWN_CLEAR_PREFS } =
+    await import('../extensions/_shared/privacy-levels.ts');
+  const list = /const ALLOWED_PREFS = new Set\(\[([\s\S]*?)\]\);/.exec(apiSource);
+  assert.ok(list, 'ALLOWED_PREFS is missing from api.js');
+  const allowed = new Set([...list[1].matchAll(/'([^']+)'/g)].map((match) => match[1]));
+  for (const pref of [...ALLOWED_PRIVACY_PREFS, ...Object.keys(SHUTDOWN_CLEAR_PREFS)]) {
+    assert.ok(allowed.has(pref), `${pref} is written by Bento but missing from api.js`);
+  }
+});
