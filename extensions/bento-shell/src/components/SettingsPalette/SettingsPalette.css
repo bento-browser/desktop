@@ -91,7 +91,7 @@
 .muxui-command-palette__description.bento-settings-palette__page-description {
   flex: 0 0 auto;
   margin: 0;
-  padding-block: var(--muxui-semantic-layout-inset-tight);
+  padding-block: var(--muxui-semantic-layout-inset-medium);
   padding-inline: var(--muxui-semantic-layout-inset-large);
   border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
   color: var(--muxui-semantic-color-neutral-90);
