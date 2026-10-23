@@ -20,7 +20,6 @@ export const FIXTURE_SETTINGS: EditableSettings = {
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
-  defaultWorkspaceName: 'Personal',
   uiColorMode: 'system',
   defaultPanelWidthPx: 640,
   sidebarShortcutBehavior: 'collapse',
@@ -122,6 +121,7 @@ export const REGULAR_MODEL: SettingsPaletteModel = {
   search: FIXTURE_SEARCH,
   backup: FIXTURE_BACKUP,
   pending: new Set(),
+  pendingTargets: new Map(),
   notice: null,
   importPreview: null,
 };

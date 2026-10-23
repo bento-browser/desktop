@@ -3,13 +3,15 @@ import { ADVANCED_PRIVACY_RULES, EDITABLE_SETTING_RULES } from '@shared/settings
 import {
   ADVANCED_PRIVACY_SPECS,
   BOOLEAN_SPECS,
-  MAX_WORKSPACE_NAME_LENGTH,
   NUMBER_SPECS,
+  PANEL_SIZE_EDITOR,
   PANEL_SIZE_LIMITS,
   SHORTCUTS,
+  SLIDER_MAX_SPAN,
   parseNumber,
   presetMarker,
   presetValues,
+  usesSlider,
 } from './settingsCatalog';
 
 const editable: Record<
@@ -41,7 +43,6 @@ describe('catalog against the tools rules', () => {
       max: PANEL_SIZE_LIMITS.max,
       maxItems: PANEL_SIZE_LIMITS.maxItems,
     });
-    expect(EDITABLE_SETTING_RULES.defaultWorkspaceName.maxLength).toBe(MAX_WORKSPACE_NAME_LENGTH);
   });
 
   it('lists every advanced privacy key of the rules once', () => {
@@ -91,6 +92,24 @@ describe('presets', () => {
     expect(presetMarker(spec, 12)).toBe('Default');
     expect(presetMarker(spec, 36)).toBe('Max');
     expect(presetMarker(spec, 8)).toBeUndefined();
+  });
+});
+
+describe('sliders', () => {
+  it('go to the settings with a range of at most 50 and to no wider one', () => {
+    const sliders = Object.values(NUMBER_SPECS)
+      .filter(usesSlider)
+      .map((spec) => spec.key)
+      .sort();
+    expect(sliders).toEqual([
+      'autoBackupMaxCount',
+      'panelCornerRadiusPx',
+      'panelSplitterSizePx',
+      'tabSleepKeepAlivePerWorkspace',
+    ]);
+    expect(usesSlider({ min: 0, max: SLIDER_MAX_SPAN })).toBe(true);
+    expect(usesSlider({ min: 0, max: SLIDER_MAX_SPAN + 1 })).toBe(false);
+    expect(usesSlider(PANEL_SIZE_EDITOR)).toBe(false);
   });
 });
 

@@ -966,7 +966,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Settings Palette Overlay (mount script)
 
 - Status: Active
-- Last updated: 2026-10-22
+- Last updated: 2026-10-23
 - Files or patches:
   - `src/browser/base/content/bento-shell-mount.js` (`settings-palette` overlay
     entry, `ensureOverlayHost` for `bento-settings-palette-host`,
@@ -987,7 +987,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   letters, digits, colon, dash and underscore up to 64 characters); chrome sends the document its show with a frame
   script (`BentoSettingsPaletteShow`, the same `loadFrameScript` and
   `sendAsyncMessage` the merge palette uses) that dispatches a DOM event carrying
-  `{target}` (a row id or null), so no channel is involved; hiding the overlay sends
+  `{target, origin}` (a row id or null, and `'palette'` when the command palette opened it
+  so the document can offer a way back; the document's back button writes
+  `BENTO_SETTINGS_BACK_TO_PALETTE_<ts>`, which shows the command palette again), so no channel is involved; hiding the overlay sends
   the same way a `BentoSettingsPaletteHide` message that dispatches a
   `bento-settings-hide` event, so the document can put back an unfinished live edit
   and stop its timer at once. Show and Hide share a generation counter in the mount
@@ -997,6 +999,18 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `gBrowser.addTrustedTab` or the open Settings tab) for adding engines. Firefox's
   own Settings page has no Bento category any more (the native pane and its patch
   were removed 2026-10-22).
+- Esc depends on one Firefox behavior, not a member: the parent process receives the key
+  events of a remote `<browser>` before its document, with the `<browser>` as
+  `event.target`. The capturing Esc listener (`attachPaletteEscListener`) therefore returns
+  for a key whose target is `bento-settings-palette-frame` and lets the document step back,
+  and consumes it only for an open waiting for its document or with focus elsewhere in the
+  window. If a Firefox update delivers such keys differently (a different target, or only
+  after the document), Esc would close Settings from every stage again or never reach
+  chrome. The registry entry `remote <browser> key events reach the parent first` checks
+  that `EventStateManager::HandleCrossProcessEvent` still forwards keyboard events with
+  `SendRealKeyEvent`; the order itself is only visible at runtime, so after a Firefox bump
+  send Esc from the parent (see the test note in palettes-and-address-bar.md) with the
+  Settings frame focused.
 - Vanilla Firefox surface touched or depended on: `gBrowser.addTrustedTab`,
   `messageManager.loadFrameScript`/`sendAsyncMessage` (both already logged), the
   overlay manager and `afterMotion` of the mount script, and the BentoShellBus relay
@@ -1010,8 +1024,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Regression checks for future updates: open Settings from the app menu, the command
   palette (Open Settings and Privacy, and a Settings result such as typing
   "radius") and the welcome Open Settings button, in a regular and a private
-  window; confirm Esc steps back one list and closes from the
-  first; start a number edit, open the command palette without finishing it and
+  window; confirm Esc (sent from the parent, for example Marionette key actions in the chrome
+  context, not from inside the page) steps back one list and closes from the first, also when
+  the command palette opened Settings, and that Back from the first list returns to the
+  command palette with its query; start a number edit, open the command palette without finishing it and
   confirm the setting returns to its old value at once (hide message); confirm "Manage search engines" opens `about:preferences#search`; confirm
   the merge palette and the command palette close the Settings palette and the
   reverse.
@@ -2568,6 +2584,7 @@ below is generated; edit the registry, then run
 | `DOMWindowClose` | source (engine only) | Chrome-only event the window receives before a script close (window.close(), windows.remove, Cmd+Shift+W after WindowIsClosing) tears it down, and on a quit. Nothing after it can cancel the close once it passes, so the window's live tabs are handed to a window that stays here. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `dom/base/nsGlobalWindowOuter.cpp:6096` |
 | `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |
+| `remote <browser> key events reach the parent first` | source (engine only) | The chrome process sees a key event for a remote <browser> before that browser's document does: EventStateManager dispatches it in the parent, with the <browser> element as event.target, and only then forwards it to the child with SendRealKeyEvent. The capture-phase Esc listener relies on this to skip an Esc aimed at the Settings frame (event.target.id) and leave it to the Settings document; if the order changed, it would either miss the frame or consume Esc for every stage. | `attachPaletteEscListener` | `dom/events/EventStateManager.cpp:2306` |
 | `gFissionBrowser` | source (engine only) | A window runs with Fission or without; swapBrowsersAndCloseOther refuses to swap a tab between the two, so a window in another mode is not chosen to take tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:689` |
 | `gDialogBox.isOpen` | member (runtime) | A window-modal dialog is up in the candidate window (the closing-tabs warning is one): the window may be about to close, so it takes no tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:4770` |
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |

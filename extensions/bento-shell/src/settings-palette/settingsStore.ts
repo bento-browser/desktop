@@ -98,6 +98,8 @@ export function createSettingsPaletteStore(
 ): SettingsPaletteStore {
   const store = createStore<StoreState>(() => ({ view: { kind: 'loading' } }));
   const inFlight = new Map<string, number>();
+  // What a switch write in flight asked for, by key: the switch shows it until the write ends.
+  const targets = new Map<string, boolean>();
   let refreshToken = 0;
   // Every request that brings back a published value (a write, a snapshot) takes the next ticket
   // when it is sent. `shown` is, per field, the newest ticket whose value the model holds, and a
@@ -154,16 +156,21 @@ export function createSettingsPaletteStore(
     return view.kind === 'ready' ? view.model : null;
   }
 
-  function begin(key: string): void {
+  function begin(key: string, target?: boolean): void {
     inFlight.set(key, (inFlight.get(key) ?? 0) + 1);
-    patch({ pending: new Set(inFlight.keys()), notice: null });
+    if (target !== undefined) targets.set(key, target);
+    patch({ pending: new Set(inFlight.keys()), pendingTargets: new Map(targets), notice: null });
   }
 
   function end(key: string): void {
     const left = (inFlight.get(key) ?? 1) - 1;
-    if (left <= 0) inFlight.delete(key);
-    else inFlight.set(key, left);
-    patch({ pending: new Set(inFlight.keys()) });
+    if (left <= 0) {
+      inFlight.delete(key);
+      targets.delete(key);
+    } else {
+      inFlight.set(key, left);
+    }
+    patch({ pending: new Set(inFlight.keys()), pendingTargets: new Map(targets) });
   }
 
   /** Runs one write. Resolves whether tools applied it; a failure leaves a notice. */
@@ -171,8 +178,9 @@ export function createSettingsPaletteStore(
     key: string,
     run: () => Promise<T>,
     apply: (result: T) => Partial<SettingsPaletteModel> | undefined,
+    target?: boolean,
   ): Promise<boolean> {
-    begin(key);
+    begin(key, target);
     const ticket = ++tickets;
     try {
       const change = apply(await run());
@@ -208,6 +216,7 @@ export function createSettingsPaletteStore(
         : (snapshot.search ?? null),
       backup: snapshot.backup ?? null,
       pending: previous?.pending ?? new Set(),
+      pendingTargets: previous?.pendingTargets ?? new Map(),
       notice: previous?.notice ?? null,
       importPreview: previous?.importPreview ?? null,
     };
@@ -382,12 +391,18 @@ export function createSettingsPaletteStore(
   }
 
   const actions: SettingsPaletteActions = {
-    update: (changes) =>
-      write(
-        Object.keys(changes)[0] ?? 'settings',
+    update: (changes) => {
+      // A lone on or off is a switch write: the switch shows what it asked for until it ends.
+      const entries = Object.entries(changes);
+      const target =
+        entries.length === 1 && typeof entries[0]![1] === 'boolean' ? entries[0]![1] : undefined;
+      return write(
+        entries[0]?.[0] ?? 'settings',
         () => client.request('settings/update', { changes }),
         (result) => ({ settings: result.settings }),
-      ),
+        target,
+      );
+    },
 
     setProtectionLevel: (level) =>
       write(
@@ -401,6 +416,7 @@ export function createSettingsPaletteStore(
         `advanced:${key}`,
         () => client.request('privacy/setAdvanced', { key, value }),
         (result) => ({ privacy: result.privacy, notice: partialNotice(result.state) ?? null }),
+        typeof value === 'boolean' ? value : undefined,
       ),
 
     setSearchEngine: (id) =>

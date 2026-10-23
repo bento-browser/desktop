@@ -171,30 +171,152 @@ composition before handling that key.
 
 The Settings palette (`components/SettingsPalette`) is a staged quick pick on the same
 CommandPalette parts and adds these customisations. Its popup is a sibling of the Root,
-so its width rule finds it through the dialog
-(`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads
-`--bento-settings-palette-width` and `--bento-settings-palette-max-inline`; the height is
-the list's, up to the Mux popup limit. A row is a Mux `Item` with a title, an `ItemMeta`
-value and a trailing icon; its state is carried by data attributes (`data-info` for a
-static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
-flight, `data-separated`, `data-detail`, `data-current` for the preset that matches the
-typed number) so the rules stay scoped to `.bento-settings-palette__item`. Static rows
+so its size rule finds it through the dialog
+(`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads the
+command palette's `--bento-command-palette-width`, `-height` and the two max tokens: the
+same size, fixed height, on every list. Above the search field a nav row holds a Mux
+`IconButton` (Back, `ghost`, `sm`), the path and `CommandPalette.Close`; the path is a `nav`
+with an `ol` of Mux `Button`s (`ghost`, `sm`, one per ancestor) and a plain `span`
+(`aria-current="page"`) for the current page. Mux `Breadcrumbs` is not used because it
+makes a link only of an item that has an `href`, and these levels are actions. Close sits in
+the nav row, outside the SearchField, which gives every button inside it `tabindex="-1"`;
+Clear stays in the field and opts back into the tab order and keyboard use (exception below). A row is a Mux `Item` with a title, an optional note beside it
+(`.bento-settings-palette__note`: Current, Min, Default, Max), a spacer, then an `ItemMeta`
+value or a switch, and a trailing icon; its state is carried by data attributes (`data-info`
+for a static row, `data-tone` for danger, muted or warning, `data-pending` for a write in
+flight, `data-switch` for a row that shows a switch, `data-separated`, `data-detail`,
+`data-current` for the preset that matches the typed number) so the rules stay scoped to
+`.bento-settings-palette__item`. The switch is Mux `SwitchField` (`Root`, `Button`,
+`Thumb`, `size="sm"`) in an `aria-hidden`, `inert` wrapper: a picture of the state, the row
+is the control, and the row keeps On or Off in its text value. The root `Switch` was tried and
+dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Settings entry,
+where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
-A protection level carries its benefits and caveats inside the item and shows them
-only under `[data-focused]`. In an editor stage the Input hugs its value (an inline
-`inline-size` in `ch`, the one inline dimension) and the unit and bounds sit around it in
-the search field. Danger text uses `--muxui-semantic-action-danger-foreground`, invalid
-text `--muxui-semantic-feedback-invalid-content` and the warning mark
-`--muxui-semantic-status-warning`; Bento adds no colour or motion of its own, and a
-pending row dims and ends in an ellipsis rather than animating.
+A list of four rows or fewer has no visible field row: the `SearchField` keeps `data-hidden`
+(`position: absolute`, 1px, `clip-path: inset(50%)`, the usual visually-hidden recipe) and the
+`Input` is `readOnly`, because the Autocomplete input is what drives the list's virtual focus.
+A page description is `CommandPalette.Description` between the nav row and the field
+(`.bento-settings-palette__page-description`: no Mux margins, a bottom rule like the nav
+row), outside the list so it does not scroll. An option's second line is
+`CommandPalette.ItemDescription` placed in the item (not in `ItemContent`, so it can take
+the full row width under the note and value): a row with a description or a detail
+(`[data-described]`, `[data-detail]`) wraps (`flex-wrap`, `row-gap` the micro gap), the line
+is `flex: 1 0 100%` with Mux's muted colour (one step lighter on the focused and hovered
+row) and wrapping instead of Mux's one-line ellipsis, and it is indented past the leading
+mark by `--bento-settings-palette-lead-size` (the 1.25rem Mux gives `.muxui-command-palette__item-icon`)
+plus the row gap. A protection level carries its benefits and caveats inside the item and
+shows them in two columns under `[data-focused]`. The search field is the command palette's stock one: no
+leading icon, and the Input keeps Mux's own padding in every stage. A number stage gives it one fixed width,
+`--bento-settings-palette-number-input-width` (the longest `NUMBER_SPECS` bound in digits,
+half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
+font where it is used), so the box never changes with what is typed. A longer value scrolls
+inside it, and the unit and bounds after it in the field do not move.
+A number with a range of at most 50 (`usesSlider`) is a page of its own kind: a slider in place of
+the field row and the preset list. It is not the Mux `Slider`; see the recorded exception below.
+The page keeps the Back, path and Close nav row and the description. Above the track is the value
+in `neutral-90` at the control weight with its unit in `neutral-60` (an `aria-hidden` `p`, since the
+input announces the value and unit itself through `aria-valuetext`, "12 px"). Under the track is a
+plain `p` in `neutral-60`, left aligned: "Default N unit" and "min to max unit". The stage is a flex
+column that takes the rest of the dialog, so the footer stays at the bottom as on a list page.
+Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
+`--muxui-semantic-feedback-invalid-content` and the warning mark
+`--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than
+animating (a switch row shows its target state instead). A stage change slides the list in
+from the side it came from with one keyframe animation on the `reveal` pair
+(`bento-settings-stage-forward` and `-back`, a `--muxui-semantic-layout-inset-large` offset;
+none under reduced motion). The Settings palette and the command palette share one row
+highlight (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): the rows paint
+no fill (focused, hovered, pressed and selected rows are transparent under
+`.bento-row-highlight`) and one slab, the list's `::before`, moves to the focused row. Its
+box is written into `--bento-row-highlight-*` properties by the hook; it transitions
+`transform`, block and inline size, colour and opacity on the Mux `state` pair (120 ms, the
+speed of the sidebar's hover highlight; the
+first placement and a stage change are instant, since the list is new), and its colour is
+`--bento-palette-highlight-bg` (neutral-26, pressed neutral-30; Mux's own item focus fill is
+neutral-14) in `bento-tokens.css`.
 
-Recorded exception to the public-API rule: the Settings palette passes
-`autoFocus: 'first'` to `CommandPalette.ListBox` through a plain props object
-(`FOCUS_FIRST_ROW` in `SettingsPalette.tsx`) so each stage opens with its first row
-focused. `CommandPaletteListBoxProps` declares no focus strategy; the value reaches React
-Aria only because the part forwards its props. This is a permanent exception: Bento does
-not wait on a Mux prop for it. Keep it confined to that one props object, and replace it
-only if a pinned Mux version documents a focus strategy on `CommandPalette.ListBox`.
+Recorded exceptions to the public-API rule. Each reaches React Aria only because the Mux
+part forwards its props to it, is passed as a plain props object (the declarations do not
+list it), is permanent (Bento does not wait on a Mux prop for it) and is replaced only if a
+pinned Mux version documents the prop:
+
+- `autoFocus: 'first'` on `CommandPalette.ListBox` (`FOCUS_FIRST_ROW` in
+  `SettingsPalette.tsx`): each stage opens with its first row focused.
+- `selectionMode: 'single'` with `selectedKeys` on that list for one frame (`StageList`):
+  React Aria focuses the first selected row when the list mounts, which is how a stage opens
+  on the row that opened it or on the current choice. The selection is dropped at once; a
+  list left in single selection would not run `onAction` on press.
+- `aria-describedby` on a Settings option (`describeOptions` in `SettingsPalette.tsx`, a
+  `MutationObserver` on the list that writes the attribute on the rendered options): a Mux
+  `Item` forwards no `aria-describedby` to React Aria (its item props keep only `id` and
+  `data-*`; setting it from a `ref` on the item did not take effect in the built app), and Mux's plain `ItemDescription`
+  span registers no description slot. The observer links each option to its own description
+  line (and the protection detail), and the row is named by `aria-label` (label, note, value)
+  so the line is read once, as the description. Replaced if Mux registers the slot from
+  `ItemDescription`.
+- `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
+  (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
+  the keyboard and the pointer share the one highlight. React Aria only does this once its
+  last input was the pointer, which it learns from `pointermove`; the hook dispatches one
+  from a capturing `pointerover` and `pointerout` listener so the first row entered after a key
+  press takes the focus too, and keeps hover from a list that appears under a stationary pointer
+  until the pointer really moves (see the highlight pitfalls in
+  [palettes-and-address-bar.md](technical/palettes-and-address-bar.md#row-highlight)).
+- `IN_TAB_ORDER` (`components/primitives/inTabOrder.ts`) on `CommandPalette.ClearButton` in
+  both palettes and on `CommandPalette.Close` in the command palette, the buttons that sit
+  inside the SearchField: `excludeFromTabOrder: false`, because the SearchField's button
+  context makes every button in it `tabindex="-1"`; and an `onPressStart` that takes the focus
+  back for a key press, because the context's press-start focuses the input, which moved the
+  focus off the button before its key-up and left Enter and Space doing nothing.
+
+Recorded exception to the layering rule: the Settings slider is a native `<input type="range">`
+(`components/SettingsPalette/RangeSlider.tsx`), not the Mux `Slider`. Why: Mux's `Slider` lives in
+the `collections` module that most entries share, and building the page with it cost about 109 KB
+gzip on the Settings entry (which did not load that chunk before) and about 16 KB on the shell and
+most overlays; a lazy import does not help, because Rollup keeps one module in one chunk. The
+native control gives the same behaviour at no JavaScript cost: arrows, Page keys (a tenth of the
+range, 4 on 0 to 36), Home and End, focus, pointer drag and track click are the browser's (Gecko
+steps one on Shift+arrow, so nothing is added for it), and `aria-valuetext` carries the unit, which
+the Mux slider could not (it has no `formatOptions`). Enter is the only key Bento handles on it
+(keep), on the input's `keydown`. The accessible name is `aria-label` (the setting's label) and
+`aria-describedby` the page description. The page focuses the input with a ref, and the ring shows
+whenever the input has the focus (`:has(input:focus)`), not only after a key press, because the page
+opens by programmatic focus and a click on the row that opened it is as common as Enter.
+
+Because a native thumb cannot be transitioned, the input is full size and invisible
+(`opacity: 0`, `appearance: none`, transparent `::-moz-range-*` and `::-webkit-slider-*` parts;
+its thumb is the drawn thumb's size and its track the slider's height, so the hit area is the
+drawn thumb and a press anywhere on the row lands on the input) over a track, fill and thumb drawn
+as elements of our own, in the Mux slider's tokens (`surface-track`, `selection-track`,
+`border-indicator`, `border-dragging`, `surface-canvas`, `elevation-indicator`, `shape-pill-radius`,
+and the focus ring `--muxui-focus-ring-inner` and `-outer`) and sized by the
+`--bento-settings-palette-range-*` tokens in `bento-tokens.css`, which copy the Mux slider's
+dimensions (control 1.25rem, track 0.25rem, thumb 1.125rem plus a 2px border, ring 2px and 4px).
+`RangeSlider` sets one custom property on the wrapper, `--bento-slider-ratio` (0 to 1, from the
+value), and the thumb and the fill move only by `transform` from it. The thumb is
+`translateX(calc(var(--bento-slider-direction) * (100cqw - thumb) * var(--bento-slider-ratio)))`
+and the fill, which is as wide as the track and parked one width behind its start, is
+`translateX(calc(var(--bento-slider-direction) * (-100% + thumb / 2 + (100cqw - thumb) * var(--bento-slider-ratio))))`
+(`thumb` is `--bento-settings-palette-range-thumb-size`), with the wrapper as the
+`container-type: inline-size` that gives `cqw`. `--bento-slider-direction` is 1, and -1 under
+`:dir(rtl)`: Gecko inverts a native range in RTL (the thumb travels from the right edge and the
+value grows leftward), so the drawn thumb anchors at the inline start and the fill grows from it,
+and both stay on the native thumb's centre in either direction. The movement transitions on the
+`state` motion pair (`--muxui-semantic-motion-state-transition-duration` and `-easing`, 120 ms,
+the speed of the sidebar hover highlight) for key presses and track clicks, so the thumb glides
+between steps instead of jumping a step's width, and not while the handle is dragged: a
+transition per step would leave the drawn thumb behind the native one, which is what the pointer
+hits (a fast sweep trailed by tens of pixels, and a quick re-grab could set the value backward).
+`RangeSlider` marks a drag with `data-dragging` once the pointer that pressed the input travels
+more than a few pixels (the slop, tracked by `dragTracker.ts` from window listeners, since the
+input keeps the pointer; another pointer's release or movement does not touch it, and a second
+press does not replace an active drag), so a single click on the track still glides; the mark ends
+at that pointer's release. The transition is on only after the slider has settled
+(`data-settled`, set a frame after mount, so a page opening on its value does not slide in), and
+`prefers-reduced-motion: reduce` turns it off. The wrapper must stay a container with a definite
+inline size, and the drawn thumb must keep the native thumb's size and travel (centre from half a
+thumb to the width less half a thumb, from the inline start), or the drawn thumb and the hit area
+part.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
@@ -702,16 +824,16 @@ Rules:
 
 Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
 
-| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                    | Default                                                          |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); one stated exception, the sidebar row hover highlight's slide between rows                                                                                                                                                                                                   | 120 ms, `ease`                                                   |
-| `interaction`    | Mux's pointer-interaction role; Bento CSS does not use it today                                                                                                                                                                                                                                                                                                                                                 | 150 ms, `ease`                                                   |
-| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
-| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                           | 120 ms, `ease-in`                                                |
-| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                                               | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
-| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                   | 120 ms, modal easing                                             |
-| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                          | 600 ms, `ease`                                                   |
-| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                             | per token                                                        |
+| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                         | Default                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
+| `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                              | 150 ms, `ease`                                                   |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph      | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                | 120 ms, `ease-in`                                                |
+| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                                                    | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
+| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                        | 120 ms, modal easing                                             |
+| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                               | 600 ms, `ease`                                                   |
+| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                                  | per token                                                        |
 
 Loops: the panel loading spinner (`spin` with `constant-easing`, dash arc with
 `sweep` and `progress-easing`), the startup veil pulse and the tab list shimmer

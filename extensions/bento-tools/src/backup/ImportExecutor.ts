@@ -1,5 +1,5 @@
 import type { BentoExportSchema, ImportOptions, ImportSummary } from '@shared/protocol';
-import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
+import { DEFAULT_WORKSPACE_NAME, type WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
@@ -240,11 +240,10 @@ export async function executeImport(
   await ctx.operation?.onPhase('staged');
 
   if (importedWorkspaceIds.length === 0) {
-    const fallback = ctx.workspaces.create(
-      { name: ctx.settings.snapshot().defaultWorkspaceName },
-      null,
-      { activate: false, id: ctx.operation?.plannedWorkspaceIds[0] },
-    );
+    const fallback = ctx.workspaces.create({ name: DEFAULT_WORKSPACE_NAME }, null, {
+      activate: false,
+      id: ctx.operation?.plannedWorkspaceIds[0],
+    });
     importedWorkspaceIds.push(fallback.id);
     createdTabIdsByWorkspace.set(fallback.id, []);
     ordinaryTabIdsByWorkspace.set(fallback.id, []);
@@ -265,7 +264,7 @@ export async function executeImport(
       const ordinal = importedWorkspaceIds.length;
       const fallback = ctx.workspaces.create(
         {
-          name: `${ctx.settings.snapshot().defaultWorkspaceName} (${ordinal + 1})`,
+          name: `${DEFAULT_WORKSPACE_NAME} (${ordinal + 1})`,
           // Replacement imports may need one workspace per regular window.
           // Carry the source presentation id onto those synthetic workspaces
           // so the import cannot silently erase the selected palette.

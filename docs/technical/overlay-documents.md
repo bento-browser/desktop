@@ -33,7 +33,8 @@ document its show. `OverlayName` and `useOverlayReadySignal` are kept equal to t
 mount's table by `scripts/overlay-manager.test.mjs`. The show is not a channel message:
 a frame script (`BentoSettingsPaletteShow`, loaded into the frame like the merge
 palette's) dispatches a `bento-settings-show` CustomEvent with a JSON detail
-(`{target: <root row id> | null}`) on the document's window, so it reaches a private
+(`{target: <root row id> | null, origin: 'palette' | null}`; the origin is the command
+palette when it opened Settings, null for every other opener) on the document's window, so it reaches a private
 window's document too. The same frame script turns a `BentoSettingsPaletteHide` message into a
 `bento-settings-hide` event whenever chrome hides the overlay (Esc, the document's own close,
 another overlay opening, an outside click), so an unfinished number edit is put back and its
@@ -41,9 +42,13 @@ timer stopped at once; no hide is sent before the first show. The document retur
 first list (or the one the target names), and refreshes its snapshot, on each show. Its titles to chrome: `BENTO_CLOSE_SETTINGS_PALETTE_<ts>`
 hides it; `BENTO_OPEN_MERGE_PALETTE_<ts>` opens the merge palette (which dismisses it);
 `BENTO_OPEN_FIREFOX_SEARCH_SETTINGS_<ts>` hides it and opens `about:preferences#search`
-in a new tab, or reuses an open Firefox Settings tab. Esc is handled by the document
-while it has focus (one list back, then close); the chrome-level Esc handler only
-covers focus left in chrome and an open still waiting for its document. The document
+in a new tab, or reuses an open Firefox Settings tab; `BENTO_SETTINGS_BACK_TO_PALETTE_<ts>`
+(the back button at its first list, when the command palette opened it) shows the command
+palette again, which dismisses Settings. Esc is handled by the document
+while its frame has focus (clear a search, one list back, then close); the chrome-level Esc
+handler returns for a key whose target is the Settings frame and only covers focus left
+elsewhere in the window and an open still waiting for its document (the parent sees a remote
+frame's keys first; see [palettes-and-address-bar.md](palettes-and-address-bar.md#esc-chrome-sees-the-key-first)). The document
 talks to tools through the BentoShellBus relay, not the shell bus; see
 [privacy-search.md](privacy-search.md#settings-palette-shell-side) and
 [shell-chrome-bridge.md](shell-chrome-bridge.md).

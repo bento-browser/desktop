@@ -49,12 +49,106 @@ no settings state, because the palette chunk is size-ratcheted; `settingsIndex.t
 keeps it equal to `rootRows`). Choosing one writes `BENTO_OPEN_SETTING:<row id>:<ts>`;
 `handleSettingsTargetTitle` checks the id against a pattern and opens the Settings
 palette with it as the show's `target`, and the Settings document resolves it
-(`SettingsPalette/targets.ts`): a number, choice or name setting opens its own list, the
+(`SettingsPalette/targets.ts`): a number or choice setting opens its own list, the
 privacy rows and shortcuts their lists, and a switch or the search-engine link the first
 list with the label typed in. An id the document does not know opens the first list.
 Opening any of the command palette, workspace palette, merge palette or Settings palette
 dismisses the others. See [session-merge-backups.md](session-merge-backups.md) for the other
 open paths.
+
+Settings opened from the command palette (the Open Settings and Privacy commands, a
+Settings result) carries `origin: 'palette'` in its show message: `handlePaletteFrameTitle`
+and `handleSettingsTargetTitle` pass it to `showSettingsPalette(target, origin)`, and every
+other opener (app menu, onboarding) passes none. The Settings document then starts its path
+with "Command palette" and enables Back at its first list. That Back, or the path's
+"Command palette" button, writes `BENTO_SETTINGS_BACK_TO_PALETTE_<ts>` (constant kept equal
+to the mount script's `SETTINGS_BACK_TO_PALETTE_PREFIX` by `settings-palette/titles.test.ts`);
+the settings-frame title handler calls `showPalette()`, which dismisses Settings. The command
+palette document stays loaded, so it shows with the query it had.
+
+### Row highlight
+
+The command palette and the Settings palette share one highlight
+(`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
+own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
+(transform and block-size on the Mux `state` pair, the sidebar hover highlight's 120 ms) to the row holding the virtual
+focus. The hook only measures: a `MutationObserver` on `data-focused` writes the row's box
+into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
+popup's enter transform does not skew it. The slab anchors at the physical `left: 0` because
+those offsets are physical: a logical inline-start anchor sat at the right edge in RTL, shifted by
+the row's offset (`RowHighlight.test.ts` keeps the rule). Pointer hover moves that same focus through React
+Aria's `shouldFocusOnHover` (passed as a props object, `FOCUS_ON_HOVER`), so the pointer
+and the keyboard never show two highlights. Its colour is `--bento-palette-highlight-bg`
+(two steps above Mux's item focus fill, both modes). The slab takes its height from the row
+(`offsetHeight`), so rows of different heights need nothing more: the Settings palette's
+two-line option rows and the focused protection level, which grows by its benefits and
+caveats, make the slab change size as it moves, on the same `state` pair.
+
+Pitfalls:
+
+- React Aria moves focus on hover only when its last input modality is the pointer, and it
+  learns that from `pointermove`, which arrives after the `pointerover` that starts the hover:
+  the first row entered after a key press took no focus. The hook dispatches a synthetic
+  `pointermove` on the document from a capturing `pointerover` listener so the modality is
+  known first. Remove that shim and the first hover after typing shows no highlight.
+- A list that appears under a stationary pointer must not take the hover, and the first real
+  movement must hand it back. The browser reports the element under the pointer after a layout
+  change (a `pointerover`, and the `pointerout` of the element the pointer was on, with the old
+  coordinates), React makes `onPointerEnter` from them, and React Aria moves the focus to that
+  row, so an enum opened on the wrong option (Enter then applied it) and Back landed on the wrong
+  row. The hook keeps a hover gate per list (`pointerGate.ts`, one `PointerTracker` per
+  document): closed when the list appears, opened by the first trusted `pointermove`,
+  `pointerover` or `pointerout` whose coordinates differ from the last seen, or by a press. A
+  boundary event with no position to compare does not become the baseline (the `pointermove`
+  that follows it in the same spot is the first real movement). All of this is on the document in
+  the capture phase, before React's listeners:
+  - While the gate is closed, the over and out events that touch the list (target or
+    `relatedTarget` inside it) are stopped. Stopping `pointerover` alone is not enough: the
+    `pointerout` of an element outside the list names the row entered.
+  - Once it is open, a synthetic `pointermove` is sent for those events so React Aria's last
+    input is the pointer. It must be on the document, not the list: after keyboard input the
+    pointer may enter the list from outside (the Close button), and React handles that element's
+    `pointerout`, which carries the enter, before any listener on the list sees the next event.
+  - When the gate opens, the hover the stopped events never made is made: a synthetic
+    `pointerover` on the row under the pointer (`elementFromPoint`), so it takes the focus at
+    once, also when the pointer only moved a pixel inside it.
+    The command palette keeps its hover: its list is one element that opens on the first real move,
+    and under a pointer already in place no row takes the focus until then.
+    `scripts/check-palette-hover.mjs` runs these cases in Chromium against Ladle (not in CI); the
+    tracker's logic is in `pointerGate.test.ts`.
+- Rows must sit above the slab (`position: relative`, also the section headings), or the
+  slab covers their text while it slides past.
+- The slab is measured, not CSS-positioned from a row: a stage that keeps no focus of its
+  own (the number editor with presets; a slider page has no list) follows `[data-current]` instead (`useRowHighlight`'s selector),
+  and the Settings list is remounted per stage and per show so its first placement is
+  instant.
+
+### Esc: chrome sees the key first
+
+Pitfall: the parent process receives the key events of a remote overlay `<browser>`
+before its document does, with the `<browser>` element as `event.target`. The chrome-level
+Esc listener (`attachPaletteEscListener`) runs in the capture phase, so an overlay whose
+document handles its own Esc must be skipped there, or chrome consumes the key and hides the
+overlay from every stage. The menu overlay already did this ("a menu that was delivered
+handles its own Esc"); the Settings palette did not, and Esc closed Settings from the
+second stage, from a number editor and from a command palette result, although its footer
+said "Esc back". Chrome now takes Esc for the Settings host only for an open still waiting
+for its document, or when the event's target is not `bento-settings-palette-frame`
+(focus left elsewhere in the window); otherwise it returns and the document steps back or
+clears a search, and closes from its first list.
+
+How to test it: key events sent inside the content process (a frame script, `content`
+`dispatchEvent`) skip the chrome listener and cannot show this. Send the key from the
+parent (Marionette `WebDriver:PerformActions` in the chrome context, or
+`windowUtils.sendKeyEvent` in the chrome window) with the overlay frame focused, and log
+`event.target.id` from a capturing window listener. `scripts/overlay-surfaces.test.mjs`
+covers the listener with the frame id as the target.
+
+Inside the Settings document the Esc handler is a capturing `keydown` listener on the
+window, not an `onKeyDown` on the field: the focus can be on Back, a path button, Close or
+Clear, and React Aria's own Esc handling on the modal would close the dialog from any of
+them. It calls `stopPropagation` so neither that nor the SearchField's Esc (which clears
+its value) runs.
 
 ## Sidebar Tab And Panel Search
 

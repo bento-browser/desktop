@@ -47,6 +47,12 @@ import { usePrivateWindow } from '../../state/privateWindow';
 import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
+import { IN_TAB_ORDER } from '../primitives/inTabOrder';
+import {
+  FOCUS_ON_HOVER,
+  ROW_HIGHLIGHT_CLASS,
+  useRowHighlight,
+} from '../primitives/useRowHighlight';
 import './CommandPalette.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { SETTINGS_INDEX } from './settingsIndex';
@@ -372,6 +378,7 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
     onClose();
   };
   const [query, setQuery] = useState(initialQuery);
+  const highlightRef = useRowHighlight();
   const commands = useCommands(query);
   const palette = useCommandPalette<BentoCommand>({
     commands,
@@ -453,16 +460,20 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
                 <MuxCommandPalette.ClearButton
                   aria-label="Clear search"
                   onClick={() => palette.setQuery('')}
+                  {...IN_TAB_ORDER}
                 />
               ) : null}
               <MuxCommandPalette.Close
                 aria-label="Close command palette"
                 className="bento-command-palette__close"
+                {...IN_TAB_ORDER}
               />
             </MuxCommandPalette.SearchField>
             <MuxCommandPalette.ListBox
+              ref={highlightRef}
               aria-label="Commands"
-              className="bento-command-palette__listbox"
+              className={`bento-command-palette__listbox ${ROW_HIGHLIGHT_CLASS}`}
+              {...FOCUS_ON_HOVER}
             >
               {palette.groupedCommands.map((group) => (
                 <MuxCommandPalette.Section key={group.id}>

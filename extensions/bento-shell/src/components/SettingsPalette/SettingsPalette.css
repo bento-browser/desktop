@@ -1,15 +1,17 @@
 /* Layer-2 component: SettingsPalette. Mux UI's CommandPalette styles are unlayered, so the
  * sizing and row overrides here are unlayered with selectors scoped to this palette. */
 
-/* The popup is a sibling of the Root in the DOM, so it is found through its dialog. */
+/* The popup is a sibling of the Root in the DOM, so it is found through its dialog. It has the
+ * command palette's size and keeps it, so a short stage does not shrink the palette. */
 .muxui-command-palette__popup:has(> .bento-settings-palette__dialog) {
-  width: min(var(--bento-settings-palette-width), var(--bento-settings-palette-max-inline));
+  width: min(var(--bento-command-palette-width), var(--bento-command-palette-max-inline));
+  height: min(var(--bento-command-palette-height), var(--bento-command-palette-max-block));
 }
 
 .muxui-command-palette__dialog.bento-settings-palette__dialog,
 .muxui-command-palette__content.bento-settings-palette__content {
   min-height: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
 .muxui-command-palette__listbox.bento-settings-palette__listbox {
@@ -18,19 +20,296 @@
   flex: 1 1 auto;
 }
 
+/* Back, the path and Close, above the field. Mux's search field row is the model for the
+ * padding, rule and surface so the two rows read as one header. */
+.bento-settings-palette__nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--muxui-semantic-layout-control-gap);
+  padding: var(--muxui-semantic-layout-inset-tight);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+  background-color: var(--muxui-semantic-color-neutral-10);
+}
+
+.bento-settings-palette__path {
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+.bento-settings-palette__path ol {
+  display: flex;
+  min-inline-size: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bento-settings-palette__path li {
+  display: flex;
+  min-inline-size: 0;
+  flex: 0 1 auto;
+  align-items: center;
+}
+
+/* A long label gives way before the path scrolls off: an ancestor is capped and ends in an
+ * ellipsis, and the current page takes what is left. */
+.bento-settings-palette__path .muxui-button,
+.bento-settings-palette__path-current {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bento-settings-palette__path .muxui-button {
+  max-inline-size: var(--bento-settings-palette-path-item-max);
+}
+
+.bento-settings-palette__path-current {
+  padding-inline: var(--muxui-semantic-layout-inset-tight);
+  color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+.bento-settings-palette__path-separator {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-50);
+  font-size: var(--muxui-semantic-typography-small-size);
+}
+
 /* A real position for Clear and Close, so the input cannot cover them. */
 .muxui-command-palette__close.bento-settings-palette__close {
   position: static;
   flex: 0 0 auto;
 }
 
-/* The path in front of the field: 'Settings / Panel corner radius / '. */
-.bento-settings-palette__search-icon {
+/* What the page is for, between the path and the field. Static text on the palette's own
+ * surface; it does not scroll with the list. */
+.muxui-command-palette__description.bento-settings-palette__page-description {
   flex: 0 0 auto;
-  color: var(--muxui-semantic-color-neutral-60);
+  margin: 0;
+  padding-block: var(--muxui-semantic-layout-inset-medium);
+  padding-inline: var(--muxui-semantic-layout-inset-large);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+  color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
+  line-height: var(--muxui-semantic-typography-supporting-line-height);
 }
 
-.bento-settings-palette__crumbs,
+/* A short list has no field row: the field stays as the keyboard's focus holder, visually
+ * hidden (the list's highlight is the focus the eye follows) and still read. */
+.muxui-command-palette__search-field.bento-settings-palette__field[data-hidden] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A slider page (a small-range number): the slider and two facts about it, under the
+ * description, with no field row or list. The stage takes the rest of the dialog so the footer
+ * stays at the bottom, as on a list page. */
+.bento-settings-palette__slider-stage {
+  display: flex;
+  min-block-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.bento-settings-palette__slider-block {
+  flex: 0 0 auto;
+  padding-block: var(--muxui-semantic-layout-inset-large);
+  padding-inline: var(--muxui-semantic-layout-inset-large);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+}
+
+/* The readout above the track: the value in the primary colour, then the unit. Hidden from
+ * assistive technology: the range input announces the value and unit itself (aria-valuetext). */
+.bento-settings-palette__slider-readout {
+  margin: 0;
+  margin-block-end: var(--muxui-semantic-layout-group-gap);
+  color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+  line-height: var(--muxui-semantic-typography-compact-line-height);
+}
+
+.bento-settings-palette__slider-readout span + span {
+  color: var(--muxui-semantic-color-neutral-60);
+  font-weight: var(--muxui-semantic-typography-body-weight);
+}
+
+/* The slider: a native range input (a recorded exception to the layering rule,
+ * docs/mux-ui-component-customisations.md) that is full size and invisible, over a track, fill and
+ * thumb drawn here. A native thumb cannot be transitioned, so the drawn ones move with transform
+ * from --bento-slider-ratio (0 to 1, set by RangeSlider) on the motion state pair. The native
+ * thumb is the drawn thumb's size and travels the same way, so the pointer's hit area is the
+ * drawn thumb. The look is the Mux Slider's, in the same tokens. */
+.bento-settings-palette__slider {
+  /* +1 where the value grows to the right, -1 where Gecko inverts the native range (RTL). */
+  --bento-slider-direction: 1;
+
+  position: relative;
+  container-type: inline-size;
+  block-size: var(--bento-settings-palette-range-control-height);
+}
+
+.bento-settings-palette__slider-track {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  block-size: var(--bento-settings-palette-range-track-height);
+  overflow: hidden;
+  border-radius: var(--muxui-semantic-shape-pill-radius);
+  background-color: var(--muxui-semantic-surface-track);
+  transform: translateY(-50%);
+}
+
+.bento-settings-palette__slider:dir(rtl) {
+  --bento-slider-direction: -1;
+}
+
+/* The fill is as wide as the track and parked one width behind its start; it slides along until
+ * its edge is under the thumb's centre. 100cqw is the slider's width. */
+.bento-settings-palette__slider-fill {
+  position: absolute;
+  inset: 0;
+  background-color: var(--muxui-semantic-selection-track);
+  transform: translateX(
+    calc(
+      var(--bento-slider-direction) *
+        (
+          -100% + var(--bento-settings-palette-range-thumb-size) / 2 +
+            (100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)
+        )
+    )
+  );
+}
+
+.bento-settings-palette__slider-thumb {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0;
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  border: var(--bento-settings-palette-range-thumb-border) solid
+    var(--muxui-semantic-border-indicator);
+  border-radius: 50%;
+  background-color: var(--muxui-semantic-surface-canvas);
+  box-shadow: var(--muxui-semantic-elevation-indicator);
+  pointer-events: none;
+  transform: translate(
+    calc(
+      var(--bento-slider-direction) * (100cqw - var(--bento-settings-palette-range-thumb-size)) *
+        var(--bento-slider-ratio, 0)
+    ),
+    -50%
+  );
+}
+
+/* Movement glides (a key press, a click on the track) once the slider has settled (not on the
+ * first paint) and only while motion is allowed. While the handle is dragged there is no
+ * transition: the drawn thumb stays on the native one, which is what the pointer hits. The ring
+ * and the pressed colour change at once. */
+.bento-settings-palette__slider[data-settled]:not([data-dragging])
+  :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
+  transition: transform var(--muxui-semantic-motion-state-transition-duration)
+    var(--muxui-semantic-motion-state-transition-easing);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-settings-palette__slider[data-settled]
+    :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
+    transition: none;
+  }
+}
+
+/* The input: invisible, the size of the slider, over the drawn parts. Its own thumb is the
+ * drawn thumb's size with nothing drawn, and its track is the slider's height, so a press
+ * anywhere on the row lands on the input. */
+.bento-settings-palette__slider-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  appearance: none;
+  outline: none;
+}
+
+.bento-settings-palette__slider-input::-moz-range-track {
+  block-size: var(--bento-settings-palette-range-control-height);
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-moz-range-thumb {
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  border: 0;
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-webkit-slider-runnable-track {
+  block-size: var(--bento-settings-palette-range-control-height);
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-webkit-slider-thumb {
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  margin-block-start: calc(
+    (
+        var(--bento-settings-palette-range-control-height) -
+          var(--bento-settings-palette-range-thumb-size)
+      ) /
+      2
+  );
+  border: 0;
+  background: transparent;
+  appearance: none;
+}
+
+/* Pressed: the thumb's edge goes to Mux's dragging colour. */
+.bento-settings-palette__slider:has(.bento-settings-palette__slider-input:active)
+  .bento-settings-palette__slider-thumb {
+  border-color: var(--muxui-semantic-border-dragging);
+}
+
+/* The ring shows on the drawn thumb whenever the input has the focus, not only after a key
+ * press: the page opens with the input focused, and a click on the row that opened it is as
+ * common as Enter. Same ring tokens as the Mux slider. */
+.bento-settings-palette__slider:has(.bento-settings-palette__slider-input:focus)
+  .bento-settings-palette__slider-thumb {
+  box-shadow:
+    0 0 0 var(--bento-settings-palette-range-ring-inner) var(--muxui-focus-ring-inner),
+    0 0 0 var(--bento-settings-palette-range-ring-outer) var(--muxui-focus-ring-outer);
+}
+
+/* Plain text under the track, left aligned: the default and the range. */
+.bento-settings-palette__slider-info {
+  display: flex;
+  margin: 0;
+  margin-block-start: var(--muxui-semantic-layout-inset-medium);
+  gap: var(--muxui-semantic-layout-inset-large);
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-tiny-size);
+}
+
+/* The field row holds the filter or the value being typed, never the path. */
 .bento-settings-palette__unit,
 .bento-settings-palette__bounds {
   color: var(--muxui-semantic-color-neutral-60);
@@ -38,22 +317,18 @@
   white-space: nowrap;
 }
 
-.bento-settings-palette__crumbs,
 .bento-settings-palette__unit {
   flex: 0 0 auto;
 }
 
-.bento-settings-palette__crumb-current {
-  color: var(--muxui-semantic-color-neutral-90);
-  font-weight: var(--muxui-semantic-typography-control-weight);
-}
-
-/* The value being typed hugs its unit; the bounds sit at the far end. A search input in
- * Chromium reserves room for its own clear button, which would clip the value (the palette
+/* An editor input keeps Mux's own padding, like the stock search field. A number input has
+ * one fixed width (a token sized for the longest bound plus the padding), so the box never
+ * changes with what is typed: a longer value scrolls inside it, and the unit and the bounds
+ * after it stay where they are. A search input in Chromium reserves room for its own clear button, which would clip the value (the palette
  * has its own Clear); Firefox has no such area. */
-.muxui-command-palette__input.bento-settings-palette__input[data-editing] {
-  flex: 0 0 auto;
-  padding-inline: 0;
+.muxui-command-palette__input.bento-settings-palette__input[data-number] {
+  flex: none;
+  width: var(--bento-settings-palette-number-input-width);
 }
 
 .bento-settings-palette__input[data-editing]::-webkit-search-cancel-button {
@@ -61,7 +336,7 @@
 }
 
 .bento-settings-palette__bounds {
-  margin-inline-start: auto;
+  margin-inline-start: var(--muxui-semantic-layout-inset-medium);
 }
 
 .bento-settings-palette__bounds[data-invalid] {
@@ -133,29 +408,44 @@
   border-start-end-radius: 0;
 }
 
-/* A write in flight: the value dims and ends in an ellipsis, with no animation. */
-.bento-settings-palette__item[data-pending] .bento-settings-palette__value {
+/* A write in flight: the value dims and ends in an ellipsis, with no animation. A switch row
+ * shows the new state at once instead, so it has nothing to dim. */
+.bento-settings-palette__item[data-pending]:not([data-switch]) .bento-settings-palette__value {
   color: var(--muxui-semantic-color-neutral-50);
 }
 
-.bento-settings-palette__item[data-pending] .bento-settings-palette__value::after {
+.bento-settings-palette__item[data-pending]:not([data-switch])
+  .bento-settings-palette__value::after {
   content: '…';
 }
 
-/* In an editor stage the list is a set of presets, not a focus target: the list keeps no
- * focus of its own there (the arrows are handled by the field), so only the preset that
- * matches the value is marked. */
-.bento-settings-palette__content[data-editing]
-  .bento-settings-palette__item[data-focused]:not([data-current]) {
-  background-color: transparent;
-  box-shadow: none;
-  color: inherit;
+/* The remark after a label (Current, Min, Default, Max); the rest of the row follows it on the
+ * right. */
+.bento-settings-palette__note {
+  flex: 0 0 auto;
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-small-size);
 }
 
-/* The preset that matches the number being typed. */
-.bento-settings-palette__item[data-current] {
-  background-color: var(--muxui-item-focus-bg);
-  color: var(--muxui-item-focus-color);
+.bento-settings-palette__spacer {
+  flex: 1 1 0;
+}
+
+.muxui-command-palette__item-content.bento-settings-palette__item-content {
+  flex: 0 1 auto;
+}
+
+/* The switch is a picture of the state: the row is the control. */
+.bento-settings-palette__switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.bento-settings-palette__switch .muxui-switch-field__button {
+  min-block-size: 0;
+  /* No label beside the track: the padding Mux keeps for one is not needed. */
+  padding-inline-start: var(--muxui-switch-field-track-width);
 }
 
 .bento-settings-palette__radio,
@@ -184,27 +474,53 @@
   line-height: 1;
 }
 
-/* Protection levels: the focused level shows what it adds and costs under its row. */
-.bento-settings-palette__item[data-detail] {
+/* A row with a description keeps it under its label, always visible: the row wraps, and the
+ * second line takes the full width, indented past the leading mark. Its colour is Mux's own
+ * item description (muted, one step lighter on the focused and hovered row). The row's height
+ * is its content's; the single highlight measures it. */
+.muxui-command-palette__item.bento-settings-palette__item:is([data-described], [data-detail]) {
   flex-wrap: wrap;
+  row-gap: var(--muxui-semantic-layout-micro-gap);
 }
+
+.bento-settings-palette__item .bento-settings-palette__line {
+  box-sizing: border-box;
+  flex: 1 0 100%;
+  overflow: visible;
+  white-space: normal;
+}
+
+.bento-settings-palette__item:has(.muxui-command-palette__item-icon) .bento-settings-palette__line {
+  padding-inline-start: calc(
+    var(--bento-settings-palette-lead-size) + var(--muxui-semantic-layout-action-gap)
+  );
+}
+
+/* Protection levels: the focused level shows what it adds and costs under its description,
+ * in two columns, at the size of the option lines. */
 
 .bento-settings-palette__detail {
   display: none;
   box-sizing: border-box;
   min-width: 0;
   flex: 1 0 100%;
-  padding-block-end: var(--muxui-semantic-layout-inset-tight);
+  padding-block: var(--muxui-semantic-layout-inset-tiny) var(--muxui-semantic-layout-inset-tight);
   padding-inline-start: calc(
-    var(--bento-settings-palette-mark-size) + var(--muxui-semantic-layout-action-gap)
+    var(--bento-settings-palette-lead-size) + var(--muxui-semantic-layout-action-gap)
   );
   color: var(--muxui-semantic-color-neutral-70);
-  font-size: var(--muxui-semantic-typography-small-size);
+  font-size: var(--muxui-semantic-typography-tiny-size);
+  line-height: var(--muxui-semantic-typography-supporting-line-height);
   white-space: normal;
 }
 
+/* Benefits are the longer list, so they get the wider column: with the description above and
+ * no field row, the focused level (Standard) stays short enough for the next level to show
+ * under it in the fixed-height palette. */
 .bento-settings-palette__item[data-focused] .bento-settings-palette__detail {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  column-gap: var(--muxui-semantic-layout-inset-large);
 }
 
 .bento-settings-palette__detail :is(p, ul) {
@@ -247,4 +563,44 @@
   flex: 0 0 auto;
   align-self: flex-end;
   white-space: nowrap;
+}
+
+/* A stage change slides the list in from the side it came from: one short keyframe on the
+ * reveal pair, nothing that loops. */
+@keyframes bento-settings-stage-forward {
+  from {
+    opacity: 0;
+    transform: translateX(var(--muxui-semantic-layout-inset-large));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bento-settings-stage-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--muxui-semantic-layout-inset-large) * -1));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bento-settings-palette__listbox[data-travel='forward'] {
+  animation: bento-settings-stage-forward var(--muxui-semantic-motion-reveal-transition);
+}
+
+.bento-settings-palette__listbox[data-travel='back'] {
+  animation: bento-settings-stage-back var(--muxui-semantic-motion-reveal-transition);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-settings-palette__listbox[data-travel] {
+    animation: none;
+  }
 }
