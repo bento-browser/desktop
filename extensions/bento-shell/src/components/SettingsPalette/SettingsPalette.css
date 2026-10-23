@@ -130,38 +130,158 @@
   border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
 }
 
-/* The readout is Mux's own header output: the value in the primary colour, then the unit. The
- * unit is the output's ::after, chosen by the slider's data-unit (Mux formats a number only,
- * and a pseudo-element cannot read an attribute of its parent's parent). */
-.bento-settings-palette__slider .muxui-slider-header {
-  justify-content: flex-start;
-}
-
-.bento-settings-palette__slider .muxui-slider-output {
+/* The readout above the track: the value in the primary colour, then the unit. Hidden from
+ * assistive technology: the range input announces the value and unit itself (aria-valuetext). */
+.bento-settings-palette__slider-readout {
+  margin: 0;
+  margin-block-end: var(--muxui-semantic-layout-group-gap);
   color: var(--muxui-semantic-color-neutral-90);
+  font-size: var(--muxui-semantic-typography-small-size);
   font-weight: var(--muxui-semantic-typography-control-weight);
+  line-height: var(--muxui-semantic-typography-compact-line-height);
 }
 
-.bento-settings-palette__slider .muxui-slider-output::after {
+.bento-settings-palette__slider-readout span + span {
   color: var(--muxui-semantic-color-neutral-60);
   font-weight: var(--muxui-semantic-typography-body-weight);
 }
 
-.bento-settings-palette__slider[data-unit='px'] .muxui-slider-output::after {
-  content: ' px';
+/* The slider: a native range input (a recorded exception to the layering rule,
+ * docs/mux-ui-component-customisations.md) that is full size and invisible, over a track, fill and
+ * thumb drawn here. A native thumb cannot be transitioned, so the drawn ones move with transform
+ * from --bento-slider-ratio (0 to 1, set by RangeSlider) on the motion state pair. The native
+ * thumb is the drawn thumb's size and travels the same way, so the pointer's hit area is the
+ * drawn thumb. The look is the Mux Slider's, in the same tokens. */
+.bento-settings-palette__slider {
+  position: relative;
+  container-type: inline-size;
+  block-size: var(--bento-settings-palette-range-control-height);
 }
 
-.bento-settings-palette__slider[data-unit='min'] .muxui-slider-output::after {
-  content: ' min';
+.bento-settings-palette__slider-track {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  block-size: var(--bento-settings-palette-range-track-height);
+  overflow: hidden;
+  border-radius: var(--muxui-semantic-shape-pill-radius);
+  background-color: var(--muxui-semantic-surface-track);
+  transform: translateY(-50%);
 }
 
-/* The thumb shows Mux's focus ring whenever it has the focus, not only after a key press: the
- * page opens with the thumb focused, and React Aria withholds its own ring when the last input
- * was a click (the row that opened the page). Same ring tokens as the Mux rule. */
-.bento-settings-palette__slider .muxui-slider-thumb:has(input:focus) {
+/* The fill is as wide as the track and parked one width to the left; it slides right until its
+ * edge is under the thumb's centre. 100cqw is the slider's width. */
+.bento-settings-palette__slider-fill {
+  position: absolute;
+  inset: 0;
+  background-color: var(--muxui-semantic-selection-track);
+  transform: translateX(
+    calc(
+      -100% + var(--bento-settings-palette-range-thumb-size) / 2 +
+        (100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)
+    )
+  );
+}
+
+.bento-settings-palette__slider-thumb {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0;
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  border: var(--bento-settings-palette-range-thumb-border) solid
+    var(--muxui-semantic-border-indicator);
+  border-radius: 50%;
+  background-color: var(--muxui-semantic-surface-canvas);
+  box-shadow: var(--muxui-semantic-elevation-indicator);
+  pointer-events: none;
+  transform: translate(
+    calc((100cqw - var(--bento-settings-palette-range-thumb-size)) * var(--bento-slider-ratio, 0)),
+    -50%
+  );
+}
+
+/* Movement glides once the slider has settled (not on the first paint) and only while motion is
+ * allowed. The ring and the pressed colour change at once. */
+.bento-settings-palette__slider[data-settled]
+  :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
+  transition: transform var(--muxui-semantic-motion-state-transition-duration)
+    var(--muxui-semantic-motion-state-transition-easing);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-settings-palette__slider[data-settled]
+    :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
+    transition: none;
+  }
+}
+
+/* The input: invisible, the size of the slider, over the drawn parts. Its own thumb is the
+ * drawn thumb's size with nothing drawn, and its track is the slider's height, so a press
+ * anywhere on the row lands on the input. */
+.bento-settings-palette__slider-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  appearance: none;
+  outline: none;
+}
+
+.bento-settings-palette__slider-input::-moz-range-track {
+  block-size: var(--bento-settings-palette-range-control-height);
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-moz-range-thumb {
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  border: 0;
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-webkit-slider-runnable-track {
+  block-size: var(--bento-settings-palette-range-control-height);
+  background: transparent;
+}
+
+.bento-settings-palette__slider-input::-webkit-slider-thumb {
+  box-sizing: border-box;
+  inline-size: var(--bento-settings-palette-range-thumb-size);
+  block-size: var(--bento-settings-palette-range-thumb-size);
+  margin-block-start: calc(
+    (
+        var(--bento-settings-palette-range-control-height) -
+          var(--bento-settings-palette-range-thumb-size)
+      ) /
+      2
+  );
+  border: 0;
+  background: transparent;
+  appearance: none;
+}
+
+/* Pressed: the thumb's edge goes to Mux's dragging colour. */
+.bento-settings-palette__slider:has(.bento-settings-palette__slider-input:active)
+  .bento-settings-palette__slider-thumb {
+  border-color: var(--muxui-semantic-border-dragging);
+}
+
+/* The ring shows on the drawn thumb whenever the input has the focus, not only after a key
+ * press: the page opens with the input focused, and a click on the row that opened it is as
+ * common as Enter. Same ring tokens as the Mux slider. */
+.bento-settings-palette__slider:has(.bento-settings-palette__slider-input:focus)
+  .bento-settings-palette__slider-thumb {
   box-shadow:
-    0 0 0 2px var(--muxui-focus-ring-inner),
-    0 0 0 4px var(--muxui-focus-ring-outer);
+    0 0 0 var(--bento-settings-palette-range-ring-inner) var(--muxui-focus-ring-inner),
+    0 0 0 var(--bento-settings-palette-range-ring-outer) var(--muxui-focus-ring-outer);
 }
 
 /* Plain text under the track, left aligned: the default and the range. */

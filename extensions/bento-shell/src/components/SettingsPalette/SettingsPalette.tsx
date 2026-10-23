@@ -24,7 +24,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { Button, CommandPalette as Palette, IconButton, Slider, SwitchField } from '@muxui/react';
+import { Button, CommandPalette as Palette, IconButton, SwitchField } from '@muxui/react';
 import ChevronLeftIcon from 'lucide-react/dist/esm/icons/chevron-left';
 import ChevronRightIcon from 'lucide-react/dist/esm/icons/chevron-right';
 import ExternalLinkIcon from 'lucide-react/dist/esm/icons/external-link';
@@ -57,6 +57,7 @@ import {
   type Intent,
   type PaletteRow,
 } from './rows';
+import RangeSlider from './RangeSlider';
 import { formatNumber } from './settingsCatalog';
 import { createSizeRunner, stackAfterSizeChange, waitsForSave } from './sizeIntents';
 import {
@@ -245,20 +246,20 @@ export default function SettingsPalette({
     }),
   );
   const inputRef = useRef<HTMLInputElement>(null);
-  const sliderRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const idBase = useId();
   const editing = isEditorStage(stage);
   const spec = editorSpecFor(stage);
   const sliderSpec = sliderSpecFor(stage);
+  const sliderValue = editor.value ?? sliderSpec?.defaultValue ?? sliderSpec?.min ?? 0;
   // An editor stage keeps no focus of its own: its highlight marks the preset that matches the value.
   const highlightRef = useRowHighlight(editing ? '[role="option"][data-current]' : undefined);
 
-  // The one control that holds the focus and the keys: the slider's thumb on a slider page (no
-  // search field is rendered there), else the field.
+  // The one control that holds the focus and the keys: the slider on a slider page (no search
+  // field is rendered there), else the field.
   const focusPrimary = () => {
-    const thumb = sliderRef.current?.querySelector<HTMLInputElement>('input[type="range"]');
-    (thumb ?? inputRef.current)?.focus();
+    (sliderRef.current ?? inputRef.current)?.focus();
   };
 
   // A slider page opens with its thumb focused.
@@ -520,10 +521,9 @@ export default function SettingsPalette({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
-  /** Enter on the slider keeps the value, like Enter in the field. */
-  const onSliderKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
-    event.preventDefault();
+  /** Enter on the slider keeps the value, like Enter in the field. The arrows, Page keys, Home
+   * and End are the range input's own. */
+  const keepSliderValue = () => {
     if (editor.commit()) finishEdit();
   };
 
@@ -786,22 +786,26 @@ export default function SettingsPalette({
               </Palette.Description>
             ) : null}
             {sliderSpec ? (
-              // The slider page: the thumb holds the focus and the keys, so there is no search
-              // field or list here. Arrows, Page keys, Home and End are the slider's own (React
-              // Aria); Enter keeps the value, and Esc is heard on the window like everywhere.
-              <div className="bento-settings-palette__slider-stage" onKeyDown={onSliderKeyDown}>
+              // The slider page: a native range input holds the focus and the keys, so there is no
+              // search field or list here. Arrows, Page keys, Home and End are the input's own;
+              // Enter keeps the value, and Esc is heard on the window like everywhere.
+              <div className="bento-settings-palette__slider-stage">
                 <div className="bento-settings-palette__slider-block">
-                  <Slider
-                    ref={sliderRef}
-                    className="bento-settings-palette__slider"
-                    aria-label={currentLabel}
-                    aria-describedby={description ? descriptionId : undefined}
-                    data-unit={sliderSpec.unit || undefined}
+                  <p className="bento-settings-palette__slider-readout" aria-hidden="true">
+                    <span>{sliderValue}</span>
+                    {sliderSpec.unit ? <span> {sliderSpec.unit}</span> : null}
+                  </p>
+                  <RangeSlider
+                    key={stageKey(stage)}
+                    inputRef={sliderRef}
+                    label={currentLabel}
+                    describedBy={description ? descriptionId : undefined}
                     min={sliderSpec.min}
                     max={sliderSpec.max}
-                    step={1}
-                    value={editor.value ?? sliderSpec.defaultValue ?? sliderSpec.min}
+                    value={sliderValue}
+                    valueText={formatNumber(sliderSpec, sliderValue)}
                     onChange={editor.slide}
+                    onEnter={keepSliderValue}
                   />
                   <p className="bento-settings-palette__slider-info">
                     {sliderSpec.defaultValue !== undefined ? (

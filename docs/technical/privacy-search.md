@@ -313,19 +313,21 @@ because the field holds the value being typed.
 A number whose range is at most `SLIDER_MAX_SPAN` (50) wide is a slider page instead
 (`usesSlider` and `sliderSpecFor`; today Keep alive per workspace, Panel corner radius,
 Panel gap and splitter size, Backups to retain), decided by the range alone in
-`settingsCatalog.ts`. The page renders the Mux `Slider` (step 1, `aria-label` the setting's
-label, `aria-describedby` the page description) and no search field or list, so no hidden
-input competes for the focus or the keys: the thumb is focused on open (and again on a new
-show or when the window regains focus), and arrows, Shift+arrow and Page keys, Home and End
-are React Aria's. An Enter `keydown` on the page's wrapper keeps the value (`editor.commit`),
-and Esc, Back, Close and a hide go through the same `editor.revert` as the field pages. Slider
-changes go through `EditorSession.slide`, a leading-and-trailing throttle
-(`LIVE_SLIDE_INTERVAL_MS`, 100 ms): the first change is sent at once and the latest follows
-every interval, so a drag across 36 steps is about six `settings/update` writes, and the value
-written last is always the one shown. Esc after a drag drops the waiting write and writes the
-opening value back once (nothing, if nothing was sent). The footer reads "←→ adjust", "Home End
-min max", "Enter keep", "Esc cancel" with the "Live preview" status; the field pages keep
-their own hints. Tab order: Back, the path, Close, the slider.
+`settingsCatalog.ts`. The page renders `RangeSlider`, a native range input (step 1,
+`aria-label` the setting's label, `aria-describedby` the page description, `aria-valuetext` the
+value with its unit) drawn with our own track, fill and thumb, and no search field or list, so no
+hidden input competes for the focus or the keys. The input is focused on open (and again on a
+new show or when the window regains focus); arrows, Page keys, Home and End are the browser's.
+Its `keydown` keeps the value on Enter (`editor.commit`), and Esc, Back, Close and a hide go
+through the same `editor.revert` as the field pages. Slider changes go through
+`EditorSession.slide`, a leading-and-trailing throttle (`LIVE_SLIDE_INTERVAL_MS`, 100 ms): the
+first change is sent at once and the latest follows every interval, so a drag across 36 steps is
+about six `settings/update` writes, and the value written last is always the one shown. Esc after
+a drag drops the waiting write and writes the opening value back once (nothing, if nothing was
+sent). The footer reads "←→ adjust", "Home End min max", "Enter keep", "Esc cancel" with the
+"Live preview" status; the field pages keep their own hints. Tab order: Back, the path, Close,
+the slider. Why native, and how the drawn thumb glides, are in the recorded exception in
+[mux-ui-component-customisations.md](../mux-ui-component-customisations.md).
 
 Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories under
 "Settings palette") each mock step renders in dark and light. In Bento: open Settings
@@ -453,14 +455,17 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - In a number stage a click on a preset keeps the value and leaves the stage
   (`useStageEditor.keep`); the arrow keys only preview it (Esc puts the starting value back),
   and Enter in the field commits the typed value.
-- The Mux `Slider` sits in the `collections` chunk, which the Settings entry did not load
-  before it used a slider: the entry's cold-start JS grew by about 109 KB gzip (the chunk
-  itself by about 16 KB, as every entry that already loads it saw). It carries no
-  `formatOptions`, so the readout is the bare number and the unit is a CSS pseudo-element
-  chosen by the slider's `data-unit`, and the thumb's `aria-valuetext` has no unit.
-- React Aria shows the thumb's focus ring only when the last input was the keyboard. The
-  page opens with a programmatic focus after a click on the row as often as after Enter, so
-  the palette's stylesheet draws the same ring on `.muxui-slider-thumb:has(input:focus)`.
+- Do not use the Mux `Slider` for these pages: it sits in the `collections` module, so the Settings
+  entry's cold-start JS grew by about 109 KB gzip and every entry that loads the chunk by about
+  16 KB; a lazy import left the 16 KB (one module, one chunk), and a `manualChunks` rule cannot
+  split it. The native range input costs nothing and announces the unit.
+- The drawn thumb and the native thumb must stay on the same travel. The native thumb is the
+  drawn thumb's size and its centre runs from half a thumb to the width less half a thumb; the
+  drawn one is `translateX((100cqw - thumb) * ratio)` from the left edge. Change the size or the
+  travel in one and the hit area parts from what the eye follows. The transition is on only
+  after `data-settled`, or a page that opens on its value would slide in from the default.
+- A sweeping drag trails: the thumb re-targets a 120 ms transition at every step, so a fast
+  drag (about 900 px/s) leaves it tens of pixels behind the pointer, and a slow one a few.
 - A list opens on a chosen row (the row that opened the page when going back, the current
   choice of a list of choices) by mounting with that row selected: React Aria focuses the
   first selected row on mount. `StageList` drops the selection a frame later; leaving it would
