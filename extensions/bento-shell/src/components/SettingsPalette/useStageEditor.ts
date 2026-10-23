@@ -1,4 +1,4 @@
-// The editor stages: a number typed in the search field. It applies live (the panel corners
+// The editor stages: a number typed in the search field, or moved on a slider. It applies live (the panel corners
 // move while you type), Enter keeps the value, Esc puts back what the stage
 // started with, and a draft that is not valid is never sent. The session itself lives in
 // `editorSession.ts`; this hook adds the field's text and what it parses to.
@@ -22,6 +22,8 @@ export interface StageEditor {
   type(text: string): void;
   /** Moves to the next or previous preset and applies it. */
   step(direction: 1 | -1): void;
+  /** A slider's new value: shown now, applied live at a steady rate. */
+  slide(value: number): void;
   /** Keeps a preset a click took: sends it if it differs from what the stage started with, and
    * ends the edit so a later revert changes nothing. False when there is no edit. */
   keep(value: number): boolean;
@@ -77,6 +79,11 @@ export function useStageEditor(
       if (!spec) return;
       const next = stepPreset(spec, value, direction);
       if (next !== null) applyNow(next);
+    },
+
+    slide(next) {
+      setDraft(String(next));
+      session.slide(next);
     },
 
     keep: (value) => session.commit(value),

@@ -97,18 +97,27 @@ const at = (...stages: Stage[]) => [{ kind: 'root' } as const, ...stages];
 export const Root = () => <Story />;
 Root.storyName = '1 Root';
 
-/** Step 2: a number stage with presets. */
+/** Step 2: a number stage with a large range keeps the typed field and its presets. */
 export const NumberStage = () => (
+  <Story stages={at({ kind: 'number', key: 'tabSleepAfterMinutes' })} />
+);
+NumberStage.storyName = '2 Number (sleep tabs after, field and presets)';
+
+/** Step 2b: a small range gets a slider alone, with the thumb focused. */
+export const SliderStage = () => (
+  <Story stages={at({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })} />
+);
+SliderStage.storyName = '2b Slider (keep alive per workspace)';
+
+/** A slider with a unit after its value. */
+export const SliderStageRadius = () => (
   <Story stages={at({ kind: 'number', key: 'panelCornerRadiusPx' })} />
 );
-NumberStage.storyName = '2 Number (panel corner radius)';
+SliderStageRadius.storyName = '2b Slider (panel corner radius, px)';
 
 /** The input keeps one width: a long, out-of-range value scrolls inside it. */
 export const NumberStageLongValue = () => (
-  <Story
-    stages={at({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })}
-    typed="3321213123123123"
-  />
+  <Story stages={at({ kind: 'number', key: 'defaultPanelWidthPx' })} typed="3321213123123123" />
 );
 NumberStageLongValue.storyName = 'Number (long invalid value, fixed width)';
 
@@ -257,9 +266,19 @@ export const LightRoot = () => <Story mode="light" />;
 LightRoot.storyName = 'Light mode (root)';
 
 export const LightNumber = () => (
+  <Story mode="light" stages={at({ kind: 'number', key: 'tabSleepAfterMinutes' })} />
+);
+LightNumber.storyName = 'Light mode (number editor, field and presets)';
+
+export const LightSlider = () => (
+  <Story mode="light" stages={at({ kind: 'number', key: 'tabSleepKeepAlivePerWorkspace' })} />
+);
+LightSlider.storyName = 'Light mode (slider, keep alive per workspace)';
+
+export const LightSliderRadius = () => (
   <Story mode="light" stages={at({ kind: 'number', key: 'panelCornerRadiusPx' })} />
 );
-LightNumber.storyName = 'Light mode (number editor)';
+LightSliderRadius.storyName = 'Light mode (slider, panel corner radius)';
 
 export const LightDeepPath = () => (
   <Story

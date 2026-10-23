@@ -20,6 +20,7 @@ import {
   rowsForStage,
   searchableRows,
   showsFieldRow,
+  sliderSpecFor,
   stageLabel,
   statusRows,
   type PaletteRow,
@@ -142,21 +143,27 @@ describe('search', () => {
 
 describe('number stages', () => {
   it('lists presets with Min, Default and Max markers and applies the value', () => {
-    const rows = rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL);
+    const rows = rowsForStage({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL);
     expect(rows.map((row) => `${row.label}${row.note ? ` ${row.note}` : ''}`)).toEqual([
-      '0 px Min',
-      '8 px',
-      '12 px Default',
-      '16 px',
-      '24 px',
-      '36 px Max',
+      '1 min Min',
+      '5 min',
+      '15 min',
+      '30 min Default',
+      '60 min',
+      '120 min',
+      '240 min',
+      '1440 min Max',
     ]);
-    expect(rows[1]!.intent).toEqual({ type: 'applyNumber', value: 8 });
+    expect(rows[1]!.intent).toEqual({ type: 'applyNumber', value: 5 });
   });
 
   it('shows no second line under a preset', () => {
-    const rows = rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL);
+    const rows = rowsForStage({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL);
     expect(rows.some((row) => row.description !== undefined)).toBe(false);
+  });
+
+  it('lists nothing on a slider page: the slider replaces the presets', () => {
+    expect(rowsForStage({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL)).toEqual([]);
   });
 
   it('has an editor for numbers, panel size entries and nothing else', () => {
@@ -169,6 +176,29 @@ describe('number stages', () => {
       max: PANEL_SIZE_LIMITS.max,
     });
     expect(editorSpecFor({ kind: 'sizes' })).toBeNull();
+  });
+
+  it('gives a slider to the small-range numbers and to no other stage', () => {
+    for (const key of [
+      'tabSleepKeepAlivePerWorkspace',
+      'panelCornerRadiusPx',
+      'panelSplitterSizePx',
+      'autoBackupMaxCount',
+    ] as const) {
+      expect(sliderSpecFor({ kind: 'number', key }), key).toMatchObject({
+        min: NUMBER_SPECS[key].min,
+        max: NUMBER_SPECS[key].max,
+      });
+    }
+    for (const key of [
+      'tabSleepAfterMinutes',
+      'autoBackupIntervalMinutes',
+      'defaultPanelWidthPx',
+    ] as const) {
+      expect(sliderSpecFor({ kind: 'number', key }), key).toBeNull();
+    }
+    expect(sliderSpecFor({ kind: 'sizeEdit', index: 0 })).toBeNull();
+    expect(sliderSpecFor({ kind: 'sizes' })).toBeNull();
   });
 });
 
@@ -403,8 +433,12 @@ describe('stage chrome', () => {
   });
 
   it('describes the editor footers as in the mock', () => {
-    expect(footerFor({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL, 6)).toEqual({
+    expect(footerFor({ kind: 'number', key: 'tabSleepAfterMinutes' }, REGULAR_MODEL, 6)).toEqual({
       hints: ['Type a value', '↑↓ presets', 'Enter keep', 'Esc cancel'],
+      status: 'Live preview',
+    });
+    expect(footerFor({ kind: 'number', key: 'panelCornerRadiusPx' }, REGULAR_MODEL, 0)).toEqual({
+      hints: ['←→ adjust', 'Home End min max', 'Enter keep', 'Esc cancel'],
       status: 'Live preview',
     });
     expect(footerFor({ kind: 'sizes' }, REGULAR_MODEL, 6).status).toBe('5 of 64 sizes');

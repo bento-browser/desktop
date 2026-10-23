@@ -2,9 +2,9 @@
 //
 // Bento's settings as a staged quick pick on the Mux CommandPalette parts. The root lists every
 // setting grouped, with its value on the right; choosing a row toggles it in place or opens a
-// stage (a list of choices, or a number typed in the search field). A nav row above the
-// field holds Back, the path to the current page (every ancestor a button) and Close, and Esc
-// goes back one stage, closing from the root.
+// stage (a list of choices, a number typed in the search field, or a number moved on a slider
+// when its range is small). A nav row above the field holds Back, the path to the current page
+// (every ancestor a button) and Close, and Esc goes back one stage, closing from the root.
 //
 // Presentational: it takes the settings model and the write actions (`SettingsPaletteActions`)
 // and keeps only navigation state, so stories and tests drive it without a connection. The
@@ -24,7 +24,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react';
-import { Button, CommandPalette as Palette, IconButton, SwitchField } from '@muxui/react';
+import { Button, CommandPalette as Palette, IconButton, Slider, SwitchField } from '@muxui/react';
 import ChevronLeftIcon from 'lucide-react/dist/esm/icons/chevron-left';
 import ChevronRightIcon from 'lucide-react/dist/esm/icons/chevron-right';
 import ExternalLinkIcon from 'lucide-react/dist/esm/icons/external-link';
@@ -50,12 +50,14 @@ import {
   rowsForStage,
   searchableRows,
   showsFieldRow,
+  sliderSpecFor,
   stageLabel,
   statusRows,
   type FooterCopy,
   type Intent,
   type PaletteRow,
 } from './rows';
+import { formatNumber } from './settingsCatalog';
 import { createSizeRunner, stackAfterSizeChange, waitsForSave } from './sizeIntents';
 import {
   escapeOutcome,
@@ -243,12 +245,28 @@ export default function SettingsPalette({
     }),
   );
   const inputRef = useRef<HTMLInputElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const idBase = useId();
   const editing = isEditorStage(stage);
   const spec = editorSpecFor(stage);
+  const sliderSpec = sliderSpecFor(stage);
   // An editor stage keeps no focus of its own: its highlight marks the preset that matches the value.
   const highlightRef = useRowHighlight(editing ? '[role="option"][data-current]' : undefined);
+
+  // The one control that holds the focus and the keys: the slider's thumb on a slider page (no
+  // search field is rendered there), else the field.
+  const focusPrimary = () => {
+    const thumb = sliderRef.current?.querySelector<HTMLInputElement>('input[type="range"]');
+    (thumb ?? inputRef.current)?.focus();
+  };
+
+  // A slider page opens with its thumb focused.
+  const sliderStageKey = sliderSpec ? stageKey(stage) : null;
+  useEffect(() => {
+    if (sliderStageKey !== null) focusPrimary();
+    // Focus once per slider page; the helper only reads refs.
+  }, [sliderStageKey]);
 
   // Begins the editor of a stage the palette opened on (a story, a deep link) once the model is there.
   const began = useRef(false);
@@ -276,7 +294,7 @@ export default function SettingsPalette({
     openers.current = [];
     const top = topStage(start);
     if (model && isEditorStage(top)) editor.begin(top, model);
-    inputRef.current?.focus();
+    focusPrimary();
     // Only a new show resets; the editor, model and actions are read as they are then.
   }, [openToken]);
 
@@ -291,11 +309,10 @@ export default function SettingsPalette({
     // Only a new hide acts; the editor is read as it is then.
   }, [hideToken]);
 
-  // The palette stays mounted while chrome hides it, so the field takes focus back on show.
+  // The palette stays mounted while chrome hides it, so the field (or slider) takes focus back on show.
   useEffect(() => {
-    const focusField = () => inputRef.current?.focus();
-    window.addEventListener('focus', focusField);
-    return () => window.removeEventListener('focus', focusField);
+    window.addEventListener('focus', focusPrimary);
+    return () => window.removeEventListener('focus', focusPrimary);
   }, []);
 
   const close = useCallback(() => {
@@ -502,6 +519,13 @@ export default function SettingsPalette({
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
+
+  /** Enter on the slider keeps the value, like Enter in the field. */
+  const onSliderKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (editor.commit()) finishEdit();
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
@@ -761,74 +785,109 @@ export default function SettingsPalette({
                 {description}
               </Palette.Description>
             ) : null}
-            <Palette.SearchField
-              className="bento-settings-palette__field"
-              data-hidden={fieldShown ? undefined : ''}
-              aria-label={fieldLabel}
-              aria-describedby={description ? descriptionId : undefined}
-            >
-              <Palette.Input
-                ref={inputRef}
-                className="bento-settings-palette__input"
-                placeholder={editing ? undefined : placeholder}
-                value={fieldValue}
-                onChange={onFieldChange}
-                onKeyDown={handleKeyDown}
-                aria-label={fieldLabel}
-                aria-describedby={description ? descriptionId : undefined}
-                readOnly={fieldShown ? undefined : true}
-                aria-invalid={editing && editor.problem ? true : undefined}
-                inputMode={spec ? 'numeric' : undefined}
-                data-editing={editing ? '' : undefined}
-                // A number stage gives the input one fixed width (see the stylesheet).
-                data-number={spec ? '' : undefined}
-                autoFocus
-              />
-              {spec ? (
-                <>
-                  {spec.unit ? (
-                    <span className="bento-settings-palette__unit">{spec.unit}</span>
+            {sliderSpec ? (
+              // The slider page: the thumb holds the focus and the keys, so there is no search
+              // field or list here. Arrows, Page keys, Home and End are the slider's own (React
+              // Aria); Enter keeps the value, and Esc is heard on the window like everywhere.
+              <div className="bento-settings-palette__slider-stage" onKeyDown={onSliderKeyDown}>
+                <div className="bento-settings-palette__slider-block">
+                  <Slider
+                    ref={sliderRef}
+                    className="bento-settings-palette__slider"
+                    aria-label={currentLabel}
+                    aria-describedby={description ? descriptionId : undefined}
+                    data-unit={sliderSpec.unit || undefined}
+                    min={sliderSpec.min}
+                    max={sliderSpec.max}
+                    step={1}
+                    value={editor.value ?? sliderSpec.defaultValue ?? sliderSpec.min}
+                    onChange={editor.slide}
+                  />
+                  <p className="bento-settings-palette__slider-info">
+                    {sliderSpec.defaultValue !== undefined ? (
+                      <span>Default {formatNumber(sliderSpec, sliderSpec.defaultValue)}</span>
+                    ) : null}
+                    <span>
+                      {sliderSpec.min} to {formatNumber(sliderSpec, sliderSpec.max)}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Palette.SearchField
+                  className="bento-settings-palette__field"
+                  data-hidden={fieldShown ? undefined : ''}
+                  aria-label={fieldLabel}
+                  aria-describedby={description ? descriptionId : undefined}
+                >
+                  <Palette.Input
+                    ref={inputRef}
+                    className="bento-settings-palette__input"
+                    placeholder={editing ? undefined : placeholder}
+                    value={fieldValue}
+                    onChange={onFieldChange}
+                    onKeyDown={handleKeyDown}
+                    aria-label={fieldLabel}
+                    aria-describedby={description ? descriptionId : undefined}
+                    readOnly={fieldShown ? undefined : true}
+                    aria-invalid={editing && editor.problem ? true : undefined}
+                    inputMode={spec ? 'numeric' : undefined}
+                    data-editing={editing ? '' : undefined}
+                    // A number stage gives the input one fixed width (see the stylesheet).
+                    data-number={spec ? '' : undefined}
+                    autoFocus
+                  />
+                  {spec ? (
+                    <>
+                      {spec.unit ? (
+                        <span className="bento-settings-palette__unit">{spec.unit}</span>
+                      ) : null}
+                      <span
+                        className="bento-settings-palette__bounds"
+                        data-invalid={editor.problem ? '' : undefined}
+                        role="status"
+                      >
+                        {editor.problem ?? `${spec.min} to ${spec.max}`}
+                      </span>
+                    </>
                   ) : null}
-                  <span
-                    className="bento-settings-palette__bounds"
-                    data-invalid={editor.problem ? '' : undefined}
-                    role="status"
-                  >
-                    {editor.problem ?? `${spec.min} to ${spec.max}`}
-                  </span>
-                </>
-              ) : null}
-              {!editing && query.length > 0 ? (
-                <Palette.ClearButton
-                  aria-label="Clear search"
-                  onClick={() => setQuery('')}
-                  {...IN_TAB_ORDER}
-                />
-              ) : null}
-            </Palette.SearchField>
-            <StageList
-              // A new show remounts the list too, so it opens on its first row, scrolled to the top.
-              key={`${openToken}:${view.kind}:${stageKey(stage)}:${model?.importPreview ? 'preview' : ''}`}
-              focusRow={focusRow}
-              editing={editing}
-              highlightRef={highlightRef}
-              label={labelOf(stage) || 'Settings'}
-              travel={travel}
-            >
-              {withHeaders
-                ? groups.map((group) => (
-                    <Palette.Section key={group.group} className="bento-settings-palette__section">
-                      <Palette.SectionHeader className="bento-settings-palette__heading">
-                        {group.group}
-                      </Palette.SectionHeader>
-                      {group.rows.map(renderRow)}
-                    </Palette.Section>
-                  ))
-                : rows.map(renderRow)}
-            </StageList>
-            {view.kind === 'ready' && rows.length === 0 && !editing ? (
-              <Palette.Empty>No matching settings.</Palette.Empty>
-            ) : null}
+                  {!editing && query.length > 0 ? (
+                    <Palette.ClearButton
+                      aria-label="Clear search"
+                      onClick={() => setQuery('')}
+                      {...IN_TAB_ORDER}
+                    />
+                  ) : null}
+                </Palette.SearchField>
+                <StageList
+                  // A new show remounts the list too, so it opens on its first row, scrolled to the top.
+                  key={`${openToken}:${view.kind}:${stageKey(stage)}:${model?.importPreview ? 'preview' : ''}`}
+                  focusRow={focusRow}
+                  editing={editing}
+                  highlightRef={highlightRef}
+                  label={labelOf(stage) || 'Settings'}
+                  travel={travel}
+                >
+                  {withHeaders
+                    ? groups.map((group) => (
+                        <Palette.Section
+                          key={group.group}
+                          className="bento-settings-palette__section"
+                        >
+                          <Palette.SectionHeader className="bento-settings-palette__heading">
+                            {group.group}
+                          </Palette.SectionHeader>
+                          {group.rows.map(renderRow)}
+                        </Palette.Section>
+                      ))
+                    : rows.map(renderRow)}
+                </StageList>
+                {view.kind === 'ready' && rows.length === 0 && !editing ? (
+                  <Palette.Empty>No matching settings.</Palette.Empty>
+                ) : null}
+              </>
+            )}
             <Palette.Footer className="bento-settings-palette__footer">
               <span className="bento-settings-palette__hints">
                 {notice ? (

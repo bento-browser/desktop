@@ -4,11 +4,14 @@ import {
   ADVANCED_PRIVACY_SPECS,
   BOOLEAN_SPECS,
   NUMBER_SPECS,
+  PANEL_SIZE_EDITOR,
   PANEL_SIZE_LIMITS,
   SHORTCUTS,
+  SLIDER_MAX_SPAN,
   parseNumber,
   presetMarker,
   presetValues,
+  usesSlider,
 } from './settingsCatalog';
 
 const editable: Record<
@@ -89,6 +92,24 @@ describe('presets', () => {
     expect(presetMarker(spec, 12)).toBe('Default');
     expect(presetMarker(spec, 36)).toBe('Max');
     expect(presetMarker(spec, 8)).toBeUndefined();
+  });
+});
+
+describe('sliders', () => {
+  it('go to the settings with a range of at most 50 and to no wider one', () => {
+    const sliders = Object.values(NUMBER_SPECS)
+      .filter(usesSlider)
+      .map((spec) => spec.key)
+      .sort();
+    expect(sliders).toEqual([
+      'autoBackupMaxCount',
+      'panelCornerRadiusPx',
+      'panelSplitterSizePx',
+      'tabSleepKeepAlivePerWorkspace',
+    ]);
+    expect(usesSlider({ min: 0, max: SLIDER_MAX_SPAN })).toBe(true);
+    expect(usesSlider({ min: 0, max: SLIDER_MAX_SPAN + 1 })).toBe(false);
+    expect(usesSlider(PANEL_SIZE_EDITOR)).toBe(false);
   });
 });
 

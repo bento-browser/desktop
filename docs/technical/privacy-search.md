@@ -310,6 +310,23 @@ started with, and an invalid draft is shown with its reason and never sent. They
 share the main palette's Enter-runs-the-first-result or select-on-focus behaviour,
 because the field holds the value being typed.
 
+A number whose range is at most `SLIDER_MAX_SPAN` (50) wide is a slider page instead
+(`usesSlider` and `sliderSpecFor`; today Keep alive per workspace, Panel corner radius,
+Panel gap and splitter size, Backups to retain), decided by the range alone in
+`settingsCatalog.ts`. The page renders the Mux `Slider` (step 1, `aria-label` the setting's
+label, `aria-describedby` the page description) and no search field or list, so no hidden
+input competes for the focus or the keys: the thumb is focused on open (and again on a new
+show or when the window regains focus), and arrows, Shift+arrow and Page keys, Home and End
+are React Aria's. An Enter `keydown` on the page's wrapper keeps the value (`editor.commit`),
+and Esc, Back, Close and a hide go through the same `editor.revert` as the field pages. Slider
+changes go through `EditorSession.slide`, a leading-and-trailing throttle
+(`LIVE_SLIDE_INTERVAL_MS`, 100 ms): the first change is sent at once and the latest follows
+every interval, so a drag across 36 steps is about six `settings/update` writes, and the value
+written last is always the one shown. Esc after a drag drops the waiting write and writes the
+opening value back once (nothing, if nothing was sent). The footer reads "←→ adjust", "Home End
+min max", "Enter keep", "Esc cancel" with the "Live preview" status; the field pages keep
+their own hints. Tab order: Back, the path, Close, the slider.
+
 Manual verification: in Ladle (`pnpm --filter @bento/shell ladle:serve`, stories under
 "Settings palette") each mock step renders in dark and light. In Bento: open Settings
 from the app menu, the command palette (Open Settings, and Privacy for the protection
@@ -436,6 +453,14 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - In a number stage a click on a preset keeps the value and leaves the stage
   (`useStageEditor.keep`); the arrow keys only preview it (Esc puts the starting value back),
   and Enter in the field commits the typed value.
+- The Mux `Slider` sits in the `collections` chunk, which the Settings entry did not load
+  before it used a slider: the entry's cold-start JS grew by about 109 KB gzip (the chunk
+  itself by about 16 KB, as every entry that already loads it saw). It carries no
+  `formatOptions`, so the readout is the bare number and the unit is a CSS pseudo-element
+  chosen by the slider's `data-unit`, and the thumb's `aria-valuetext` has no unit.
+- React Aria shows the thumb's focus ring only when the last input was the keyboard. The
+  page opens with a programmatic focus after a click on the row as often as after Enter, so
+  the palette's stylesheet draws the same ring on `.muxui-slider-thumb:has(input:focus)`.
 - A list opens on a chosen row (the row that opened the page when going back, the current
   choice of a list of choices) by mounting with that row selected: React Aria focuses the
   first selected row on mount. `StageList` drops the selection a frame later; leaving it would

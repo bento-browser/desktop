@@ -92,7 +92,7 @@ Pitfalls:
 - Rows must sit above the slab (`position: relative`, also the section headings), or the
   slab covers their text while it slides past.
 - The slab is measured, not CSS-positioned from a row: a stage that keeps no focus of its
-  own (the number editor) follows `[data-current]` instead (`useRowHighlight`'s selector),
+  own (the number editor with presets; a slider page has no list) follows `[data-current]` instead (`useRowHighlight`'s selector),
   and the Settings list is remounted per stage and per show so its first placement is
   instant.
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEditorSession, LIVE_APPLY_DELAY_MS } from './editorSession';
+import { createEditorSession, LIVE_APPLY_DELAY_MS, LIVE_SLIDE_INTERVAL_MS } from './editorSession';
 import type { EditableSettings } from './model';
 import { PANEL_SIZE_EDITOR } from './settingsCatalog';
 import type { Stage } from './stageStack';
@@ -94,5 +94,81 @@ describe('createEditorSession', () => {
     expect(update).toHaveBeenLastCalledWith({ customPanelSizes: [400, 520] });
     session.revert();
     expect(update).toHaveBeenLastCalledWith({ customPanelSizes: [400, 500] });
+  });
+
+  describe('a slider', () => {
+    it('applies the first change at once and sends only the latest of a quick run', () => {
+      const { session, update } = open();
+      session.slide(13);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenLastCalledWith({ panelCornerRadiusPx: 13 });
+      // A drag across the range: the steps in between never go out.
+      for (const value of [14, 15, 16, 17, 18, 19, 20]) {
+        vi.advanceTimersByTime(5);
+        session.slide(value);
+      }
+      expect(update).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(LIVE_SLIDE_INTERVAL_MS);
+      expect(update).toHaveBeenCalledTimes(2);
+      expect(update).toHaveBeenLastCalledWith({ panelCornerRadiusPx: 20 });
+    });
+
+    it('keeps to a few writes a second over a long drag', () => {
+      const { session, update } = open({ panelCornerRadiusPx: 0 });
+      for (let value = 1; value <= 36; value++) {
+        vi.advanceTimersByTime(10);
+        session.slide(value);
+      }
+      vi.advanceTimersByTime(LIVE_SLIDE_INTERVAL_MS);
+      // 36 steps over 360 ms: a first write, one per interval, and the last value.
+      expect(update.mock.calls.length).toBeLessThanOrEqual(6);
+      expect(update).toHaveBeenLastCalledWith({ panelCornerRadiusPx: 36 });
+    });
+
+    it('Enter after a drag keeps the final value even while its write is still waiting', () => {
+      const { session, update } = open();
+      session.slide(13);
+      vi.advanceTimersByTime(5);
+      session.slide(22);
+      expect(session.commit(22)).toBe(true);
+      expect(update).toHaveBeenLastCalledWith({ panelCornerRadiusPx: 22 });
+      vi.advanceTimersByTime(LIVE_SLIDE_INTERVAL_MS * 5);
+      expect(update).toHaveBeenCalledTimes(2);
+      session.revert();
+      expect(update).toHaveBeenCalledTimes(2);
+    });
+
+    it('Esc after a drag puts back the opening value and drops the waiting write', () => {
+      const { session, update } = open({ panelCornerRadiusPx: 12 });
+      session.slide(13);
+      vi.advanceTimersByTime(5);
+      session.slide(30);
+      session.revert();
+      vi.advanceTimersByTime(LIVE_SLIDE_INTERVAL_MS * 5);
+      expect(update.mock.calls).toEqual([
+        [{ panelCornerRadiusPx: 13 }],
+        [{ panelCornerRadiusPx: 12 }],
+      ]);
+    });
+
+    it('Esc before anything was sent sends nothing', () => {
+      const { session, update } = open();
+      session.revert();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the thumb comes back to the value it started with and is kept', () => {
+      const { session, update } = open({ panelCornerRadiusPx: 12 });
+      expect(session.commit(12)).toBe(true);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('does nothing without a session', () => {
+      const update = vi.fn();
+      const session = createEditorSession({ model: () => null, update });
+      session.slide(5);
+      vi.advanceTimersByTime(LIVE_SLIDE_INTERVAL_MS * 2);
+      expect(update).not.toHaveBeenCalled();
+    });
   });
 });
