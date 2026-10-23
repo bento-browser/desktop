@@ -1,5 +1,6 @@
 // The unfinished edit behind an editor stage, kept free of React so its timing is tested with
-// fake timers. A number applies live after a short pause, Enter keeps it, and anything that
+// fake timers. A typed number applies live after a short pause and a slider's at a steady
+// rate, Enter keeps it, and anything that
 // ends the edit any other way (Esc, a new show, the palette being hidden) puts back what the
 // stage started with and stops the pending apply.
 
@@ -11,6 +12,11 @@ import type { SettingsPaletteModel } from './types';
 
 /** Delay between the last keystroke and the live apply, so typing 24 does not apply 2. */
 export const LIVE_APPLY_DELAY_MS = 180;
+
+/** Shortest gap between two live applies while a slider moves: the first change goes out at
+ * once and the latest one follows, so a drag across the range is a few writes a second, not one
+ * per step. */
+export const LIVE_SLIDE_INTERVAL_MS = 100;
 
 /** What the open editor started with, and the last number it sent (null: nothing yet). */
 type Session =
@@ -30,6 +36,8 @@ export interface EditorSession {
   type(text: string, spec: EditorSpec): void;
   /** Applies a number now. */
   apply(next: number): void;
+  /** Applies a slider's number: at once if none went out lately, else after the interval. */
+  slide(next: number): void;
   /** Keeps the value. False when there is no session. */
   commit(value: number): boolean;
   /** Stops any pending apply and puts back what the session started with. */
@@ -41,6 +49,7 @@ export interface EditorSession {
 export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   let session: Session | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastSlideAt = -Infinity;
 
   const cancelPending = () => {
     clearTimeout(timer);
@@ -65,6 +74,7 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
   return {
     begin(stage, model) {
       cancelPending();
+      lastSlideAt = -Infinity;
       if (stage.kind === 'number') {
         const entry = model.settings[stage.key];
         session = { kind: 'number', key: stage.key, entry, applied: null };
@@ -91,6 +101,19 @@ export function createEditorSession(deps: EditorSessionDeps): EditorSession {
     apply(next) {
       cancelPending();
       if (session) send(session, next);
+    },
+
+    slide(next) {
+      cancelPending();
+      const current = session;
+      if (!current) return;
+      const fire = () => {
+        lastSlideAt = Date.now();
+        send(current, next);
+      };
+      const wait = lastSlideAt + LIVE_SLIDE_INTERVAL_MS - Date.now();
+      if (wait <= 0) fire();
+      else timer = setTimeout(fire, wait);
     },
 
     commit(value) {

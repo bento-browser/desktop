@@ -762,11 +762,17 @@ of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
 Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
 current value on each row. Enter flips a switch (the row shows the new state at
 once and returns to the old one if the change cannot be saved) or opens a short
-list of choices, which opens on the current choice. A number opens a value
-field with preset rows where they help (Min, Default and Max sit beside the
-number); the value applies live while typing (panel corners move as you type) and
-while arrowing over the presets, Enter keeps it, clicking a preset keeps it and returns to
-the list, and Back or Esc puts the previous value back.
+list of choices, which opens on the current choice. A number with a wide range
+(Sleep tabs after, Backup interval, Default new panel width, a custom size) opens a value
+field with preset rows (Min, Default and Max sit beside the number); the value applies live
+while typing (panel corners move as you type) and while arrowing over the presets, Enter
+keeps it, clicking a preset keeps it and returns to the list, and Back or Esc puts the
+previous value back. A number with a small range (Keep alive per workspace, Panel corner
+radius, Panel gap and splitter size, Backups to retain; at most 50 steps wide) opens a
+slider instead, with the thumb focused: the value and its unit show above the track, and
+"Default N" and the range show under it. Dragging or the arrow keys apply the value live (the
+panel corners follow the thumb), Home and End jump to the ends, Enter keeps it, and Back or
+Esc puts the previous value back, as on the field pages.
 
 Every list where a value or choice changes (each number, the choices,
 protection level, default search engine, custom panel sizes and their actions, Advanced

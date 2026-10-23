@@ -291,6 +291,16 @@ export const PANEL_SIZE_EDITOR: EditorSpec = {
   presets: [320, 480, 640, 768, 1024, 1280],
 };
 
+/** The widest range (max minus min) that gets a slider; a wider one keeps the typed field and
+ * its presets, where a slider's track would be too coarse to hit a value. */
+export const SLIDER_MAX_SPAN = 50;
+
+/** Whether a number editor is a slider (step 1) instead of a field with presets. Decided by the
+ * range alone, so a new small-range setting gets one without another list to update. */
+export function usesSlider(spec: Pick<EditorSpec, 'min' | 'max'>): boolean {
+  return spec.max - spec.min <= SLIDER_MAX_SPAN;
+}
+
 /** Preset values for a number editor: the bounds, the default and the suggestions, ascending. */
 export function presetValues(spec: EditorSpec): number[] {
   const values = [spec.min, spec.max, ...spec.presets];

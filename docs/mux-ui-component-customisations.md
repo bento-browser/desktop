@@ -211,6 +211,18 @@ leading icon, and the Input keeps Mux's own padding in every stage. A number sta
 half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
 font where it is used), so the box never changes with what is typed. A longer value scrolls
 inside it, and the unit and bounds after it in the field do not move.
+A number with a range of at most 50 (`usesSlider`) is a page of its own kind: the Mux `Slider`
+(root export, experimental; `step` 1, `min` and `max` the setting's bounds, controlled `value`)
+replaces the field row and the preset list. Bento wraps it in a plain `div` that carries the Enter
+`keydown` (the Slider exposes no key handler) and the footer-pinning flex, and sets
+`aria-label` (the setting's label) and `data-unit`. The readout is Mux's own header output
+(no `label`, so the header holds only the output, which `.bento-settings-palette__slider`
+left-aligns, in `neutral-90` at the control weight); the unit is the output's `::after`, chosen by
+the root's `data-unit` (`px` or `min`), because Mux gives the output no `formatOptions` and a
+pseudo-element cannot read an attribute of an ancestor. "Default N" and the range are a plain
+`p` under the track in `neutral-60`, left aligned, not Mux text parts. The page keeps the
+Back, path and Close nav row and the description. Overrides of Mux slider internals: the header
+justification and output colour and weight above, and the thumb ring below.
 Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
 `--muxui-semantic-feedback-invalid-content` and the warning mark
 `--muxui-semantic-status-warning`; a pending row dims and ends in an ellipsis rather than
@@ -246,6 +258,17 @@ pinned Mux version documents the prop:
   line (and the protection detail), and the row is named by `aria-label` (label, note, value)
   so the line is read once, as the description. Replaced if Mux registers the slot from
   `ItemDescription`.
+- `aria-describedby` on the Settings `Slider` (a hyphenated JSX attribute, so it type-checks
+  without a cast): the declaration lists `aria-label` and `aria-labelledby` only, but the Mux
+  part spreads its props onto the React Aria slider, which links the description to the thumb's
+  `input`. Verified in the DOM; replaced if a pinned Mux version drops the spread.
+- The thumb's focus ring on `.muxui-slider-thumb:has(input:focus)` (`SettingsPalette.css`):
+  Mux draws it on `[data-focus-visible]`, which React Aria withholds when the last input was a
+  click, and the slider page opens with a programmatic focus (a click on the row that opened it
+  is as common as Enter). The rule uses Mux's own ring tokens, `--muxui-focus-ring-inner` and
+  `-outer`.
+- The focus itself: the Slider has no `autoFocus`, so the page focuses the thumb's
+  `input[type="range"]` from an effect, found through the Slider's `ref` (the root `div`).
 - `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
   (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
   the keyboard and the pointer share the one highlight. React Aria only does this once its

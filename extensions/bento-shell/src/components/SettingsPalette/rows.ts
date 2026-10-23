@@ -24,6 +24,7 @@ import {
   type EditorSpec,
   type EnumKey,
   type NumberSettingKey,
+  usesSlider,
 } from './settingsCatalog';
 import {
   ADVANCED_DESCRIPTIONS,
@@ -409,7 +410,15 @@ export function editorSpecFor(stage: Stage): EditorSpec | null {
   return null;
 }
 
+/** The slider a stage shows, or null when it is a field with presets or not an editor. */
+export function sliderSpecFor(stage: Stage): EditorSpec | null {
+  const spec = editorSpecFor(stage);
+  return spec && usesSlider(spec) ? spec : null;
+}
+
+/** A slider page lists nothing: the slider holds the focus and the keys. */
 function numberStageRows(spec: EditorSpec): PaletteRow[] {
+  if (usesSlider(spec)) return [];
   return presetValues(spec).map((value) => ({
     id: `preset:${value}`,
     group: 'Presets',
@@ -916,7 +925,12 @@ export function footerFor(
       };
     case 'number':
     case 'sizeEdit':
-      return { hints: ['Type a value', '↑↓ presets', 'Enter keep', esc], status: 'Live preview' };
+      return {
+        hints: sliderSpecFor(stage)
+          ? ['←→ adjust', 'Home End min max', 'Enter keep', esc]
+          : ['Type a value', '↑↓ presets', 'Enter keep', esc],
+        status: 'Live preview',
+      };
     case 'enum':
     case 'protection':
       return { hints: [move, 'Enter apply', esc] };

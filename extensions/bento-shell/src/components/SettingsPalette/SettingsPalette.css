@@ -113,6 +113,67 @@
   white-space: nowrap;
 }
 
+/* A slider page (a small-range number): the slider and two facts about it, under the
+ * description, with no field row or list. The stage takes the rest of the dialog so the footer
+ * stays at the bottom, as on a list page. */
+.bento-settings-palette__slider-stage {
+  display: flex;
+  min-block-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.bento-settings-palette__slider-block {
+  flex: 0 0 auto;
+  padding-block: var(--muxui-semantic-layout-inset-large);
+  padding-inline: var(--muxui-semantic-layout-inset-large);
+  border-bottom: 1px solid var(--muxui-semantic-color-neutral-18);
+}
+
+/* The readout is Mux's own header output: the value in the primary colour, then the unit. The
+ * unit is the output's ::after, chosen by the slider's data-unit (Mux formats a number only,
+ * and a pseudo-element cannot read an attribute of its parent's parent). */
+.bento-settings-palette__slider .muxui-slider-header {
+  justify-content: flex-start;
+}
+
+.bento-settings-palette__slider .muxui-slider-output {
+  color: var(--muxui-semantic-color-neutral-90);
+  font-weight: var(--muxui-semantic-typography-control-weight);
+}
+
+.bento-settings-palette__slider .muxui-slider-output::after {
+  color: var(--muxui-semantic-color-neutral-60);
+  font-weight: var(--muxui-semantic-typography-body-weight);
+}
+
+.bento-settings-palette__slider[data-unit='px'] .muxui-slider-output::after {
+  content: ' px';
+}
+
+.bento-settings-palette__slider[data-unit='min'] .muxui-slider-output::after {
+  content: ' min';
+}
+
+/* The thumb shows Mux's focus ring whenever it has the focus, not only after a key press: the
+ * page opens with the thumb focused, and React Aria withholds its own ring when the last input
+ * was a click (the row that opened the page). Same ring tokens as the Mux rule. */
+.bento-settings-palette__slider .muxui-slider-thumb:has(input:focus) {
+  box-shadow:
+    0 0 0 2px var(--muxui-focus-ring-inner),
+    0 0 0 4px var(--muxui-focus-ring-outer);
+}
+
+/* Plain text under the track, left aligned: the default and the range. */
+.bento-settings-palette__slider-info {
+  display: flex;
+  margin: 0;
+  margin-block-start: var(--muxui-semantic-layout-inset-medium);
+  gap: var(--muxui-semantic-layout-inset-large);
+  color: var(--muxui-semantic-color-neutral-60);
+  font-size: var(--muxui-semantic-typography-tiny-size);
+}
+
 /* The field row holds the filter or the value being typed, never the path. */
 .bento-settings-palette__unit,
 .bento-settings-palette__bounds {
