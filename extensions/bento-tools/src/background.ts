@@ -57,6 +57,7 @@ import {
 import { KeyRegistry } from './keyboard/KeyRegistry';
 import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
+import { seedBootPrivacyLevel } from './privacy/BootPrivacyDefault';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { SettingsDomainService } from './settings-domain/SettingsDomainService';
@@ -945,10 +946,14 @@ const bootReady = storesReady.then(async () => {
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
+  // A stored choice is applied at boot. A profile with none gets Standard on its first launch only
+  // (`seedBootPrivacyLevel`); on later launches Firefox's prefs, and any switch changed since, stand.
   if (settings.hasOverride('privacyProtectionLevel')) {
     void applyPrivacyLevel(settings.snapshot().privacyProtectionLevel).catch((err) =>
       console.warn('[bento-tools] boot privacy level apply failed:', err),
     );
+  } else {
+    void seedBootPrivacyLevel(settings, workspaces.firstLaunch, mutationCoordinator);
   }
   void applyBootDefaultSearchEngine(settings);
   await sweepStaleFolderIds();

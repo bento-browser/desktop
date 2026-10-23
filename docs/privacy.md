@@ -7,13 +7,14 @@ Bento exposes three selectable privacy levels and one computed state.
 - Standard: balanced default. Uses strict Firefox tracking
   protection, tracker-cookie partitioning, Global Privacy Control, query
   stripping, remote search suggestions off, speculative networking off, local
-  Safe Browsing checks on, HTTPS-only mode, DoH disabled, and uBlock Origin
-  enabled.
+  Safe Browsing checks on, HTTPS-only mode, and DoH disabled.
 - Enhanced: Standard plus resist fingerprinting and WebRTC IP handling set to
   disable non-proxied UDP.
 - Hardened: Enhanced plus letterboxing, WebRTC peer connections off, DRM off,
   disk cache off, WebGL/WebGPU off, password/form saving off, local Safe
-  Browsing retained, and cookies/site data/cache cleared on shutdown.
+  Browsing retained, the Referer header sent only when the hostname matches exactly, and
+  cookies, site data and cache cleared when Bento quits (history, downloads and
+  form data are kept).
 - Custom: detected when live browser settings diverge from every preset. It is
   not selectable.
 
