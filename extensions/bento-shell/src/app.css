@@ -53,6 +53,14 @@
     border-inline-end-color: transparent;
   }
 
+  /* The rail's divider is transparent, so the rail gives its 1px back: chrome pins the host
+     at 52 px and a 51 px content box centred a 32 px control at 9.5. A half pixel paints one
+     way in the settled rail and another at the end of a collapse (railLayout.ts moves items
+     by whole device pixels), a step at the switch; a 52 px box centres it at 10. */
+  html[data-bento-collapsed='true'] .bento-shell-app {
+    border-inline-end-width: 0;
+  }
+
   .bento-shell-app__main {
     display: flex;
     flex: 1 1 auto;
