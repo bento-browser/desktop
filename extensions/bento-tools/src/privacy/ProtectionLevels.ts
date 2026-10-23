@@ -66,7 +66,7 @@ function invertedBoolPref(snapshot: PrivacyPrefMap, name: string): boolean {
  * change the effective value (Firefox stores it as a hidden user value), so a changed group is
  * only believed once each pref holds the value that was written.
  */
-export async function writePrefsVerified(values: PrivacyPrefMap): Promise<void> {
+async function writePrefsVerified(values: PrivacyPrefMap): Promise<void> {
   const names = Object.keys(values);
   await browser.bentoPrivacy.setPrefs(values);
   const effective = await browser.bentoPrivacy.getPrefs(names);
