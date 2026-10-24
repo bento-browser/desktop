@@ -845,7 +845,10 @@ Pairs that must stay in lockstep use the same role: every part of the sidebar pu
 (the host, the shell frame's counter-translation, the page group, the bookmarks
 toolbar, the divider, Back/Forward/Reload and the band in `bento-shell-mount.css`, and
 the hidden sidebar's edge-hover slide-over that follows it) is the `reveal` spring pair
-(400 ms, no overshoot), and the strip itself never fades. The rail colour is the one
+(400 ms, no overshoot), and the strip itself never fades. With no side panels a collapse or
+expand animates the registered number `--bento-sidebar-push-progress` on that same pair
+instead of `transform` keyframes, so layout and every moving part share one main-thread
+clock. The rail colour is the one
 fade: in a collapse or expand the toolbar's sidebar-side colour (the registered
 `--bento-toolbar-left-bg`), the host's background, the chrome divider line (to transparent)
 and the host's edge line (opacity) run on the same pair, and the shell's rail-look

@@ -16828,6 +16828,14 @@
   // document stays put while the host's right edge moves; hide and show move the
   // host alone, as it is out of the window at the far end. The shell narrows its own
   // layout when its viewport does (railViewport.ts).
+  //
+  // A collapse or expand in a window with no side panels is a fluid push instead: the
+  // main container is all that sits right of the host, so it follows the host's edge
+  // every frame (its width, and its page, change with it) rather than sliding a final
+  // layout. Everything that moves with the edge then runs off one main-thread clock, a
+  // custom property animation, not compositor transforms (CSS: "Fluid push"). Whether a
+  // push is fluid is decided here, as it starts, and held by a root attribute, so a
+  // panel opening mid-slide cannot change the rules under a running animation.
   const SIDEBAR_PUSH_DELTA_PROP = '--bento-sidebar-push-delta';
   // Everything a push sets on the root, for its end.
   const SIDEBAR_PUSH_PROPS = [
@@ -16842,6 +16850,10 @@
   const SIDEBAR_PUSH_DIVIDER_EDGE = -1;
   const SIDEBAR_PUSH_PAGE_CLASS = 'bento-sidebar-push-page';
   const SIDEBAR_PUSH_KEY = 'sidebar-push';
+  // Root attribute of a fluid push, alongside SIDEBAR_PUSH_ATTR, and the one animation
+  // its host runs (the clock for everything that moves with the edge).
+  const SIDEBAR_PUSH_FLUID_ATTR = 'bento-sidebar-push-fluid';
+  const SIDEBAR_PUSH_FLUID_ANIMATION = 'bento-sidebar-push-progress';
   const SIDEBAR_PUSH_REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
   const SIDEBAR_PUSH_SLIDE_ANIMATION = {
     collapse: 'bento-sidebar-push-host-collapse',
@@ -16999,11 +17011,17 @@
     const direction = hiding ? 'hide' : collapsed ? 'collapse' : wasHidden ? 'show' : 'expand';
     const expands = !collapsed && !hiding;
     const finalWidth = hiding ? 0 : collapsed ? rail : hostWidth;
+    // Collapse and expand with no side panels: the main container follows the edge
+    // (hide and show, and any window with panels, slide the page group by transform).
+    const fluid =
+      (direction === 'collapse' || direction === 'expand') &&
+      root.getAttribute('bento-no-side-panels') === 'true';
     // Frames queued by an earlier settle (an interrupted slide) would read the
     // translated geometry of this one.
     for (const cancel of sidebarGeometryFrameCancels) cancel();
     const toolbar = commitToolbarForSidebarPush(finalWidth, !expands, hiding);
-    const pageEls = sidebarPushPageElements(host);
+    // A fluid push lays the page out every frame, so nothing is put on it.
+    const pageEls = fluid ? [] : sidebarPushPageElements(host);
     sidebarPush = {
       host,
       collapsed,
@@ -17026,15 +17044,14 @@
     // the push attribute, so the colour fades from where it was. A hide, whose colour
     // cannot be seen (the sidebar leaves), takes the rail at its end.
     if (!hiding) root.toggleAttribute(SIDEBAR_RAIL_ATTR, collapsed);
+    if (fluid) root.setAttribute(SIDEBAR_PUSH_FLUID_ATTR, '');
     root.setAttribute(SIDEBAR_PUSH_ATTR, direction);
     // Read after the styles above: a missing or disabled animation measures 0 and
     // settles at once, with the final state and no frames in between.
-    afterMotion(
-      host,
-      SIDEBAR_PUSH_KEY,
-      { animations: [SIDEBAR_PUSH_SLIDE_ANIMATION[direction]] },
-      settleSidebarPush,
-    );
+    const slideAnimation = fluid
+      ? SIDEBAR_PUSH_FLUID_ANIMATION
+      : SIDEBAR_PUSH_SLIDE_ANIMATION[direction];
+    afterMotion(host, SIDEBAR_PUSH_KEY, { animations: [slideAnimation] }, settleSidebarPush);
     return true;
   }
 
@@ -17059,6 +17076,7 @@
     root.toggleAttribute(SIDEBAR_RAIL_ATTR, collapsed);
     for (const el of pageEls) el.classList.remove(SIDEBAR_PUSH_PAGE_CLASS);
     root.removeAttribute(SIDEBAR_PUSH_ATTR);
+    root.removeAttribute(SIDEBAR_PUSH_FLUID_ATTR);
     for (const name of SIDEBAR_PUSH_PROPS) root.style.removeProperty(name);
     // The split the backgrounds behind the host read was held wide for the slide.
     if (rootSplit !== undefined) {

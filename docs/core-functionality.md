@@ -458,7 +458,8 @@ mode, those same actions open the existing floating address/search fallback.
 collapses the sidebar to the narrow rail or hides it from layout. Collapsing,
 expanding, hiding and showing slide the sidebar and the page together as one strip,
 with the toolbar controls and the divider moving with them; the strip itself does not
-fade. In a window with side panels the collapsed rail takes the toolbar's colour, so the
+fade. With no side panels open, a collapse or expand also resizes the page continuously
+with the sidebar's edge, in step with it, instead of sliding it in at its final size. In a window with side panels the collapsed rail takes the toolbar's colour, so the
 window controls, the rail and the gap around the page read as one surface with no divider
 line on the rail's right edge; the colour fades in and out with a collapse or expand and
 stays as it is without side panels. While the
