@@ -1,6 +1,16 @@
 /* Top-level shell layout. Sits on top of the chrome <browser>'s body. Every
  * selector here is scoped to the shell's own classes, so Ladle loads it too;
  * the page's html/body/#root sizing is in shell-document.css. */
+
+/* The footer's fill, registered so a collapse or expand can fade it (sidebar/railTransition.css)
+ * and so the choreography's backdrop pseudo-element follows it: an inherited <color> reaches
+ * the pseudo-element on every frame of the fade, which `background-color: inherit` does not. */
+@property --bento-footer-fill {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
 @layer bento.app {
   .bento-shell-app {
     height: 100%;
@@ -108,9 +118,10 @@
     padding-block: var(--space-2xs);
     padding-inline: var(--space-2xs);
     border-top: 1px solid var(--bento-sidebar-divider-color);
-    /* Painted so the collapse choreography's backdrop (railTransition.css) can take its
-       colour, and fade it, from this element. */
-    background-color: var(--bento-brand-bg);
+    /* The fill is a registered property (below) so the collapse choreography's backdrop
+       (railTransition.css) can take the colour this element fades through. */
+    --bento-footer-fill: var(--bento-brand-bg);
+    background-color: var(--bento-footer-fill);
     justify-content: flex-end;
     gap: var(--space-4xs) !important;
   }
