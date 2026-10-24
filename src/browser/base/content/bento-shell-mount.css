@@ -531,8 +531,8 @@
    lengths). Keep the chrome host on this single token
    so live sidebar/window resize does not get an extra calc/max()
    width path. The width never transitions: collapse and expand run
-   as a transform slide (see "Sidebar push" below), and the width
-   changes once, at a frame boundary of that slide. */
+   as a slide (see "Sidebar push" below), and the width changes once,
+   at a frame boundary of that slide. */
 #bento-shell-host {
   min-width: var(--bento-tab-strip-width-min-effective, var(--bento-tab-strip-width-min)) !important;
   max-width: var(--bento-tab-strip-width-max) !important;
@@ -620,11 +620,21 @@
    transform transition held off) cannot be seen. Every slide runs on the reveal
    role's spring pair (400 ms, no overshoot: the keyframes are from/to only, so the
    curve applies once over the move).
-   The slide itself is transform only. A collapse or expand also changes the rail
-   colour (the sidebar side of the toolbar split, the host's background and the chrome
-   divider line become the main colour, and the host's edge line goes, in the rail): the
-   script flips :root[bento-sidebar-rail] to the target as the push starts and the rules
-   after the toolbar band below fade to it on the same spring pair. */
+   The slide itself is transform only, except in a window with no side panels. There a
+   collapse or expand is a fluid push (:root[bento-sidebar-push-fluid], latched by the
+   script as the push starts): the main container is the only thing right of the host,
+   so rather than sliding a finished layout it follows the host's edge every frame, and
+   the page inside reflows with it (see "Fluid push" after the keyframes).
+   A collapse or expand also changes the rail colour (the sidebar side of the toolbar
+   split, the host's background and the chrome divider line become the main colour, and
+   the host's edge line goes, in the rail): the script flips :root[bento-sidebar-rail] to
+   the target as the push starts and the rules after the toolbar band below fade to it on
+   the same spring pair. */
+@property --bento-sidebar-push-progress {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
 :root {
   --bento-sidebar-push-delta: 0px;
   --bento-sidebar-push-divider-shift: 0px;
@@ -884,6 +894,126 @@
   }
   to {
     transform: translateX(0);
+  }
+}
+/* Fluid push (collapse and expand with no side panels; the script latches
+   :root[bento-sidebar-push-fluid] in the frame the push starts and drops it at the settle).
+   The transform slide above lays the page out once and slides it, which here would mean a
+   main container that keeps its final width through the slide and reflows in one frame at
+   the end. Instead the host's edge and the main container's left edge move by the same
+   amount every frame and the container's width, and its page, change with them:
+   - one clock. --bento-sidebar-push-progress is a registered, non-inherited <number>, so
+     each element below that moves with the edge runs its own 0 to 1 animation of it (same
+     spring pair, all started in one style flush) and reads it back in a plain declaration.
+     A custom property animation runs on the main thread, in the same restyle as the layout
+     it drives, so the host, the shell frame, the main container, the bookmarks toolbar, the
+     divider, Back/Forward/Reload and the band are always sampled at one instant. Compositor
+     transform animations are sampled a frame apart from layout, which at the spring's peak
+     speed (about 2.4 px/ms for a 248 px collapse) is 20 px at 120 Hz and 40 px at 60 Hz of
+     gap or overlap, so none of them is used here;
+   - --bento-sidebar-push-shift is how far the edge is from the wide end: delta times
+     --bento-sidebar-push-narrow (0 at the wide end, 1 at the narrow end: the progress for a
+     collapse, what is left of it for an expand), rounded to a whole pixel so the main
+     frame's origin stays whole mid-slide (chrome-panel-rendering.md, "Main frame origin"),
+     plus the part of delta that rounding drops, spread linearly. The sidebar width can be
+     fractional (a dragged width, the rem-based min and max), so a plain rounded shift would
+     end a collapse, or start an expand, up to half a pixel off the settled layout; with the
+     correction, progress 0 and 1 are exactly the wide-end and narrow-end layouts for any
+     delta, and the correction is 0 for a whole one. The host keeps its width and gives up
+     `shift` of layout space through its
+     negative right margin, so the splitter and the main container reflow by themselves; the
+     host's own translation (and the opposite one on the shell frame, which keeps the shell
+     document still) uses the same value, so the visible edge and the container's left edge
+     cannot separate. At the narrow end (collapse) or the wide end (expand) of the slide the
+     layout is the settled one, so nothing changes when the push ends;
+   - the bookmarks toolbar, which starts at the strip's left edge through a margin. Its
+     committed offset is the narrow end's (a collapse commits the final one now, an expand
+     keeps the initial one until the settle), so it adds back what the edge has not yet
+     travelled. Offsets are whole pixels (the script rounds them), so the sum is rounded too:
+     at the wide end it is the offset the settle commits.
+   The page group class is not put on anything in a fluid push; the divider, Back/Forward/
+   Reload and the band take their from/to values from the commit as in the transform slide.
+   These rules come after the transform ones and replace them at equal specificity. */
+:root[bento-sidebar-push-fluid][bento-sidebar-push='collapse']
+  :is(#bento-shell-host, #bento-shell-host > #bento-shell-frame, #PersonalToolbar) {
+  --bento-sidebar-push-narrow: var(--bento-sidebar-push-progress);
+}
+:root[bento-sidebar-push-fluid][bento-sidebar-push='expand']
+  :is(#bento-shell-host, #bento-shell-host > #bento-shell-frame, #PersonalToolbar) {
+  --bento-sidebar-push-narrow: calc(1 - var(--bento-sidebar-push-progress));
+}
+:root[bento-sidebar-push-fluid]
+  :is(#bento-shell-host, #bento-shell-host > #bento-shell-frame, #PersonalToolbar) {
+  --bento-sidebar-push-shift: calc(
+    round(calc(var(--bento-sidebar-push-delta) * var(--bento-sidebar-push-narrow)), 1px) +
+      (var(--bento-sidebar-push-delta) - round(var(--bento-sidebar-push-delta), 1px)) *
+      var(--bento-sidebar-push-narrow)
+  );
+}
+:root[bento-sidebar-push-fluid]
+  :is(
+    #bento-shell-host,
+    #bento-shell-host > #bento-shell-frame,
+    #bento-sidebar-chrome-divider
+  ),
+:root[bento-sidebar-push-fluid] #nav-bar::before {
+  animation: bento-sidebar-push-progress
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+}
+:root[bento-sidebar-push-fluid] #bento-shell-host {
+  margin-right: calc(-1 * var(--bento-sidebar-push-shift)) !important;
+  transform: translateX(calc(-1 * var(--bento-sidebar-push-shift)));
+}
+:root[bento-sidebar-push-fluid] #bento-shell-host > #bento-shell-frame {
+  transform: translateX(var(--bento-sidebar-push-shift));
+}
+:root[bento-sidebar-push-fluid] #bento-sidebar-chrome-divider {
+  transform: translateX(
+    calc(var(--bento-sidebar-push-divider-shift) * (1 - var(--bento-sidebar-push-progress)))
+  );
+}
+:root[bento-sidebar-push-fluid][bento-sidebar-addressbar='true']
+  #nav-bar-customization-target
+  > :is(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav) {
+  animation: bento-sidebar-push-progress
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both;
+  transform: translateX(
+    calc(
+      var(--bento-sidebar-push-nav-from) +
+        (var(--bento-toolbar-nav-offset, 0px) - var(--bento-sidebar-push-nav-from)) *
+        var(--bento-sidebar-push-progress)
+    )
+  );
+}
+:root[bento-sidebar-push-fluid] #nav-bar::before {
+  transform: translateX(
+    calc(-1 * var(--bento-sidebar-push-split-shift) * var(--bento-sidebar-push-progress))
+  );
+}
+/* Bento mode pins the bookmarks toolbar's own animation off; the push moves it. */
+:root[bento-sidebar-push-fluid][bento-sidebar-addressbar='true'] #PersonalToolbar {
+  --bento-sidebar-push-bookmarks-inset: round(
+    calc(
+      var(--bento-bookmarks-toolbar-offset) + var(--bento-sidebar-push-delta) -
+        var(--bento-sidebar-push-shift)
+    ),
+    1px
+  );
+  animation: bento-sidebar-push-progress
+    var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
+  margin-inline-start: var(--bento-sidebar-push-bookmarks-inset) !important;
+  width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
+  max-width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
+}
+@keyframes bento-sidebar-push-progress {
+  from {
+    --bento-sidebar-push-progress: 0;
+  }
+  to {
+    --bento-sidebar-push-progress: 1;
   }
 }
 #bento-shell-splitter.bento-sidebar-collapsed {

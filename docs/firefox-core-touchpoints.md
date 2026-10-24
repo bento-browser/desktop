@@ -1355,6 +1355,34 @@ rel="stylesheet">` load and error events on chrome documents, and the
   side panels and with none, check in recorded frames of a collapse, expand, hide and show
   that the shadow beside the card keeps the same width and darkness as the settled
   state (about 40 px, not cut to the gutter and not snapping at the end).
+- Fluid sidebar push (2026-10-25): with no side panels (`bento-no-side-panels`), Cmd+S
+  collapse and expand resize the main container with the host's edge every frame instead of
+  sliding a finished layout (`:root[bento-sidebar-push-fluid]`, latched by
+  `startSidebarPush`; windows with side panels, hide and show keep the transform slide above).
+  Firefox surface depended on: a registered, non-inherited `<number>` custom property
+  (`@property --bento-sidebar-push-progress`) animated by a CSS animation on
+  `#bento-shell-host`, `#bento-shell-frame`, `#PersonalToolbar`, the native
+  Back/Forward/Reload ids, `#bento-panel-nav` and the generated `#nav-bar::before`, read by
+  `transform`, `margin-right` and `margin-inline-start` declarations on the same element
+  (main thread, so layout and every moving part are sampled in one restyle; no compositor
+  animation); `round()` in `calc()` for the whole-pixel edge; the flex layout of `#browser`
+  (`#bento-shell-host`, the splitter, `#bento-strip-container`) re-laying out the
+  container when the host's negative right margin changes, and the remote `<browser>` in
+  the main panel receiving a resize every frame; `animationend` firing on the host for an
+  animation that animates only a custom property (it ends the push through `afterMotion`).
+  No private Firefox member is added, so the firefox-compat registry has no new entry.
+  Regression checks for future updates: with no side panels, in the Browser Toolbox Console
+  during a collapse and an expand (raise the spring duration token to see it slowly),
+  `#bento-shell-host`'s right edge and `#bento-strip-container`'s left edge from
+  `getBoundingClientRect()` are equal on every frame and the strip's right edge is the window's;
+  the content window's `innerWidth` changes every frame; `document.getAnimations()` lists
+  only `bento-sidebar-push-progress` animations for the push, with one `startTime` and
+  `isRunningOnCompositor` false; the last animated frame equals the settled layout; with a
+  side panel open the same toggle still lists the transform animations; the same with the
+  sidebar's inline width set to a fractional value (`host.style.width = '300.25px'`): the
+  first frame equals the pre-push layout and the last the settled one. After a Firefox bump,
+  confirm registered custom property animations still run and fire `animationend`
+  (`getComputedStyle($0).getPropertyValue('--bento-sidebar-push-progress')` mid-push).
 - Rail colour (2026-10-22): the collapsed rail takes the toolbar's main colour (the shell's
   rail look; chrome's `:root[bento-sidebar-rail]`, set by `applyChromeSidebarCollapsed`),
   with no right edge line, and the colour fades with a collapse or expand. Firefox surface
