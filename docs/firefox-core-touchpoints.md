@@ -1349,7 +1349,12 @@ rel="stylesheet">` load and error events on chrome documents, and the
   the host), the counter-translation fails and the sidebar shows the host's slide only;
   after a Firefox bump,
   re-read `browser-box.inc.xhtml` for added in-flow children of `#browser` and for
-  any `::before` or `::after` rule on `#nav-bar`.
+  any `::before` or `::after` rule on `#nav-bar`. Stacking (2026-10-24, issue #85): the
+  host is `z-index: 5` for the slide and `#bento-strip-container` is `z-index: 6`, so the
+  main frame's and panel frames' drop shadow keeps painting over the host's area; with
+  side panels and with none, check in recorded frames of a collapse, expand, hide and show
+  that the shadow beside the card keeps the same width and darkness as the settled
+  state (about 40 px, not cut to the gutter and not snapping at the end).
 - Rail colour (2026-10-22): the collapsed rail takes the toolbar's main colour (the shell's
   rail look; chrome's `:root[bento-sidebar-rail]`, set by `applyChromeSidebarCollapsed`),
   with no right edge line, and the colour fades with a collapse or expand. Firefox surface

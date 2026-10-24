@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRailTransition,
@@ -169,5 +170,22 @@ describe('createRailTransition', () => {
     expect(seen).toEqual(['measure']);
     expect(t.host.clear).toHaveBeenCalledTimes(1);
     expect(t.phase()).toBeNull();
+  });
+});
+
+describe('footer backdrop colour', () => {
+  // A pseudo-element made at the phase start that inherits a transitioning background-color
+  // stays at its creation-time colour in real-time playback, so the backdrop paints a
+  // registered inherited property that the footer fades instead.
+  const read = (name: string) => readFileSync(new URL(name, import.meta.url), 'utf8');
+
+  it('fades the footer fill the backdrop paints, not an inherited background-color', () => {
+    const rail = read('./railTransition.css');
+    const app = read('../app.css');
+    expect(app).toMatch(/@property\s+--bento-footer-fill\s*\{[^}]*inherits:\s*true/);
+    expect(rail).toMatch(/\.bento-shell-app__footer\s*\{\s*transition:\s*--bento-footer-fill\b/);
+    const backdrop = /\.bento-shell-app__footer::before\s*\{([^}]*height:[^}]*)\}/.exec(rail);
+    expect(backdrop?.[1]).toMatch(/background-color:\s*var\(--bento-footer-fill\)/);
+    expect(backdrop?.[1]).not.toMatch(/background-color:\s*inherit/);
   });
 });
