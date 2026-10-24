@@ -850,7 +850,11 @@ fade: in a collapse or expand the toolbar's sidebar-side colour (the registered
 `--bento-toolbar-left-bg`), the host's background, the chrome divider line (to transparent)
 and the host's edge line (opacity) run on the same pair, and the shell's rail-look
 backgrounds (`railTransition.css`, only while `data-bento-rail-transition` is present) do
-too; a hide, a show, boot, reduced motion and theme changes switch the colour at once. The workspace slide
+too; a hide, a show, boot, reduced motion and theme changes switch the colour at once. The
+footer fades the registered, inherited `<color>` property `--bento-footer-fill` (`app.css`)
+rather than its `background-color`, because its backdrop pseudo-element paints the same
+property and `background-color: inherit` on a pseudo-element does not follow a transition
+through a real-time fade. The workspace slide
 (`TabList.css`), the main panel width one-shot and the panel enter are `reveal` too.
 
 The sidebar collapse and expand choreography (`extensions/bento-shell/src/sidebar/railTransition.css`,
