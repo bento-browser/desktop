@@ -28,11 +28,16 @@
       .bento-shell-app__header,
       .bento-shell-app__workspace-switcher,
       .bento-shell-app__list-region,
-      .bento-shell-app__footer,
       .bento-sidebar-address-bar,
       .bento-sidebar-address-bar__row
     ) {
     transition: background-color var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing);
+  }
+  /* The footer fades its registered fill (app.css) instead of background-color, so the
+     backdrop pseudo-element can read the fading colour. */
+  html[data-bento-rail-transition] .bento-shell-app__footer {
+    transition: --bento-footer-fill var(--muxui-semantic-motion-reveal-transition-spring-duration)
       var(--muxui-semantic-motion-reveal-transition-spring-easing);
   }
   /* Scroll anchoring takes the list viewport's translate (the scroll change a phase
@@ -141,7 +146,8 @@
       box-sizing: border-box;
       height: var(--bento-rail-footer-height, 0px);
       border-top: 1px solid var(--bento-sidebar-divider-color);
-      background-color: inherit;
+      /* Not `inherit`: that stays at the creation-time colour while the footer fades. */
+      background-color: var(--bento-footer-fill);
       --bento-rail-x: 0px;
       --bento-rail-y: var(--bento-rail-footer-rise, 0px);
     }

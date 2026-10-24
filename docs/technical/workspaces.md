@@ -893,8 +893,11 @@ background-color` on the spring pair while a collapse or expand runs). The toolb
   `data-bento-rail-transition` is present, `measure` included: an expand drops
   `data-bento-collapsed` in its measure step, and the colour must start leaving the rail in
   that flush. Theme and mode changes happen without the attribute, so they stay instant.
-  The footer backdrop (`::before`, created at the phase start) takes `background-color:
-inherit` from the footer, which is what fades. The tab list band and the workspace
+  The footer's fill is the registered, inherited `<color>` property `--bento-footer-fill`
+  (`@property` in `app.css`, set to `--bento-brand-bg` on the footer), and the footer
+  transitions that property instead of `background-color`; the footer backdrop (`::before`,
+  created at the phase start) paints `var(--bento-footer-fill)`, so it fades with the
+  footer. The tab list band and the workspace
   switcher square move to `--bento-rail-band-fill` and `--bento-rail-square-base` (neutral-18
   with side panels, reset in `.bento-shell-app--no-side-panels` to neutral-12 and neutral-5,
   the old values), constant rather than following the look: the rail band
@@ -1391,9 +1394,24 @@ workspaces.
   the toolbar surfaces restyle per frame; an inherited registered property would restyle the
   whole chrome tree every frame of the slide), and the pseudo-elements the push creates
   (`#nav-bar::before`, `#bento-shell-host::after`, the shell footer's `::before`) take
-  their colour from a parent that transitions (`inherit`) or run an opacity animation.
+  their colour from a parent that transitions or run an opacity animation (the shell
+  footer's backdrop reads an inherited registered property, below; `#nav-bar::before`
+  still uses `inherit` on a non-inherited one).
   Declare the shell's colour transitions only under `[data-bento-rail-transition]`
   (`measure` too), never on the elements always, or a theme change would fade.
+- Do not give the shell footer's backdrop `background-color: inherit` (the footer rising
+  backdrop, `.bento-shell-app__footer::before`). The footer's own `background-color` fades
+  correctly, but a pseudo-element that inherits a transitioning reset property stayed at the
+  colour it was created with for the whole phase in real-time playback (headless Firefox 153,
+  the Ladle collapse story at 0.1x, recorded and sampled per frame): a rectangle in the
+  other surface's colour rose through the sidebar (an expand, with side panels: rail colour
+  over the faded list; a collapse: sidebar colour over the faded list) and snapped at the
+  phase end. A frozen-time check (pause the animations and set `currentTime`) does not show
+  it, because a seek restyles everything. The footer fades the registered `<color>` property
+  `--bento-footer-fill` (`inherits: true`) and both the footer and the backdrop paint it, so
+  the value reaches the pseudo-element through normal inheritance on every frame. Check a
+  colour change on a pseudo-element the phase creates with a real-time recording, not a
+  seek.
 - The colour transition declares `transition` on `#navigator-toolbox`, `#TabsToolbar` and
   `#nav-bar`, which replaces Firefox's own transition list there for the push. Keep
   `#navigator-toolbox:not([fullscreenShouldAnimate])` in that selector: upstream's
