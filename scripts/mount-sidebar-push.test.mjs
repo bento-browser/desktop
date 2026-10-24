@@ -43,6 +43,8 @@ const CONSTANTS = [
   'SIDEBAR_PUSH_DIVIDER_EDGE',
   'SIDEBAR_PUSH_PAGE_CLASS',
   'SIDEBAR_PUSH_KEY',
+  'SIDEBAR_PUSH_FLUID_ATTR',
+  'SIDEBAR_PUSH_FLUID_ANIMATION',
   'SIDEBAR_PUSH_REDUCED_MOTION',
   'SIDEBAR_PUSH_SLIDE_ANIMATION',
 ];
@@ -277,6 +279,7 @@ function makeWorld({ expandedWidth = 300, railWidth = 64 } = {}) {
   /** What a slide must leave nothing of once it has ended. */
   world.assertNoResidue = () => {
     assert.equal(world.root.hasAttribute('bento-sidebar-push'), false);
+    assert.equal(world.root.hasAttribute('bento-sidebar-push-fluid'), false);
     for (const name of world.root.props.keys()) {
       assert.equal(name.startsWith('--bento-sidebar-push-'), false, name);
     }
@@ -940,6 +943,88 @@ test('a toggle reads the push target, not the class that only lands when the sli
   assert.equal(world.collapsedTarget(world.host), false);
 });
 
+// A collapse or expand with no side panels is a fluid push: the main container follows the
+// edge by layout, so nothing is put on the page group and the host animation that carries the
+// clock is the progress one. Windows with panels, hide and show keep the transform slide.
+test('a collapse or expand with no side panels is a fluid push and marks no page element', () => {
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64 });
+  world.root.setAttribute('bento-no-side-panels', 'true');
+  world.boot(false);
+  world.apply(true);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'collapse');
+  assert.equal(world.root.hasAttribute('bento-sidebar-push-fluid'), true);
+  for (const el of [world.splitter, world.strip, world.affordance, world.bookmarks]) {
+    assert.equal(el.classes.has('bento-sidebar-push-page'), false, el.id);
+  }
+  assert.deepEqual(plain(world.liveWaits()[0].filter), {
+    animations: ['bento-sidebar-push-progress'],
+  });
+  world.endMotion();
+  world.assertNoResidue();
+  assert.equal(world.host.classes.has('bento-sidebar-collapsed'), true);
+  world.apply(false);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(world.root.hasAttribute('bento-sidebar-push-fluid'), true);
+  assert.deepEqual(plain(world.liveWaits()[0].filter), {
+    animations: ['bento-sidebar-push-progress'],
+  });
+  world.endMotion();
+  world.assertNoResidue();
+});
+
+test('a window with side panels, and a hide or show, keep the transform slide', () => {
+  const withPanels = makeWorld();
+  withPanels.boot(false);
+  withPanels.apply(true);
+  assert.equal(withPanels.root.hasAttribute('bento-sidebar-push-fluid'), false);
+  assert.equal(withPanels.strip.classes.has('bento-sidebar-push-page'), true);
+  assert.deepEqual(plain(withPanels.liveWaits()[0].filter), {
+    animations: ['bento-sidebar-push-host-collapse'],
+  });
+
+  const hidden = makeWorld();
+  hidden.root.setAttribute('bento-no-side-panels', 'true');
+  hidden.boot(false);
+  hidden.payload(true, true);
+  assert.equal(hidden.root.getAttribute('bento-sidebar-push'), 'hide');
+  assert.equal(hidden.root.hasAttribute('bento-sidebar-push-fluid'), false);
+  assert.equal(hidden.strip.classes.has('bento-sidebar-push-page'), true);
+  hidden.endMotion();
+  hidden.payload(false, false);
+  assert.equal(hidden.root.getAttribute('bento-sidebar-push'), 'show');
+  assert.equal(hidden.root.hasAttribute('bento-sidebar-push-fluid'), false);
+  assert.deepEqual(plain(hidden.liveWaits()[0].filter), {
+    animations: ['bento-sidebar-push-host-expand'],
+  });
+});
+
+test('the fluid latch is decided as the push starts, not by the panels that open during it', () => {
+  const world = makeWorld();
+  world.root.setAttribute('bento-no-side-panels', 'true');
+  world.boot(false);
+  world.apply(true);
+  world.root.removeAttribute('bento-no-side-panels');
+  assert.equal(world.root.hasAttribute('bento-sidebar-push-fluid'), true);
+  // A toggle during the slide settles it (dropping the latch) and decides again.
+  world.apply(false);
+  assert.equal(world.root.getAttribute('bento-sidebar-push'), 'expand');
+  assert.equal(world.root.hasAttribute('bento-sidebar-push-fluid'), false);
+  assert.equal(world.strip.classes.has('bento-sidebar-push-page'), true);
+  world.endMotion();
+  world.assertNoResidue();
+});
+
+test('an interrupted fluid push settles at its end with no latch, property or margin left', () => {
+  const world = makeWorld();
+  world.root.setAttribute('bento-no-side-panels', 'true');
+  world.boot(false);
+  world.apply(true);
+  world.apply(false);
+  world.settle();
+  world.assertNoResidue();
+  assert.equal(world.host.classes.has('bento-sidebar-collapsed'), false);
+});
+
 // The stylesheet side of the audit: a rule keyed to an expand also names the show (the expand
 // out of the hidden state), unless it belongs to the shell document's own counter-translation
 // (the host's clip, the frame, the edge line) or to the rail colour fade (the toolbar segment,
@@ -956,7 +1041,10 @@ test('the stylesheet gives show every expand rule but the shell-document ones, a
   const selectors = [...css.matchAll(/^(:root[^{]*bento-sidebar-push=[^{]*)\{/gm)].map((m) =>
     m[1].replace(/\s+/g, ' ').trim(),
   );
-  const expandOnly = selectors.filter((s) => s.includes("'expand'") && !s.includes("'show'"));
+  // The fluid push is a collapse and expand only (see its own test below).
+  const expandOnly = selectors.filter(
+    (s) => s.includes("'expand'") && !s.includes("'show'") && !s.includes('push-fluid'),
+  );
   assert.equal(expandOnly.length, 7, expandOnly.join('\n'));
   for (const selector of expandOnly) {
     assert.match(
@@ -1015,4 +1103,75 @@ test('the strip container stays stacked above the host for the push so the card 
   const host = zIndex(':root[bento-sidebar-push] #bento-shell-host');
   const strip = zIndex(':root[bento-sidebar-push] #bento-strip-container');
   assert.ok(strip > host, `strip z-index ${strip} must be above the host's ${host}`);
+});
+
+// The fluid push's single clock: every rule keyed to :root[bento-sidebar-push-fluid] that
+// animates runs the progress animation, whose keyframes set only the registered property, so
+// nothing in a fluid push is a compositor transform animation.
+test('the fluid push runs every consumer on the one progress animation, after the transform rules', () => {
+  const css = readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../src/browser/base/content/bento-shell-mount.css',
+    ),
+    'utf8',
+  );
+  const property = /@property --bento-sidebar-push-progress\s*\{([^}]*)\}/.exec(css);
+  assert.ok(property, 'the progress property is not registered');
+  assert.match(property[1], /syntax:\s*'<number>'/);
+  assert.match(property[1], /inherits:\s*false/);
+  const keyframes = /@keyframes bento-sidebar-push-progress\s*\{((?:[^{}]|\{[^}]*\})*)\}/.exec(css);
+  assert.ok(keyframes, 'the progress keyframes are missing');
+  assert.doesNotMatch(keyframes[1], /transform/);
+  assert.match(keyframes[1], /--bento-sidebar-push-progress:\s*0/);
+  assert.match(keyframes[1], /--bento-sidebar-push-progress:\s*1/);
+
+  const rules = [...css.matchAll(/^(:root\[bento-sidebar-push-fluid\][^{]*)\{([^}]*)\}/gm)];
+  assert.ok(rules.length > 0, 'no fluid rules');
+  // The rules that start the clock: each runs the progress animation on the spring pair, and
+  // none keys a transform keyframe animation.
+  const clocked = rules.filter(([, , body]) => /(^|\s)animation:/.test(body));
+  for (const [, selector, body] of clocked) {
+    const animation = /(?:^|\s)animation:\s*([\s\S]*?);/.exec(body)[1];
+    assert.match(animation, /^bento-sidebar-push-progress\s/, selector);
+    assert.match(animation, /spring-duration\)\s+var\(\S+spring-easing\)/, selector);
+  }
+  // Every consumer is in one of them. A consumer left out would keep the transform animation
+  // of the slide above (the cascade only replaces it where a fluid rule sets `animation`).
+  const clockSelectors = clocked.map(([, selector]) => selector).join('\n');
+  const consumers = {
+    host: /#bento-shell-host(?!\s*>)/,
+    'shell frame': /#bento-shell-host\s*>\s*#bento-shell-frame/,
+    'bookmarks toolbar': /#PersonalToolbar/,
+    'chrome divider': /#bento-sidebar-chrome-divider/,
+    'toolbar band': /#nav-bar::before/,
+    Back: /#back-button/,
+    Forward: /#forward-button/,
+    'Stop/Reload': /#stop-reload-button/,
+    'panel navigator': /#bento-panel-nav/,
+  };
+  for (const [name, pattern] of Object.entries(consumers)) {
+    assert.match(clockSelectors, pattern, `${name} does not run the progress animation`);
+  }
+  // The fluid rules replace the transform slide's at equal specificity, so they must come after
+  // every rule that animates a transform keyframe (or sets the host's push margin).
+  const slideRules = [
+    ...css.matchAll(
+      /^[^{}@]*\{[^}]*animation:\s*bento-sidebar-push-(?:host|page|frame|divider|nav|band)[^}]*\}/gm,
+    ),
+  ];
+  assert.ok(slideRules.length >= 8, 'the transform slide rules were not found');
+  const slideEnd = Math.max(...slideRules.map((m) => m.index + m[0].length));
+  const hostMargin = css.indexOf(':root[bento-sidebar-push] #bento-shell-host {');
+  assert.ok(hostMargin !== -1 && hostMargin < slideEnd, 'the push margin rule moved');
+  assert.ok(rules[0].index > slideEnd, 'the fluid rules must come after the transform slide rules');
+  // The consumers read the progress in a plain declaration, not as a keyframed transform.
+  for (const [, selector, body] of rules) {
+    assert.doesNotMatch(body, /animation:[^;]*push-(host|page|frame|divider|nav|band)/, selector);
+  }
+  // Progress 0 and 1 are the pre-push and settled layouts for a fractional width too: the shift
+  // adds back what rounding the whole delta drops.
+  const shift = rules.find(([, , body]) => /--bento-sidebar-push-shift:/.test(body));
+  assert.ok(shift, 'the shift rule is missing');
+  assert.match(shift[2], /round\(var\(--bento-sidebar-push-delta\), 1px\)/);
 });
