@@ -639,6 +639,11 @@ rule). Chrome bridge: none. Persistence: none. Pitfalls:
   `<outline>, <frame shadow>`. `<outline>, none` is an invalid list that drops the whole
   declaration (and the hairline), so under `bento-panel-shadows-disabled` a second rule sets
   the outline alone; `check-chrome-resize-guard.mjs` asserts it.
+- The elevation shadow spills about 40 px left of the frame into the sidebar's area, and
+  the frame, its shadow and the hairline overlay all sit inside `#bento-strip-container`'s
+  stacking context. During a sidebar push the host is `z-index: 5`, so the strip is raised
+  to `z-index: 6` for the slide or the host would cover the shadow (issue #85); see
+  [Sidebar collapse and expand](workspaces.md#sidebar-collapse-and-expand).
 - Kept as cheap alignment, not as the fix: the no-panels frame margins are
   rounded to whole pixels (`round(<space token>, 1px)`) and the collapsed rail is a whole number of pixels wide
   (`--bento-rail-width: round(var(--bento-tab-strip-width-collapsed), 1px)`, measured by the

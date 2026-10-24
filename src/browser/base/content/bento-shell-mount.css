@@ -598,7 +598,8 @@
      (the splitters, a native sidebar, the panel strip) and on the splitter
      affordance. Together they are the page group.
    The host keeps its width for the whole slide and holds only the narrow end's
-   layout space through a negative right margin, stacked over the page. The page
+   layout space through a negative right margin, stacked over the page (except
+   the strip container, see the stacking rule below). The page
    lays out once, at its final geometry, and the group's transform hides the
    difference: host and page group move as one strip, so the host's right edge and
    the page's left edge never separate. Collapse and hide slide the host left by
@@ -634,6 +635,18 @@
 :root[bento-sidebar-push] #bento-shell-host {
   z-index: 5;
   margin-right: calc(-1 * var(--bento-sidebar-push-delta)) !important;
+}
+/* The main frame's drop shadow (and the panel frames', --bento-panel-frame-shadow) spills about
+   40px left into the host's area. The host's z-index above would cut it to the gutter for the
+   slide, and it would snap back when the push ends. The strip container is the stacking context
+   that holds every frame and its shadow, so it goes one level above the host: the shadow paints
+   over the host as it does outside a push, and does not change at all during the slide
+   (docs/technical/workspaces.md, pitfalls). Only this element moves: the splitters and the
+   affordance (pointer-events none), the divider line and the host keep their levels, and the
+   overlay hosts (z-index 99994 and up) stay above. The page group abuts the host's moving edge,
+   so the strip's own background covers none of the host. */
+:root[bento-sidebar-push] #bento-strip-container {
+  z-index: 6;
 }
 :root[bento-sidebar-push] #bento-shell-splitter,
 :root[bento-sidebar-push] #bento-shell-splitter-affordance {
