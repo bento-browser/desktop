@@ -806,10 +806,16 @@ host's width (expanded, or the rail's for a hide from the rail)
 minus the layout space the host holds at the narrow end (the rail, or 0 when the
 sidebar was hidden or is being hidden).
 
+The one exception to "layout changes once, only `transform` animates" is the fluid push
+(collapse and expand in a window with no side panels, below): there the main container
+follows the host's edge by layout every frame. The rest of this section describes the
+transform slide, which windows with side panels, hide and show still use.
+
 The root attribute `bento-sidebar-push` names the direction: `collapse` (expanded to
 rail), `expand` (rail to expanded), `hide` (to hidden) and `show` (the expand out of the
 hidden state, `delta` the whole expanded width). Every `expand` rule in the sheet also
-names `show` except the shell-document ones below (a test keeps it that way).
+names `show` except the shell-document ones below and the fluid-push ones, which are
+collapse and expand only (a test keeps it that way).
 
 - The host keeps its width for the whole slide and holds only the narrow
   end's layout space through `margin-right: -delta`, stacked over the page
@@ -841,6 +847,51 @@ names `show` except the shell-document ones below (a test keeps it that way).
   while the page group goes from 0 to `delta`; the end drops the margin and transforms in
   one frame, so the page lays out once to its narrower geometry. The shell relies on
   both timings (the host is as wide as the expanded layout for the whole slide).
+- Fluid push: a collapse or expand with no side panels (`startSidebarPush` latches
+  `:root[bento-sidebar-push-fluid]` when `bento-no-side-panels` is `true` and the direction
+  is `collapse` or `expand`; `settleSidebarPush` drops it). With one main container right of
+  the host, the transform slide meant the container kept its final width through the slide
+  (a collapse slid it in from the right at its wide size, an expand slid it right at its
+  wide size with its right edge off the window) and its page reflowed once, in one frame, at
+  the end, and the host and the page were separate compositor animations. The fluid push
+  instead moves the container's left edge with the host's edge, pins its right edge to the
+  window edge, and lets the width, and the remote page inside it, change every frame, like a
+  live sidebar drag. Everything that moves with the edge runs off one clock:
+  `--bento-sidebar-push-progress`, a registered, non-inherited `<number>` (`@property`) that a
+  `bento-sidebar-push-progress` animation takes from 0 to 1 on the same spring pair. A custom
+  property animation runs on the main thread, so every consumer reads the same value in the
+  same restyle as the layout it drives. Compositor `transform` animations are sampled about a
+  frame apart from layout, which at the spring's peak speed (about 2.4 px/ms for a 248 px
+  collapse) is 20 px at 120 Hz and 40 px at 60 Hz of gap or overlap, so a fluid push has none
+  on the host, the shell frame, the container, the bookmarks toolbar, the divider,
+  Back/Forward/Reload and `#nav-bar::before`: each of those elements runs its own copy of that
+  one animation (the property does not inherit, so only they restyle, and
+  they all start in one style flush) and reads it in a plain declaration (a `transform` or a
+  margin computed from it, not a keyframed one). `--bento-sidebar-push-shift` is how far the
+  edge is from the wide end: `delta` times `--bento-sidebar-push-narrow` (0 at the wide end, 1
+  at the narrow end: the progress for a collapse, what is left of it for an expand), rounded
+  to a whole pixel (`round(..., 1px)`, so the main frame's origin stays whole mid-slide,
+  [chrome-panel-rendering.md](chrome-panel-rendering.md#main-frame-origin)), plus
+  `(delta - round(delta)) * narrow`, the part of a fractional `delta` the rounding drops,
+  spread linearly (0 for a whole `delta`, so the whole-width push is whole pixels on every
+  frame). Progress 0 and 1 are then exactly the pre-push and settled layouts for any width.
+  The host's negative right margin and its own translation use the shift (so the splitter
+  and the container reflow by themselves), the shell frame takes the opposite translation
+  (the shell document still does not move, with no gap since both read one value), and the
+  bookmarks toolbar's margin is its committed (narrow-end) offset plus `delta - shift`,
+  rounded (offsets are whole pixels, so with a fractional width the toolbar can sit up to a
+  quarter pixel off the strip's edge, as it does settled). The divider, Back/Forward/Reload and the band interpolate their from/to
+  values from the commit with the progress. The page group class is put on nothing, and the
+  strip keeps `z-index: 6`. At the first frame the layout is the pre-push one and at the last
+  it is the settled one (collapse: narrow end; expand: wide end), so the settle changes
+  nothing in the page: only the host's own box and the shell frame resize, under the clip.
+  The animation that ends the push (`afterMotion`) is the host's progress animation.
+  Chrome observers stay held off as in the transform slide; the container's content does
+  reflow every frame (the page's `resize` events and layout run per frame), the shell and the
+  toolbar band do not. Measured at 240 Hz with 50 tabs the chrome's frame cadence matched the
+  transform slide (median 4.17 ms, p95 about 4.5 ms); a page with 2500 paragraphs reflowed at
+  about half the frames (the content process, not chrome, is the limit), so the page's width
+  lags the card's edge by a few frames on a very heavy page.
 - The shell document stays still while the edge moves (collapse and expand only).
   `:root[bento-sidebar-push='collapse'|'expand'] #bento-shell-host` clips its content
   (`overflow: clip`, which works on the XUL vbox with the remote `<browser>` child), and
@@ -904,7 +955,8 @@ background-color` on the spring pair while a collapse or expand runs). The toolb
   (`::after` in a phase) and the square (`::before`) are the rail's own parts and must keep
   their colour while they fade out in an expand.
 - The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
-  `afterMotion` on the host's slide animation (never a copied duration): it reads the
+  `afterMotion` on the host's slide animation (`bento-sidebar-push-progress` for a fluid
+  push; never a copied duration): it reads the
   animation's computed duration and delay, 400 ms with the default tokens, and waits
   for that animation's `animationend` or a timer 50 ms past it. It ignores the timing
   function, so the `linear()` spring changes nothing in script.
@@ -1124,6 +1176,15 @@ hover-reveal, and show (the divider enters with the strip's edge, not static at 
 position), Cmd+S again mid-slide in both directions, and ten quick presses; with the OS
 reduced-motion setting on (no slide; in hide mode the hide, the show and the hover
 reveal are instant, with no rail slide over the page after the page has moved);
+with no side panels (`bento-no-side-panels`, a fluid push): the main container's left edge
+stays on the host's right edge on every frame, its right edge stays at the window's, its
+width and the page's `innerWidth` change every frame (not once at an end), the last frame
+matches the settled layout, and `document.getAnimations()` lists only
+`bento-sidebar-push-progress` animations (all with one `startTime`, none with
+`isRunningOnCompositor`) on `#bento-shell-host`, `#bento-shell-frame`,
+`#PersonalToolbar` (with the bookmarks toolbar shown), Back/Forward/Reload and
+`#nav-bar::before`; with a side panel open the same toggle still lists the host, frame,
+page group, divider, Back/Forward/Reload and band transform animations;
 collapse and expand with side panels open and with none (`bento-no-side-panels`): the
 shell's pixels do not move while the strip's right edge slides, the strip does not fade, a 1px
 line in the sidebar divider colour follows the edge (absent with no side panels) and fades
@@ -1443,9 +1504,36 @@ workspaces.
   the host's `::after` line sits under the shadow during a collapse or expand, and the chrome
   divider (`z-index: 3`, above the strip outside a push) draws it above the shadow once
   settled.
+- Do not drive anything that has to stay on a layout-driven edge with a compositor
+  `transform` animation. In a window with no side panels the main container used to keep its
+  final width through a collapse or expand (an expand even slid it at its old wide width and
+  reflowed it in one frame at the end): sampled every frame on that build, the strip's width
+  was one value for the whole push and the page's `innerWidth` changed once (at the start of
+  a collapse, at the end of an expand). And layout is sampled on the main thread while
+  compositor animations are sampled a frame apart, which at the spring's peak is 20 to 40 px
+  (120 or 60 Hz) between the host's edge and the thing that should abut it. The fluid push
+  (above) keeps everything that moves with the edge on one main-thread clock, a registered
+  custom property animation, with no compositor animations.
+  Do not add a `transform` keyframe animation to an element it moves, and do not put the
+  progress property on a shared ancestor (an inherited property would restyle the whole
+  chrome tree every frame; it is not inherited on purpose). Do not decide the fluid latch
+  from `bento-no-side-panels` in CSS: a panel opening mid-slide would change the rules under
+  running animations, so the script latches `bento-sidebar-push-fluid` as the push starts.
+  Every consumer's expression uses the same rounded `--bento-sidebar-push-shift` (host
+  margin, host translation, frame counter-translation, bookmarks margin): two roundings, or
+  an unrounded one beside a rounded one, would leave a sub-pixel gap or overlap, and a
+  fractional main frame origin clips the page out of line with its stroke on the corners.
+  The settle frame must equal the last animated one and the first frame the pre-push one
+  (a collapse ends at the narrow-end layout, an expand starts from it), for any width: the
+  sidebar width can be fractional (the splitter drag writes `next + 'px'` from a measured
+  start, and the min and max tokens are rem based), and a shift that was only rounded ended
+  a 300.25 px collapse at 52.25 and snapped to 52 at the settle (an expand started at 52.25).
+  Keep the `(delta - round(delta)) * narrow` term in `--bento-sidebar-push-shift` and the
+  `round()` around the bookmarks inset; checked at 300, 300.25 and 333.7 px.
 - A new push direction needs every direction selector and branch audited, not only the
   CSS: the page group, the `#nav-bar::before` band, Back/Forward/Reload,
-  `#PersonalToolbar`, `SIDEBAR_PUSH_SLIDE_ANIMATION`, `expands` in `startSidebarPush` and
+  `#PersonalToolbar`, `SIDEBAR_PUSH_SLIDE_ANIMATION`, `expands` in `startSidebarPush`, the
+  fluid latch (`SIDEBAR_PUSH_FLUID_*` and the `:root[bento-sidebar-push-fluid]` rules) and
   the expand branch of `settleSidebarPush`. `show` was added by auditing each `expand`
   one (it shares the expand keyframes and band, and the bookmarks offset it applies at
   the settle).
