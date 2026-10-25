@@ -122,6 +122,34 @@
   overflow: hidden;
 }
 
+/* Mux tints a hovered or pressed outlined Card.Button with a gradient over
+ * --muxui-semantic-surface-strong, an unregistered custom property that a gradient takes at once
+ * in the mode flip while the card's own fill fades. The same tint over a registered carrier
+ * (theme/document-base.css lists it) fades with the rest. Same selectors, percentages and order as
+ * Mux's outlined rules (styles.css, .muxui-card--button), so nothing else changes. The picker only
+ * renders the default (outlined) variant. */
+@property --bento-card-tint {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-hovered]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  --bento-card-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 3%, transparent);
+  background-image: linear-gradient(var(--bento-card-tint), var(--bento-card-tint));
+}
+
+.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-pressed]:not(
+    [data-disabled],
+    [data-pending]
+  ) {
+  --bento-card-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 8%, transparent);
+  background-image: linear-gradient(var(--bento-card-tint), var(--bento-card-tint));
+}
+
 .bento-workspace-theme-picker__option-name {
   display: -webkit-box;
   flex: 1 1 auto;

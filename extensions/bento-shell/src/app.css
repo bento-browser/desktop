@@ -14,6 +14,15 @@
   initial-value: transparent;
 }
 
+/* The pinned rail's corner fill, registered so the corner's radial gradient can fade in the
+ * mode flip (theme/document-base.css lists it): a gradient stop over an unregistered custom
+ * property cannot interpolate. Not inherited: only the corner pseudo-element declares it. */
+@property --bento-corner-fill {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 @layer bento.app {
   .bento-shell-app {
     height: 100%;
@@ -97,10 +106,11 @@
 
   .bento-pinned-panels + .bento-shell-app__main::after {
     inset-block-end: 0;
+    --bento-corner-fill: var(--bento-pinned-panels-bg);
     background: radial-gradient(
       circle at 100% 0,
       transparent var(--bento-sidebar-corner-radius),
-      var(--bento-pinned-panels-bg) var(--bento-sidebar-corner-radius)
+      var(--bento-corner-fill) var(--bento-sidebar-corner-radius)
     );
   }
 

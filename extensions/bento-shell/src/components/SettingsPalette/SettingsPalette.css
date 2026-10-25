@@ -409,8 +409,15 @@
 }
 
 /* A write in flight: the value dims and ends in an ellipsis, with no animation. A switch row
- * shows the new state at once instead, so it has nothing to dim. */
-.bento-settings-palette__item[data-pending]:not([data-switch]) .bento-settings-palette__value {
+ * shows the new state at once instead, so it has nothing to dim. The dim is not drawn while the
+ * mode flip fade is present: choosing the colour mode is itself such a write, and it settles
+ * inside the lead or the fade, so the value's colour would change twice (into pending, out of
+ * it) around the flip and the second change would restart against the fade's transition, late or
+ * shortened. Under the fade the value takes its settled colour, which changes once on the shared
+ * timing; the ellipsis still marks the write. */
+:root:not([data-bento-mode-fade])
+  .bento-settings-palette__item[data-pending]:not([data-switch])
+  .bento-settings-palette__value {
   color: var(--muxui-semantic-color-neutral-50);
 }
 
@@ -602,5 +609,23 @@
 @media (prefers-reduced-motion: reduce) {
   .bento-settings-palette__listbox[data-travel] {
     animation: none;
+  }
+}
+
+/* Mux tints a hovered, unchecked switch with a gradient over --muxui-semantic-surface-strong, an
+ * unregistered custom property that a gradient takes at once in the mode flip. The same tint over
+ * a registered carrier (theme/document-base.css lists it) fades with the rest. Same selector and
+ * same value as Mux's rule (styles.css, the SwitchField hover state), so nothing else changes. */
+@property --bento-switch-hover-tint {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@media (forced-colors: none) {
+  .bento-settings-palette__switch
+    .muxui-switch-field__button[data-hovered]:not([data-disabled], [data-selected])::before {
+    --bento-switch-hover-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 8%, transparent);
+    background-image: linear-gradient(var(--bento-switch-hover-tint), var(--bento-switch-hover-tint));
   }
 }

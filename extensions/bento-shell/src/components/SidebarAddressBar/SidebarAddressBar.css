@@ -106,8 +106,11 @@
     padding-inline-end: calc(var(--bento-sidebar-address-button-size) + var(--space-4xs));
   }
 
+  .bento-sidebar-address-bar__input {
+    --bento-placeholder-fg: var(--neutral-50);
+  }
+
   .bento-sidebar-address-bar__input::placeholder {
-    color: var(--neutral-50);
     opacity: 1;
   }
 }
