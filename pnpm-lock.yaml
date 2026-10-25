@@ -76,29 +76,29 @@ importers:
     dependencies:
       '@muxui/react':
         specifier: 0.1.0-rc.1
-        version: 0.1.0-rc.1(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 0.1.0-rc.1(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-virtual':
         specifier: ^3.10.0
-        version: 3.14.14(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 3.14.21(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       emojibase-data:
         specifier: 17.0.0
         version: 17.0.0(emojibase@17.0.0)
       lucide-react:
         specifier: 1.37.0
-        version: 1.37.0(react@19.3.0)
+        version: 1.37.0(react@19.3.1)
       react:
         specifier: ^19.2.0
-        version: 19.3.0
+        version: 19.3.1
       react-dom:
         specifier: ^19.2.0
-        version: 19.3.0(react@19.3.0)
+        version: 19.3.1(react@19.3.1)
       zustand:
         specifier: ^5.0.0
-        version: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0))
+        version: 5.0.15(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))
     devDependencies:
       '@ladle/react':
         specifier: 5.1.1
-        version: 5.1.1(@swc/helpers@0.5.21)(@types/node@25.6.0)(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3)(yaml@2.8.4)
+        version: 5.1.1(@swc/helpers@0.5.21)(@types/node@25.6.0)(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)(yaml@2.8.4)
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
@@ -849,14 +849,14 @@ packages:
   '@swc/types@0.1.26':
     resolution: {integrity: sha512-lyMwd7WGgG79RS7EERZV3T8wMdmPq3xwyg+1nmAM64kIhx5yl+juO2PYIHb7vTiPgPCj8LYjsNV2T5wiQHUEaw==}
 
-  '@tanstack/react-virtual@3.14.14':
-    resolution: {integrity: sha512-eo/arVIpYi9rGJXR5y4fDoTiz+BBOc4HKVBKQMoPRswxJtP6HV8iupW/DkBE9TRh+PjzikIDHw2h7aV25g0Z4w==}
+  '@tanstack/react-virtual@3.14.21':
+    resolution: {integrity: sha512-wWE/ZJDNNDp18JHWy7n5PQooqerHePVkEEu6Op0twKQ2InF9DPhYMQptQY0syDEviMd3/r8D0OUvKJibDGm9HQ==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  '@tanstack/virtual-core@3.18.0':
-    resolution: {integrity: sha512-8frWsyfyBwLGoDQ6wN6Lq3CoT8j4BPJUzE6nH4P9mruLhxPOamk82prC3JxRMLJzYnNa9ISaZ8NtfxEiOGkHEQ==}
+  '@tanstack/virtual-core@3.19.6':
+    resolution: {integrity: sha512-CsTW892z23gy7IyxYTTorVu1uZWB+0N349rSMgKz4rFLPpLza7F7TpcCKeI5iUAwYQCt8QUlOU67J+KXCxtpGw==}
 
   '@tiptap/core@3.31.4':
     resolution: {integrity: sha512-cIVUQYBycighzsk6GbmCef8ZiEDVxoT5EuAe4xg2q9dNkDqCXVqI4YGr9aavCQEiAS4uHiRwqvcsPqJHipFDfg==}
@@ -2538,10 +2538,10 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
-  react-dom@19.3.0:
-    resolution: {integrity: sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==}
+  react-dom@19.3.1:
+    resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
-      react: ^19.3.0
+      react: ^19.3.1
 
   react-hotkeys-hook@4.6.2:
     resolution: {integrity: sha512-FmP+ZriY3EG59Ug/lxNfrObCnW9xQShgk7Nb83+CkpfkcCpfS95ydv+E9JuXA5cp8KtskU7LGlIARpkc92X22Q==}
@@ -2566,8 +2566,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
-  react@19.3.0:
-    resolution: {integrity: sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==}
+  react@19.3.1:
+    resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
     engines: {node: '>=0.10.0'}
 
   readdirp@4.1.2:
@@ -3461,12 +3461,12 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@ladle/react-context@1.0.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@ladle/react-context@1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
-  '@ladle/react@5.1.1(@swc/helpers@0.5.21)(@types/node@25.6.0)(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3)(yaml@2.8.4)':
+  '@ladle/react@5.1.1(@swc/helpers@0.5.21)(@types/node@25.6.0)(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@5.9.3)(yaml@2.8.4)':
     dependencies:
       '@babel/code-frame': 7.29.0
       '@babel/core': 7.29.6
@@ -3475,9 +3475,9 @@ snapshots:
       '@babel/template': 7.28.6
       '@babel/traverse': 7.29.0
       '@babel/types': 7.29.0
-      '@ladle/react-context': 1.0.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@ladle/react-context': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@mdx-js/mdx': 3.1.1
-      '@mdx-js/react': 3.1.1(@types/react@19.3.0)(react@19.3.0)
+      '@mdx-js/react': 3.1.1(@types/react@19.3.0)(react@19.3.1)
       '@vitejs/plugin-react': 4.7.0(vite@6.4.4(@types/node@25.6.0)(yaml@2.8.4))
       '@vitejs/plugin-react-swc': 3.11.0(@swc/helpers@0.5.21)(vite@6.4.4(@types/node@25.6.0)(yaml@2.8.4))
       axe-core: 4.11.4
@@ -3494,13 +3494,13 @@ snapshots:
       lodash.merge: 4.6.2
       msw: 2.14.2(@types/node@25.6.0)(typescript@5.9.3)
       open: 10.2.0
-      prism-react-renderer: 2.4.1(react@19.3.0)
+      prism-react-renderer: 2.4.1(react@19.3.1)
       prop-types: 15.8.1
       query-string: 9.3.1
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-      react-hotkeys-hook: 4.6.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react-inspector: 6.0.2(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      react-hotkeys-hook: 4.6.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react-inspector: 6.0.2(react@19.3.1)
       rehype-class-names: 2.0.0
       rehype-raw: 7.0.0
       remark-gfm: 4.0.1
@@ -3555,11 +3555,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.0)':
+  '@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.1)':
     dependencies:
       '@types/mdx': 2.0.13
       '@types/react': 19.3.0
-      react: 19.3.0
+      react: 19.3.1
 
   '@mswjs/interceptors@0.41.8':
     dependencies:
@@ -3570,7 +3570,7 @@ snapshots:
       outvariant: 1.4.3
       strict-event-emitter: 0.5.1
 
-  '@muxui/react@0.1.0-rc.1(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@muxui/react@0.1.0-rc.1(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@internationalized/date': 3.12.4
       '@tiptap/core': 3.31.4(@tiptap/pm@3.31.4)
@@ -3579,15 +3579,15 @@ snapshots:
       '@tiptap/extension-text-align': 3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))
       '@tiptap/extension-text-style': 3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))
       '@tiptap/pm': 3.31.4
-      '@tiptap/react': 3.31.4(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tiptap/react': 3.31.4(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tiptap/starter-kit': 3.31.4
-      lucide-react: 1.37.0(react@19.3.0)
+      lucide-react: 1.37.0(react@19.3.1)
       marked: 13.0.3
-      motion: 13.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react: 19.3.0
-      react-aria: 3.51.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react-aria-components: 1.20.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react-dom: 19.3.0(react@19.3.0)
+      motion: 13.4.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-aria: 3.51.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react-aria-components: 1.20.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
     transitivePeerDependencies:
       - '@floating-ui/dom'
       - '@tiptap/extensions'
@@ -3617,9 +3617,9 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@react-types/shared@3.36.1(react@19.3.0)':
+  '@react-types/shared@3.36.1(react@19.3.1)':
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 
@@ -3767,13 +3767,13 @@ snapshots:
     dependencies:
       '@swc/counter': 0.1.3
 
-  '@tanstack/react-virtual@3.14.14(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tanstack/react-virtual@3.14.21(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
-      '@tanstack/virtual-core': 3.18.0
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      '@tanstack/virtual-core': 3.19.6
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
-  '@tanstack/virtual-core@3.18.0': {}
+  '@tanstack/virtual-core@3.19.6': {}
 
   '@tiptap/core@3.31.4(@tiptap/pm@3.31.4)':
     dependencies:
@@ -3920,7 +3920,7 @@ snapshots:
       prosemirror-transform: 1.12.1
       prosemirror-view: 1.42.4
 
-  '@tiptap/react@3.31.4(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@tiptap/react@3.31.4(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@tiptap/core': 3.31.4(@tiptap/pm@3.31.4)
       '@tiptap/pm': 3.31.4
@@ -3928,9 +3928,9 @@ snapshots:
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
       '@types/use-sync-external-store': 0.0.6
       fast-equals: 5.4.3
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      use-sync-external-store: 1.6.0(react@19.3.1)
     optionalDependencies:
       '@tiptap/extension-bubble-menu': 3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)
       '@tiptap/extension-floating-menu': 3.31.4(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4)
@@ -4712,14 +4712,14 @@ snapshots:
 
   flatted@3.4.2: {}
 
-  framer-motion@13.5.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  framer-motion@13.5.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       motion-dom: 13.5.1
       motion-utils: 13.5.0
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   fresh@0.5.2: {}
 
@@ -5143,9 +5143,9 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@1.37.0(react@19.3.0):
+  lucide-react@1.37.0(react@19.3.1):
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
 
   magic-string@0.30.21:
     dependencies:
@@ -5621,13 +5621,13 @@ snapshots:
 
   motion-utils@13.5.0: {}
 
-  motion@13.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  motion@13.4.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      framer-motion: 13.5.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      framer-motion: 13.5.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       tslib: 2.8.1
     optionalDependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   ms@2.1.3: {}
 
@@ -5770,11 +5770,11 @@ snapshots:
 
   prettier@3.9.10: {}
 
-  prism-react-renderer@2.4.1(react@19.3.0):
+  prism-react-renderer@2.4.1(react@19.3.1):
     dependencies:
       '@types/prismjs': 1.26.6
       clsx: 2.1.1
-      react: 19.3.0
+      react: 19.3.1
 
   prop-types@15.8.1:
     dependencies:
@@ -5868,61 +5868,61 @@ snapshots:
 
   queue-microtask@1.2.3: {}
 
-  react-aria-components@1.20.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  react-aria-components@1.20.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@internationalized/date': 3.12.4
       '@internationalized/string': 3.2.10
-      '@react-types/shared': 3.36.1(react@19.3.0)
+      '@react-types/shared': 3.36.1(react@19.3.1)
       '@swc/helpers': 0.5.21
       client-only: 0.0.1
-      react: 19.3.0
-      react-aria: 3.51.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react-dom: 19.3.0(react@19.3.0)
-      react-stately: 3.49.0(react@19.3.0)
+      react: 19.3.1
+      react-aria: 3.51.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react-dom: 19.3.1(react@19.3.1)
+      react-stately: 3.49.0(react@19.3.1)
 
-  react-aria@3.51.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  react-aria@3.51.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.10
-      '@react-types/shared': 3.36.1(react@19.3.0)
+      '@react-types/shared': 3.36.1(react@19.3.1)
       '@swc/helpers': 0.5.21
       aria-hidden: 1.2.6
       clsx: 2.1.1
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-      react-stately: 3.49.0(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      react-stately: 3.49.0(react@19.3.1)
+      use-sync-external-store: 1.6.0(react@19.3.1)
 
-  react-dom@19.3.0(react@19.3.0):
+  react-dom@19.3.1(react@19.3.1):
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
       scheduler: 0.28.0
 
-  react-hotkeys-hook@4.6.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
+  react-hotkeys-hook@4.6.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
-  react-inspector@6.0.2(react@19.3.0):
+  react-inspector@6.0.2(react@19.3.1):
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
 
   react-is@16.13.1: {}
 
   react-refresh@0.17.0: {}
 
-  react-stately@3.49.0(react@19.3.0):
+  react-stately@3.49.0(react@19.3.1):
     dependencies:
       '@internationalized/date': 3.12.4
       '@internationalized/number': 3.6.7
       '@internationalized/string': 3.2.10
-      '@react-types/shared': 3.36.1(react@19.3.0)
+      '@react-types/shared': 3.36.1(react@19.3.1)
       '@swc/helpers': 0.5.21
-      react: 19.3.0
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      react: 19.3.1
+      use-sync-external-store: 1.6.0(react@19.3.1)
 
-  react@19.3.0: {}
+  react@19.3.1: {}
 
   readdirp@4.1.2: {}
 
@@ -6303,9 +6303,9 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  use-sync-external-store@1.6.0(react@19.3.0):
+  use-sync-external-store@1.6.0(react@19.3.1):
     dependencies:
-      react: 19.3.0
+      react: 19.3.1
 
   vary@1.1.2: {}
 
@@ -6432,10 +6432,10 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zustand@5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0)):
+  zustand@5.0.15(@types/react@19.3.0)(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)):
     optionalDependencies:
       '@types/react': 19.3.0
-      react: 19.3.0
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      react: 19.3.1
+      use-sync-external-store: 1.6.0(react@19.3.1)
 
   zwitch@2.0.4: {}
