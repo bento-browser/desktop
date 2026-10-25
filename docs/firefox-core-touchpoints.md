@@ -1294,7 +1294,27 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Chrome Layout Stylesheet
 
 - Status: Active
-- Last updated: 2026-10-17
+- Last updated: 2026-10-25
+- Mode flip fade (2026-10-25): `applyChromeColorMode` sets the transient root attribute
+  `data-bento-mode-fade` with `data-color-mode` and removes it after the motion, and one
+  unlayered `!important` `transition` rule at the end of `bento-chrome-theme.css` fades every
+  colour property of every chrome element (Firefox's own toolbar, urlbar and button
+  elements included) on the Mux `state` pair; no new Firefox surface, no patch change.
+  The colour change also reaches chrome directly: the `bentoPrivacy.notifyUiColorMode`
+  experiment method fires a `bento-ui-color-mode-set` window event at each
+  `navigator:browser` window (`Services.wm.getEnumerator`, `dispatchEvent`; public APIs, no new
+  registry entry) and the mount script applies it, with `BENTO_PANELS` as the backstop. The
+  stamp the event carries includes `flipAt`, the time the change should show (a plain
+  `Date.now()` epoch value from bento-tools): the mount script waits for the first
+  `requestAnimationFrame` at or after it before writing `data-color-mode`, so the window flips
+  with the shell documents; no new Firefox member is used.
+  `about:preferences` (patch 12) is deliberately not part of it. After a Firefox update, flip
+  the mode in a running build and check in the Browser Toolbox Console that
+  `document.getAnimations().filter(a => 'transitionProperty' in a)` is non-empty in the
+  first frames and every entry has a 120 ms `ease` effect; a chrome element that snaps
+  has a `transition: ... !important` of higher specificity upstream or an unregistered
+  custom property inside a gradient (see theming.md, "Mode flip fade").
+- Last updated before that: 2026-10-17
 - Motion tokens (2026-10-17): the transitions and animations in
   `bento-shell-mount.css` and `bento-chrome-theme.css` read the Mux
   `--muxui-semantic-motion-*` tokens that `bento-chrome-tokens.css` carries, instead

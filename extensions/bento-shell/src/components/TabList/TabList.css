@@ -57,7 +57,10 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-gutter: stable;
+    /* No reserved gutter: the rows run as wide as the address bar, switcher and New row
+       above them, and only narrow by the scrollbar when the list really overflows. A stable
+       gutter held the scrollbar's width (11px) back from the rows even with nothing to scroll. */
+    scrollbar-gutter: auto;
     scrollbar-width: thin;
     padding-block-start: var(--bento-tab-list-row-gap);
     padding-inline: var(--space-3xs);

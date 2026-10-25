@@ -3913,14 +3913,60 @@
     if (mode === 'light' || mode === 'dark') return mode;
     return null;
   }
-  function applyChromeColorMode(mode) {
-    const root = document.documentElement;
-    if (!root) return;
-    const resolved = resolveChromeColorMode(mode);
-    if (!resolved) return;
-    chromeColorModePref = mode;
-    if (root.getAttribute('data-color-mode') !== resolved) {
+  // A light/dark flip fades every colour of the window together: this attribute turns on the
+  // catch-all rule in bento-chrome-theme.css while the flip runs. It goes on in the same task
+  // as the mode and comes off only after the fade has ended (dropping the rule mid-fade cancels
+  // the running transitions). The shell's twin is theme/modeFade.ts; keep them in step.
+  const BENTO_MODE_FADE_ATTR = 'data-bento-mode-fade';
+  let chromeColorModeApplied = false;
+  function writeChromeColorMode(root, resolved, fade) {
+    if (
+      !fade ||
+      document.hidden ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      // A change that does not fade ends a fade that is running: its rule would otherwise keep
+      // every transition forced on. (Called only when the mode really changes, so a delivery
+      // that agrees with the running fade never gets here.)
+      cancelMotion(root, BENTO_MODE_FADE_ATTR);
+      root.removeAttribute(BENTO_MODE_FADE_ATTR);
       root.setAttribute('data-color-mode', resolved);
+      return;
+    }
+    // A flip during a fade keeps the attribute; afterMotion drops the earlier wait for this key.
+    root.setAttribute(BENTO_MODE_FADE_ATTR, '');
+    root.setAttribute('data-color-mode', resolved);
+    afterMotion(root, BENTO_MODE_FADE_ATTR, {}, () => root.removeAttribute(BENTO_MODE_FADE_ATTR));
+  }
+  // Order of the two routes a mode reaches chrome by, the direct event and the BENTO_PANELS
+  // payload. A payload serialised before a flip can be delivered after the direct event, so
+  // each carries bento-tools' stamp ({ run, seq }, SettingsStore.colorStamp) and chrome keeps the
+  // newest it applied. The rule, kept in step with bridge/colorStamp.ts in the shell:
+  //   - nothing recorded yet: any message applies (first boot, an older payload source);
+  //   - a stamped message of another run applies and replaces the record (tools restarted;
+  //     sequences and clocks of different runs are never compared);
+  //   - a stamped message of the recorded run applies unless its seq is lower;
+  //   - an unstamped message after a stamp has been recorded is dropped: it is older than
+  //     anything stamped (a sidebar's boot hint, the legacy title).
+  // A payload built by the previous run and delivered after the new run's first message gets
+  // through (the runs cannot be ordered); the next payload carries the new run and corrects it.
+  let chromeColorStamp = null;
+  function acceptChromeColorStamp(stamp) {
+    const valid = stamp && typeof stamp.run === 'string' && Number.isFinite(stamp.seq);
+    if (!valid) return chromeColorStamp === null;
+    const sameRun = chromeColorStamp !== null && stamp.run === chromeColorStamp.run;
+    if (sameRun && stamp.seq < chromeColorStamp.seq) return false;
+    chromeColorStamp = { run: stamp.run, seq: stamp.seq };
+    return true;
+  }
+  // Shows a resolved mode: the fade and the mode attribute together, then the observers.
+  function commitChromeColorMode(mode, resolved) {
+    const root = document.documentElement;
+    // The first application (the startup veil is still up) never fades.
+    const fade = chromeColorModeApplied;
+    chromeColorModeApplied = true;
+    if (root.getAttribute('data-color-mode') !== resolved) {
+      writeChromeColorMode(root, resolved, fade);
       // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
       // re-reads the window that hosts it, so a Settings tab moved to another window keeps
       // following without holding on to the window it first loaded in.
@@ -3928,11 +3974,100 @@
     }
     root.setAttribute('data-bento-color-mode-pref', mode);
   }
-  if (typeof window.matchMedia === 'function') {
-    window.matchMedia(CHROME_DARK_QUERY).addEventListener('change', () => {
-      if (chromeColorModePref === 'system') applyChromeColorMode('system');
-    });
+  // Runs `run` in the first animation frame `wait` ms from now. The documents of the shell's
+  // process share a thread and a timer alone lets one document's rendering update (which has
+  // priority over timers) run between two documents' timers, so the later one would start its
+  // fade a frame or more late. Frame times come from the same vsync for every document, so
+  // documents that take the first frame at or after the deadline start their transitions from the
+  // same time. The timer only wakes the window shortly before. The shell's twin is runAtFlip in
+  // theme/modeFade.ts. `flipAt` is wall-clock time and frame times are on this window's
+  // monotonic clock; the system clock can be stepped after the window opened, so the two are
+  // never compared: setChromeColorMode turns `flipAt` into `wait` once, on receipt.
+  const BENTO_FLIP_FRAME_WATCH_MS = 40;
+  let cancelChromeColorFlip = null;
+  function runAtChromeFlip(wait, run) {
+    const deadline = window.performance.now() + wait;
+    let frame = 0;
+    const onFrame = (timestamp) => {
+      if (timestamp >= deadline) {
+        cancelChromeColorFlip?.();
+        cancelChromeColorFlip = null;
+        run();
+        return;
+      }
+      frame = window.requestAnimationFrame(onFrame);
+    };
+    const timer = setTimeout(() => {
+      frame = window.requestAnimationFrame(onFrame);
+    }, wait - BENTO_FLIP_FRAME_WATCH_MS);
+    // A hidden window gets no frames, so one that hides while it waits applies when it hides
+    // (without a fade, as commitChromeColorMode does for a hidden window), not at its next show.
+    const onVisibility = () => {
+      if (!document.hidden) return;
+      cancelChromeColorFlip?.();
+      cancelChromeColorFlip = null;
+      run();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    cancelChromeColorFlip = () => {
+      clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }
+  // Applies a mode pref that has passed the order check (or needs none: the OS appearance
+  // changing under Auto re-resolves the pref already applied). `flipAt` is the stamp's flip time
+  // (epoch ms, tools' clock, which is the system clock this window reads too): while it is
+  // ahead the change waits for it, so the window flips with the shell documents, which receive
+  // the same change at other moments. Past it, or without one, the change applies at once; so does
+  // the first application, an unchanged mode, and a hidden window (it gets no animation frames).
+  // Any call replaces a change that is still waiting (the newest call is the newest state).
+  function setChromeColorMode(mode, flipAt) {
+    const root = document.documentElement;
+    if (!root) return;
+    const resolved = resolveChromeColorMode(mode);
+    if (!resolved) return;
+    cancelChromeColorFlip?.();
+    cancelChromeColorFlip = null;
+    chromeColorModePref = mode;
+    const wait = typeof flipAt === 'number' ? flipAt - Date.now() : 0;
+    if (
+      wait > 0 &&
+      chromeColorModeApplied &&
+      !document.hidden &&
+      root.getAttribute('data-color-mode') !== resolved
+    ) {
+      runAtChromeFlip(wait, () => commitChromeColorMode(mode, resolved));
+      return;
+    }
+    commitChromeColorMode(mode, resolved);
+  }
+  function applyChromeColorMode(mode, stamp) {
+    if (!document.documentElement || !resolveChromeColorMode(mode)) return;
+    if (acceptChromeColorStamp(stamp)) {
+      setChromeColorMode(mode, Number.isFinite(stamp?.flipAt) ? stamp.flipAt : undefined);
+    }
+  }
+  function handleChromeDarkQueryChange() {
+    if (chromeColorModePref === 'system') setChromeColorMode('system');
+  }
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia(CHROME_DARK_QUERY).addEventListener('change', handleChromeDarkQueryChange);
+  }
+  // The direct leg of a colour flip: bento-tools fires this window event the moment the saved
+  // mode changes (bentoPrivacy.notifyUiColorMode), so the chrome fade starts with the shell's
+  // documents instead of after the BENTO_PANELS payload, which carries the same value and is
+  // the backstop (applyChromeColorMode returns early when the mode already matches, so a late
+  // payload that agrees neither restarts nor doubles the fade, and one built before the flip
+  // is dropped by its older order stamp). A private window keeps its own in-memory
+  // mode and ignores it. A window whose mount script has not run yet misses the event and takes
+  // the mode from BENTO_PANELS.
+  const BENTO_UI_COLOR_MODE_SET_EVENT = 'bento-ui-color-mode-set';
+  function handleUiColorModeSet(event) {
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
+    applyChromeColorMode(event.detail?.mode, event.detail?.stamp);
+  }
+  window.addEventListener(BENTO_UI_COLOR_MODE_SET_EVENT, handleUiColorModeSet);
   function handleThemeTitle(rawTitle) {
     // Format: BENTO_THEME:<ts>:<themeId>
     const tail = rawTitle.slice(THEME_PREFIX.length);
@@ -5608,9 +5743,9 @@
           'var(--bento-toolbar-left-bg) 0, ' +
           'var(--bento-toolbar-left-bg) ' +
           split +
-          ', var(--bento-toolbar-main-bg) ' +
+          ', var(--bento-toolbar-right-bg) ' +
           split +
-          ', var(--bento-toolbar-main-bg) 100%)';
+          ', var(--bento-toolbar-right-bg) 100%)';
         toolbarSurface.style.setProperty('--bento-toolbar-divider-x', split);
         toolbarSurface.style.setProperty('background-color', 'var(--bento-toolbar-main-bg)', 'important');
         toolbarSurface.style.setProperty('background-image', gradient, 'important');
@@ -16300,7 +16435,7 @@
       // re-applies. Idempotent — applyChromeColorMode short-circuits
       // when the attribute already matches.
       if (typeof decoded.uiColorMode === 'string') {
-        applyChromeColorMode(decoded.uiColorMode.trim());
+        applyChromeColorMode(decoded.uiColorMode.trim(), decoded.uiColorModeStamp);
       }
       if (typeof decoded.themeId === 'string' && decoded.themeId.trim().length > 0) {
         applyChromeThemeToDocument(document, decoded.themeId.trim());

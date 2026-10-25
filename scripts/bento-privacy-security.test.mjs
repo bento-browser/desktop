@@ -22,6 +22,7 @@ function loadApi({
     throw new Error('Unexpected fetch');
   },
   timers = { setTimeout, clearTimeout },
+  windows = [],
 } = {}) {
   const requested = [];
   const context = {
@@ -36,6 +37,7 @@ function loadApi({
     },
     ExtensionAPI: class {},
     Services: {
+      wm: { getEnumerator: () => windows },
       io: {
         newURI(value) {
           return { scheme: String(value).split(':', 1)[0].toLowerCase() };
@@ -63,7 +65,7 @@ function loadApi({
   };
   vm.createContext(context);
   vm.runInContext(
-    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, getEngineIconUrl, mapWithConcurrency, consumeAddPanelGrant };`,
+    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, getEngineIconUrl, mapWithConcurrency, consumeAddPanelGrant, bentoPrivacy: globalThis.bentoPrivacy };`,
     context,
     { filename: apiPath },
   );
@@ -522,4 +524,60 @@ test('the experiment allowlist covers every pref the privacy presets write', asy
   for (const pref of [...ALLOWED_PRIVACY_PREFS, ...Object.keys(SHUTDOWN_CLEAR_PREFS)]) {
     assert.ok(allowed.has(pref), `${pref} is written by Bento but missing from api.js`);
   }
+});
+
+test('notifyUiColorMode fires the pref at every open browser window and refuses other values', async () => {
+  const events = [];
+  const browserWindow = (name, closed = false) => ({
+    closed,
+    CustomEvent: class {
+      constructor(type, init) {
+        this.type = type;
+        this.detail = init.detail;
+      }
+    },
+    dispatchEvent: (event) => events.push([name, event.type, event.detail]),
+  });
+  const api = loadApi({
+    windows: [browserWindow('regular'), browserWindow('private'), browserWindow('gone', true)],
+  });
+  const { notifyUiColorMode } = new api.bentoPrivacy().getAPI({}).bentoPrivacy;
+
+  const stamp = { run: 'run-a', seq: 3 };
+  await notifyUiColorMode('system', stamp);
+  // The mount script of a private window drops it; the experiment tells every live window,
+  // with the order stamp the mount compares against its panels payloads.
+  const detail = { mode: 'system', stamp };
+  // The detail is made in the experiment's own realm; compare it as data.
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(events), [
+    ['regular', 'bento-ui-color-mode-set', detail],
+    ['private', 'bento-ui-color-mode-set', detail],
+  ]);
+
+  // The time the change should show rides along; a caller without it (an older bento-tools) or
+  // with a malformed one sends the stamp without it, which the mount applies at once.
+  events.length = 0;
+  await notifyUiColorMode('dark', { ...stamp, flipAt: 1_700_000_000_123 });
+  assert.deepEqual(plain(events[0][2]), {
+    mode: 'dark',
+    stamp: { ...stamp, flipAt: 1_700_000_000_123 },
+  });
+  events.length = 0;
+  await notifyUiColorMode('dark', { ...stamp, flipAt: 'soon' });
+  assert.deepEqual(plain(events[0][2]), { mode: 'dark', stamp });
+
+  events.length = 0;
+  await notifyUiColorMode('dark', undefined);
+  await notifyUiColorMode('dark', { run: 5, seq: 'x' });
+  assert.deepEqual(
+    plain(events.map((event) => event[2])),
+    Array(4).fill({ mode: 'dark', stamp: null }), // two calls, two windows each
+    'a missing or malformed stamp is no stamp, which the mount treats as unordered',
+  );
+
+  events.length = 0;
+  await notifyUiColorMode('purple', stamp);
+  await notifyUiColorMode(undefined, stamp);
+  assert.deepEqual(events, []);
 });

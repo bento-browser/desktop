@@ -66,6 +66,23 @@
           { "name": "tabId", "type": "integer", "minimum": 0 },
           { "name": "token", "type": "string", "maxLength": 64 }
         ]
+      },
+      {
+        "name": "notifyUiColorMode",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "mode", "type": "string", "enum": ["light", "dark", "system"] },
+          {
+            "name": "stamp",
+            "type": "object",
+            "properties": {
+              "run": { "type": "string", "maxLength": 64 },
+              "seq": { "type": "integer", "minimum": 0 },
+              "flipAt": { "type": "number", "optional": true }
+            }
+          }
+        ]
       }
     ]
   }

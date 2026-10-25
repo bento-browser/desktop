@@ -148,6 +148,269 @@ Content color mode is separate: `BentoSettings.contentColorMode` is applied by
 
 Theme authoring and import workflow is documented in [themes.md](../themes.md).
 
+## Mode flip fade
+
+A light/dark flip fades every colour of every Bento-owned document together on the
+`state` motion pair (`--muxui-semantic-motion-state-transition`, 120 ms `ease`). The pair is
+forced on every element whatever timing it had (Mux components on `interaction`, Bento surfaces
+on `state`, and the many that had no colour transition and used to snap), and every document
+starts it at one scheduled instant (see "Scheduled flip" below), whenever it received the mode.
+Workspace theme id changes are not part of it and still switch at once.
+
+- Mechanism: a transient root attribute `data-bento-mode-fade`, present only while a flip
+  fades. It is set in the same task as `data-color-mode`, so one style recalculation starts
+  every transition, and it is removed by `afterMotion` once the motion has ended. Removing it
+  earlier drops the rule and cancels the running transitions, so nothing else clears it. A
+  second flip during a fade keeps the attribute and waits again (it restarts the fade from the
+  current colours).
+- No fade for: the first mode application in a document (boot, settings hydration and the
+  startup veil are still up), an unchanged resolved mode, `prefers-reduced-motion: reduce`, and
+  a hidden document. These just write the attributes.
+- Scheduled flip: every change of the saved `uiColorMode` carries a time, `flipAt` on the
+  `ColorStamp` (`Date.now()` of tools plus `COLOR_FLIP_LEAD_MS`, `settings/SettingsStore.ts`), and
+  each document waits for it before it writes the mode and sets the fade attribute, so the
+  documents, which receive the change 10 to 150 ms apart, start the fade together. Every Bento
+  process reads the same system clock, so the epoch time compares across them. The lead is the
+  price of this: the flip starts that long after the click, plus the 10 to 30 ms tools needs to
+  persist the change and stamp it (120 ms, chosen below). A document that hears of the change at or after
+  `flipAt` applies at once, and a stamp without `flipAt` (the state a run starts with, so every
+  snapshot, an older build) applies at once, which is why a document that loads late is not
+  affected. The waiting rules: the first application in a document, an unchanged mode and a
+  hidden document apply at once (a hidden document gets no animation frames); reduced motion
+  still waits, because a synchronised snap beats a staggered one; any later call replaces the
+  waiting change (a newer stamp, a flip back before `flipAt`, an OS appearance change under
+  Auto, which is never scheduled), so the newest state always wins.
+- Auto resolves when the flip applies. In the shell the mode to show is a `resolve` callback
+  (`applyModeWithFade(resolve, write, flipAt)`), asked once on receipt to decide whether to wait
+  and again when the wait ends; `write` gets the mode it applied, and the resolved mode that is
+  stored (`resolved-color-mode`) and published to the window's overlays is that one. A value
+  captured on receipt could go stale: the OS appearance listeners of an Auto choice are
+  installed by an effect that only runs after React has rendered the Auto pref, so an OS
+  change in that gap is never heard, and a waiting flip would then apply and publish the old
+  value at `flipAt`. Chrome registers its `matchMedia` listener at load and a heard OS change
+  replaces the waiting flip (`setChromeColorMode('system')`), so it needs no re-resolution.
+  Not covered: an Auto choice that applies at once (it resolves to the mode already shown, so
+  nothing waits) and an OS change inside the same render gap. That window is one React render
+  long and existed before the scheduled flip.
+- The wait ends in an animation frame, not on a timer. A timer was tried first and left the
+  documents 20 to 45 ms apart even with a 200 ms lead: the shell's documents share one process
+  thread, and the rendering update of the first document that applied (about 15 to 20 ms for a
+  first fade frame) has priority over the second document's timer, so the second applied a
+  frame or more later. Frame times, in contrast, come from one vsync for every document of a
+  tick, and a transition starts from its frame's time. The document therefore wakes by a timer
+  shortly before `flipAt` and takes the first `requestAnimationFrame` whose time is at or after
+  the deadline (`runAtFlip` in `theme/modeFade.ts`; `runAtChromeFlip` in the mount script).
+  Documents of the process take the same frame and their fades start from the same time even
+  though one renders after the other, and the chrome window, in the parent process, takes the
+  frame of the same vsync period.
+- One clock after receipt. `flipAt` is wall-clock (`Date.now()` of tools) but frame times are on
+  the document's monotonic clock, and the system clock can be stepped (NTP, a manual change)
+  after the document opened. Comparing `performance.timeOrigin + timestamp` with `flipAt`
+  waited by the size of the step (a +60 s step delayed the flip by about 60 s). The caller now
+  turns `flipAt` into a wait once, on receipt (`flipAt - Date.now()`, both read from the system
+  clock at that moment), and the deadline is `performance.now() + wait`; the timer delay and
+  the frame comparison (`timestamp >= deadline`) both use it, so the two clocks are never mixed
+  and a step during the wait changes nothing. Documents that hear of the change on either side
+  of a step still agree only as far as their receipt times do, which is the unavoidable part.
+- Shell documents (sidebar and every overlay entry): `theme/modeFade.ts`
+  (`applyModeWithFade`, `MODE_FADE_ATTRIBUTE`) wraps the attribute writes in
+  `useFirefoxTheme`'s `applyMode`. That one function serves the settings change, an OS
+  change in Auto, and the `BroadcastChannel` and `storage` paths of overlays, and every entry
+  with a mode (all `main.tsx` entries, the sidebar included) already calls
+  `useFirefoxTheme`, so no entry has its own path. The hook applies a pref from
+  `useSettingsStore.subscribe`, which runs inside the store's own `set()` when the port
+  message lands (the store keeps the event's `flipAt` in the same `set()` as `colorFlipAt`, and
+  the subscriber passes it to `applyModeWithFade`), not from a `useEffect` keyed on the pref: that effect ran only after React
+  had rendered the whole document and flushed its passive effects (a frame or more, longer in
+  a heavy document). The first effect run applies the initial pref (boot hydration is
+  unchanged), the subscription skips a pref the hook has already applied, so a later render
+  neither applies, announces nor fades it again, and the Auto listeners (OS change,
+  `BroadcastChannel`, `storage`) stay in an effect keyed on the pref. The style read that
+  waits for the end of the motion (`afterMotion` calls `getComputedStyle`, which flushes the
+  document's styles) is deferred to the next animation frame: read inside the message handler
+  it made every document wait for the style flush of the documents handled before it in the
+  same process. `panel-newtab` runs no script and always
+  shows the Default light look. The rule is in `theme/document-base.css`, which every entry
+  imports.
+- Chrome window: `applyChromeColorMode` in `bento-shell-mount.js` does the same with the
+  mount script's own `afterMotion` (`BENTO_MODE_FADE_ATTR`), and `bento-chrome-theme.css`
+  holds the rule. Chrome has two legs into it. The direct leg: when the saved `uiColorMode`
+  changes, `bento-tools` calls `browser.bentoPrivacy.notifyUiColorMode(pref, stamp)` first thing in
+  its `settings.onChange` handler (`settings/ChromeColorModeSignal.ts`, once per change), the
+  experiment fires a `bento-ui-color-mode-set` window event (`detail` is `{ mode, stamp }`) at every
+  browser window, and the mount script's `handleUiColorModeSet` calls
+  `applyChromeColorMode(mode, stamp)` (Auto is resolved in chrome, as before; the stamp's `flipAt`
+  makes `setChromeColorMode` wait for it, `acceptChromeColorStamp` records only `{ run, seq }`). The backstop: the
+  `BENTO_PANELS` payload still carries `uiColorMode` (with `uiColorModeStamp`) and calls the same
+  function; it arrives 60 to 100 ms later, finds the mode already applied and returns before the
+  fade, so a payload that agrees neither restarts nor doubles it. The first application in a
+  window never fades, whichever leg delivers it.
+- Ordering of the two legs (the stamp `{ run, seq }`): a `BENTO_PANELS` payload is serialised
+  when the sidebar forwards it, so one built before a flip can reach chrome after the direct
+  event and would reverse the fade. Every message that carries a mode therefore carries a
+  stamp, a pair made by `SettingsStore`: `run` is an id minted when the store is constructed (one
+  per tools run), `seq` starts at 1 and rises by one with every change of the saved
+  `uiColorMode`, before the listeners run. The store makes the stamp from construction, so even the
+  initial snapshot is ordered (seq 1); there is no "no stamp yet" state in a run. No clock is
+  involved and nothing is persisted. Tools puts the current stamp on the direct event and on every
+  `settings/snapshot` and `settings/changed` event (`colorStamp`); the sidebar keeps the newest
+  (`followColorStamp`: the same run keeps the higher `seq`; another run replaces it, because
+  a new run is by definition the producer's present, and a surviving sidebar thereby follows
+  tools after a restart) and writes it into every payload it builds (`uiColorModeStamp`).
+- The rule chrome applies (`acceptChromeColorStamp`, record `chromeColorStamp`): with nothing
+  recorded, any message applies. A valid stamp of another run than the recorded one applies and
+  becomes the record, whatever its `seq` (so tools restarting, with or without the clock stepping
+  back, never leaves chrome rejecting); in the same run it applies unless its `seq` is lower
+  than the record, and a lower one is dropped, so a stale payload can neither reverse the fade
+  nor start a third. An equal `seq` passes and the equal-mode check makes it a no-op. A message
+  with no valid stamp (the legacy title, a build that predates the stamp) applies only while
+  nothing is recorded, and once a stamp is recorded it is dropped: it cannot be ordered, and
+  a queued initial payload with the old mode must not undo a newer direct event. The OS
+  appearance listener under Auto (`handleChromeDarkQueryChange`) is not a stamped message: it
+  re-resolves the recorded preference and so always applies. A new window starts with nothing
+  recorded. A private window's payload carries the global stamp with its own mode: nothing in it
+  is out of order (the window gets no direct event), and its own flips change no stamp.
+- Restart, what is and is not guaranteed: in one tools run the order above holds. Across a
+  restart of tools with chrome windows open, the first message of the new run applies and
+  replaces the record; a message of the previous run that still arrives after it is not
+  ordered against the new run (the runs have no common order) and is applied, which can
+  show the old mode until the next message of the new run corrects it (the sidebar's next
+  payload, after it has followed the new run's stamp). That residual window is the cost of
+  choosing a run id over persisting the sequence, which would order restarts too but costs a
+  storage write per flip and a read before the first message.
+- A hidden window that is waiting applies at once. A hidden document gets no animation frames,
+  so the frame wait would run only when it is next shown and then fade visibly. The shell
+  scheduler listens for `visibilitychange` and applies a waiting flip when the document hides
+  (no fade); the chrome scheduler (`runAtChromeFlip`) does the same. The listener is removed
+  when the flip applies and when a newer call cancels the wait.
+- A change that does not fade (hidden document, reduced motion) ends a fade that is running:
+  the pending wait is cancelled and the attribute removed before the mode is written, in the
+  shell (`modeFade.ts`) and in chrome (`writeChromeColorMode`), because the rule would
+  otherwise keep every transition forced on until the document resumes. This is only for a
+  change of the mode; an unchanged value (a backstop delivery that agrees) leaves a running
+  fade alone. A window whose mount script has
+  not run when the event fires misses it and takes the mode from the payload. A private window
+  ignores the event (`isWindowPrivate` in the handler): it keeps its own in-memory mode, which
+  reaches it through its own sidebar and `BENTO_PANELS`, never through tools' saved value. The embedded import host (`bento-migration-host.js`) reads its mode once from
+  its URL when it loads and has no live flip path, so it has nothing to fade (a flip while
+  it is open shows on its next open).
+- The rule is one unlayered `!important` `transition` list on `:root[data-bento-mode-fade]`,
+  its descendants and their `::before` and `::after` (`:is()` cannot take pseudo-elements, so
+  they are listed separately): `background-color`, `color`, `border-color`, `fill`, `stroke`,
+  `box-shadow`, `outline-color`, `text-decoration-color`, plus the registered `<color>`
+  properties that paint. It replaces the element's whole `transition` for the moment, so a
+  non-colour transition that happens to be running (a hover opacity, say) ends at once.
+  Important is what out-ranks the component rules; among important declarations an earlier
+  layer beats a later one and a layered one beats an unlayered one, so the rail
+  choreography's own `transition: none !important` (`sidebar/railTransition.css`, layered)
+  and the chrome rules listed below win over it.
+- Registered colours: gradients and `var()` chains over unregistered custom properties cannot
+  interpolate, so a colour that paints through one is registered as `<color>` and listed in
+  the rule. Shell: none. The sidebar footer's `--bento-footer-fill` (`app.css`, registered for
+  the rail choreography's backdrop) is deliberately not transitioned by the flip: a recording
+  showed the footer starting 25 to 30 ms after the rest of the sidebar when the registered
+  property transitioned (its transitions started in the same frame, but `background-color`, which
+  reads it, painted one rendering update later), and with `background-color` fading through the
+  catch-all like everything else the footer and the sidebar start together. A flip that lands
+  inside the rail choreography, whose backdrop reads the fill, snaps that backdrop. Chrome:
+  `--bento-toolbar-left-bg` and `--bento-toolbar-right-bg` (`bento-shell-mount.css`, not
+  inherited), the two gradient stops of the toolbars and of the window, body, `#browser`
+  surfaces in sidebar address bar mode; the inline gradient the mount script writes on the
+  toolbars reads the same two properties.
+
+Exceptions and limits (documented, not fixed):
+
+- Web content, shadow-DOM internals of Firefox custom elements (`moz-card`, menus, the
+  notification bars' internals) and OS-native menus and window frames do not fade. A gradient
+  over an unregistered property still switches at once (the shell's pinned-panels corner
+  radial gradient, for one).
+- `about:preferences` (patch 12) follows the mode through the `bento-ui-color-mode` observer
+  topic and is left out: the attribute copy, a removal timer and a rule are more than the
+  roughly 15 lines the patch can take without growing, and most of that page's colour lives in
+  `moz-*` shadow DOM, which the rule cannot reach, so only its page backgrounds would fade.
+  It switches at once, and so ahead of a scheduled flip (the page follows the observer topic
+  that chrome fires when its own flip applies, so it changes at the flip, not the click).
+- Chrome `transition: none !important` rules in `bento-shell-mount.css` that out-rank the rule
+  by specificity: the import host during the onboarding handoff, `#bento-shell-host` during a
+  live sidebar or window resize, and the strip, panels and navigator during a workspace
+  switch. All are transient states (a flip landing inside one of them snaps those surfaces).
+  `#PersonalToolbar` has a persistent one in sidebar address bar mode, so its selector is
+  listed in the chrome rule with enough specificity to win.
+- Delivery is per document (unscheduled, the state before `flipAt`): the documents started the
+  fade when they received the mode. Measured in a test app on 2026-10-25 (the flip sent through
+  the tools store; start of the attribute in each document, `performance.timeOrigin + now()`,
+  medians of 12 flips, 3 cold first flips). Before the direct chrome leg, chrome was the slowest
+  document (tools, `emitPanelsSync`, `browser.tabs.get` per visible panel, the `BENTO_PANELS`
+  title IPC, `applyChromeColorMode`); with it chrome starts with the lightest overlays:
+
+  | Case                                            | Chrome start  | Sidebar start | Spread                   | Slowest document              |
+  | ----------------------------------------------- | ------------- | ------------- | ------------------------ | ----------------------------- |
+  | Warm, before                                    | 63 to 73 ms   | 13 to 21 ms   | 60 to 70 ms              | chrome                        |
+  | Warm, direct leg                                | 9 to 12 ms    | 25 to 31 ms   | 22 to 27 ms              | sidebar                       |
+  | Settings palette open, before                   | 99 to 105 ms  | 13 to 27 ms   | 92 to 99 ms              | chrome                        |
+  | Settings palette open, direct leg               | 7 to 10 ms    | 19 to 29 ms   | 49 to 73 ms              | Settings palette              |
+  | Warm, direct leg + store subscribe + frame read | 7 to 12 ms    | 12 to 19 ms   | 12 to 15 ms (median 13)  | sidebar                       |
+  | Settings palette open, same                     | 8 to 12 ms    | 13 to 19 ms   | 43 to 113 ms (median 50) | Settings palette, 44 to 65 ms |
+
+  Attribute times understate what is painted: a screen recording of the window (below) showed
+  the fade starting 25 to 30 ms after the titlebar in the sidebar and 55 to 60 ms in the Settings
+  palette (spread of the 50% times 61 to 72 ms, 129 ms for the first flip of a run), and the
+  sidebar footer 25 to 30 ms after the rest of the sidebar, which is how the scheduled flip and
+  the footer change below came about.
+
+- Recording method (2026-10-25, a test app on a fresh profile, window frontmost and unoccluded on
+  the primary display, `screencapture -v -V <s> -R x,y,w,h`, 60 fps, 1280 x 1040): mean luma of
+  7 regions per frame (titlebar, sidebar background, tab row, sidebar footer, palette body, header
+  and footer; `ffmpeg ... crop, signalstats`), the 5, 10, 50 and 95% crossings of each region's
+  change per flip (linearly interpolated), the video clock aligned to the wall clock with a
+  magenta 8 px marker the rig inserts in the chrome window 200 ms before each trigger, and
+  in-document probes (a `MutationObserver` on `data-bento-mode-fade` and `data-color-mode`,
+  `transitionrun`, a run of `requestAnimationFrame` times, BroadcastChannel arrivals). The
+  Settings palette was opened at the colour mode list (`BENTO_OPEN_SETTING:setting:uiColorMode`
+  title from the command palette frame), the choice made with ArrowDown or ArrowUp and Enter sent
+  as trusted key events; the sidebar sun button was focused and activated with Enter (this
+  Firefox has no `windowUtils.sendMouseEvent`); it cycles light, dark and Auto, and Auto resolves
+  to the OS appearance, so every second press changes nothing and was not counted. Load: four
+  `yes` loops, or one per logical CPU (18) with https://x.com in the tab.
+
+  Scheduled flip, 120 ms lead, medians per flip (ms after the trigger; the trigger is the Enter
+  key, or the focused button activation):
+
+  | Case                         | Flips | Trigger to titlebar 10% | Spread of 50% times: median / max | Within 1 frame + 8 ms (24.7) |
+  | ---------------------------- | ----- | ----------------------- | --------------------------------- | ---------------------------- |
+  | Before: palette, no schedule | 6     | 23 to 50                | 68 / 129                          | 0 of 6                       |
+  | Palette, idle                | 12    | 149 to 177              | 9.5 / 45.3                        | 11 of 12                     |
+  | Palette, idle (second run)   | 12    | 148 to 192              | 8.7 / 37.9                        | 10 of 12                     |
+  | Palette, 4 busy loops        | 8     | 147 to 168              | 5.3 / 18.0                        | 8 of 8                       |
+  | Palette, 18 loops and x.com  | 8     | 153 to 201              | 10.5 / 52.5                       | 6 of 8                       |
+  | Sidebar button, idle         | 8     | 127 to 151              | 3.8 / 7.8                         | 8 of 8                       |
+  | Sidebar button, 4 loops      | 8     | 132 to 157              | 3.8 / 6.8                         | 8 of 8                       |
+  | Sidebar button, 18 loops     | 8     | 138 to 169              | 6.0 / 26.2                        | 7 of 8                       |
+
+  The click-to-flip delay is the lead plus tools' persist and stamp time (15 to 40 ms after the
+  Enter key, through the relay) and the chrome window's frame. The fade then runs 120 ms.
+  Per region in the idle palette runs (medians): the titlebar and the palette fade over about 80
+  ms (5 to 95%); the sidebar background, tab row and footer over about 55 ms, because their first
+  painted frame comes 25 to 30 ms after the others (the extension process renders the palette
+  and the sidebar one after the other) while the fade itself is on the shared clock and ends with
+  the others (95% within 2 ms), so the sidebar's visible fade is shorter by the late first frame
+  and not by its duration. The sidebar footer and the rest of the sidebar are now the same
+  (identical onsets). Tools' lead sweep, idle palette flips with the fade start more than one
+  frame plus 8 ms apart: 80 ms 1 of 8, 100 ms 1 of 12, 120 ms 1 of 12 and 2 of 12, 160 ms 2 of 16.
+  Left over, with no lead that fixes it: now and then (about one flip in ten) the extension
+  process stalls for 60 to 140 ms around `flipAt` (the sidebar and the palette apply late, chrome
+  on time) and the sidebar's first painted frame follows the palette's; under full CPU load the
+  chrome window's own frames also drop, which shows as a slower titlebar fade, not a late start.
+
+Checks: a flip starts `flipAt` after the trigger, so probe timestamps (a `MutationObserver` on
+`data-color-mode`) should cluster at that time in every document, and the BroadcastChannel
+arrival of `settings/changed` (the stamp's `flipAt` is in the event) is the delivery time to
+compare with it. Flip the mode in a running build and read `document.getAnimations()` in each document
+during the first frames (every CSSTransition should report 120 ms `ease`); a
+`MutationObserver` on `data-bento-mode-fade` timestamps the start per document; to watch a
+fade, set `updatePlaybackRate(0.05)` on the transitions as they start and keep the attribute
+(re-add it when it is removed) while taking a screenshot.
+
 ## Shell bundle and stylesheet
 
 - Source of truth: `extensions/bento-shell/vite.config.ts`. All React entries
@@ -363,3 +626,42 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
   that token to `none` while using an inverted neutral scheme
   (`--neutral-90` background, `--neutral-5` text/icon, light neutral action
   buttons) so notification bars pop against both light and dark chrome.
+- A colour that reaches the paint through an unregistered custom property inside a gradient
+  does not fade with the mode flip, and it looks like a bug in the rule, not in the surface.
+  The chrome toolbars wrote their gradient inline from the mount script with
+  `var(--bento-toolbar-main-bg)` as the right stop, so the window's right half of the title
+  strip snapped to the new colour while the sidebar half and the sidebar faded
+  (`getComputedStyle` of the toolbar's `background-image` showed the final rgb in the stop; the
+  element's own `background-color` and the registered left stop read the in-between colour).
+  Register the colour and read it in every gradient writer, CSS and script
+  (`--bento-toolbar-right-bg`). When a surface looks wrong mid-fade, read its computed
+  `background-image`, not only `background-color`. Found 2026-10-25.
+- Do not write `:is(*, *::before, *::after)` to reach pseudo-elements: pseudo-elements are
+  not valid inside `:is()` and match nothing. List the four selectors.
+- A direct leg must not follow the saved mode into a private window: tools never sees a private
+  window's own mode, and the saved value is not that window's. The experiment tells every browser
+  window and the mount script's `handleUiColorModeSet` drops the event in a private one, so the
+  rule lives in the one file that already knows its window's privacy. Tools must not filter by
+  `incognito` instead, because the window event is the only thing a private window must not act
+  on; its `BENTO_PANELS` payload (built from the window-local entry) stays its source.
+- Do not read a document's computed style inside a message handler that starts a fade: it
+  flushes the styles of the whole document there and then, and every other document of the
+  process handles the same message after it (measured: sidebar 21 ms after the trigger with the
+  read in the handler, 14 ms with it on the next frame). `applyModeWithFade` writes the
+  attributes and leaves the `afterMotion` read to `requestAnimationFrame`.
+- Do not apply the mode from an effect keyed on the pref and rely on that for timing: the
+  passive effect runs after React has rendered the document. `useFirefoxTheme` applies from
+  `useSettingsStore.subscribe`; a subscriber that throws would stop the store's other
+  subscribers and the port handler, so it catches and logs.
+- Two routes into one setting need an order. Before the stamp, a `BENTO_PANELS` payload that the
+  sidebar had serialised before a flip, then held in `sendChromeTitle`'s queue, reached chrome
+  after the direct event: `applyChromeColorMode` applied its old mode (reversing the fade) and
+  the next payload started a third. The equal-mode check only covers a copy that agrees. Do not
+  add another route for a setting without a stamp that every route carries. Two ways the first
+  stamp designs failed: a stamp that was 0 until the first change let an initial payload (old
+  mode, no stamp) pass the check and undo the first flip (dark, light, dark: three fades), so the
+  store stamps from construction and chrome drops an unstamped message once it has recorded a
+  stamp; and a clock-based stamp could go backwards over a restart (a clock correction), so
+  chrome rejected the legitimate changes of the new run while a surviving sidebar kept sending
+  its old stamp. The stamp is a run id plus a sequence for that reason; never compare stamps
+  of different runs.
