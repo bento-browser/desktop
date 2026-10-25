@@ -31,6 +31,7 @@ import { WorkspaceStore } from './workspaces/WorkspaceStore';
 import { isEphemeralWorkspaceId } from './workspaces/ephemeral';
 import { adoptPrivateTabs, joinPrivateWorkspace } from './workspaces/privateTabs';
 import { SettingsStore } from './settings/SettingsStore';
+import { createChromeColorModeSignal } from './settings/ChromeColorModeSignal';
 import { PanelStore } from './panels/PanelStore';
 import { createAddPanelMarkerHandler } from './panels/AddPanelGrant';
 import type { AddPanelGrant } from './panels/AddPanelGrant';
@@ -974,7 +975,13 @@ const bootReady = storesReady.then(async () => {
     settings.snapshot().panelCornerRadiusPx;
   let lastPanelSplitterSizePx: BentoSettings['panelSplitterSizePx'] =
     settings.snapshot().panelSplitterSizePx;
+  // The direct leg of a colour flip to chrome; the panels/sync below carries the value too.
+  const signalChromeColorMode = createChromeColorModeSignal(
+    (mode, stamp) => browser.bentoPrivacy.notifyUiColorMode(mode, stamp),
+    settings.snapshot().uiColorMode,
+  );
   settings.onChange((next) => {
+    signalChromeColorMode(next.uiColorMode, settings.colorStamp());
     void applyContentColorMode(next.contentColorMode);
     // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
@@ -2312,7 +2319,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     sendAudience({ privateWindowId }, { type: 'workspaces/changed', deltas });
   });
   const unsubSettings = settings.onChange((next) => {
-    send({ type: 'settings/changed', settings: next });
+    send({ type: 'settings/changed', settings: next, colorStamp: settings.colorStamp() });
   });
   const unsubPinnedPanels = pinnedPanels.onDeltas((deltas) => {
     sendAudience('regular', { type: 'pinnedPanels/changed', deltas });
@@ -2403,7 +2410,11 @@ browser.runtime.onConnectExternal.addListener((port) => {
       activeId: wsSnap.activeId,
       activeIdByWindow: wsSnap.activeIdByWindow,
     });
-    send({ type: 'settings/snapshot', settings: settings.snapshot() });
+    send({
+      type: 'settings/snapshot',
+      settings: settings.snapshot(),
+      colorStamp: settings.colorStamp(),
+    });
     sendAudience('regular', { type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
     sendAudience('regular', { type: 'tabFolders/snapshot', folders: tabFolders.snapshot() });
     send({ type: 'savedPanels/snapshot', items: savedPanels.list() });

@@ -2,26 +2,61 @@
 // All private windows share one localStorage and one BroadcastChannel partition
 // yet each has its own colour mode, so the publication is scoped to its window.
 //
-// The hook runs outside React (useEffect runs its callback at once) against fake
+// The hook runs outside React (useEffect runs its callback at once, useRef is a plain box) against fake
 // documents, one per window, on one shared storage and channel network.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+interface StoreState {
+  current: { uiColorMode: string } | null;
+  colorFlipAt?: number;
+}
 
 interface FakeDocument {
   attributes: Map<string, string>;
   osDark: boolean;
   mode: string;
+  flipAt?: number;
   storageListeners: Set<(event: { key: string; newValue: string | null }) => void>;
+  storeListeners: Set<(state: StoreState, previous: StoreState) => void>;
 }
 
 let active: FakeDocument;
 let storage: Map<string, string>;
+/** Every message posted on the channel, in order. */
+let posted: Array<{ kind?: string; mode?: string; resolved?: string }>;
 let channels: Array<{
   name: string;
   owner: FakeDocument;
   listeners: Set<(event: { data: unknown }) => void>;
   closed: boolean;
 }>;
+
+function freshDocument(): FakeDocument {
+  return {
+    attributes: new Map(),
+    osDark: false,
+    mode: 'light',
+    storageListeners: new Set(),
+    storeListeners: new Set(),
+  };
+}
+
+const stateOf = (document: FakeDocument): StoreState => ({
+  current: { uiColorMode: document.mode },
+  colorFlipAt: document.flipAt,
+});
+
+/** What a settings/changed message does: the store sets its state and notifies its subscribers
+ * inside that call, before React renders anything. */
+function setStoreMode(document: FakeDocument, mode: string, flipAt?: number): void {
+  const previous = stateOf(document);
+  document.mode = mode;
+  document.flipAt = flipAt;
+  for (const listener of [...document.storeListeners]) {
+    as(document, () => listener(stateOf(document), previous));
+  }
+}
 
 /** Runs `fn` as the given document, whose globals the hook reads. */
 function as<T>(document: FakeDocument, fn: () => T): T {
@@ -51,6 +86,7 @@ class FakeChannel {
   }
 
   postMessage(data: unknown): void {
+    posted.push(data as (typeof posted)[number]);
     for (const other of channels) {
       if (other === this.record || other.closed || other.name !== this.record.name) continue;
       for (const listener of other.listeners) as(other.owner, () => listener({ data }));
@@ -76,12 +112,7 @@ async function loadDocument({
   stored: boolean;
   osDark?: boolean;
 }) {
-  const document: FakeDocument = {
-    attributes: new Map(),
-    osDark,
-    mode,
-    storageListeners: new Set(),
-  };
+  const document: FakeDocument = { ...freshDocument(), mode, osDark };
   vi.stubGlobal('location', {
     hash: `#bentoWindowId=${windowId}${isPrivate ? '&bentoPrivate=1' : ''}`,
   });
@@ -97,18 +128,46 @@ async function loadDocument({
 beforeEach(() => {
   storage = new Map();
   channels = [];
-  active = { attributes: new Map(), osDark: false, mode: 'light', storageListeners: new Set() };
-  vi.doMock('react', () => ({ useEffect: (effect: () => void) => effect() }));
-  vi.doMock('../state/settings', () => ({
-    useSettingsStore: (select: (state: unknown) => unknown) =>
-      select({ current: { uiColorMode: active.mode } }),
+  posted = [];
+  active = freshDocument();
+  vi.doMock('react', () => ({
+    useEffect: (effect: () => void) => effect(),
+    useRef: (initial: unknown) => ({ current: initial }),
   }));
+  vi.doMock('../state/settings', () => ({
+    // The selector form is what React renders with; getState and subscribe are what the
+    // store notifies outside React.
+    useSettingsStore: Object.assign(
+      (select: (state: unknown) => unknown) => select(stateOf(active)),
+      {
+        getState: () => stateOf(active),
+        subscribe: (listener: (state: StoreState, previous: StoreState) => void) => {
+          const owner = active;
+          owner.storeListeners.add(listener);
+          return () => owner.storeListeners.delete(listener);
+        },
+      },
+    ),
+  }));
+  // A frame is 16 ms of the (fake or real) timers.
+  vi.stubGlobal('requestAnimationFrame', (callback: () => void) => setTimeout(callback, 16));
+  vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
   vi.stubGlobal('BroadcastChannel', FakeChannel);
   vi.stubGlobal('document', {
+    hidden: false,
+    // A change that waits for its time listens for the document hiding.
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    // The element belongs to the document that was active when it was read, so a timer that
+    // fires later still acts on its own document.
     get documentElement() {
+      const { attributes } = active;
       return {
-        setAttribute: (name: string, value: string) => active.attributes.set(name, value),
-        getAttribute: (name: string) => active.attributes.get(name) ?? null,
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+        removeAttribute: (name: string) => attributes.delete(name),
+        addEventListener: () => {},
+        removeEventListener: () => {},
       };
     },
   });
@@ -120,8 +179,8 @@ beforeEach(() => {
       if (type === 'storage') active.storageListeners.delete(listener);
     },
   });
-  vi.stubGlobal('matchMedia', () => ({
-    matches: active.osDark,
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('color-scheme') && active.osDark,
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
@@ -193,10 +252,7 @@ describe('resolved colour mode of private windows', () => {
       mode: 'system',
       stored: true,
     });
-    const elsewhere = as(
-      { attributes: new Map(), osDark: false, mode: 'light', storageListeners: new Set() },
-      () => new FakeChannel('bento-shell-bus'),
-    );
+    const elsewhere = as(freshDocument(), () => new FakeChannel('bento-shell-bus'));
 
     elsewhere.postMessage({ kind: 'resolved-color-mode', resolved: 'dark', windowId: 2 });
     expect(overlay.colorMode()).toBe('light');
@@ -212,5 +268,131 @@ describe('resolved colour mode of private windows', () => {
 
     await loadDocument({ windowId: 2, isPrivate: true, mode: 'light', stored: false });
     expect(storage.get('resolved-color-mode@2')).toBe('light');
+  });
+});
+
+describe('applying a settings change', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('applies, fades and records the mode inside the store update, before React renders it', async () => {
+    vi.useFakeTimers();
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(false);
+
+    // No render and no effect run between the set and these reads.
+    setStoreMode(sidebar.document, 'dark');
+    expect(sidebar.colorMode()).toBe('dark');
+    expect(sidebar.document.attributes.get('data-muxui-color-scheme')).toBe('dark');
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(true);
+    expect(storage.get('color-mode')).toBe('dark');
+    expect(storage.get('resolved-color-mode')).toBe('dark');
+  });
+
+  it('waits for the change time, and announces the mode only when it applies', async () => {
+    vi.useFakeTimers();
+    // The fake clock's animation frames carry the time since it started.
+    const start = Date.now();
+    vi.stubGlobal('performance', { now: () => Date.now() - start });
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    const announced = channels.length;
+
+    setStoreMode(sidebar.document, 'dark', Date.now() + 120);
+    expect(sidebar.colorMode()).toBe('light');
+    expect(storage.get('color-mode')).toBe('dark');
+    // An overlay in Auto applies a published mode at once, so nothing goes out before the flip.
+    expect(storage.get('resolved-color-mode')).toBe('light');
+    expect(channels).toHaveLength(announced);
+
+    // The timer acts on whichever document is active, as it does in a real page.
+    as(sidebar.document, () => vi.advanceTimersByTime(140));
+    expect(sidebar.colorMode()).toBe('dark');
+    expect(storage.get('resolved-color-mode')).toBe('dark');
+    expect(channels.length).toBeGreaterThan(announced);
+  });
+
+  it('resolves Auto when the change applies, so an OS change missed while it waited is not shown', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    vi.stubGlobal('performance', { now: () => Date.now() - start });
+    // Explicit light with the OS dark. The Auto listeners are installed by an effect that only
+    // runs once React has rendered the Auto pref, which this hook instance never does here.
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+      osDark: true,
+    });
+
+    setStoreMode(sidebar.document, 'system', Date.now() + 120);
+    expect(sidebar.colorMode()).toBe('light');
+    // The OS turns light during the wait, before anything listens: no event is heard.
+    sidebar.document.osDark = false;
+    as(sidebar.document, () => vi.advanceTimersByTime(140));
+
+    // Resolved light when it applied (not the dark of the request), and that is what was stored
+    // and announced.
+    expect(sidebar.colorMode()).toBe('light');
+    expect(sidebar.document.attributes.get('data-bento-color-mode-pref')).toBe('system');
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(false);
+    expect(storage.get('resolved-color-mode')).toBe('light');
+    expect(posted.filter(({ mode }) => mode === 'system')).toEqual([
+      expect.objectContaining({ kind: 'resolved-color-mode', resolved: 'light' }),
+    ]);
+  });
+
+  it('applies and announces a pref once, however many times the store repeats it', async () => {
+    vi.useFakeTimers();
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    const writes: string[] = [];
+    const root = sidebar.document.attributes;
+    const set = root.set.bind(root);
+    root.set = (key, value) => {
+      if (key === 'data-bento-mode-fade') writes.push(value);
+      return set(key, value);
+    };
+
+    setStoreMode(sidebar.document, 'dark');
+    // Another setting changed: the store notifies again with the same mode.
+    setStoreMode(sidebar.document, 'dark');
+    expect(writes).toHaveLength(1);
+    expect(channels.filter(({ closed }) => closed)).toHaveLength(channels.length);
+    const publications = channels.length;
+    setStoreMode(sidebar.document, 'dark');
+    expect(channels).toHaveLength(publications);
+  });
+
+  it('a second change during the fade keeps the attribute and restarts the wait', async () => {
+    vi.useFakeTimers();
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    setStoreMode(sidebar.document, 'dark');
+    vi.advanceTimersByTime(80);
+    setStoreMode(sidebar.document, 'light');
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(true);
+    // The first change's wait (1 s with no computed style here) no longer ends the fade.
+    vi.advanceTimersByTime(950);
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(sidebar.document.attributes.has('data-bento-mode-fade')).toBe(false);
   });
 });
