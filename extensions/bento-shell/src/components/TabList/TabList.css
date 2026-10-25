@@ -635,8 +635,8 @@
     var(--muxui-semantic-motion-state-transition-duration);
 }
 
-.bento-tab-list-search__input::placeholder {
-  color: var(--neutral-60);
+.bento-tab-list-search__input {
+  --bento-placeholder-fg: var(--neutral-60);
 }
 
 /* The clear button sits at the right end, where the Search trigger was. Its
@@ -757,7 +757,17 @@
   color: var(--neutral-90);
 }
 
+/* The actions backing's gradient stop, registered so the mode flip fade can interpolate it
+ * (theme/document-base.css lists it): the hover fill it copies is an unregistered custom
+ * property, which a gradient stop would take at once. Not inherited: only the backing declares it. */
+@property --bento-search-result-actions-bg {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 .bento-tab-list-search__result-actions {
+  --bento-search-result-actions-bg: var(--bento-search-result-hover-bg);
   position: absolute;
   inset-block: 0;
   inset-inline-end: 0;
@@ -767,7 +777,7 @@
   background: linear-gradient(
     to right,
     transparent,
-    var(--bento-search-result-hover-bg) var(--space-xs)
+    var(--bento-search-result-actions-bg) var(--space-xs)
   );
   opacity: 0;
   pointer-events: none;

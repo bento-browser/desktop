@@ -4,16 +4,16 @@ Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  40 +++
+ browser/components/preferences/preferences.js |  68 +++++
  .../components/preferences/preferences.xhtml  |   9 +-
  .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
- 3 files changed, 267 insertions(+), 11 deletions(-)
+ 3 files changed, 295 insertions(+), 11 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
 index b7fbb8b9dcf595cf3e3176c4535023f0884b040a..0239c4a2ad1607e33b77ac0b541b0ae09a7600df 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
-@@ -65,6 +65,46 @@ var fxAccounts = getFxAccountsSingleton();
+@@ -65,6 +65,74 @@ var fxAccounts = getFxAccountsSingleton();
  
  var TAB_SESSION_ID = crypto.randomUUID();
  
@@ -23,17 +23,45 @@ index b7fbb8b9dcf595cf3e3176c4535023f0884b040a..0239c4a2ad1607e33b77ac0b541b0ae0
 +// whenever a window announces a change, and when the page is shown or focused.
 +// A tab moved into a window whose mode already differs announces nothing, so
 +// the last two cover it. The host is looked up each time because a moved tab
-+// keeps this document.
++// keeps this document. A change after the first copy fades the page's colours
++// like the window's (bento-chrome-theme.css); moz-* shadow DOM is out of reach.
 +{
 +  let root = document.documentElement;
++  let fadeSheet = new CSSStyleSheet();
++  fadeSheet.replaceSync(
++    ":root[data-bento-mode-fade], :root[data-bento-mode-fade] * { transition: background-color var(--muxui-semantic-motion-state-transition), color var(--muxui-semantic-motion-state-transition), border-color var(--muxui-semantic-motion-state-transition), fill var(--muxui-semantic-motion-state-transition), box-shadow var(--muxui-semantic-motion-state-transition) !important; }"
++  );
++  let fadeTimer = 0;
++  let synced = false;
 +  let syncColorMode = () => {
 +    let windowRoot =
 +      window.browsingContext.topChromeWindow?.document.documentElement;
 +    if (windowRoot) {
-+      root.setAttribute(
-+        "data-color-mode",
-+        windowRoot.getAttribute("data-color-mode") == "dark" ? "dark" : "light"
-+      );
++      let mode =
++        windowRoot.getAttribute("data-color-mode") == "dark" ? "dark" : "light";
++      let changed = synced && root.getAttribute("data-color-mode") != mode;
++      // Like the window: no fade for the first copy, a hidden page or reduced
++      // motion, and such a change ends a fade that is running.
++      let fade =
++        changed &&
++        !document.hidden &&
++        !matchMedia("(prefers-reduced-motion: reduce)").matches;
++      if (fade) {
++        document.adoptedStyleSheets = [fadeSheet];
++        root.toggleAttribute("data-bento-mode-fade", true);
++      } else if (changed) {
++        clearTimeout(fadeTimer);
++        root.removeAttribute("data-bento-mode-fade");
++      }
++      root.setAttribute("data-color-mode", mode);
++      synced = true;
++      if (fade) {
++        clearTimeout(fadeTimer);
++        fadeTimer = setTimeout(
++          () => root.removeAttribute("data-bento-mode-fade"),
++          parseFloat(getComputedStyle(root).transitionDuration) * 1000 + 50
++        );
++      }
 +    }
 +  };
 +  let syncWhenVisible = () => {

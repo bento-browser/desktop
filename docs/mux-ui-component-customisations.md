@@ -320,8 +320,10 @@ part.
 
 Each React HTML entry point imports `theme/muxui.css` once. That Bento-owned boundary
 places the public Mux component styles in the low-precedence `muxui` layer and
-declares the `bento` sublayer order (`bento.tokens`, `bento.fonts`,
-`bento.components`, `bento.app`; later wins) before any other Bento stylesheet.
+declares the `bento` sublayer order (`bento.mode-fade`, `bento.tokens`, `bento.fonts`,
+`bento.components`, `bento.app`; later wins, except for `!important` declarations, where the
+earliest layer wins, which is why the light/dark flip's transition rule is in the first one)
+before any other Bento stylesheet.
 Then the entry point loads Bento tokens, generated preset layers, and
 `theme/document-base.css`, the shared `html`/`body` defaults. Theme and mode
 attributes belong on the same scope element. `themeScope.ts` resolves aliases
@@ -673,7 +675,12 @@ matches the public stylesheet, so a Mux rename shows up as a failure.
 
 Component rules belong inside the owning CSS layer and use scoped component
 selectors. The layer order is the `@layer` statement in `theme/muxui.css`; add a
-new `bento.*` layer there. Keep global selectors away from semantic elements and overlay
+new `bento.*` layer there, after `bento.mode-fade` (the flip fade's `!important` transition
+rule wins by being first; a layer before it would let that layer's own `transition: none
+!important` stop colours fading). No Bento rule out-ranks that rule. Mux's own `!important`
+transition rules are in the `muxui` layer, which precedes every `bento.*` layer, so they win while
+the fade is running (in a normal-motion session only the toggle button group's label, in Welcome;
+its content is a descendant and fades). Keep global selectors away from semantic elements and overlay
 internals. Use public Mux semantic roles for new theme decisions and Bento
 tokens for product-specific behavior. Existing CSS may use the generated
 legacy aliases such as `--neutral-*`, `--color-*`, `--space-*`, `--radius-*`,
@@ -793,6 +800,46 @@ tokens, so the durations and curves live in one place and a Mux theme can change
 them. `pnpm run lint:motion` (CI, extensions job) fails on a raw time, an easing
 keyword or function, or a retired `--bento-duration-*` / `--bento-easing-*` read in
 those files (scope and limits are in the header of `scripts/check-motion-values.mjs`).
+The one `var()` that is not a Mux token is `var(--bento-mode-fade-delay)`, the registered
+`<time>` that holds a prepared mode flip's transitions until its time: the check accepts it as
+`transition-delay` or as the delay of a `transition` item that already has its Mux duration
+(`color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay)`), and
+rejects it as a duration, an easing, in an animation, or as a bare time in a `transition`
+item. The other whole `transition` item it accepts is `var(--bento-mode-fade-colours)` (or
+`--bento-mode-fade-colours-inherited`, the same list without `color`), the colour list the flip
+fade's generated twins read after a rule's own non-colour entries (below); it is accepted only as
+a complete item.
+
+Mux paint that the mode flip must fade is re-expressed over a registered `<color>` carrier on the
+element that paints it, because a gradient stop or a pseudo-element colour over an unregistered
+custom property changes when the flip is prepared (Mux is not edited; the carriers are listed in
+the fade rule of `theme/document-base.css`): `--bento-placeholder-fg` (every `input` and
+`textarea` takes Mux's `--muxui-field-placeholder-color` into it in `bento.tokens`, and
+`::placeholder` reads it; a Bento field with its own colour sets it on itself, and the
+`::placeholder` rule must set `--bento-placeholder-fg: inherit` itself, because a pseudo-element
+does not inherit a non-inherited registered property and would otherwise read `transparent`),
+`--bento-switch-hover-tint` (the hovered, unchecked switch's tint in the Settings palette, same
+selector and value as Mux's rule), `--bento-card-tint` (the workspace theme picker's `Card.Button`
+hover and pressed tint, reproducing Mux's outlined rules over the carrier; the percentages are
+compared with the installed Mux stylesheet by `scripts/mount-fade-css.test.mjs`) and
+`--bento-search-result-actions-bg` (`TabList.css`). A new override of that kind needs a carrier,
+an entry in the fade list and a test (`scripts/mount-motion.test.mjs` keeps a gradient scan and the
+carrier list; `scripts/mount-fade-css.test.mjs` scans the installed Mux stylesheet for gradient
+rules over unregistered custom properties, so a Mux upgrade that adds one on a component the shell
+imports fails until it has a carrier or is recorded as residual). Residual in Mux components
+(rendered, not carried): a selected standalone `ToggleButton` hovered (Welcome only) and the icon
+picker's `Tabs` overflow edge buttons.
+
+Transitions that Bento CSS declares for something other than colour (opacity, transform, width,
+margin and so on) are kept during a mode flip by generated twins, not by hand. The flip fade's
+catch-all would otherwise replace the element's whole `transition` list and cancel a running
+motion. `node scripts/fade-twins.mjs` rewrites the generated regions of `theme/document-base.css`
+and `bento-chrome-theme.css` (between `fade-twins:begin` and `fade-twins:end`) from every Bento
+rule that declares a non-colour `transition`; run it after adding or changing one, and
+`scripts/mount-fade-css.test.mjs` fails CI when a region is stale. The twins do not cover Mux
+components' own non-colour transitions (popups, tooltips, backdrops, switch thumb, select arrow,
+progress fills): a Mux popup that is entering or leaving at the moment of a flip jumps to its end
+state.
 
 Rules:
 
@@ -826,7 +873,7 @@ Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in 
 
 | Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Default                                                          |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css`, `bento-chrome-theme.css`); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css` in the first bento layer, `bento.mode-fade`, so a layered `transition: none !important` such as the rail choreography's does not switch it off; `bento-chrome-theme.css` in `bento.chrome-theme`, which out-ranks the unlayered `transition: none !important` rules of the chrome; each entry also reads `var(--bento-mode-fade-delay)`, the one non-Mux value allowed in a transition, which holds a prepared flip until its time; see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
 | `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 150 ms, `ease`                                                   |
 | `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph                                                                                                                                                                                                                    | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
 | `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 120 ms, `ease-in`                                                |

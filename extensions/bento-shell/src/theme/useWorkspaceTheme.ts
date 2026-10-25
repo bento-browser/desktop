@@ -20,7 +20,7 @@ import { useEffect } from 'react';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../state/workspaces';
 import { useCurrentWindowId } from '../bridge/useToolsPort';
 import { applyRootTheme } from './applyRootTheme';
-import { useResolvedColorScheme } from './themeScope';
+import { readDocumentColorScheme, subscribeColorScheme } from './themeScope';
 import { releaseThemeSheets, ROOT_THEME_OWNER } from './themeSheets';
 
 export function useWorkspaceTheme(): void {
@@ -33,11 +33,15 @@ export function useWorkspaceTheme(): void {
   const workspaceKnown = useWorkspacesStore(
     (s) => activeWorkspaceId !== null && activeWorkspaceId in s.byId,
   );
-  const colorScheme = useResolvedColorScheme();
 
+  // The scheme is read from the document and followed by subscription, not held in state: this
+  // hook sits at the root of every document, and a root that re-renders on every flip
+  // re-renders its whole tree (the sidebar's tab rows) in the middle of the fade's first frame.
   useEffect(() => {
-    void applyRootTheme(themeId, colorScheme, workspaceKnown);
-  }, [colorScheme, themeId, workspaceKnown]);
+    const apply = () => void applyRootTheme(themeId, readDocumentColorScheme(), workspaceKnown);
+    apply();
+    return subscribeColorScheme(apply);
+  }, [themeId, workspaceKnown]);
 
   useEffect(() => () => releaseThemeSheets(ROOT_THEME_OWNER), []);
 }

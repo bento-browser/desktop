@@ -73,6 +73,15 @@
    push band declare it, and 'Sidebar push' below transitions it. Not inherited, so only
    those elements restyle while it moves. The window and #browser backgrounds read
    --bento-toolbar-sidebar-bg and switch at once: the host covers them. */
+/* The accent of the splitter hover indicators (gradients), registered so the indicator fades with
+   the mode flip (bento-chrome-theme.css lists it). Not inherited: each splitter rule that paints
+   the indicator declares it from --color-60, and so does its ::after. */
+@property --bento-splitter-accent {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 @property --bento-toolbar-left-bg {
   syntax: '<color>';
   inherits: false;
@@ -448,6 +457,7 @@
   z-index: 3;
 }
 #bento-shell-splitter-affordance {
+  --bento-splitter-accent: var(--color-60);
   position: absolute;
   top: 0;
   bottom: 0;
@@ -456,15 +466,15 @@
   pointer-events: auto;
   z-index: 4;
   background-image:
-    radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 50% 25%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to right,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+    radial-gradient(circle at 50% 75%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
   background-position: center;
   background-repeat: no-repeat;
   background-size:
@@ -482,6 +492,7 @@
   display: none;
 }
 :root[bento-sidebar-addressbar='true'] #sidebar-splitter {
+  --bento-splitter-accent: var(--color-60);
   width: var(--bento-splitter-hit-size) !important;
   min-width: var(--bento-splitter-hit-size) !important;
   max-width: var(--bento-splitter-hit-size) !important;
@@ -492,15 +503,15 @@
   appearance: none;
   background-color: transparent !important;
   background-image:
-    radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 50% 25%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to right,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+    radial-gradient(circle at 50% 75%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
   background-position: center;
   background-repeat: no-repeat;
   background-size:
@@ -1871,7 +1882,29 @@
   border-radius: 1.5px;
   pointer-events: none;
 }
+/* The empty URL field's placeholder is a pseudo-element, which takes no transition of its own, so
+   a colour set on ::placeholder changes when the mode is prepared, up to the lead before the fade.
+   The field holds the colour in this registered, non-inherited property instead (bento-chrome-theme.css
+   fades it with the rest) and the pseudo-element takes it with an explicit `inherit`: a pseudo-element
+   would otherwise read the initial value, transparent. */
+@property --bento-placeholder-fg {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+/* The native tab strip's overflow arrows (shown only with bento.chrome.hideNativeTabs false) are
+   toolbarbuttons inside the arrowscrollbox's shadow tree, which the fade's catch-all does not reach,
+   and their icon fill is the inherited --toolbarbutton-icon-fill, which changes with the mode when
+   it is prepared. The strip takes the fill from this registered, non-inherited carrier instead
+   (bento-chrome-theme.css fades it on the strip, which the catch-all does reach) and the shadow
+   tree inherits the animated value. */
+@property --bento-arrow-fill {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
 .bento-panel-header-url {
+  --bento-placeholder-fg: var(--neutral-50);
   flex: 1 1 auto;
   min-width: 0;
   height: var(--bento-control-size-sm);
@@ -1890,7 +1923,8 @@
   border-color: var(--color-60);
 }
 .bento-panel-header-url::placeholder {
-  color: var(--neutral-50);
+  --bento-placeholder-fg: inherit;
+  color: var(--bento-placeholder-fg);
 }
 .bento-panel-loading-overlay {
   position: absolute;
@@ -2391,6 +2425,7 @@
    hit target and painted bar do not resize, so panel boundaries
    do not visually jump under the cursor. */
 #bento-side-panel-host > .bento-panel-splitter {
+  --bento-splitter-accent: var(--color-60);
   cursor: col-resize;
   width: var(--bento-splitter-hit-size) !important;
   min-width: var(--bento-splitter-hit-size) !important;
@@ -2405,15 +2440,15 @@
      painted bar; only opacity changes, so there is no apparent
      growth/shrink animation under the cursor. */
   background-image:
-    radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 50% 25%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to right,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+    radial-gradient(circle at 50% 75%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
   background-position: center;
   background-repeat: no-repeat;
   background-size:
@@ -2428,17 +2463,18 @@
   opacity: 1;
 }
 #bento-side-panel-host > .bento-panel-splitter--devtools-link {
+  --bento-splitter-accent: var(--color-60);
   opacity: 1;
   background-image:
-    radial-gradient(circle at 0 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 0 50%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to bottom,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 100% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
+    radial-gradient(circle at 100% 50%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius));
   background-position:
     center var(--bento-devtools-link-top, center),
     center var(--bento-devtools-link-top, center),
@@ -2532,6 +2568,7 @@
   filter: grayscale(0.55);
 }
 .bento-subdivision-vsplitter {
+  --bento-splitter-accent: var(--color-60);
   cursor: row-resize !important;
   flex: 0 0 var(--bento-splitter-hit-size) !important;
   min-height: var(--bento-splitter-hit-size) !important;
@@ -2540,15 +2577,15 @@
   border: 0 !important;
   background-color: transparent !important;
   background-image:
-    radial-gradient(circle at 25% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 25% 50%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to bottom,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 75% 50%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
+    radial-gradient(circle at 75% 50%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
   background-size:
@@ -2567,6 +2604,7 @@
   opacity: 1 !important;
 }
 .bento-subdivision-hsplitter {
+  --bento-splitter-accent: var(--color-60);
   cursor: col-resize !important;
   flex: 0 0 var(--bento-splitter-hit-size) !important;
   min-width: var(--bento-splitter-hit-size) !important;
@@ -2578,15 +2616,15 @@
   margin: 0 !important;
   background-color: transparent !important;
   background-image:
-    radial-gradient(circle at 50% 25%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
+    radial-gradient(circle at 50% 25%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)),
     linear-gradient(
       to right,
       transparent calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% - var(--bento-splitter-indicator-radius)),
-      var(--color-60) calc(50% + var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% - var(--bento-splitter-indicator-radius)),
+      var(--bento-splitter-accent) calc(50% + var(--bento-splitter-indicator-radius)),
       transparent calc(50% + var(--bento-splitter-indicator-radius))
     ),
-    radial-gradient(circle at 50% 75%, var(--color-60) 0, var(--color-60) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
+    radial-gradient(circle at 50% 75%, var(--bento-splitter-accent) 0, var(--bento-splitter-accent) var(--bento-splitter-indicator-radius), transparent var(--bento-splitter-indicator-radius)) !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
   background-size:

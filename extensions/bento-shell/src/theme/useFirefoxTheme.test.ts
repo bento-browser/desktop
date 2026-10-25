@@ -150,7 +150,10 @@ beforeEach(() => {
     ),
   }));
   // A frame is 16 ms of the (fake or real) timers.
-  vi.stubGlobal('requestAnimationFrame', (callback: () => void) => setTimeout(callback, 16));
+  vi.stubGlobal('performance', { now: () => Date.now() });
+  vi.stubGlobal('requestAnimationFrame', (callback: (timestamp: number) => void) =>
+    setTimeout(() => callback(Date.now()), 16),
+  );
   vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
   vi.stubGlobal('BroadcastChannel', FakeChannel);
   vi.stubGlobal('document', {
@@ -165,7 +168,9 @@ beforeEach(() => {
       return {
         setAttribute: (name: string, value: string) => attributes.set(name, value),
         getAttribute: (name: string) => attributes.get(name) ?? null,
+        hasAttribute: (name: string) => attributes.has(name),
         removeAttribute: (name: string) => attributes.delete(name),
+        style: { setProperty: () => {}, removeProperty: () => {} },
         addEventListener: () => {},
         removeEventListener: () => {},
       };
@@ -313,11 +318,51 @@ describe('applying a settings change', () => {
     expect(storage.get('resolved-color-mode')).toBe('light');
     expect(channels).toHaveLength(announced);
 
-    // The timer acts on whichever document is active, as it does in a real page.
-    as(sidebar.document, () => vi.advanceTimersByTime(140));
+    // The timer acts on whichever document is active, as it does in a real page. The change is
+    // prepared in the first frame (the document already shows dark with its colours held), and
+    // nothing is stored or published at any point of the lead window.
+    for (let at = 4; at < 112; at += 4) {
+      as(sidebar.document, () => vi.advanceTimersByTime(4));
+      expect(storage.get('resolved-color-mode'), `at ${at} ms`).toBe('light');
+      expect(channels, `at ${at} ms`).toHaveLength(announced);
+    }
+    expect(sidebar.colorMode()).toBe('dark');
+    as(sidebar.document, () => vi.advanceTimersByTime(28));
     expect(sidebar.colorMode()).toBe('dark');
     expect(storage.get('resolved-color-mode')).toBe('dark');
     expect(channels.length).toBeGreaterThan(announced);
+  });
+
+  it('keeps the show time and publishes once when Auto, resolving to the same mode, follows Dark', async () => {
+    vi.useFakeTimers();
+    const start = Date.now();
+    vi.stubGlobal('performance', { now: () => Date.now() - start });
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+      osDark: true,
+    });
+    const announced = channels.length;
+
+    setStoreMode(sidebar.document, 'dark', Date.now() + 120);
+    as(sidebar.document, () => vi.advanceTimersByTime(40));
+    expect(sidebar.colorMode()).toBe('dark');
+    // Auto resolves to dark as well, 40 ms later: the colours are still held, so it is not
+    // published early, and the original time stands.
+    setStoreMode(sidebar.document, 'system', Date.now() + 120);
+    expect(storage.get('resolved-color-mode')).toBe('light');
+    expect(channels).toHaveLength(announced);
+    expect(sidebar.document.attributes.get('data-bento-color-mode-pref')).toBe('system');
+    as(sidebar.document, () => vi.advanceTimersByTime(50));
+    expect(storage.get('resolved-color-mode')).toBe('light');
+    as(sidebar.document, () => vi.advanceTimersByTime(40));
+    expect(storage.get('resolved-color-mode')).toBe('dark');
+    // The newer request's announcement is the one that went out, once.
+    expect(posted.filter(({ resolved }) => resolved === 'dark')).toEqual([
+      expect.objectContaining({ kind: 'resolved-color-mode', mode: 'system', resolved: 'dark' }),
+    ]);
   });
 
   it('resolves Auto when the change applies, so an OS change missed while it waited is not shown', async () => {

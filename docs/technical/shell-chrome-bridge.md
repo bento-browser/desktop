@@ -495,15 +495,23 @@ documents, not chrome windows, and a chrome window is not a registered document.
   event, `settings/changed` and `settings/snapshot` (`colorStamp`), the sidebar's
   `uiColorModeStamp` in `BENTO_PANELS` (a private window's payload drops it: its mode is its own and
   never scheduled), and into the shell store as `colorFlipAt` next to `current`. Chrome
-  (`setChromeColorMode`) and each shell document (`applyModeWithFade`) wait until the first
-  animation frame at or after `flipAt` (turned once, on receipt, into a deadline on the
-  document's monotonic clock, so a step of the system clock cannot move it), then write the mode
-  and set the fade attribute; an Auto choice is resolved again at that moment. A late
-  message, a missing `flipAt`, the first application, an unchanged mode and a hidden window apply
-  at once, a newer call replaces a waiting change, and an OS appearance change under Auto and
-  `about:preferences` (patch 12, which follows `bento-ui-color-mode` itself) are never
-  scheduled. The stamp's `flipAt` is not recorded by `acceptChromeColorStamp`: only `{ run, seq }`
-  orders messages, so a stale `flipAt` can never be replayed. Nothing about it is persisted.
+  (`setChromeColorMode`) and each shell document (`applyModeWithFade`) prepare the flip in the
+  next animation frame (the mode and the fade attribute go on, with `--bento-mode-fade-delay`
+  set to the time left until `flipAt`, which is turned once, on receipt, into a deadline on the
+  document's monotonic clock, so a step of the system clock cannot move it) and announce it at
+  the first frame at or after `flipAt` (the window's overlays through the resolved-mode
+  broadcast, `about:preferences` through `bento-ui-color-mode`); an Auto choice is resolved again
+  when the flip is prepared. A late message, a missing `flipAt`, the first application, an
+  unchanged mode and a hidden window apply at once, and an OS appearance change under Auto is never
+  scheduled. A request is either joined to the waiting flip or replaces it: a later request that
+  resolves to the mode the waiting flip already shows (the `BENTO_PANELS` payload that arrives inside
+  the lead, or Dark followed by Auto resolving to dark) joins it, keeps its earlier deadline and takes
+  over the newest write and announcement, so the mode is announced once, at that deadline; a request
+  for the other mode, or an OS change that makes the waiting mode wrong, replaces it with its own
+  `flipAt` and the stale mode is never announced. The stamp-order rule below runs first, so a dropped
+  message can neither join nor replace. The stamp's `flipAt` is not recorded by
+  `acceptChromeColorStamp`: only `{ run, seq }` orders messages, so a stale `flipAt` can never be
+  replayed. Nothing about it is persisted.
 - Cached schema: a profile can still hold an older `notifyUiColorMode` schema whose `stamp` has
   only `run` and `seq` (built-in add-on metadata is cached by version and this change adds no
   version bump). That schema does not ignore `flipAt`: Firefox rejects the call for an unexpected
@@ -513,15 +521,17 @@ documents, not chrome windows, and a chrome window is not a registered document.
   `flipAt` once with `{ run, seq }` only; the event then reaches chrome without a time and
   applies at once. Both failures are logged, together, only when the retry fails too, and nothing
   is retried again (a stamp with no `flipAt` is not retried at all).
-- Hidden window: a window that is hidden while it waits for `flipAt` applies the change at once,
-  without a fade (a hidden window gets no animation frames); see theming.md, "Mode flip fade".
+- Hidden window: a window that is hidden when the change arrives applies it at once, without a fade
+  (a hidden window gets no animation frames). A window that hides while a prepared or running fade is
+  active drops the fade attribute and delay at once, announces a not yet announced mode once, and never
+  repeats an announcement; see theming.md, "Mode flip fade".
 - Rules: a private window ignores the event (its mode is its own, in memory, and reaches chrome
   through its own sidebar's `BENTO_PANELS`). A window whose mount script is not running yet
   misses the event, which is fine: `BENTO_PANELS` carries `uiColorMode` and applies it at
   startup, without a fade (the first application in a window never fades). The payload is the
-  backstop for a lost event and for every other chrome-bound setting, and its later
-  `applyChromeColorMode` call finds the mode already set and returns, so one flip makes one
-  fade.
+  backstop for a lost event and for every other chrome-bound setting; its later
+  `applyChromeColorMode` call finds the mode already applied or its flip waiting and joins it, so
+  one flip makes one fade and one announcement.
 - Order: the two routes can deliver out of order (a payload serialised before the flip, held in
   `sendChromeTitle`'s queue, reaches chrome after the event), so the mode carries a stamp
   `{ run, seq }` (`ColorStamp` in `extensions/_shared/protocol.ts`). `SettingsStore.colorStamp()`
