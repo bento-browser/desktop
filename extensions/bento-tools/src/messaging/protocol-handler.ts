@@ -1456,7 +1456,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       return;
     }
     case 'settings/requestSnapshot':
-      ctx.send({ type: 'settings/snapshot', settings: ctx.settings.snapshot() });
+      ctx.send({
+        type: 'settings/snapshot',
+        settings: ctx.settings.snapshot(),
+        colorStamp: ctx.settings.colorStamp(),
+      });
       return;
     case 'settings/update': {
       // A private window keeps its own sidebar and colour mode in the shell

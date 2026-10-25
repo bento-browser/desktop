@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, SettingsStore } from './SettingsStore';
+import { COLOR_FLIP_LEAD_MS, DEFAULT_SETTINGS, SettingsStore } from './SettingsStore';
 
 describe('SettingsStore durable commits', () => {
   beforeEach(() => {
@@ -104,5 +104,79 @@ describe('SettingsStore durable commits', () => {
         overrides: { panelCornerRadiusPx: 20, panelShadowsEnabled: false },
       },
     });
+  });
+});
+
+describe('SettingsStore colorStamp', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('browser', {
+      storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => {}) } },
+    });
+  });
+
+  it('stamps the state a run starts with, and rises only when uiColorMode changes', async () => {
+    const store = new SettingsStore();
+    await store.init();
+    // Stamped from the start, so the first state chrome hears is ordered too.
+    const start = store.colorStamp();
+    expect(start.run).toMatch(/\S/);
+    expect(start.seq).toBe(1);
+    const seen: number[] = [];
+    store.onChange(() => seen.push(store.colorStamp().seq));
+
+    await store.update({ panelCornerRadiusPx: 20 });
+    expect(store.colorStamp()).toEqual(start);
+
+    await store.update({ uiColorMode: 'dark' });
+    expect(store.colorStamp()).toMatchObject({ run: start.run, seq: 2 });
+    // The listener of a colour change reads the new stamp, so the direct leg and the settings
+    // events carry the same one.
+    expect(seen).toEqual([1, 2]);
+
+    // An update that repeats the mode changes nothing.
+    await store.update({ uiColorMode: 'dark', panelCornerRadiusPx: 21 });
+    expect(store.colorStamp().seq).toBe(2);
+
+    // A reset that changes the mode is a change; one that does not is not.
+    await store.reset();
+    expect(store.colorStamp().seq).toBe(3);
+    await store.reset();
+    expect(store.colorStamp().seq).toBe(3);
+  });
+
+  it('schedules each colour change one lead ahead and leaves the starting state unscheduled', async () => {
+    const store = new SettingsStore();
+    await store.init();
+    expect(store.colorStamp().flipAt).toBeUndefined();
+
+    vi.spyOn(Date, 'now').mockReturnValue(5_000_000);
+    await store.update({ uiColorMode: 'dark' });
+    expect(store.colorStamp().flipAt).toBe(5_000_000 + COLOR_FLIP_LEAD_MS);
+
+    // Another setting, or the same mode again, keeps the change's own time.
+    vi.spyOn(Date, 'now').mockReturnValue(6_000_000);
+    await store.update({ panelCornerRadiusPx: 20 });
+    await store.update({ uiColorMode: 'dark' });
+    expect(store.colorStamp().flipAt).toBe(5_000_000 + COLOR_FLIP_LEAD_MS);
+
+    await store.update({ uiColorMode: 'light' });
+    expect(store.colorStamp().flipAt).toBe(6_000_000 + COLOR_FLIP_LEAD_MS);
+    vi.restoreAllMocks();
+  });
+
+  it('does not depend on the clock, and a new run has its own id', async () => {
+    const first = new SettingsStore();
+    await first.init();
+    await first.update({ uiColorMode: 'dark' });
+
+    // A restart after the clock stepped back: the sequence starts again, under another run.
+    vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const restarted = new SettingsStore();
+    await restarted.init();
+    await restarted.update({ uiColorMode: 'dark' });
+    expect(restarted.colorStamp().run).not.toBe(first.colorStamp().run);
+    expect(restarted.colorStamp().seq).toBe(2);
+    vi.restoreAllMocks();
   });
 });

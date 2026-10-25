@@ -7,10 +7,23 @@
 // Defaults mirror prefs/bento.js. Storing only deltas-from-default keeps the
 // storage payload small and lets us evolve defaults without migrating data.
 
-import type { BentoSettings } from '@shared/protocol';
+import type { BentoSettings, ColorStamp } from '@shared/protocol';
 import { dropRetiredSettings, isValidBentoSettingsPatch } from '@shared/export-schema';
 
 const STORAGE_KEY = 'bento.settings';
+
+/**
+ * How far ahead of a colour mode change the stamp's `flipAt` is set (see ColorStamp). Chrome, the
+ * sidebar and each overlay receive the mode by different routes (a direct window event, the shell
+ * background's BroadcastChannel, the BentoShellBus relay), 5 to 40 ms after the change, and the
+ * shell documents share one process that spends about 60 ms after receipt on re-rendering the new
+ * settings. Each document waits for `flipAt` and applies then, so the lead has to cover that
+ * delivery; the cost is the same delay between the click and the flip. Measured with the window
+ * screen-recorded (theming.md, "Mode flip fade"), palette flips with the fade start more than a
+ * frame plus 8 ms apart: 1 of 8 at 80 ms, 1 of 12 at 100 ms, 1 and 2 of 12 at 120 ms (two runs),
+ * 2 of 16 at 160 ms. A longer lead does not shorten that tail and only delays the flip.
+ */
+export const COLOR_FLIP_LEAD_MS = 120;
 const VERSION = 2;
 
 export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
@@ -89,6 +102,10 @@ export class SettingsStore {
   #listeners = new Set<Listener>();
   #overrideKeys = new Set<keyof BentoSettings>();
   #durableRevision = 0;
+  // Names this run of tools (a run is one lifetime of this store) and counts its colour changes.
+  #colorRun = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  #colorSeq = 1;
+  #colorFlipAt: number | undefined;
   #mutationQueue: Promise<void> = Promise.resolve();
 
   async init(): Promise<void> {
@@ -116,6 +133,19 @@ export class SettingsStore {
   onChange(listener: Listener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /**
+   * Orders changes of `uiColorMode` for chrome: the run id plus a sequence that is 1 for the
+   * state this run started with and rises with each change after it, before the listeners run.
+   * Every settings event and the direct colour signal carry it, so the state chrome first hears
+   * is stamped too. Chrome compares sequences only inside one run (see ColorStamp), so nothing
+   * here depends on the clock or survives a restart.
+   */
+  colorStamp(): ColorStamp {
+    return this.#colorFlipAt === undefined
+      ? { run: this.#colorRun, seq: this.#colorSeq }
+      : { run: this.#colorRun, seq: this.#colorSeq, flipAt: this.#colorFlipAt };
   }
 
   hasOverride(key: keyof BentoSettings): boolean {
@@ -183,6 +213,10 @@ export class SettingsStore {
     }
     const payload: StoredShape = { version: VERSION, overrides };
     await browser.storage.local.set({ [STORAGE_KEY]: payload });
+    if (next.uiColorMode !== this.#current.uiColorMode) {
+      this.#colorSeq += 1;
+      this.#colorFlipAt = Date.now() + COLOR_FLIP_LEAD_MS;
+    }
     this.#current = next;
     this.#overrideKeys = new Set(Object.keys(overrides) as Array<keyof BentoSettings>);
     this.#durableRevision += 1;

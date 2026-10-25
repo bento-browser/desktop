@@ -1,4 +1,4 @@
-import type { SearchEngineId } from '@shared/protocol';
+import type { ColorStamp, SearchEngineId } from '@shared/protocol';
 
 declare global {
   namespace browser {
@@ -17,6 +17,13 @@ declare global {
        * is no live matching grant. Validate the result with readAddPanelGrant.
        */
       consumeAddPanelGrant(tabId: number, token: string): Promise<unknown>;
+      /**
+       * Tells every browser window's mount script the new UI colour mode pref at once
+       * (a `bento-ui-color-mode-set` window event, detail `{ mode, stamp }`); private windows
+       * ignore it. `stamp` is SettingsStore.colorStamp(): it orders the change against the panels
+       * payload and says when it should show (`flipAt`).
+       */
+      notifyUiColorMode(mode: 'light' | 'dark' | 'system', stamp: ColorStamp): Promise<void>;
     };
   }
 }
