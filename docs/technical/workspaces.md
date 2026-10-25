@@ -943,7 +943,8 @@ background-color` on the spring pair while a collapse or expand runs). The toolb
   `transition: background-color` on the spring pair on them only while
   `data-bento-rail-transition` is present, `measure` included: an expand drops
   `data-bento-collapsed` in its measure step, and the colour must start leaving the rail in
-  that flush. Theme and mode changes happen without the attribute, so they stay instant.
+  that flush. Theme changes happen without the attribute and stay instant; a mode flip has its
+  own fade (`data-bento-mode-fade`, [theming.md](theming.md#mode-flip-fade)).
   The footer's fill is the registered, inherited `<color>` property `--bento-footer-fill`
   (`@property` in `app.css`, set to `--bento-brand-bg` on the footer), and the footer
   transitions that property instead of `background-color`; the footer backdrop (`::before`,
@@ -1197,8 +1198,9 @@ left segment, the host, the divider and the edge line fade together with the sli
 the spring tokens as above and read `--bento-toolbar-left-bg` and the shell's
 `.bento-shell-app` background at several `currentTime` values), the tab list band and the
 workspace switcher square are neutral-18, with no side panels the rail stays neutral-5 and
-nothing changes colour, and hide, show, boot, reduced motion and theme or mode changes switch
-the colour with no fade, in every theme, light and dark, and with contrast "more";
+nothing changes colour, and hide, show, boot, reduced motion and theme changes switch
+the colour with no fade (a mode flip fades on its own `state` rule, see
+[theming.md](theming.md#mode-flip-fade)), in every theme, light and dark, and with contrast "more";
 to watch a push slowly, raise `--muxui-semantic-motion-reveal-transition-spring-duration`
 on the chrome root and on the shell's `<html>` (the plain `-reveal-duration` no longer
 moves it; the hover reveal's slide-over runs on the same token; scale the `state` and
@@ -2121,3 +2123,17 @@ workspaces.
   leaves only a visual outline on the folder row and prevents immediate typing.
   Keep the chrome bridge's `content.focus()` handoff for `ui/*` actions and the
   shell-side retry/select logic together.
+- Do not give the expanded tab list scroller a stable scrollbar gutter
+  (`scrollbar-gutter: stable` on `.bento-tab-list-pane__scroller`). It reserved the scrollbar's
+  width (11 px with the thin classic scrollbar) even with nothing to scroll, so the tab rows
+  and the active row ended 11 px short of the workspace switcher, the address bar and the
+  New/Search row on their right edge (rows 281, the rest 292 in a 300 px sidebar). The
+  scroller uses `scrollbar-gutter: auto` with `scrollbar-width: thin`: rows run the full width
+  and narrow by the scrollbar only when the list really overflows, in one step with no
+  intermediate widths (measured: 19 rows fit, the 20th made `scrollHeight` pass `clientHeight`
+  and the rows went from 292 to 281, left edge unchanged at 7). Nothing depends on the old
+  gutter: the row highlight takes `row.offsetWidth` under a `ResizeObserver` on the list, the
+  rail layout measures box widths for the active fill's tail instead of reading constants,
+  and the collapsed rail already used `scrollbar-gutter: auto` with its own scrollbar. The New
+  and Search row, the address bar and the switcher stay full width when the list overflows, so
+  they then extend past the rows by the scrollbar width. Found 2026-10-25.

@@ -41,7 +41,13 @@
 // the windowId itself — actions from window A and window B both flow
 // through it on the same port.
 
-import type { Action, Event, SidebarShortcutBehavior, WireAction } from '@shared/protocol';
+import type {
+  Action,
+  ColorStamp,
+  Event,
+  SidebarShortcutBehavior,
+  WireAction,
+} from '@shared/protocol';
 import { useSyncExternalStore } from 'react';
 import { useTabsStore } from '../state/tabs';
 import { selectActiveIdForWindow, useWorkspacesStore } from '../state/workspaces';
@@ -58,6 +64,7 @@ import { useExternalMergeStore } from '../state/externalMerge';
 import { WINDOW_LOCAL_SETTING_KEYS } from '@shared/windowLocalSettings';
 import { resolveThemeId } from '../theme/presets';
 import { sendChromeTitle } from './chromeTitle';
+import { followColorStamp } from './colorStamp';
 import {
   BUS_CHANNEL_NAME,
   createChannelTransport,
@@ -121,6 +128,10 @@ interface BusState {
    * reaches tools, so tools does not re-fire panels/sync for it; this is sent again
    * with the new values instead. */
   lastPanelsForChrome: PanelsSyncEvent | null;
+  /** The order stamp of the saved colour mode (settings events' `colorStamp`), null until a
+   * current tools build has sent one. Every panels payload carries it, so chrome can drop one
+   * that was built before a newer mode reached it by the direct route. */
+  colorStamp: ColorStamp | null;
 }
 
 const state: BusState = {
@@ -134,6 +145,7 @@ const state: BusState = {
   helloId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   pendingPanelsSync: new Map(),
   lastPanelsForChrome: null,
+  colorStamp: null,
 };
 const subscribers = new Set<() => void>();
 
@@ -166,6 +178,7 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
     mainWidthPx?: number;
     defaultPanelWidthPx?: number;
     uiColorMode?: string;
+    uiColorModeStamp?: ColorStamp;
     sidebarCollapsed?: boolean;
     sidebarHidden?: boolean;
     sidebarShortcutBehavior?: SidebarShortcutBehavior;
@@ -228,6 +241,11 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
     document.documentElement.getAttribute('data-color-mode');
   if (cur?.uiColorMode) payload.uiColorMode = cur.uiColorMode;
   else if (bootUiColorMode) payload.uiColorMode = bootUiColorMode;
+  // A private window shows its own mode, never tools' saved one, so it has no scheduled flip.
+  if (state.colorStamp) {
+    const { run, seq } = state.colorStamp;
+    payload.uiColorModeStamp = state.isPrivate ? { run, seq } : state.colorStamp;
+  }
   if (typeof cur?.sidebarCollapsed === 'boolean') {
     payload.sidebarCollapsed = cur.sidebarCollapsed;
   }
@@ -371,7 +389,10 @@ function ensureConnection(): void {
       case 'settings/snapshot':
       case 'settings/changed': {
         const before = useSettingsStore.getState().current;
-        useSettingsStore.getState().apply(event.settings);
+        // Before the store applies: its subscribers may build a payload.
+        if (event.colorStamp)
+          state.colorStamp = followColorStamp(state.colorStamp, event.colorStamp);
+        useSettingsStore.getState().apply(event.settings, event.colorStamp?.flipAt);
         // uiColorMode is delivered to chrome via the BENTO_PANELS title-
         // IPC payload (the panels/sync handler below includes it). We
         // intentionally do NOT write a dedicated BENTO_COLOR_MODE title

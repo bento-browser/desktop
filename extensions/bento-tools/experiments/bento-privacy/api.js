@@ -399,6 +399,11 @@ function consumeAddPanelGrant(extension, tabId, token) {
   return validSource ? { windowId, source } : null;
 }
 
+// The window event the mount script (bento-shell-mount.js) listens for. detail is { mode, stamp }:
+// the pref and SettingsStore.colorStamp(), the order stamp chrome compares with the panels payload's
+// (run, seq) plus the time the change should show (flipAt, absent from an older caller).
+const UI_COLOR_MODE_EVENT = 'bento-ui-color-mode-set';
+
 this.bentoPrivacy = class extends ExtensionAPI {
   getAPI(context) {
     const extensionBaseURI = this.extension?.baseURI;
@@ -406,6 +411,28 @@ this.bentoPrivacy = class extends ExtensionAPI {
       bentoPrivacy: {
         async consumeAddPanelGrant(tabId, token) {
           return consumeAddPanelGrant(context.extension, tabId, token);
+        },
+
+        // Tells each browser window's mount script the new UI colour mode pref the moment it
+        // changes, so chrome starts its mode fade with the other documents instead of waiting for
+        // the panels/sync payload (which carries the same value and stays the backstop). The mount
+        // script ignores it in a private window, which keeps its own mode.
+        async notifyUiColorMode(mode, stamp) {
+          if (mode !== 'light' && mode !== 'dark' && mode !== 'system') return;
+          // The stamp is copied so the window gets a plain object of this scope's own.
+          const detail = {
+            mode,
+            stamp:
+              stamp && typeof stamp.run === 'string' && Number.isFinite(stamp.seq)
+                ? Number.isFinite(stamp.flipAt)
+                  ? { run: stamp.run, seq: stamp.seq, flipAt: stamp.flipAt }
+                  : { run: stamp.run, seq: stamp.seq }
+                : null,
+          };
+          for (const win of Services.wm.getEnumerator('navigator:browser')) {
+            if (win.closed) continue;
+            win.dispatchEvent(new win.CustomEvent(UI_COLOR_MODE_EVENT, { detail }));
+          }
         },
 
         async getPrefs(names) {

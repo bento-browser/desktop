@@ -777,6 +777,24 @@ export type ExternalMergeErrorCode =
   | 'unknown-source'
   | 'no-importable-tabs';
 
+/**
+ * Orders one tools run's changes of the saved `uiColorMode`. `run` names the run (a new id every
+ * time bento-tools starts) and `seq` rises with each change inside it, from 1 for the state the
+ * run started with. Chrome compares `seq` only between stamps of the same run, so a restart, or
+ * a clock that moved, can never leave it rejecting a legitimate change.
+ *
+ * `flipAt` (epoch ms, `Date.now()` of the producer; every Bento process shares the system clock)
+ * is when the change that made this stamp should show. Each document that receives the mode
+ * waits for it and applies the mode and its fade together, so the documents flip at one instant
+ * whatever their delivery time. A document that receives it at or after `flipAt` applies at
+ * once; a stamp without it (the state a run started with, an older build) applies at once.
+ */
+export interface ColorStamp {
+  run: string;
+  seq: number;
+  flipAt?: number;
+}
+
 export type Event =
   | { type: 'pong'; ts: number }
   | { type: 'tools/booted'; version: string }
@@ -799,8 +817,10 @@ export type Event =
       activeIdByWindow: Record<number, string>;
     }
   | { type: 'workspaces/changed'; deltas: WorkspaceDelta[] }
-  | { type: 'settings/snapshot'; settings: BentoSettings }
-  | { type: 'settings/changed'; settings: BentoSettings }
+  /** `colorStamp` orders the saved `uiColorMode` for chrome (SettingsStore.colorStamp); tools
+   * sends it with every settings event, and it is absent only from a build that predates it. */
+  | { type: 'settings/snapshot'; settings: BentoSettings; colorStamp?: ColorStamp }
+  | { type: 'settings/changed'; settings: BentoSettings; colorStamp?: ColorStamp }
   /** Snapshot of the active workspace's panels. Sidebar receives this and
    * forwards to chrome via title-IPC (BENTO_PANELS:<ts>:<base64-json>);
    * chrome reconciles its panel strip — adds new <browser> hosts for new

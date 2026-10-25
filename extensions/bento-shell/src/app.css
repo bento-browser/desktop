@@ -4,7 +4,10 @@
 
 /* The footer's fill, registered so a collapse or expand can fade it (sidebar/railTransition.css)
  * and so the choreography's backdrop pseudo-element follows it: an inherited <color> reaches
- * the pseudo-element on every frame of the fade, which `background-color: inherit` does not. */
+ * the pseudo-element on every frame of the fade, which `background-color: inherit` does not.
+ * The mode flip fade does not use it: a transition on the registered property shows one
+ * rendering update after the footer's own `background-color` would (measured, 25 to 30 ms
+ * in a 30 ms sidebar frame), so the footer fades `background-color` with everything else. */
 @property --bento-footer-fill {
   syntax: '<color>';
   inherits: true;

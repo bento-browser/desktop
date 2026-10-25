@@ -717,7 +717,11 @@ The theme system should support:
 - a grouped selector containing Bento's Default palette plus the standard and
   monochromatic palettes shipped by `@muxui/react/themes`;
 - per-workspace theme selection;
-- light, dark, and Auto UI modes;
+- light, dark, and Auto UI modes; switching between them fades the whole Bento interface
+  (sidebar, toolbar, menus and palettes) together in about a tenth of a second, starting a
+  tenth of a second or so after the choice so that every part changes at the same instant
+  (a change that follows the computer's appearance in Auto is immediate), and web pages are
+  not part of the fade;
 - independent content color-scheme preference where possible;
 - user customization through token-based theme presets.
 

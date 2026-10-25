@@ -471,6 +471,83 @@ button, the footer colour control). Only that window changes; the others do not,
 and after quitting the saved settings (`browser.storage.local`, `settings` key of
 bento-tools) hold only what regular windows set.
 
+## Direct colour mode signal (tools to chrome)
+
+A light/dark flip does not wait for the title IPC. `bento-tools` calls
+`browser.bentoPrivacy.notifyUiColorMode(mode, stamp)` in the first line of its `settings.onChange`
+handler, once per change of the saved `uiColorMode` (`createChromeColorModeSignal` in
+`settings/ChromeColorModeSignal.ts`; a failed or missing call is logged and the handler goes
+on). The experiment (`extensions/bento-tools/experiments/bento-privacy/api.js`, with the same
+shape as `consumeAddPanelGrant`: a chrome-facing method in the existing `bentoPrivacy`
+namespace, so no manifest change and no version bump) validates the value (`light`, `dark` or
+`system`) and fires a `bento-ui-color-mode-set` `CustomEvent` (`detail` is `{ mode, stamp }`, `stamp` is `null` when it is not a valid
+`{ run, seq }` and carries `flipAt` only when that is a finite number; the schema marks `flipAt`
+optional, so an older caller just sends no time) at every `navigator:browser` window. The mount script's `handleUiColorModeSet` (next to
+`applyChromeColorMode`) calls `applyChromeColorMode(mode, stamp)`; Auto resolves in chrome as it
+does for the payload. It is not a shell-bus message: the hub and the relay reach shell
+documents, not chrome windows, and a chrome window is not a registered document.
+
+- Timing: the shell documents apply the same pref from their settings store's `subscribe`; the
+  stamp's `flipAt` (below) makes chrome and every document start the fade at one scheduled
+  instant instead of when each heard of the change (theming.md, "Mode flip fade").
+- Scheduled flip: `SettingsStore` sets `flipAt` (`Date.now()` plus `COLOR_FLIP_LEAD_MS`) on the
+  stamp whenever `uiColorMode` changes, and the stamp carries it on every route: the direct
+  event, `settings/changed` and `settings/snapshot` (`colorStamp`), the sidebar's
+  `uiColorModeStamp` in `BENTO_PANELS` (a private window's payload drops it: its mode is its own and
+  never scheduled), and into the shell store as `colorFlipAt` next to `current`. Chrome
+  (`setChromeColorMode`) and each shell document (`applyModeWithFade`) wait until the first
+  animation frame at or after `flipAt` (turned once, on receipt, into a deadline on the
+  document's monotonic clock, so a step of the system clock cannot move it), then write the mode
+  and set the fade attribute; an Auto choice is resolved again at that moment. A late
+  message, a missing `flipAt`, the first application, an unchanged mode and a hidden window apply
+  at once, a newer call replaces a waiting change, and an OS appearance change under Auto and
+  `about:preferences` (patch 12, which follows `bento-ui-color-mode` itself) are never
+  scheduled. The stamp's `flipAt` is not recorded by `acceptChromeColorStamp`: only `{ run, seq }`
+  orders messages, so a stale `flipAt` can never be replayed. Nothing about it is persisted.
+- Cached schema: a profile can still hold an older `notifyUiColorMode` schema whose `stamp` has
+  only `run` and `seq` (built-in add-on metadata is cached by version and this change adds no
+  version bump). That schema does not ignore `flipAt`: Firefox rejects the call for an unexpected
+  property, so the send fails and is only logged, and the direct event is lost (the
+  `BENTO_PANELS` route still carries the stamp, with its `flipAt`, later).
+  `createChromeColorModeSignal` therefore retries a failed send that carried
+  `flipAt` once with `{ run, seq }` only; the event then reaches chrome without a time and
+  applies at once. Both failures are logged, together, only when the retry fails too, and nothing
+  is retried again (a stamp with no `flipAt` is not retried at all).
+- Hidden window: a window that is hidden while it waits for `flipAt` applies the change at once,
+  without a fade (a hidden window gets no animation frames); see theming.md, "Mode flip fade".
+- Rules: a private window ignores the event (its mode is its own, in memory, and reaches chrome
+  through its own sidebar's `BENTO_PANELS`). A window whose mount script is not running yet
+  misses the event, which is fine: `BENTO_PANELS` carries `uiColorMode` and applies it at
+  startup, without a fade (the first application in a window never fades). The payload is the
+  backstop for a lost event and for every other chrome-bound setting, and its later
+  `applyChromeColorMode` call finds the mode already set and returns, so one flip makes one
+  fade.
+- Order: the two routes can deliver out of order (a payload serialised before the flip, held in
+  `sendChromeTitle`'s queue, reaches chrome after the event), so the mode carries a stamp
+  `{ run, seq }` (`ColorStamp` in `extensions/_shared/protocol.ts`). `SettingsStore.colorStamp()`
+  returns the run id of this tools run (new for every run) and a `seq` that starts at 1 when the
+  store is constructed and rises with each change of the saved `uiColorMode`; the stamp exists
+  from the start of a run, so the initial snapshot and its first payload are ordered too. Tools
+  adds it as `colorStamp` to `settings/snapshot` and `settings/changed` and to the direct event;
+  the sidebar writes the newest (another run replaces the kept one) into each `BENTO_PANELS`
+  payload as `uiColorModeStamp`. Chrome's rule: nothing recorded, anything applies; another run
+  applies and replaces the record; the same run applies unless `seq` is lower than the record;
+  a message without a valid stamp is dropped once a stamp is recorded. It never reads a clock and
+  nothing is persisted, so a tools restart (clock changes included) cannot make chrome reject a
+  legitimate change. The exact rule and the one restart case that is only corrected on the next
+  message are in theming.md, "Mode flip fade". A payload with the same stamp and mode is a
+  no-op, so the backstop never cancels or restarts a running fade.
+- Why not the existing surfaces: the title channel is the slow leg (a microtask-scheduled
+  `emitPanelsSync`, then `browser.tabs.get` per visible panel, then the shell relays the payload
+  through its `document.title`); the bus hub and `postToDocument` address documents, not
+  windows. A dedicated `BENTO_COLOR_MODE` title was removed earlier because it raced
+  `BENTO_PANELS` (see Title IPC pitfalls); this event does not use the title, but the two do race (the payload is
+  slower and can be older), which is why the stamp exists; both write the same attribute
+  through the same function.
+- Verify: flip the mode in a regular window with a private window open. The regular window's
+  root takes `data-color-mode` and a single `data-bento-mode-fade` set; the private window's
+  `bento-ui-color-mode-set` listener sees each event and its root stays as it was.
+
 ## Title IPC pitfalls
 
 - Title writes coalesce: a title replaced before the content process reports it

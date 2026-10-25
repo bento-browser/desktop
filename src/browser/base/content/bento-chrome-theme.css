@@ -1273,3 +1273,38 @@
     color: var(--color-60-fg) !important;
   }
 }
+
+/*
+ * Mode flip fade. applyChromeColorMode (bento-shell-mount.js) sets data-bento-mode-fade on the
+ * root in the same task as data-color-mode and removes it once the fade has ended. While it is
+ * present every colour of every element in the window fades on the `state` pair together,
+ * whatever timing the element had (non-colour transitions are replaced for that moment).
+ *
+ * Unlayered and !important: Firefox's chrome rules have ID selectors, and the bento.* layers
+ * hold important declarations, so only an important declaration out-ranks them. Among important
+ * declarations a layered one beats an unlayered one and a higher specificity beats a lower, so
+ * the `transition: none !important` rules in bento-shell-mount.css still win for the transient
+ * states they cover (live resize, the import handoff, a workspace switch); #PersonalToolbar's
+ * is persistent, so its selector is listed here with enough specificity to win.
+ *
+ * The two registered colours are the toolbar and window gradient stops, which only fade as
+ * registered properties. Not reached: shadow DOM of Firefox custom elements, native menus,
+ * web content, and the workspace theme id (it switches at once).
+ */
+:root[data-bento-mode-fade],
+:root[data-bento-mode-fade] *,
+:root[data-bento-mode-fade] *::before,
+:root[data-bento-mode-fade] *::after,
+:root[data-bento-mode-fade][bento-sidebar-addressbar='true'] #PersonalToolbar {
+  transition:
+    background-color var(--muxui-semantic-motion-state-transition),
+    color var(--muxui-semantic-motion-state-transition),
+    border-color var(--muxui-semantic-motion-state-transition),
+    fill var(--muxui-semantic-motion-state-transition),
+    stroke var(--muxui-semantic-motion-state-transition),
+    box-shadow var(--muxui-semantic-motion-state-transition),
+    outline-color var(--muxui-semantic-motion-state-transition),
+    text-decoration-color var(--muxui-semantic-motion-state-transition),
+    --bento-toolbar-left-bg var(--muxui-semantic-motion-state-transition),
+    --bento-toolbar-right-bg var(--muxui-semantic-motion-state-transition) !important;
+}
