@@ -31,3 +31,26 @@ body {
 body {
   min-height: 100vh;
 }
+
+/* Mode flip fade. modeFade.ts sets data-bento-mode-fade on <html> in the same task as the
+ * mode change and removes it once the fade has ended. While it is present every colour
+ * property of every element in this document fades on the `state` pair together, whatever
+ * timing the element had (non-colour transitions are replaced for that moment). It is
+ * !important so no component rule out-ranks it; only the rail choreography's own
+ * `transition: none !important` (sidebar/railTransition.css, a layered important) wins.
+ * Not reached: web content, Mux/Firefox shadow DOM, and gradients over unregistered custom
+ * properties, which cannot interpolate. */
+:root[data-bento-mode-fade],
+:root[data-bento-mode-fade] *,
+:root[data-bento-mode-fade] *::before,
+:root[data-bento-mode-fade] *::after {
+  transition:
+    background-color var(--muxui-semantic-motion-state-transition),
+    color var(--muxui-semantic-motion-state-transition),
+    border-color var(--muxui-semantic-motion-state-transition),
+    fill var(--muxui-semantic-motion-state-transition),
+    stroke var(--muxui-semantic-motion-state-transition),
+    box-shadow var(--muxui-semantic-motion-state-transition),
+    outline-color var(--muxui-semantic-motion-state-transition),
+    text-decoration-color var(--muxui-semantic-motion-state-transition) !important;
+}

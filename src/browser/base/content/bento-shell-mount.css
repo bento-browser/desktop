@@ -78,10 +78,19 @@
   inherits: false;
   initial-value: transparent;
 }
+/* The main-side colour is registered too, so the mode flip fade (bento-chrome-theme.css) can fade
+   the gradient's right stop, which an unregistered custom property cannot. Not part of the
+   sidebar push: that fades the left colour only. */
+@property --bento-toolbar-right-bg {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
 #navigator-toolbox,
 #TabsToolbar,
 #nav-bar {
   --bento-toolbar-left-bg: var(--bento-toolbar-sidebar-bg);
+  --bento-toolbar-right-bg: var(--bento-toolbar-main-bg);
 }
 #tabbrowser-tabpanels.bento-panel-shadows-disabled,
 #bento-strip-container.bento-panel-shadows-disabled {
@@ -156,8 +165,8 @@
     to right,
     var(--bento-toolbar-left-bg) 0,
     var(--bento-toolbar-left-bg) var(--bento-toolbar-divider-x),
-    var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-    var(--bento-toolbar-main-bg) 100%
+    var(--bento-toolbar-right-bg) var(--bento-toolbar-divider-x),
+    var(--bento-toolbar-right-bg) 100%
   ) !important;
   background-repeat: no-repeat !important;
 }
@@ -165,13 +174,15 @@
 :root[bento-sidebar-addressbar='true'] body::after,
 :root[bento-sidebar-addressbar='true'] #browser,
 :root[bento-sidebar-addressbar='true'] #appcontent {
+  --bento-toolbar-left-bg: var(--bento-toolbar-sidebar-bg);
+  --bento-toolbar-right-bg: var(--bento-toolbar-main-bg);
   background-color: var(--bento-toolbar-main-bg) !important;
   background-image: linear-gradient(
     to right,
-    var(--bento-toolbar-sidebar-bg) 0,
-    var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
-    var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-    var(--bento-toolbar-main-bg) 100%
+    var(--bento-toolbar-left-bg) 0,
+    var(--bento-toolbar-left-bg) var(--bento-toolbar-divider-x),
+    var(--bento-toolbar-right-bg) var(--bento-toolbar-divider-x),
+    var(--bento-toolbar-right-bg) 100%
   ) !important;
   background-repeat: no-repeat !important;
   background-size: 100% 100% !important;
@@ -195,10 +206,10 @@
     background-color: var(--bento-toolbar-main-bg) !important;
     background-image: linear-gradient(
       to right,
-      var(--bento-toolbar-sidebar-bg) 0,
-      var(--bento-toolbar-sidebar-bg) var(--bento-toolbar-divider-x),
-      var(--bento-toolbar-main-bg) var(--bento-toolbar-divider-x),
-      var(--bento-toolbar-main-bg) 100%
+      var(--bento-toolbar-left-bg) 0,
+      var(--bento-toolbar-left-bg) var(--bento-toolbar-divider-x),
+      var(--bento-toolbar-right-bg) var(--bento-toolbar-divider-x),
+      var(--bento-toolbar-right-bg) 100%
     ) !important;
     background-repeat: no-repeat !important;
     background-size: 100% 100% !important;

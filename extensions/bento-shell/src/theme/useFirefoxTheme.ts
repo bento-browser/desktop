@@ -19,10 +19,11 @@
 // localStorage 'workspace-theme' (written by applyRootTheme.ts, not here) is the matching
 // hint for the workspace theme's stylesheet; boot.js requests that sheet pre-React.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { UiColorModePref } from '@shared/protocol';
 import { useSettingsStore } from '../state/settings';
 import { isForThisWindow, readPrivateFromHash, thisWindowId } from '../bridge/windowId';
+import { applyModeWithFade } from './modeFade';
 
 const STORAGE_KEY = 'color-mode';
 const RESOLVED_STORAGE_KEY = 'resolved-color-mode';
@@ -57,17 +58,34 @@ function resolveMode(mode: UiColorModePref, options: FirefoxThemeOptions = {}): 
   return mode;
 }
 
-function applyMode(mode: UiColorModePref, options: FirefoxThemeOptions = {}): 'light' | 'dark' {
-  const resolved = resolveMode(mode, options);
-  const html = document.documentElement;
-  html.setAttribute('data-color-mode', resolved);
-  html.setAttribute('data-theme', resolved);
-  html.setAttribute('data-bento-color-mode-pref', mode);
-  // Mux requires an explicit scheme/contrast on the same themed element.
-  // Bento currently exposes only the standard contrast mode.
-  html.setAttribute('data-muxui-color-scheme', resolved);
-  html.setAttribute('data-muxui-contrast', 'standard');
-  return resolved;
+/** Resolves and applies a mode. `flipAt` (a settings change's ColorStamp.flipAt) makes the
+ * attribute writes, and `onApplied`, wait for that time; the OS, storage and BroadcastChannel
+ * paths pass none and apply at once. The mode is resolved when it is applied, not when it was
+ * asked for, so an Auto choice that waits shows the OS appearance of that moment, and
+ * `onApplied` stores and announces the mode that is on screen. */
+function applyMode(
+  mode: UiColorModePref,
+  options: FirefoxThemeOptions = {},
+  flipAt?: number,
+  onApplied?: (resolved: 'light' | 'dark') => void,
+): void {
+  // Every mode write in this document goes through here (settings, OS change, storage and
+  // BroadcastChannel), so one fade covers them all (modeFade.ts).
+  applyModeWithFade(
+    () => resolveMode(mode, options),
+    (resolved) => {
+      const html = document.documentElement;
+      html.setAttribute('data-color-mode', resolved);
+      html.setAttribute('data-theme', resolved);
+      html.setAttribute('data-bento-color-mode-pref', mode);
+      // Mux requires an explicit scheme/contrast on the same themed element.
+      // Bento currently exposes only the standard contrast mode.
+      html.setAttribute('data-muxui-color-scheme', resolved);
+      html.setAttribute('data-muxui-contrast', 'standard');
+      onApplied?.(resolved);
+    },
+    flipAt,
+  );
 }
 
 /** Stores the resolved mode for this window's overlays. The unscoped key stays the
@@ -84,30 +102,63 @@ function publishResolvedMode(mode: UiColorModePref, resolved: 'light' | 'dark'):
   channel.close();
 }
 
+/** Applies a mode pref, mirrors it to localStorage and announces the resolved mode to the
+ * window's overlays. The pref a settings change names, or the one hydration found. The
+ * announcement goes out when the mode is applied, not when the change was heard: an overlay in
+ * Auto applies a published mode at once, which would flip it ahead of a scheduled flip. */
+function applyPreference(
+  mode: UiColorModePref,
+  preferStoredSystemResolution: boolean,
+  flipAt?: number,
+): void {
+  localStorage.setItem(STORAGE_KEY, mode);
+  applyMode(mode, { preferStoredSystemResolution }, flipAt, (resolved) => {
+    if (!preferStoredSystemResolution || mode !== 'system') {
+      storeResolvedMode(resolved);
+      publishResolvedMode(mode, resolved);
+    }
+  });
+}
+
 export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
   const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const preferStoredSystemResolution = options.preferStoredSystemResolution === true;
+  const appliedPref = useRef<UiColorModePref | null>(null);
 
+  // Applies the pref when the store changes, inside the store's own set(), not after React has
+  // rendered and flushed its effects: that took a frame or more (longer in a heavy document),
+  // and the mode fade of the documents of one window should start together. The first run
+  // is the initial application (boot hydration); a pref that is already applied is not
+  // applied, announced or faded again. settings/snapshot hasn't arrived yet when the store
+  // holds no pref - boot.js's localStorage-based paint stays until it does.
   useEffect(() => {
-    // settings/snapshot hasn't arrived yet — boot.js's localStorage-based
-    // initial paint stays. Once it lands the effect re-runs with a real
-    // value.
-    if (!uiColorMode) return;
-    const resolved = applyMode(uiColorMode, { preferStoredSystemResolution });
-    localStorage.setItem(STORAGE_KEY, uiColorMode);
-    if (!preferStoredSystemResolution || uiColorMode !== 'system') {
-      storeResolvedMode(resolved);
-      publishResolvedMode(uiColorMode, resolved);
-    }
+    const sync = (state: ReturnType<typeof useSettingsStore.getState>) => {
+      const pref = state.current?.uiColorMode;
+      if (!pref || pref === appliedPref.current) return;
+      appliedPref.current = pref;
+      // A throw here would stop the store's other subscribers (React's own) and the port
+      // handler that called set(), so it is contained.
+      try {
+        applyPreference(pref, preferStoredSystemResolution, state.colorFlipAt);
+      } catch (err) {
+        console.warn('[bento-shell] applying the colour mode failed', err);
+      }
+    };
+    sync(useSettingsStore.getState());
+    return useSettingsStore.subscribe(sync);
+  }, [preferStoredSystemResolution]);
 
+  // The listeners that keep an Auto choice following the OS and the window's other documents.
+  useEffect(() => {
     if (uiColorMode !== 'system') return;
     const media = matchMedia(DARK_QUERY);
     const onChange = () => {
-      const nextResolved = applyMode('system', { preferStoredSystemResolution });
-      if (!preferStoredSystemResolution) {
-        storeResolvedMode(nextResolved);
-        publishResolvedMode('system', nextResolved);
-      }
+      applyMode('system', { preferStoredSystemResolution }, undefined, (resolved) => {
+        if (!preferStoredSystemResolution) {
+          storeResolvedMode(resolved);
+          publishResolvedMode('system', resolved);
+        }
+      });
     };
     media.addEventListener('change', onChange);
 
