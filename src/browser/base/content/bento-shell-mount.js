@@ -3916,10 +3916,34 @@
   // A light/dark flip fades every colour of the window together: this attribute turns on the
   // catch-all rule in bento-chrome-theme.css while the flip runs. It goes on in the same task
   // as the mode and comes off only after the fade has ended (dropping the rule mid-fade cancels
-  // the running transitions). The shell's twin is theme/modeFade.ts; keep them in step.
+  // the running transitions). A flip that was heard before its time goes on at once with
+  // BENTO_MODE_FADE_DELAY_PROPERTY holding the transitions until then (prepareChromeColorFlip).
+  // The shell's twin is theme/modeFade.ts; keep them in step.
   const BENTO_MODE_FADE_ATTR = 'data-bento-mode-fade';
+  const BENTO_MODE_FADE_DELAY_PROPERTY = '--bento-mode-fade-delay';
+  // A window that hears of a flip up to this long after its time joins the fade part-way (a
+  // negative delay); one that hears of it later fades from the start.
+  const BENTO_FLIP_CATCH_UP_MAX_MS = 60;
   let chromeColorModeApplied = false;
-  function writeChromeColorMode(root, resolved, fade) {
+  function removeChromeModeFade(root) {
+    root.removeAttribute(BENTO_MODE_FADE_ATTR);
+    root.style.removeProperty(BENTO_MODE_FADE_DELAY_PROPERTY);
+  }
+  // A hidden window gets no frames to measure or end a fade by, so one that hides during a fade,
+  // however it joined it (prepared early, or late), drops the fade and its delay at once.
+  let chromeFadeHideListener = null;
+  function unwatchChromeFadeVisibility() {
+    if (chromeFadeHideListener) {
+      document.removeEventListener('visibilitychange', chromeFadeHideListener);
+      chromeFadeHideListener = null;
+    }
+  }
+  function endChromeModeFade(root) {
+    unwatchChromeFadeVisibility();
+    cancelMotion(root, BENTO_MODE_FADE_ATTR);
+    removeChromeModeFade(root);
+  }
+  function writeChromeColorMode(root, resolved, fade, delayMs = 0) {
     if (
       !fade ||
       document.hidden ||
@@ -3928,15 +3952,23 @@
       // A change that does not fade ends a fade that is running: its rule would otherwise keep
       // every transition forced on. (Called only when the mode really changes, so a delivery
       // that agrees with the running fade never gets here.)
-      cancelMotion(root, BENTO_MODE_FADE_ATTR);
-      root.removeAttribute(BENTO_MODE_FADE_ATTR);
+      endChromeModeFade(root);
       root.setAttribute('data-color-mode', resolved);
       return;
     }
     // A flip during a fade keeps the attribute; afterMotion drops the earlier wait for this key.
+    root.style.setProperty(BENTO_MODE_FADE_DELAY_PROPERTY, delayMs + 'ms');
     root.setAttribute(BENTO_MODE_FADE_ATTR, '');
     root.setAttribute('data-color-mode', resolved);
-    afterMotion(root, BENTO_MODE_FADE_ATTR, {}, () => root.removeAttribute(BENTO_MODE_FADE_ATTR));
+    afterMotion(root, BENTO_MODE_FADE_ATTR, {}, () => {
+      unwatchChromeFadeVisibility();
+      removeChromeModeFade(root);
+    });
+    unwatchChromeFadeVisibility();
+    chromeFadeHideListener = () => {
+      if (document.hidden) endChromeModeFade(root);
+    };
+    document.addEventListener('visibilitychange', chromeFadeHideListener);
   }
   // Order of the two routes a mode reaches chrome by, the direct event and the BENTO_PANELS
   // payload. A payload serialised before a flip can be delivered after the direct event, so
@@ -3959,34 +3991,41 @@
     chromeColorStamp = { run: stamp.run, seq: stamp.seq };
     return true;
   }
-  // Shows a resolved mode: the fade and the mode attribute together, then the observers.
-  function commitChromeColorMode(mode, resolved) {
+  // Shows a resolved mode: the fade and the mode attribute together. Returns whether the mode
+  // changed, which is when the observers are told (announceChromeColorMode).
+  function commitChromeColorMode(mode, resolved, delayMs = 0) {
     const root = document.documentElement;
     // The first application (the startup veil is still up) never fades.
     const fade = chromeColorModeApplied;
     chromeColorModeApplied = true;
-    if (root.getAttribute('data-color-mode') !== resolved) {
-      writeChromeColorMode(root, resolved, fade);
-      // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
-      // re-reads the window that hosts it, so a Settings tab moved to another window keeps
-      // following without holding on to the window it first loaded in.
-      Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
-    }
+    const changed = root.getAttribute('data-color-mode') !== resolved;
+    if (changed) writeChromeColorMode(root, resolved, fade, delayMs);
     root.setAttribute('data-bento-color-mode-pref', mode);
+    return changed;
   }
-  // Runs `run` in the first animation frame `wait` ms from now. The documents of the shell's
-  // process share a thread and a timer alone lets one document's rendering update (which has
-  // priority over timers) run between two documents' timers, so the later one would start its
-  // fade a frame or more late. Frame times come from the same vsync for every document, so
-  // documents that take the first frame at or after the deadline start their transitions from the
-  // same time. The timer only wakes the window shortly before. The shell's twin is runAtFlip in
-  // theme/modeFade.ts. `flipAt` is wall-clock time and frame times are on this window's
-  // monotonic clock; the system clock can be stepped after the window opened, so the two are
-  // never compared: setChromeColorMode turns `flipAt` into `wait` once, on receipt.
+  // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
+  // re-reads the window that hosts it, so a Settings tab moved to another window keeps
+  // following without holding on to the window it first loaded in.
+  function announceChromeColorMode(resolved) {
+    Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
+  }
+  // Runs `run` in the first animation frame at or after `deadline` (a window.performance.now()
+  // time). The documents of the shell's process share a thread and a timer alone lets one
+  // document's rendering update (which has priority over timers) run between two documents'
+  // timers, so the later one would start its fade a frame or more late. Frame times come from the
+  // same vsync for every document, so documents that take the first frame at or after the deadline
+  // start their transitions from the same time. The timer only wakes the window shortly before.
+  // The shell's twin is runAtFlip in theme/modeFade.ts. `flipAt` is wall-clock time and frame
+  // times are on this window's monotonic clock; the system clock can be stepped after the window
+  // opened, so the two are never compared: setChromeColorMode turns `flipAt` into the deadline
+  // once, on receipt.
   const BENTO_FLIP_FRAME_WATCH_MS = 40;
   let cancelChromeColorFlip = null;
-  function runAtChromeFlip(wait, run) {
-    const deadline = window.performance.now() + wait;
+  // The flip that waits for its time, from receipt until it is announced: { mode, resolved,
+  // deadline, prepared }. A later request for the same mode joins it (keeps the deadline, takes
+  // over `mode`); one for the other mode replaces it (see setChromeColorMode).
+  let chromeColorFlip = null;
+  function runAtChromeFlip(deadline, run) {
     let frame = 0;
     const onFrame = (timestamp) => {
       if (timestamp >= deadline) {
@@ -3997,9 +4036,12 @@
       }
       frame = window.requestAnimationFrame(onFrame);
     };
-    const timer = setTimeout(() => {
-      frame = window.requestAnimationFrame(onFrame);
-    }, wait - BENTO_FLIP_FRAME_WATCH_MS);
+    const timer = setTimeout(
+      () => {
+        frame = window.requestAnimationFrame(onFrame);
+      },
+      deadline - window.performance.now() - BENTO_FLIP_FRAME_WATCH_MS,
+    );
     // A hidden window gets no frames, so one that hides while it waits applies when it hides
     // (without a fade, as commitChromeColorMode does for a hidden window), not at its next show.
     const onVisibility = () => {
@@ -4015,21 +4057,96 @@
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }
+  // Prepares the flip `current`, due at current.deadline. In the first frame after it is heard the
+  // mode and the fade attribute go on, with a transition delay that ends at the deadline: the style
+  // recalculation and the creation of every transition happen while the lead runs out, and the
+  // fade is shown from the deadline. The delay is measured from this frame's time, which the
+  // transitions start from; a frame after the deadline (up to BENTO_FLIP_CATCH_UP_MAX_MS) gives
+  // a negative delay and joins the fade part-way. The observers are told at the deadline, and a
+  // window that hides while the flip waits drops the fade (writeChromeColorMode) and tells them
+  // at once. The delay stays on the root until the fade ends: resetting it at the deadline
+  // restyles every element in the frame the fade starts (see prepareFlip in theme/modeFade.ts for
+  // the numbers). Twin: prepareFlip in theme/modeFade.ts.
+  function prepareChromeColorFlip(current) {
+    let frame = 0;
+    const start = (timestamp) => {
+      cancelChromeColorFlip?.();
+      cancelChromeColorFlip = null;
+      // A joined request may have replaced the mode since the flip was scheduled.
+      const mode = current.mode;
+      const resolved = resolveChromeColorMode(mode);
+      if (!resolved) {
+        chromeColorFlip = null;
+        return;
+      }
+      current.resolved = resolved;
+      // A hidden window gets no frames and applies without a fade.
+      const delay = timestamp === null ? 0 : current.deadline - timestamp;
+      const changed = commitChromeColorMode(
+        mode,
+        resolved,
+        delay < -BENTO_FLIP_CATCH_UP_MAX_MS ? 0 : Math.round(delay * 10) / 10,
+      );
+      if (!changed) {
+        chromeColorFlip = null;
+        return;
+      }
+      const remaining = current.deadline - window.performance.now();
+      const root = document.documentElement;
+      if (remaining > 0 && timestamp !== null && root.hasAttribute(BENTO_MODE_FADE_ATTR)) {
+        current.prepared = true;
+        runAtChromeFlip(current.deadline, () => {
+          chromeColorFlip = null;
+          announceChromeColorMode(current.resolved);
+        });
+      } else {
+        chromeColorFlip = null;
+        announceChromeColorMode(resolved);
+      }
+    };
+    frame = window.requestAnimationFrame(start);
+    const onVisibility = () => {
+      if (document.hidden) start(null);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    cancelChromeColorFlip = () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }
   // Applies a mode pref that has passed the order check (or needs none: the OS appearance
   // changing under Auto re-resolves the pref already applied). `flipAt` is the stamp's flip time
   // (epoch ms, tools' clock, which is the system clock this window reads too): while it is
-  // ahead the change waits for it, so the window flips with the shell documents, which receive
-  // the same change at other moments. Past it, or without one, the change applies at once; so does
-  // the first application, an unchanged mode, and a hidden window (it gets no animation frames).
-  // Any call replaces a change that is still waiting (the newest call is the newest state).
+  // ahead the change is prepared at once and shown at that time (prepareChromeColorFlip), so the
+  // window flips with the shell documents, which receive the same change at other moments. Past
+  // it, or without one, the change applies at once; so does the first application, an unchanged
+  // mode, and a hidden window (it gets no animation frames). Reduced motion waits for the time
+  // and then snaps.
+  //
+  // Every call is a request that replaces the flip that waits, with one exception, the rule the
+  // shell's applyModeWithFade follows too: a request for the mode that flip already shows joins it,
+  // prepared or not. The flip keeps the deadline of the request that scheduled it (fixed on
+  // receipt), and the newer pref is the one it applies and announces, once, at that deadline. So a
+  // duplicate (the BENTO_PANELS payload behind the direct event, whose flipAt would be turned into
+  // a wait again after a clock step) and a newer request for the same mode agree across windows
+  // and documents: a prepared document cannot be re-timed without a full restyle, so none is. A
+  // request for the other mode, and an OS change under Auto that no longer resolves to the mode
+  // the flip shows, replace it with their own time, and the stale mode is never announced. The
+  // order rules (acceptChromeColorStamp) have already run by the time a request gets here.
   function setChromeColorMode(mode, flipAt) {
     const root = document.documentElement;
     if (!root) return;
     const resolved = resolveChromeColorMode(mode);
     if (!resolved) return;
+    chromeColorModePref = mode;
+    if (chromeColorFlip && chromeColorFlip.resolved === resolved && !document.hidden) {
+      chromeColorFlip.mode = mode;
+      if (chromeColorFlip.prepared) root.setAttribute('data-bento-color-mode-pref', mode);
+      return;
+    }
     cancelChromeColorFlip?.();
     cancelChromeColorFlip = null;
-    chromeColorModePref = mode;
+    chromeColorFlip = null;
     const wait = typeof flipAt === 'number' ? flipAt - Date.now() : 0;
     if (
       wait > 0 &&
@@ -4037,10 +4154,33 @@
       !document.hidden &&
       root.getAttribute('data-color-mode') !== resolved
     ) {
-      runAtChromeFlip(wait, () => commitChromeColorMode(mode, resolved));
+      const scheduled = {
+        mode,
+        resolved,
+        deadline: window.performance.now() + wait,
+        prepared: false,
+      };
+      chromeColorFlip = scheduled;
+      if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        runAtChromeFlip(scheduled.deadline, () => {
+          chromeColorFlip = null;
+          if (commitChromeColorMode(scheduled.mode, scheduled.resolved)) {
+            announceChromeColorMode(scheduled.resolved);
+          }
+        });
+      } else {
+        prepareChromeColorFlip(scheduled);
+      }
       return;
     }
-    commitChromeColorMode(mode, resolved);
+    // Already due: a stamp that arrives up to BENTO_FLIP_CATCH_UP_MAX_MS late joins the fade
+    // part-way, as a prepared flip whose frame is late does; anything later, or no stamp, fades
+    // from the start.
+    const late =
+      typeof flipAt === 'number' && wait <= 0 && wait >= -BENTO_FLIP_CATCH_UP_MAX_MS;
+    if (commitChromeColorMode(mode, resolved, late ? Math.round(wait * 10) / 10 : 0)) {
+      announceChromeColorMode(resolved);
+    }
   }
   function applyChromeColorMode(mode, stamp) {
     if (!document.documentElement || !resolveChromeColorMode(mode)) return;
@@ -5738,6 +5878,8 @@
         const rect = toolbarSurface.getBoundingClientRect();
         const splitX = Math.max(0, Math.round(dividerLeft - rect.left));
         const split = splitX + 'px';
+        // The stops are registered <color> custom properties (bento-shell-mount.css), so the colours of
+        // a mode flip fade through the gradient; a stop that is not registered changes in one step.
         const gradient =
           'linear-gradient(to right, ' +
           'var(--bento-toolbar-left-bg) 0, ' +
@@ -11313,6 +11455,24 @@
     return ['grouped', info.rootNodeId, rowSig].join(':');
   }
 
+  // Puts `nodes` in order inside `list`, moving only those out of place. A node that is removed
+  // and inserted again drops its running transitions, so appending every node on each reconcile
+  // cut a mode flip's colour fade short (the BENTO_PANELS payload that follows the direct event
+  // lands inside the fade's lead) and the node jumped to its new colours. Anything else in the
+  // list (the navigator's absolutely positioned drop indicator) stays where it is.
+  function placeInOrder(list, nodes) {
+    const next = (node) => {
+      let sibling = node.nextElementSibling;
+      while (sibling && !nodes.includes(sibling)) sibling = sibling.nextElementSibling;
+      return sibling;
+    };
+    let cursor = Array.from(list.children).find((child) => nodes.includes(child)) || null;
+    for (const node of nodes) {
+      if (node === cursor) cursor = next(cursor);
+      else list.insertBefore(node, cursor);
+    }
+  }
+
   // Called from reconcilePanels with the current desired panel list.
   // Diff-based update so favicon buttons that survive a reconcile
   // (same tabId still present) are reused — that preserves their
@@ -11454,9 +11614,8 @@
       el.remove();
     }
 
-    // Re-order: appendChild moves existing children to the end, so
-    // iterating in desired order yields the final order.
-    for (const el of desiredEls) list.appendChild(el);
+    // Re-order without re-inserting buttons that are already in place.
+    placeInOrder(list, desiredEls);
 
     // Trigger enter animation on next frame so the browser commits
     // the initial transparent state before we remove the class.
@@ -13166,26 +13325,54 @@
     });
   }
 
+  // What a subdivision chooser shows: its owner, whether it has a close button, and the saved
+  // panels it lists. A chooser whose signature is unchanged is kept as it is.
+  function layoutChooserSignature(chooserInfo) {
+    return JSON.stringify([
+      chooserInfo.ownerTabId,
+      chooserInfo.groupId || null,
+      currentSavedPanelItems
+        .slice(0, 12)
+        .filter((item) => item?.url)
+        .map((item) => [item.title, item.url, item.favIconUrl]),
+    ]);
+  }
+
+  // Reconciles the splitters and subdivision choosers of the flat layout with `geometry`, by
+  // splitter group and axis and by chooser id. A node that is removed and created again has no
+  // style to transition from, so rebuilding them on every payload (and scroll and layout
+  // refresh) made a visible chooser appear in the colours of a mode flip that was only being
+  // prepared, and a hovered splitter lose its transition. Matching nodes are kept and updated in
+  // place; only obsolete ones are removed and only new or changed ones are created.
   function syncFlatLayoutOverlays(tabpanels, geometry) {
     const host = document.getElementById('bento-side-panel-host');
     if (!host || !tabpanels || !geometry) return;
+    const existing = new Map();
     for (const el of host.querySelectorAll(
       ':scope > .bento-layout-vsplitter, :scope > .bento-layout-hsplitter, :scope > .bento-layout-chooser',
     )) {
-      el.remove();
+      existing.set(el._bentoOverlayKey, el);
     }
+    const hostRect = host.getBoundingClientRect();
+    const desired = [];
     for (const splitterInfo of geometry.splitters || []) {
-      const splitter = createLayoutSplitter(splitterInfo.axis);
-      splitter._bentoAxis = splitterInfo.axis;
-      splitter._bentoGroupId = splitterInfo.groupId;
-      splitter.dataset.bentoGroupId = splitterInfo.groupId;
-      splitter.dataset.bentoAxis = splitterInfo.axis;
       const rect = viewportRectForLayoutRect(tabpanels, splitterInfo.rect);
       const groupRect = viewportRectForLayoutRect(tabpanels, splitterInfo.groupRect);
       if (!rect || !groupRect) continue;
+      const key = 'splitter:' + splitterInfo.axis + ':' + splitterInfo.groupId;
+      let splitter = existing.get(key);
+      existing.delete(key);
+      if (!splitter) {
+        splitter = createLayoutSplitter(splitterInfo.axis);
+        splitter._bentoOverlayKey = key;
+        splitter._bentoAxis = splitterInfo.axis;
+        splitter._bentoGroupId = splitterInfo.groupId;
+        splitter.dataset.bentoGroupId = splitterInfo.groupId;
+        splitter.dataset.bentoAxis = splitterInfo.axis;
+      }
       splitter._bentoGroupViewportRect = {
-        left: groupRect.left + host.getBoundingClientRect().left,
-        top: groupRect.top + host.getBoundingClientRect().top,
+        left: groupRect.left + hostRect.left,
+        top: groupRect.top + hostRect.top,
         width: groupRect.width,
         height: groupRect.height,
       };
@@ -13193,33 +13380,46 @@
       splitter.style.top = Math.round(rect.top) + 'px';
       splitter.style.width = Math.max(0, Math.round(rect.width)) + 'px';
       splitter.style.height = Math.max(0, Math.round(rect.height)) + 'px';
-      const hostRect = host.getBoundingClientRect();
       setSidebarOccludedOverlayState(splitter, {
         left: hostRect.left + rect.left,
         top: hostRect.top + rect.top,
         right: hostRect.left + rect.left + rect.width,
         bottom: hostRect.top + rect.top + rect.height,
       });
-      host.appendChild(splitter);
+      desired.push(splitter);
     }
     for (const chooserInfo of geometry.choosers || []) {
-      const chooser = createSubdivisionChooser(
-        chooserInfo.ownerTabId,
-        chooserInfo.id,
-        chooserInfo.groupId,
-      );
-      chooser.classList.add('bento-layout-chooser');
-      chooser._bentoChooserId = chooserInfo.id;
-      chooser.setAttribute('data-bento-chooser-id', chooserInfo.id);
-      chooser.setAttribute('data-bento-owner-tab-id', String(chooserInfo.ownerTabId));
       const rect = viewportRectForLayoutRect(tabpanels, chooserInfo.rect);
       if (!rect) continue;
+      const key = 'chooser:' + chooserInfo.id;
+      const signature = layoutChooserSignature(chooserInfo);
+      let chooser = existing.get(key);
+      existing.delete(key);
+      if (chooser && chooser._bentoChooserSignature !== signature) {
+        chooser.remove();
+        chooser = null;
+      }
+      if (!chooser) {
+        chooser = createSubdivisionChooser(
+          chooserInfo.ownerTabId,
+          chooserInfo.id,
+          chooserInfo.groupId,
+        );
+        chooser.classList.add('bento-layout-chooser');
+        chooser._bentoOverlayKey = key;
+        chooser._bentoChooserId = chooserInfo.id;
+        chooser._bentoChooserSignature = signature;
+        chooser.setAttribute('data-bento-chooser-id', chooserInfo.id);
+        chooser.setAttribute('data-bento-owner-tab-id', String(chooserInfo.ownerTabId));
+      }
       chooser.style.left = Math.round(rect.left) + 'px';
       chooser.style.top = Math.round(rect.top) + 'px';
       chooser.style.width = Math.max(0, Math.round(rect.width)) + 'px';
       chooser.style.height = Math.max(0, Math.round(rect.height)) + 'px';
-      host.appendChild(chooser);
+      desired.push(chooser);
     }
+    for (const obsolete of existing.values()) obsolete.remove();
+    placeInOrder(host, desired);
   }
 
   function getPromotedChildWidthsForClosingTop(tabId) {

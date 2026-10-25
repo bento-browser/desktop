@@ -15,7 +15,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // plain numbers. Property names, animation names and keywords such as infinite or both pass in
 // the shorthands. Raw times (200ms, 0.2s, 0s), easing keywords (ease, linear), easing
 // functions (cubic-bezier(), steps(), linear()), other var() references and any other
-// function fail.
+// function fail. The one exception is var(--bento-mode-fade-delay), the registered <time> that
+// holds a prepared mode flip's transitions until its time: it passes as `transition-delay` and
+// as the delay of a `transition` item that already has its Mux duration (a --muxui-semantic-
+// motion-*-transition or -transition-duration token before it), and nowhere else.
 //
 // Scanned:
 //   - shell CSS (extensions/bento-shell/src, minus the generated theme/presets);
@@ -53,6 +56,16 @@ const SHORTHANDS = new Set(['transition', 'animation']);
 
 const CSS_WIDE = /^(?:initial|inherit|unset|revert|revert-layer|none)$/i;
 const MOTION_VAR = /^var\(\s*--muxui-semantic-motion-[\w-]+\s*\)$/;
+// The mode flip fade's one delay carrier: modeFade.ts and the mount script set it (in ms, as a
+// registered <time>) to hold the fade until the flip's time. It is a delay, not a duration.
+const MODE_FADE_DELAY_VAR = /^var\(\s*--bento-mode-fade-delay\s*\)$/;
+// The mode flip fade's shared colour list (one custom property holding the catch-all's entries,
+// each with the Mux state pair and the delay carrier): a merged twin repeats it after a rule's own
+// non-colour entries (scripts/fade-twins.mjs). It stands for whole transition items, never a time.
+const MODE_FADE_COLOURS_VAR = /^var\(\s*--bento-mode-fade-colours(?:-inherited)?\s*\)$/;
+// A Mux token that carries a duration: the composite pair or a duration longhand.
+const DURATION_VAR =
+  /^var\(\s*--muxui-semantic-motion-[\w-]+-transition(?:-spring)?(?:-duration)?\s*\)$/;
 const MOTION_VAR_GLOBAL = /var\(\s*--muxui-semantic-motion-[\w-]+\s*\)/g;
 const RAW_TIME = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?(?:ms|s)$/i;
 const EASING_KEYWORD = /^(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end)$/i;
@@ -163,9 +176,20 @@ function calcProblem(token) {
 export function motionValueProblem(property, value) {
   const strict = !SHORTHANDS.has(property);
   for (const item of splitTopLevel(value, /,/)) {
+    if (property === 'transition' && MODE_FADE_COLOURS_VAR.test(item.replace(/\s*!important$/, '').trim())) continue;
+    // A transition item has its duration (and easing) before the delay, so a time that follows
+    // a Mux duration token is the delay.
+    let hasDuration = false;
     for (const token of splitTopLevel(item, /\s/)) {
+      if (MODE_FADE_DELAY_VAR.test(token)) {
+        // The mode flip fade's delay carrier (a registered <time>) is a delay and only a delay:
+        // read as a duration or an easing it would take the place of a Mux motion token.
+        if (property === 'transition-delay' || (property === 'transition' && hasDuration)) continue;
+        return `${token} is only a transition delay (transition-delay, or after the Mux duration in a transition)`;
+      }
       const problem = tokenProblem(token, strict);
       if (problem) return problem;
+      if (DURATION_VAR.test(token)) hasDuration = true;
     }
   }
   return null;

@@ -32,6 +32,45 @@ test('shorthand values pass with Mux motion tokens, property names, keywords and
   }
 });
 
+test('the mode flip fade delay carrier is accepted as a transition delay and nowhere else', () => {
+  const delay = 'var(--bento-mode-fade-delay)';
+  // The delay position of a transition item that already has its Mux duration, and the longhand.
+  assert.equal(motionValueProblem('transition', `color ${TOKEN} ${delay}`), null);
+  assert.equal(
+    motionValueProblem('transition', `color ${TOKEN} ${delay}, fill ${TOKEN} ${delay} !important`),
+    null,
+  );
+  assert.equal(motionValueProblem('transition-delay', delay), null);
+  // As a duration, an easing or an animation time it would stand in for a Mux motion token.
+  for (const [property, value] of [
+    ['transition-duration', delay],
+    ['transition-timing-function', delay],
+    ['animation-duration', delay],
+    ['animation-delay', delay],
+    ['animation', `x ${delay}`],
+    ['animation', `x ${TOKEN} ${delay}`],
+    ['transition', `color ${delay}`],
+    ['transition', `color var(--muxui-semantic-motion-state-transition-easing) ${delay}`],
+  ]) {
+    assert.match(motionValueProblem(property, value) ?? '', /only a transition delay/, `${property}: ${value}`);
+  }
+});
+
+test('the fade twins may repeat the shared colour list as a whole transition item only', () => {
+  const colours = 'var(--bento-mode-fade-colours)';
+  assert.equal(motionValueProblem('transition', `opacity ${TOKEN}, ${colours}`), null);
+  assert.equal(motionValueProblem('transition', `${colours} !important`), null);
+  // As a longhand, a duration or inside an animation it would stand in for a Mux motion token.
+  for (const [property, value] of [
+    ['transition-duration', colours],
+    ['transition-delay', colours],
+    ['animation', colours],
+    ['transition', `color ${colours}`],
+  ]) {
+    assert.notEqual(motionValueProblem(property, value), null, `${property}: ${value}`);
+  }
+});
+
 test('raw times, easing keywords and functions, and other var() reads fail', () => {
   const cases = {
     'opacity 200ms': /raw time 200ms/,
@@ -44,6 +83,7 @@ test('raw times, easing keywords and functions, and other var() reads fail', () 
       /cubic-bezier\(\) is not a Mux motion token/,
     'opacity var(--muxui-semantic-motion-state-duration) steps(4)': /steps\(\)/,
     'opacity var(--bento-duration-fast) var(--bento-easing-standard)': /var\(\) must name/,
+    [`opacity ${TOKEN} var(--bento-mode-fade-delay, 0s)`]: /no fallback/,
     'opacity var(--muxui-semantic-motion-state-transition, 200ms ease)': /no fallback/,
     'opacity var(--muxui-semantic-color-neutral-5)': /var\(\) must name/,
     'opacity calc(var(--muxui-semantic-motion-state-duration) + 50ms)': /raw time 50ms in calc/,
