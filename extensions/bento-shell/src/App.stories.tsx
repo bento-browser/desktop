@@ -24,6 +24,7 @@ import { seedTabFolders } from './state/__fixtures__/tabFolders';
 import { seedEmptyPinnedPanels } from './state/__fixtures__/pinnedPanels';
 import { DEFAULT_FIXTURE } from './state/__fixtures__/settings';
 import { markToolsBootedForStory } from './state/__fixtures__/bus';
+import { openSearchForStory } from './components/TabList/openSearchForStory';
 import { useExternalMergeStore } from './state/externalMerge';
 import { useSettingsStore } from './state/settings';
 import { useWorkspacesStore } from './state/workspaces';
@@ -254,7 +255,9 @@ CollapseToggle.storyName = 'Collapse toggle (interactive)';
 // panels=none removes the side panels (the rail stays on the brand background),
 // pinned=1 shows pinned panels, folder=long puts most tabs in the folder (its children
 // active and indented), ws=personal starts in the Personal workspace, switch=1 switches
-// to Personal while the frozen phase runs, scroll=<px> scrolls the list first, and
+// to Personal while the frozen phase runs, scroll=<px> scrolls the list first,
+// search=open|<query> opens the sidebar search field (typing <query>) on load, so a collapse
+// starts with the field open, and
 // dir=collapse|expand&t=<ms> runs that toggle and freezes every animation at t ms (motion
 // tokens are scaled 100x first, so no end timer fires while frozen; dir=none only applies
 // the other hooks).
@@ -351,6 +354,11 @@ export const CollapseChoreography = () => {
       params.get('panels') !== 'none',
     );
     if (params.get('ws') === 'personal') switchToPersonal();
+    const search = params.get('search');
+    const stopSearch =
+      search === null || startCollapsed
+        ? undefined
+        : openSearchForStory(search === 'open' ? '' : search);
     setRailWidth(measureRailWidth());
     const channel = new BroadcastChannel('bento-shell-bus');
     channel.addEventListener('message', (message: MessageEvent) => {
@@ -360,6 +368,7 @@ export const CollapseChoreography = () => {
       useSettingsStore.getState().apply({ ...current, ...data.action.changes });
     });
     return () => {
+      stopSearch?.();
       channel.close();
       scaleMotionTokens(1);
     };
@@ -475,6 +484,15 @@ export const CollapseChoreography = () => {
           />{' '}
           Pinned panels
         </label>
+        {/* Open the sidebar search field, empty or with a query, then collapse to see it fold
+            into the rail's Search square (the footer toggle is the pointer path, this
+            Collapse button the keyboard one). */}
+        <button type="button" onClick={() => openSearchForStory('')}>
+          Open search
+        </button>
+        <button type="button" onClick={() => openSearchForStory('bento')}>
+          Search bento
+        </button>
       </div>
       <div
         className="bento-rail-story"

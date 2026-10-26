@@ -33,13 +33,15 @@ When changing core functionality, manually verify at least the affected subset:
   `animation-delay`); with reduced motion on, and at a cold start, the switch is instant.
   Known snaps at the end of a collapse and the start of an expand: a multi-selected (not
   active) row's tint, an audible or muted row's favicon (the speaker control shifts it),
-  an open sidebar search and a sidebar card fade instead of moving;
+  a sidebar card fades instead of moving (an open sidebar search folds into the rail's
+  Search square, see Sidebar search peek and grow, item 7);
 - the rail colour (with side panels the collapsed rail takes the toolbar's colour: one
   surface with the window controls and the gap around the page, no divider line on its right
   edge; the colour and the lines fade with a collapse or expand on the same spring as the
   slide, with no snap at either end, in the toolbar, the host and the shell; no side
-  panels keep neutral-5 throughout; the tab list band and the switcher square are
-  neutral-18 in the rail; hide, show, reduced motion, boot and theme changes are instant; the
+  panels keep neutral-5 throughout; the tab list band is
+  neutral-18 in the rail, and the round workspace avatar has no square fill or outline behind
+  it (rest, hover, press, collapse and expand); hide, show, reduced motion, boot and theme changes are instant; the
   hide-mode edge-hover rail takes the toolbar's colour too), in a light and a dark theme and
   with contrast "more";
 - workspace switch with different panel sets;
@@ -291,7 +293,7 @@ sync and Alt+Shift+R, with the sidebar expanded:
 3. Tab to the Search trigger: it peeks with the focus ring; Enter opens search.
 4. Click Search, both from the square and while peeked: the field grows leftward
    over New from the trigger's current box, the placeholder and the clear button
-   fade in just after it starts, the input is focused with its text selected, and
+   fade in just after it starts, the input is focused, and
    the trigger and highlight are gone.
 5. Close it every way, each time starting from an empty and a non-empty query where
    they differ: Esc (clears the query), Enter on a result, click outside (closes
@@ -305,10 +307,31 @@ sync and Alt+Shift+R, with the sidebar expanded:
    "Clear search" again.
 6. Open, close and reopen quickly: no jump, and the field always starts from
    where the trigger is.
-7. Collapse the sidebar (rail): no Search trigger, New is a square, its
-   highlight is the full square, and a collapse with the pointer over Search
-   hides the highlight. Open search, then collapse: the open field is a 2rem square
-   with its icon over New (as seen in Ladle), and Esc closes it.
+7. Collapse the sidebar (rail): the Search square sits directly under New (same
+   2rem box, same hover highlight, which glides between the two; no peek label),
+   and the list starts one slot lower than it did with New alone. The gap above New
+   (workspace button, or the Private band in a private window) equals the gap between
+   New and Search and between Search and the first tab. Open search with
+   an empty field, then collapse by the footer toggle and by Cmd+S: the field
+   shrinks toward the trigger at the right end of its row (right edge fixed, like an
+   Esc close), then the square glides to the Search slot as the rows shift down one
+   slot, without a stop where the two meet and without touching the New square; the
+   square ends plain. With no field open the square starts moving at once (no pause
+   then a jump), in both directions. Repeat with a query typed: the results swap back to rows in the
+   first moments, the square ends with a ring and a dot, and no result rows are
+   squeezed into the rail. Press the square in the rail (nothing parked): the
+   sidebar expands, the square glides to the right end of the action row and the
+   field opens focused. With a query parked, expand by the footer toggle, Cmd+S or
+   the square: the square glides to the right end of the row, unfolds leftward into
+   the field, and the results return when the expand ends. Esc, the clear button and
+   Enter on a result still clear it; switching workspace in the rail keeps the dot.
+   Open search then use the footer's collapse toggle with the mouse on an empty
+   field: it folds, it does not close first (Tab onto the toggle instead: the empty
+   field closes, like tabbing anywhere else). Collapse with a query, then expand a
+   moment into the collapse (Cmd+S twice), and the reverse (expand with a parked
+   query, Cmd+S twice a moment in): the rows keep their motion, the field reopens
+   with the query (results back when the move ends), and the field or square carries
+   on from where it is, with no jump of its edges or position.
 8. With macOS Reduce motion on: widths, the field and the highlight change in one
    step; only fades remain.
 9. Check light and dark, a 200px-wide sidebar (New keeps its label), and the New

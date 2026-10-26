@@ -185,9 +185,10 @@ appended when there is one (`Tab: Dashboard in Work, mail.google.com`), so
 same-titled tabs on different sites are distinguishable.
 
 When `searchOpen` is true, the search field covers the fixed action row. When
-the trimmed query is non-empty, `TabListPane` skips rendering normal virtualized
-display rows and the action overlay renders matching results into the pane below
-the field. This avoids leaving tabs, folders, pinned sections, or creation
+the trimmed query is non-empty (and the layout is expanded and no expand
+choreography is running, see "Rail Search square"), `TabListPane` skips rendering
+normal virtualized display rows and the action overlay renders matching results into
+the pane below the field. This avoids leaving tabs, folders, pinned sections, or creation
 controls visible behind the filtering surface. The clear affordance clears a
 non-empty local query, refocuses the search input, and returns the pane to the
 normal virtualized row path. When the trimmed query is empty it calls
@@ -253,7 +254,8 @@ New button's inline padding), while the New button (`flex: 1`) shrinks by the
 same amount so the bar keeps its width. The label never fades: it is always
 opaque and the button's clip uncovers it (below). Mux's button
 ring uses native `:focus-visible` (React Aria also sets `data-focus-visible`);
-Bento uses `:focus-visible`. The trigger is hidden in the collapsed rail.
+Bento uses `:focus-visible`. In the collapsed rail the trigger is the Search square
+under New (see "Rail Search square" below).
 
 One variable drives all the geometry. `.bento-tab-list__new-actions` sets
 `--bento-tab-list-search-trigger-width` to the row height and, through
@@ -285,7 +287,7 @@ The overlay (`.bento-tab-list-search`) is always mounted so closing can animate.
 Closed, it is `pointer-events: none` and `visibility: hidden`, and the
 `visibility` transition runs for the reveal spring's full duration (400 ms,
 tail included) so it stays visible while it closes; open, `visibility: visible`
-applies at once, so the open effect's `focus()` and `select()` work. The box
+applies at once, so the open effect's `focus()` works. The box
 that grows is the field row
 itself, by `margin-inline-start`: `0` open, and closed
 `calc(100% - var(--bento-tab-list-search-trigger-width))` with its
@@ -335,6 +337,123 @@ Pitfalls:
   Ladle (peek, label clip, open and close timing). The built Bento app's Gecko
   behaviour of `:has()`, `inert`, the `visibility` delay and the highlight start
   is unverified; see the manual checks in [manual-regression-areas.md](manual-regression-areas.md#sidebar-search-peek-and-grow).
+
+### Rail Search square
+
+State. `TabList` (the outer component, so a workspace switch keeps it) holds one
+`SearchState` (`{ open, query, folded }`, `components/TabList/searchState.ts`, covered by
+`searchState.test.ts`). `searchOnRailChange` is the rule: collapsing an open field closes
+it and keeps a typed query (parked; a whitespace-only one is dropped) and sets `folded`;
+expanding reopens a parked query. `TabList` applies it during render when
+`sidebarCollapsed || sidebarHidden` (the setting, as App reads it) changes, not in an
+effect: the collapse choreography measures the rows in the commit that starts it
+(`railLayout.ts`), and rows are not rendered while a query filters, so the filter must be
+off in that same commit. Parked is `!open && query`; the rail trigger carries
+`data-parked`. `handleCloseSearch` closes only an open field (a blur of the inert, folded
+field must not wipe the parked query). Pressing the Search square while the setting says
+collapsed dispatches the same `settings/update` as the footer toggle
+(`sidebarHidden: false, sidebarCollapsed: false`) and opens the field; the input takes
+focus (with `preventScroll`, or its clipped row scrolls and shifts the icon) once the
+layout is expanded.
+
+The expand case. Rows stay rendered for any collapse or expand phase and the results
+replace them when it ends: `useRailTransitioning()` (`sidebar/railPhase.ts`, true while
+`data-bento-rail-transition` has any value) keeps `searchFiltering` off, because the phase
+measures the rows once at its start. "Any phase", not only `expand`: expanding during a
+collapse reopens a parked query in a render that still sees the collapse's attribute, and
+filtering then would unmount the rows before the expand is measured (zero row offsets).
+The results appear when the phase ends without a fade.
+
+Layout. In the rail the sticky action area is two slots tall
+(`--bento-tab-list-actions-height`: row, row gap, row), the trigger is a 32px square
+under New with no peek (the `:has()` peek rule and the open-field hide rule are scoped to
+the expanded layout), and the overlay is `display: none`. The action highlight is one
+square tall and `data-target` picks its `top`; `placeAction` also writes the fresh show's
+`top`. The custom scrollbar starts under the two squares. A parked query shows the
+field's ring (`--bento-tab-list-search-ring`, on the wrapper so the button keeps its own
+focus ring) and a dot (`--bento-tab-list-search-dot-*`) that fades in as the folded field
+hands over to the square. The rail's vertical rhythm is one `--bento-sidebar-section-gap`
+between squares: the workspace switcher's rail end padding (`app.css`) is the gap above
+New, the same as New to Search and Search to the first row (the scroller's start padding).
+Put it on the switcher, not on the sticky actions, because the action highlight's `top`
+is relative to that box.
+
+Choreography. The Search trigger and the field row are measured rail parts (`search` and
+`field` in `railLayout.ts`; both offsets are `shift(expanded.search, rail.search)` minus the
+list region's, so the field row IS the trigger once it has shrunk onto it). In a collapse or
+expand the trigger translates between its expanded place and its rail slot, instead of
+fading. While the field is open (or `data-folding` during a collapse) the trigger is hidden
+and the field row is the moving part (`TabList.css`, unlayered, because it overrides the
+closed field's styles). Collapse, in fractions of the reveal spring S (all on the spring
+pair, delays as `calc()` fractions): the input, clear button and results fade on `state`;
+the field shrinks toward the trigger at the right end of its row with its right edge fixed,
+as an Esc close does (`bento-rail-fold-in`: `margin-inline-start` to
+`calc(100% - trigger width)` with `width: auto`, and the icon inset, 0 to 0.3 S); the
+square then rides the trigger's offset to the rail slot, across (`translate`, 0.14 to 0.74
+S) overlapping the shrink's tail so the speed carries over, and down (`transform`, S/32 to
+0.6 S, the list region's own timing, so it never overshoots the rows). Its fill (and its
+ring, unless a query is parked) fades over the ride. The turn from the shrink (centre
+moving right) to the ride (moving left) is a sign change of the centre's speed; the ride
+starts at 0.14 S so the lowest frame near it stays above 30% of the peak at the frame
+alignment a collapse starts on (it dips at other alignments, and at 0.1x for the few
+frames the speed passes through zero). Expand is the same run backwards: across and down
+start at once (0), the unfold at 0.125 S, the input and clear button fade in at 0.4 S.
+The plain trigger (no field shows) has no shrink to wait for: it moves across and down
+together from the start (collapse: across S/64 after down, which keeps it off the New
+square at the end; expand: both at 0), so its speed never drops below 25% of the peak for
+more than a frame. While a collapse folds a field the hidden trigger keeps the field row's
+timing (`data-rail-folding`, set by `railLayout.ts` for the phase), so a reversal into an
+expand that parks nothing starts the trigger where the row was. The square never overlaps
+the New square. The field row ends the collapse as the parked square (ring kept, fill gone)
+or as the plain trigger, so the handoff when the phase ends is unseen; `data-folding`
+clears as soon as the rail layout is reached. Every rule that reads it is keyed on
+`html[data-bento-rail-transition]` being `collapse` or `expand`, and on
+`:is([data-folding], [data-open])` in both phases: TabList's state flip commits before the
+controller flips the phase on a reversal, and the field's animations must keep running
+across that gap to be read. Reduced motion runs no phase.
+
+Reversal. A reversed phase starts where the running one left the field: `capture()` in
+`railLayout.ts` reads the square's and field row's computed translate, margin, icon inset
+and text opacity, `begin()` writes them as `--bento-rail-seed-*` on those elements, and the
+keyframes (`bento-rail-to-x/-y`, `from-x/-y`, `fold-in/out`, `fold-text-out`) start from
+them. Without the seed an animation replaced on the phase flip starts from the underlying
+style: expand with a parked query reversed 150 ms in restarted the collapse from the
+full-width field (right edge 39 to 292 px in one frame).
+
+The collapse button. An empty open field closes on an outside pointerdown or a blur,
+which would play the normal close (a retract toward the trigger) before the collapse
+starts. For a pointer press on the footer's collapse button
+(`[aria-label="Collapse sidebar"]`, a selector shared by convention with `App.tsx`) the
+outside-pointerdown close skips it and sets a ref that the blur close honours until the
+pointer comes up (the press also blurs the input, and Gecko on macOS gives the blur no
+`relatedTarget`). Keyboard focus on that button is not exempt: tabbing to it closes an
+empty field like tabbing anywhere else, so focus leaving it cannot strand an open field.
+
+Pitfalls:
+
+- Do not move the search state update into an effect: it runs after the choreography has
+  measured, and a filtered list has no rows to measure.
+- Do not read the layout (`useRailViewport`) for the park/reopen rule: it flips after the
+  viewport narrows, long after the choreography started.
+- Keep the field's fold CSS unlayered and keyed on the phase attribute: layered
+  `bento.app` rules lose to the closed field's unlayered rules.
+- Do not key the field's phase animations on a single state attribute (`data-folding` only
+  in a collapse, `data-open` only in an expand): the state flips a commit before the phase
+  does, the animations are cancelled in between, and `capture()` then reads the field's
+  base style (margin 253 px) as its seed.
+- Start the plain trigger's across and down together: a delayed across (0.175 S, there to let
+  an open field shrink first) left a closed trigger crawling for four frames, then jumping.
+  Only a folding field waits (its row has its own delays; the trigger hides behind it).
+- In an expand the trigger must leave New's column before New's icon comes down onto it: a
+  later across than down overlapped the two squares by 2.6 px for a frame.
+- The shrink is `margin-inline-start` (right edge anchored), not a width or scale: an
+  animated width keeps the left edge fixed, so the field would grow past the trigger.
+- The result rows must stay out of the rail: an open field with a query in the rail
+  (pressed in the rail with a parked query) keeps filtering off until the layout is
+  expanded and no collapse or expand phase is running.
+- Hold the rows for any phase, not only `expand`: reversing a collapse mid-phase reopens
+  a parked query in a render that still sees `collapse`, and filtering then unmounts the
+  rows before the expand measures them (zero row offsets, no choreography).
 
 ## Floating Address Bar
 

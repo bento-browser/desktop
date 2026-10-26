@@ -28,6 +28,11 @@ const PARTS = {
   avatar: '.bento-workspace-switcher__avatar-frame',
   region: '.bento-shell-app__list-region',
   newIcon: '.bento-tab-list__new-action-button svg',
+  // The Search trigger, and the open search field's row: the field closes into the trigger's
+  // box (its right end, as an Esc close does) and the folded square then travels with the
+  // trigger, so both take the trigger's offset.
+  search: '.bento-tab-list__search-trigger',
+  field: '.bento-tab-list-search__field-row',
   scroller: '.bento-tab-list-pane__scroller',
   viewport: '.bento-tab-list__viewport',
   tab: '.bento-tab-list__row > .bento-tab-row:not(.bento-tab-row--indented)',
@@ -39,7 +44,17 @@ const PARTS = {
 type Part = keyof typeof PARTS;
 
 /** Single elements that carry their own offset (rows read theirs from the root). */
-const SINGLES = ['main', 'pinned', 'avatar', 'region', 'newIcon', 'scroller', 'viewport'] as const;
+const SINGLES = [
+  'main',
+  'pinned',
+  'avatar',
+  'region',
+  'newIcon',
+  'search',
+  'field',
+  'scroller',
+  'viewport',
+] as const;
 type Single = (typeof SINGLES)[number];
 type Offset = [number, number];
 
@@ -88,6 +103,32 @@ export function tabRowShifts(
     indented: indented ?? { ...base, x: base.x - indent, tail: base.tail - indent },
   };
 }
+
+/**
+ * Where the search square and the field row are while a phase animates them, read at a
+ * reversal. The next phase's keyframes start from these (--bento-rail-seed-*) rather than
+ * from their own start state, so a reversed square carries on from where it is.
+ */
+interface Seed {
+  search: Offset | null;
+  field: { offset: Offset; margin: number; padding: number; text: number } | null;
+}
+
+/**
+ * Set on the Search trigger for a collapse that folds a field. The trigger is hidden then, but
+ * it keeps the field row's timing for the whole phase (TabList.css), so a reversal into an
+ * expand that parks nothing starts the trigger where the row was. A phase-long marker, not
+ * `data-folding`, which TabList clears in the commit that reverses the phase.
+ */
+const FOLDING_TRIGGER_ATTRIBUTE = 'data-rail-folding';
+
+const SEED_PROPERTIES = [
+  '--bento-rail-seed-x',
+  '--bento-rail-seed-y',
+  '--bento-rail-seed-margin',
+  '--bento-rail-seed-padding',
+  '--bento-rail-seed-text',
+] as const;
 
 /** The motion-check-safe part of an Animation this module touches. */
 interface PhaseAnimation {
@@ -159,6 +200,9 @@ export function createRailTransitionDom(
   const dpr = () => view?.devicePixelRatio || 1;
   const px = (value: number) => Math.round(value * dpr()) / dpr();
   const find = (part: Part) => root.querySelector<HTMLElement>(PARTS[part]);
+  // A workspace slide holds two panes; the incoming one is last.
+  const findLast = (part: Part) =>
+    Array.from(root.querySelectorAll<HTMLElement>(PARTS[part])).pop();
   const footerChildren = () =>
     Array.from(find('footer')?.children ?? []).filter(
       (el): el is HTMLElement => el instanceof HTMLElement,
@@ -228,6 +272,8 @@ export function createRailTransitionDom(
     for (const el of written) {
       el.style.removeProperty('--bento-rail-x');
       el.style.removeProperty('--bento-rail-y');
+      el.removeAttribute(FOLDING_TRIGGER_ATTRIBUTE);
+      for (const name of SEED_PROPERTIES) el.style.removeProperty(name);
     }
     for (const el of delayed) el.style.animationDelay = '';
     for (const name of ROOT_PROPERTIES) root.style.removeProperty(name);
@@ -257,7 +303,38 @@ export function createRailTransitionDom(
       return layout;
     },
 
-    apply(phase, expandedLayout, railLayout) {
+    capture() {
+      // Across is the `translate` property, down is `transform` (matrix(a, b, c, d, tx, ty)).
+      const translate = (el: HTMLElement | undefined): Offset | null => {
+        if (!el || !view) return null;
+        const style = view.getComputedStyle(el);
+        const x = Number(style.translate.match(/-?\d*\.?\d+/)?.[0] ?? 0);
+        const y = Number(style.transform.match(/matrix\(([^)]*)\)/)?.[1]?.split(',')[5] ?? 0);
+        return [x, y];
+      };
+      const fieldRow = findLast('field');
+      const input = fieldRow?.querySelector<HTMLElement>('.bento-tab-list-search__input');
+      const fieldStyle = fieldRow && view?.getComputedStyle(fieldRow);
+      const fieldOffset = translate(fieldRow);
+      // While a field shows, its row is the visible square and the trigger (hidden) has its own
+      // timing: the trigger carries on from the row's place.
+      const fieldShows = !!fieldRow?.closest('[data-folding], [data-open]');
+      const seed: Seed = {
+        search: fieldShows ? fieldOffset : translate(findLast('search')),
+        field:
+          fieldStyle && fieldOffset
+            ? {
+                offset: fieldOffset,
+                margin: parseFloat(fieldStyle.marginInlineStart) || 0,
+                padding: parseFloat(fieldStyle.paddingInlineStart) || 0,
+                text: input ? parseFloat(view!.getComputedStyle(input).opacity) : 1,
+              }
+            : null,
+      };
+      return seed;
+    },
+
+    apply(phase, expandedLayout, railLayout, seedLayout) {
       clear();
       const expanded = expandedLayout as Layout;
       const rail = railLayout as Layout;
@@ -301,6 +378,10 @@ export function createRailTransitionDom(
         avatar: minus(d('avatar'), main),
         region: minus(region, main),
         newIcon: minus(d('newIcon'), region),
+        // The trigger moves to its rail slot. The open field shrinks onto the trigger's box
+        // and rides the same offset, so it is the trigger for the rest of the move.
+        search: minus(d('search'), region),
+        field: minus(d('search'), region),
         scroller: minus(scroller, region),
         viewport,
       };
@@ -313,6 +394,31 @@ export function createRailTransitionDom(
       // Every match: a workspace slide can hold two panes.
       for (const part of SINGLES) {
         for (const el of root.querySelectorAll<HTMLElement>(PARTS[part])) set(el, offsets[part]);
+      }
+      if (phase === 'collapse') {
+        for (const el of root.querySelectorAll<HTMLElement>(PARTS.search)) {
+          const folds = el
+            .closest('.bento-tab-list__new-actions')
+            ?.querySelector('.bento-tab-list-search[data-folding]');
+          if (folds) el.setAttribute(FOLDING_TRIGGER_ATTRIBUTE, '');
+        }
+      }
+      // A reversed phase starts the square and the field row where they are now.
+      const seeded = seedLayout as Seed | null | undefined;
+      const seedPx = (el: HTMLElement, name: (typeof SEED_PROPERTIES)[number], value: number) =>
+        el.style.setProperty(name, `${value}px`);
+      for (const el of root.querySelectorAll<HTMLElement>(PARTS.search)) {
+        if (!seeded?.search) break;
+        seedPx(el, '--bento-rail-seed-x', seeded.search[0]);
+        seedPx(el, '--bento-rail-seed-y', seeded.search[1]);
+      }
+      for (const el of root.querySelectorAll<HTMLElement>(PARTS.field)) {
+        if (!seeded?.field) break;
+        seedPx(el, '--bento-rail-seed-x', seeded.field.offset[0]);
+        seedPx(el, '--bento-rail-seed-y', seeded.field.offset[1]);
+        seedPx(el, '--bento-rail-seed-margin', seeded.field.margin);
+        seedPx(el, '--bento-rail-seed-padding', seeded.field.padding);
+        el.style.setProperty('--bento-rail-seed-text', String(seeded.field.text));
       }
       singles = offsets;
       // Footer buttons go one unit apart, the toggle (the first, bottom of the rail
@@ -368,7 +474,7 @@ export function createRailTransitionDom(
       if (listRegion && typeof MutationObserver !== 'undefined') {
         watcher = new MutationObserver((records) => {
           const prepare = (el: Element) => {
-            for (const part of ['newIcon', 'scroller', 'viewport'] as const) {
+            for (const part of ['newIcon', 'search', 'field', 'scroller', 'viewport'] as const) {
               const offset = singles[part];
               if (!offset) continue;
               const matches = [

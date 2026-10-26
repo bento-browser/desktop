@@ -42,15 +42,17 @@ const placeRow: Place = (highlight, row) => {
 // lands with them. A fresh show starts on the button's current box (the trigger
 // may only just have begun to widen) and `settleAction` hands it to CSS, which
 // carries it to the final box in step with the button. A button that is not
-// rendered (the Search trigger in the collapsed rail) has no box, which hides the
-// highlight.
+// rendered has no box, which hides the highlight. The collapsed rail stacks the
+// two buttons, so the same start covers `top`.
 const placeAction: Place = (highlight, button) => {
   const bar = highlight.parentElement;
   const box = button.getBoundingClientRect();
   if (!bar || box.width === 0) return false;
   highlight.dataset.target = button.matches(SEARCH_ACTION_SELECTOR) ? 'search' : 'new';
   if (!highlight.hasAttribute('data-visible')) {
-    highlight.style.left = `${box.left - bar.getBoundingClientRect().left}px`;
+    const barBox = bar.getBoundingClientRect();
+    highlight.style.left = `${box.left - barBox.left}px`;
+    highlight.style.top = `${box.top - barBox.top}px`;
     highlight.style.width = `${box.width}px`;
   }
   return true;
@@ -58,6 +60,7 @@ const placeAction: Place = (highlight, button) => {
 
 const settleAction = (highlight: HTMLElement) => {
   highlight.style.removeProperty('left');
+  highlight.style.removeProperty('top');
   highlight.style.removeProperty('width');
 };
 

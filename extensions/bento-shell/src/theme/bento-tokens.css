@@ -63,12 +63,17 @@
        keyboard-focused, sized for the icon, its gap, the label 'Search' and
        the same inline padding as the New button. Inset: the square trigger's
        icon offset (the icon is centered at rest and keeps that offset when it
-       peeks). Clear scale: the clear button's size before it pops in. */
+       peeks). Clear scale: the clear button's size before it pops in. Dot: the
+       mark on the rail's Search square while a collapse has parked a query (its size,
+       how far it overhangs the square's corner, and the halo that sets it off). */
     --bento-tab-list-search-peek-width: 5.25rem;
     --bento-tab-list-search-trigger-inset: calc(
       (var(--bento-tab-row-height) - var(--bento-icon-size-sm)) / 2
     );
     --bento-tab-list-search-clear-scale: 0.7;
+    --bento-tab-list-search-dot-size: 0.5rem;
+    --bento-tab-list-search-dot-offset: -0.1875rem;
+    --bento-tab-list-search-dot-halo: 0.125rem;
     /* Sidebar search results with a domain: two text lines (title, then the
        site) in a taller row. Domain size is Mux's smallest semantic size
        (the badge size, 11px); no text-* step is below the title's. */
@@ -111,12 +116,11 @@
        toolbar segment), so the window controls, the rail and the gap read as one
        surface. A window with no side panels overrides it to the brand background. */
     --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-14);
-    /* The rail's inset fills on that surface, one step further out so they keep their
-       contrast: the tab list band (the pinned and active tabs' top surface) and the base
-       the workspace switcher's square is tinted from. A window with no side panels keeps
-       the brand background in the rail, so the shell resets both there (app.css). */
+    /* The rail's inset fill on that surface, one step further out so it keeps its
+       contrast: the tab list band (the pinned and active tabs' top surface). A window
+       with no side panels keeps the brand background in the rail, so the shell resets it
+       there (app.css). */
     --bento-rail-band-fill: var(--muxui-semantic-color-neutral-18);
-    --bento-rail-square-base: var(--muxui-semantic-color-neutral-18);
 
     /* Component dimensions */
     --bento-favicon-size: 1rem;
