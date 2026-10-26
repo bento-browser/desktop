@@ -42,7 +42,6 @@
        the rail look below paints the brand background and the inset fills stay put. */
     --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-5);
     --bento-rail-band-fill: var(--muxui-semantic-color-neutral-12);
-    --bento-rail-square-base: var(--muxui-semantic-color-neutral-5);
   }
 
   /* The rail look: with side panels, the collapsed rail paints the toolbar's main colour
@@ -165,8 +164,11 @@
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
   }
 
+  /* The rail's stack (switcher, New, Search, tabs) keeps one section gap between squares:
+     the switcher's own end padding is the gap above New, as the tab list's is below Search. */
   html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
     align-items: center;
+    padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: 0;
   }
 }

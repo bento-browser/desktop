@@ -1,5 +1,5 @@
 {
-  "total": 353,
+  "total": 350,
   "files": {
     "extensions/bento-shell/src/app.css": 12,
     "extensions/bento-shell/src/components/AddressBar/AddressBar.css": 8,
@@ -14,7 +14,7 @@
     "extensions/bento-shell/src/components/TabRow/TabRow.css": 32,
     "extensions/bento-shell/src/components/WorkspaceIconPicker/WorkspaceIconPicker.css": 29,
     "extensions/bento-shell/src/components/WorkspacePalette/WorkspacePalette.css": 5,
-    "extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css": 35,
+    "extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css": 32,
     "extensions/bento-shell/src/components/WorkspaceThemePicker/WorkspaceThemePicker.css": 12,
     "extensions/bento-shell/src/edit-workspace/edit-workspace.css": 1,
     "extensions/bento-shell/src/menu/menu.css": 5,

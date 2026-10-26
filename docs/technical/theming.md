@@ -494,10 +494,10 @@ fade, set `updatePlaybackRate(0.05)` on the transitions as they start and keep t
   `bento.tokens`.
 - Rail colours (see "Rail colour" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)):
   `--bento-toolbar-main-bg` (the toolbar's main surface, neutral-14, shared by chrome's
-  mount sheet and the shell's rail look), `--bento-rail-band-fill` and
-  `--bento-rail-square-base` (neutral-18) are declared once in `bento-tokens.css` from
-  public Mux semantic neutrals, so every theme, mode and contrast follows. A window with
-  no side panels resets them (neutral-5, neutral-12, neutral-5): chrome under
+  mount sheet and the shell's rail look) and `--bento-rail-band-fill` (neutral-18) are
+  declared once in `bento-tokens.css` from public Mux semantic neutrals, so every theme,
+  mode and contrast follows. A window with no side panels resets them (neutral-5,
+  neutral-12): chrome under
   `:root[bento-no-side-panels]` for the main colour, the shell on
   `.bento-shell-app--no-side-panels`. The rail's `--bento-brand-bg` is re-pointed on
   `.bento-shell-app` in the rail look, not at `:root`; the document background keeps the
