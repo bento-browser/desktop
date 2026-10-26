@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import type { Action, TabSnapshot } from '@shared/protocol';
 import { TabList } from './TabList';
+import { openSearchForStory } from './openSearchForStory';
 import { makeTab, seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedDefault as seedDefaultWorkspaces } from '../../state/__fixtures__/workspaces';
 import { seedPanelsByWorkspace, seedPanelsHydrated } from '../../state/__fixtures__/panels';
@@ -202,7 +203,34 @@ export const Collapsed = () => {
   );
 };
 
-Collapsed.storyName = 'Collapsed (favicon-only stack)';
+Collapsed.storyName = 'Collapsed (favicon-only stack, Search square under New)';
+
+// A query typed into the open field, then the sidebar collapses: TabList parks the query and
+// the rail's Search square keeps the field's ring and a dot. The frame snaps (no chrome push
+// here; the App choreography story animates it).
+export const CollapsedSearchParked = () => {
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    seedSidebarTabs(8, 2);
+    const stopSearch = openSearchForStory('bento');
+    const timer = setTimeout(() => {
+      seedSidebarSettings(true);
+      setCollapsed(true);
+    }, 800);
+    return () => {
+      stopSearch();
+      clearTimeout(timer);
+    };
+  }, []);
+  useCollapsedAttribute(collapsed);
+  return (
+    <SidebarFrame width={collapsed ? COLLAPSED_SIDEBAR_WIDTH : 300}>
+      <TabList {...defaultTabListProps} />
+    </SidebarFrame>
+  );
+};
+
+CollapsedSearchParked.storyName = 'Collapsed, query parked (ring and dot on the Search square)';
 
 export const CollapsedMany = () => {
   // Verifies the favicon-only layout still virtualizes cleanly when more
@@ -366,30 +394,9 @@ export const CrossWorkspaceSearch = () => {
 
 CrossWorkspaceSearch.storyName = 'Cross-workspace search';
 
-// TabList owns the search state, so open the field and type the way a user
-// does: click the trigger, then set the input through the native setter so
-// React sees an input event. Both are looked up in the incoming pane: during a
-// workspace slide the outgoing pane is rendered first and its search is a no-op.
+// Opens the field and types `query`, as a user would (see openSearchForStory).
 function useOpenSearch(query: string) {
-  useEffect(() => {
-    let frame = 0;
-    const open = () => {
-      const pane = document.querySelector<HTMLElement>(
-        '.bento-tab-list-pane:not([class*="bento-tab-list-pane--exit-"])',
-      );
-      const trigger = pane?.querySelector<HTMLElement>('.bento-tab-list__search-button');
-      const input = pane?.querySelector<HTMLInputElement>('.bento-tab-list-search__input');
-      if (!trigger || !input) {
-        frame = requestAnimationFrame(open);
-        return;
-      }
-      trigger.click();
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, query);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    };
-    frame = requestAnimationFrame(open);
-    return () => cancelAnimationFrame(frame);
-  }, [query]);
+  useEffect(() => openSearchForStory(query), [query]);
 }
 
 // Search results with the domain under the title: normal, long title, long

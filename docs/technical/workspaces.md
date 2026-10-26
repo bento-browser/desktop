@@ -141,8 +141,8 @@ tools-owned and use the same active-window and active-workspace assignment paths
 as other entry points. Because the action header is a flex sibling of the
 scroller rather than a virtual row, virtualization cannot unmount it and tab
 scrolling cannot move it. Collapsed sidebar mode keeps the New control visible
-as a square icon-only button and hides the search trigger so the controls do not
-crowd the collapsed rail. The action row and each favicon-only tab row keep the
+as a square icon-only button with the Search trigger as a second square directly
+under it (the sticky action area is two slots tall in the rail). The action row and each favicon-only tab row keep the
 same `--bento-tab-row-height` as expanded mode so toggling the sidebar keeps row
 geometry predictable. The collapsed host width is
 `--bento-tab-strip-width-collapsed`, which reserves the favicon-only control
@@ -357,10 +357,11 @@ with the button. Height, radius and fill come from CSS (`100%`,
 `--muxui-semantic-shape-radius-s`, `--bento-surface-hover`). It is disabled
 during a tab or folder drag, while the search field covers the buttons
 (`searchOpen`), and while the New menu is open, so the button's open fill is not
-stacked on the hover fill. In the collapsed rail the bar is one square holding
-the New button and the Search trigger is `display: none`: the highlight is the
-full square (`left: 0`, `width: 100%`, snapped, no geometry transition), and a
-Search target with no box hides the highlight. Both buttons paint no hover fill
+stacked on the hover fill. In the collapsed rail the bar is two stacked squares,
+New and the Search trigger: the highlight is one square (`left: 0`, `width: 100%`,
+`height` the row height), `data-target` picks its `top` (`placeAction` writes the
+fresh show's `top` inline like `left`), and it slides between the two on the reveal
+spring; a target with no box hides the highlight. Both buttons paint no hover fill
 of their own (the Mux button hover override in
 [../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
 `.bento-tab-list__new-action-button[data-bento-menu-open='true']` keeps its
@@ -949,12 +950,13 @@ background-color` on the spring pair while a collapse or expand runs). The toolb
   (`@property` in `app.css`, set to `--bento-brand-bg` on the footer), and the footer
   transitions that property instead of `background-color`; the footer backdrop (`::before`,
   created at the phase start) paints `var(--bento-footer-fill)`, so it fades with the
-  footer. The tab list band and the workspace
-  switcher square move to `--bento-rail-band-fill` and `--bento-rail-square-base` (neutral-18
-  with side panels, reset in `.bento-shell-app--no-side-panels` to neutral-12 and neutral-5,
-  the old values), constant rather than following the look: the rail band
-  (`::after` in a phase) and the square (`::before`) are the rail's own parts and must keep
-  their colour while they fade out in an expand.
+  footer. The tab list band moves to `--bento-rail-band-fill` (neutral-18 with side panels,
+  reset in `.bento-shell-app--no-side-panels` to neutral-12, the old value), constant rather
+  than following the look: the rail band (`::after` in a phase) is the rail's own part and
+  must keep its colour while it fades out in an expand. The workspace avatar has no rail
+  square (no fill, no outline, at rest, hovered or pressed; the trigger is a circle there):
+  a square behind the round avatar showed its corners, and the phase only fades the
+  expanded pill's fill out.
 - The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
   `afterMotion` on the host's slide animation (`bento-sidebar-push-progress` for a fluid
   push; never a copied duration): it reads the
@@ -1110,17 +1112,23 @@ reaches chrome later), and the choreography persists nothing.
   expanded footer; a private window's band slot (`.bento-shell-app__workspace-switcher--private`)
   is lifted to `z-index: 4` for the phase only, since the band keeps its solid fill and the
   rising list region and folding address bar would otherwise paint over its lower edge (the
-  footer, also 4, comes later in the document); the switcher's fill fades while the rail square fades in under the
-  moving avatar; the active row draws a cap the size of the rail square over a tail that
+  footer, also 4, comes later in the document); the switcher's fill fades out (the avatar has no
+  rail square); the active row draws a cap the size of the rail square over a tail that
   retracts under it, clipped by the row; folder outlines and the pinned and folder band
   cross-fade to the rail square; the hover and action highlights are hidden. The
   `transition: none` rule on the switcher trigger and tab rows keeps their background
   transitions from animating the phase's own background changes, and the list scroller
   has `overflow-anchor: none` for the phase.
+- The sidebar search: the Search trigger is a measured part (`search`, moving between its
+  expanded place and its rail slot like the New icon) and an open field shrinks onto the
+  trigger and rides its offset (collapse), or rides it and unfolds (expand), as the moving
+  `field` part (the trigger's own offset, plus seeds for a reversed phase). TabList closes the field and parks a typed query in the commit
+  of the setting flip, before this read. Mechanism, timing and pitfalls:
+  [palettes-and-address-bar.md](palettes-and-address-bar.md#rail-search-square).
 - What React mounts in the list region during a phase (a workspace switch swaps the tab
   list pane; the virtualizer can add rows) is caught by a `MutationObserver` on the
-  region that lives only for the phase: a new pane's scroller, viewport and New icon get
-  the phase's offsets, and every phase animation in the added subtree is finished
+  region that lives only for the phase: a new pane's scroller, viewport, New icon, Search
+  trigger and search field row get the phase's offsets, and every phase animation in the added subtree is finished
   (`finishAdded` in `railLayout.ts`), so it holds the phase's end state (the rail places
   in a collapse, the expanded ones in an expand) instead of starting late and still
   moving at the switch.
@@ -1130,8 +1138,8 @@ reaches chrome later), and the choreography persists nothing.
   at their rail places, and nothing resizes when the translation ends.
 - Known snaps at the switch, not choreographed: a multi-selected (not active) row's
   tint and outline, an audible or muted row's favicon (the speaker control moves it, and
-  the shared row offset does not know), an open sidebar search and sidebar cards (both
-  fade out and the rail form appears at the switch), the footer toggle's icon, which
+  the shared row offset does not know), sidebar cards (they fade out and the rail form
+  appears at the switch), the footer toggle's icon, which
   follows the setting, and the active row's highlight when a collapse starts in a
   workspace with no tab rows and a populated workspace mounts before the switch (the
   stored row offsets are zero, so the new rows hold their expanded form). The rail's
@@ -1153,8 +1161,9 @@ clip and frame counter-translation on the same tokens, chrome starting after the
 commit, settle on `afterMotion`), with slow motion, pinned panels, a folder, an active
 row and a long list; `dir=collapse|expand&t=<ms>` freezes a frame (the motion tokens are
 scaled 100x first, so no end timer fires while frozen), `state=rail`, `pinned=1`,
-`panels=none` (no side panels: the rail stays on the brand background) and `scroll=<px>`
-set up the other cases. The story's window paints chrome's main colour around the page and
+`panels=none` (no side panels: the rail stays on the brand background), `scroll=<px>` and
+`search=open|<query>` (opens the sidebar search field, typing the query, on load; the
+toolbar has the same as "Open search" and "Search bento") set up the other cases. The story's window paints chrome's main colour around the page and
 reproduces the host's fading edge line, so the rail look and its fade are visible there;
 "App / Collapsed (narrow rail)" and "App / Collapsed, no side panels" are the static pair. In a Bento build, the checklist in
 [manual-regression-areas.md](manual-regression-areas.md) (the collapse choreography
@@ -1196,8 +1205,8 @@ animation); the rail colour: with side panels, the collapsed rail, the window co
 the gap around the page are one colour with no line on the rail's right edge, the toolbar's
 left segment, the host, the divider and the edge line fade together with the slide (raise
 the spring tokens as above and read `--bento-toolbar-left-bg` and the shell's
-`.bento-shell-app` background at several `currentTime` values), the tab list band and the
-workspace switcher square are neutral-18, with no side panels the rail stays neutral-5 and
+`.bento-shell-app` background at several `currentTime` values), the tab list band is
+neutral-18, with no side panels the rail stays neutral-5 and
 nothing changes colour, and hide, show, boot, reduced motion and theme changes switch
 the colour with no fade (a mode flip fades on its own `state` rule, see
 [theming.md](theming.md#mode-flip-fade)), in every theme, light and dark, and with contrast "more";

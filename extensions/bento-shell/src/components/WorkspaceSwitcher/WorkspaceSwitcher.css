@@ -182,14 +182,9 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   max-width: 100%;
   box-sizing: border-box;
   justify-content: flex-start;
-  /* The expanded and rail fills, also drawn by the collapse choreography
-     (sidebar/railTransition.css), which cross-fades them. */
+  /* The expanded fill, also drawn by the collapse choreography
+     (sidebar/railTransition.css), which fades it out. */
   --bento-workspace-switcher-fill: color-mix(in srgb, var(--color-60) 8%, transparent);
-  --bento-workspace-switcher-rail-fill: color-mix(
-    in srgb,
-    var(--color-60) 12%,
-    var(--bento-rail-square-base)
-  );
   background-color: var(--bento-workspace-switcher-fill);
   border-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   color: var(--color-90);
@@ -225,9 +220,22 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
   justify-content: center;
   margin-inline: auto;
   padding: 0;
-  border-radius: var(--radius-s);
-  background-color: var(--bento-workspace-switcher-rail-fill);
-  border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
+  border-radius: var(--muxui-semantic-shape-pill-radius);
+  background-color: transparent;
+  border-color: transparent;
+}
+
+/* The rail shows the round avatar alone: no square fill or outline behind it, at rest or
+   under the pointer (the hover and press tints above would show its corners). */
+html[data-bento-collapsed='true']
+  .muxui-button.bento-workspace-switcher__trigger:is(
+    :hover,
+    [data-hovered],
+    :active,
+    [data-pressed]
+  ):not([data-disabled], [data-pending]) {
+  background-color: transparent;
+  border-color: transparent;
 }
 
 @layer bento.components {

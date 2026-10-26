@@ -66,13 +66,21 @@
     padding-inline: var(--space-3xs);
   }
 
+  /* The rail's action area holds two squares, New and Search (a slot is a row and a gap),
+     so the list starts one slot lower than it did with New alone. */
+  html[data-bento-collapsed='true'] .bento-tab-list-pane {
+    --bento-tab-list-actions-height: calc(
+      var(--bento-tab-row-height) * 2 + var(--bento-tab-list-row-gap)
+    );
+  }
+
   /* Centred, not left-aligned: the rail's content box is narrower than the 32px
      New square (the sidebar's 1px border is not in the rail width), so the
      square overflows both sides evenly like the tab rows. */
   html[data-bento-collapsed='true'] .bento-tab-list-pane__sticky-actions {
     display: flex;
     justify-content: center;
-    height: var(--bento-tab-row-height);
+    height: var(--bento-tab-list-actions-height);
     padding-block-start: 0;
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
   }
@@ -94,7 +102,7 @@
 
   html[data-bento-collapsed='true'] .bento-tab-list-pane__scrollbar {
     position: absolute;
-    inset-block-start: var(--bento-tab-row-height);
+    inset-block-start: var(--bento-tab-list-actions-height);
     inset-block-end: 0;
     inset-inline-end: 0;
     z-index: 4;
@@ -223,8 +231,8 @@
      target takes the button's final box from --bento-tab-list-search-trigger-width
      (set on the bar, see below), so the highlight slides and resizes with the
      peeking Search trigger and the New button instead of chasing their
-     mid-transition boxes. The collapsed rail is one square holding the New
-     button. */
+     mid-transition boxes. The collapsed rail stacks the two squares, so its
+     highlight is one square tall and `data-target` picks the slot. */
   .bento-tab-list__hover-highlight,
   .bento-tab-list__action-highlight {
     position: absolute;
@@ -259,6 +267,11 @@
   html[data-bento-collapsed='true'] .bento-tab-list__action-highlight {
     left: 0;
     width: 100%;
+    height: var(--bento-tab-row-height);
+  }
+
+  html[data-bento-collapsed='true'] .bento-tab-list__action-highlight[data-target='search'] {
+    top: calc(var(--bento-tab-row-height) + var(--bento-tab-list-row-gap));
   }
 
   .bento-tab-list__hover-highlight[data-visible],
@@ -296,10 +309,13 @@
     margin-inline-start: calc((100% - var(--bento-tab-row-height)) / 2);
   }
 
-  /* Collapsed rail: the Search trigger is gone, so New already fills the bar and
-     the highlight snaps to the full square instead of sliding to it. */
+  /* Collapsed rail: the squares are one box wide, so the highlight only slides
+     between the two slots, on the spring the expanded one uses. */
   html[data-bento-collapsed='true'] .bento-tab-list__action-highlight[data-visible] {
-    transition: opacity var(--muxui-semantic-motion-state-transition);
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      top var(--muxui-semantic-motion-reveal-transition-spring-duration)
+        var(--muxui-semantic-motion-reveal-transition-spring-easing);
   }
 
   /* Reduced motion: skip the slide. The drop indicator's instant
@@ -312,7 +328,8 @@
     }
 
     .bento-tab-list__hover-highlight[data-visible],
-    .bento-tab-list__action-highlight[data-visible] {
+    .bento-tab-list__action-highlight[data-visible],
+    html[data-bento-collapsed='true'] .bento-tab-list__action-highlight[data-visible] {
       transition: opacity var(--muxui-semantic-motion-state-transition);
     }
   }
@@ -434,6 +451,11 @@
 .bento-tab-list__new-actions {
   --bento-tab-list-search-trigger-width: var(--bento-tab-row-height);
 
+  /* What the open field and the parked rail Search square share: the field's ring, and the
+     inset of its icon (the folded field ends as the square, so the two must match). */
+  --bento-tab-list-search-ring: inset 0 0 0 var(--bento-border-hairline) var(--color-60);
+  --bento-tab-list-search-field-inset: var(--space-2xs);
+
   position: relative;
   display: flex;
   width: 100%;
@@ -443,10 +465,12 @@
   gap: var(--bento-tab-list-row-gap);
 }
 
-.bento-tab-list__new-actions:has(
-  .bento-tab-list__search-trigger:hover,
-  .bento-tab-list__search-button:focus-visible
-) {
+/* The rail has no peek: its Search square stays a square. */
+html:not([data-bento-collapsed='true'])
+  .bento-tab-list__new-actions:has(
+    .bento-tab-list__search-trigger:hover,
+    .bento-tab-list__search-button:focus-visible
+  ) {
   --bento-tab-list-search-trigger-width: var(--bento-tab-list-search-peek-width);
 }
 
@@ -483,17 +507,21 @@
 }
 
 .bento-tab-list__search-trigger {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   width: var(--bento-tab-list-search-trigger-width);
   height: 100%;
+  border-radius: var(--muxui-semantic-shape-radius-s);
   transition: width var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
 
 /* The field row covers the trigger while search is open. The trigger stays for
-   the field's first fade so the icon never blinks, then hides. */
-.bento-tab-list__new-actions:has(.bento-tab-list-search[data-open])
+   the field's first fade so the icon never blinks, then hides. In the rail the field is
+   not drawn (it opens when the sidebar expands), so the square stays until then. */
+html:not([data-bento-collapsed='true'])
+  .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open])
   .bento-tab-list__search-trigger {
   visibility: hidden;
   transition:
@@ -574,11 +602,11 @@
   box-sizing: border-box;
   height: var(--bento-tab-row-height);
   margin-inline-start: 0;
-  padding-inline-start: var(--space-2xs);
+  padding-inline-start: var(--bento-tab-list-search-field-inset);
   padding-inline-end: 0;
   border-radius: var(--radius-s);
   background-color: var(--neutral-10);
-  box-shadow: inset 0 0 0 var(--bento-border-hairline) var(--color-60);
+  box-shadow: var(--bento-tab-list-search-ring);
   overflow: hidden;
   opacity: 1;
   transition:
@@ -863,6 +891,7 @@
 }
 
 html[data-bento-collapsed='true'] .bento-tab-list__new-actions {
+  flex-direction: column;
   width: var(--bento-tab-row-height);
   min-width: var(--bento-tab-row-height);
   max-width: var(--bento-tab-row-height);
@@ -883,8 +912,168 @@ html[data-bento-collapsed='true'] .bento-tab-list__new-action-label {
   display: none;
 }
 
+/* The Search square under New. The field is not drawn in the rail: activating the square
+   expands the sidebar, which opens it. */
 html[data-bento-collapsed='true'] .bento-tab-list__search-trigger {
+  height: var(--bento-tab-row-height);
+}
+
+html[data-bento-collapsed='true'] .bento-tab-list-search {
   display: none;
+}
+
+/* A typed query parked by a collapse: the field's ring and a dot. The ring is on the
+   wrapper, so the button keeps its own focus ring. The dot fades in as the folded field
+   hands over to the square at the end of the collapse. */
+html[data-bento-collapsed='true'] .bento-tab-list__search-trigger[data-parked] {
+  box-shadow: var(--bento-tab-list-search-ring);
+}
+
+html[data-bento-collapsed='true'] .bento-tab-list__search-trigger[data-parked]::after {
+  content: '';
+  position: absolute;
+  inset-block-start: var(--bento-tab-list-search-dot-offset);
+  inset-inline-end: var(--bento-tab-list-search-dot-offset);
+  width: var(--bento-tab-list-search-dot-size);
+  height: var(--bento-tab-list-search-dot-size);
+  border-radius: 50%;
+  background-color: var(--muxui-semantic-color-neutral-90);
+  box-shadow: 0 0 0 var(--bento-tab-list-search-dot-halo) var(--bento-brand-bg);
+  pointer-events: none;
+  animation: bento-tab-list-search-dot-in var(--muxui-semantic-motion-state-transition) both;
+}
+
+@keyframes bento-tab-list-search-dot-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The field in the sidebar's collapse and expand choreography (sidebar/railTransition.css
+   moves everything else; the layout stays the expanded one for the phase). Unlayered, as
+   these override the closed field's styles above.
+
+   Collapse: TabList has already closed the field (parking a typed query), so the overlay
+   carries data-folding for the phase. The placeholder, the query and the clear button fade,
+   the results fade over the rows that are back underneath, and the field shrinks onto the
+   Search trigger at the right end of the action row, right edge anchored, as an Esc close
+   does (bento-rail-fold-in: margin and icon inset, 0 to 0.3 of the reveal spring). That
+   square then IS the trigger: it rides the trigger's own measured offset to the rail slot
+   under New, across from 0.14 (overlapping the shrink's tail, so the speed carries over)
+   and down from 1/32 with the list region (so it never overshoots the rows). It never
+   crosses the New square. Its ring and fill leave over the ride unless a query is parked,
+   and the Search square takes over as the phase ends.
+   Expand is the same run backwards, for a field that opens with the sidebar (a parked
+   query, or Search pressed in the rail): across and down start at once, as the plain
+   trigger's do, it opens leftward from the right end at 0.125, and the results replace the
+   rows when the phase ends.
+   A reversed phase starts from where the running one left the field (--bento-rail-seed-*,
+   railLayout.ts). The state flips a commit before the phase attribute on a reversal, so the
+   rules below match data-folding and data-open in both phases and the animations keep
+   running across that gap. The keyframes are the choreography's
+   (bento-rail-fold-*, bento-rail-to/from). */
+html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand'])
+  .bento-tab-list-search:is([data-folding], [data-open]) {
+  visibility: visible;
+  transition: none;
+}
+
+html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand'])
+  .bento-tab-list__new-actions:has(.bento-tab-list-search:is([data-folding], [data-open]))
+  .bento-tab-list__search-trigger {
+  visibility: hidden;
+  transition: none;
+}
+
+html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand'])
+  .bento-tab-list-search:is([data-folding], [data-open])
+  .bento-tab-list-search__field-row {
+  margin-inline-start: 0;
+  padding-inline-start: var(--bento-tab-list-search-field-inset);
+  opacity: 1;
+  transition: none;
+}
+
+html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand'])
+  .bento-tab-list-search:is([data-folding], [data-open])
+  :is(.bento-tab-list-search__input, .bento-tab-list-search__clear) {
+  opacity: 1;
+  scale: 1;
+  transition: none;
+}
+
+html[data-bento-rail-transition='collapse']
+  .bento-tab-list-search:is([data-folding], [data-open])
+  :is(.bento-tab-list-search__input, .bento-tab-list-search__clear) {
+  animation: bento-rail-fold-text-out var(--muxui-semantic-motion-state-transition) both;
+}
+
+html[data-bento-rail-transition='collapse']
+  .bento-tab-list-search:is([data-folding], [data-open])
+  .bento-tab-list-search__results {
+  animation: bento-rail-out var(--muxui-semantic-motion-state-transition) both;
+}
+
+html[data-bento-rail-transition='expand']
+  .bento-tab-list-search:is([data-folding], [data-open])
+  :is(.bento-tab-list-search__input, .bento-tab-list-search__clear) {
+  animation: bento-rail-in var(--muxui-semantic-motion-state-transition)
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.4) both;
+}
+
+/* The field's own motion: margin and icon inset (the shrink onto the trigger, or the opening
+   from it), the move (translate), the fill and the ring. The ring is left alone while a
+   query is parked. */
+:is(
+    html[data-bento-rail-transition='collapse']
+      .bento-tab-list-search:is([data-folding], [data-open]),
+    html[data-bento-rail-transition='expand'] .bento-tab-list-search:is([data-folding], [data-open])
+  )
+  .bento-tab-list-search__field-row {
+  animation-name:
+    var(--bento-rail-fold), var(--bento-rail-move-x), var(--bento-rail-move-y),
+    var(--bento-rail-fold-fill), var(--bento-rail-fold-ring);
+  animation-duration:
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6);
+  animation-timing-function: var(--muxui-semantic-motion-reveal-transition-spring-easing);
+  animation-fill-mode: both;
+}
+
+:is(
+    html[data-bento-rail-transition='collapse']
+      .bento-tab-list-search:is([data-folding], [data-open]),
+    html[data-bento-rail-transition='expand'] .bento-tab-list-search:is([data-folding], [data-open])
+  )[data-has-query]
+  .bento-tab-list-search__field-row {
+  animation-name:
+    var(--bento-rail-fold), var(--bento-rail-move-x), var(--bento-rail-move-y),
+    var(--bento-rail-fold-fill), none;
+}
+
+html[data-bento-rail-transition='collapse']
+  .bento-tab-list-search:is([data-folding], [data-open])
+  .bento-tab-list-search__field-row {
+  animation-delay:
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14);
+}
+
+html[data-bento-rail-transition='expand']
+  .bento-tab-list-search:is([data-folding], [data-open])
+  .bento-tab-list-search__field-row {
+  animation-delay:
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.125),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0);
 }
 
 /* Reduced motion: no width, margin or slide transitions, only short fades. The
@@ -895,7 +1084,8 @@ html[data-bento-collapsed='true'] .bento-tab-list__search-trigger {
     transition: none;
   }
 
-  .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open])
+  html:not([data-bento-collapsed='true'])
+    .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open])
     .bento-tab-list__search-trigger {
     transition: visibility var(--muxui-semantic-motion-state-transition);
   }
