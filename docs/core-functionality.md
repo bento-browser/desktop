@@ -295,6 +295,21 @@ button that empties a typed query and keeps the field open; on an empty field
 the same button closes search, like Esc. While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
+In the collapsed rail, Search is a square directly under New, with the same hover
+highlight and no label. The rail's squares (the workspace button, New, Search and the
+first tab) sit one equal gap apart. Pressing it expands the sidebar and opens the search field
+focused. Collapsing the sidebar with the field open folds it into that square: the
+placeholder, query and clear button fade, the results give way to the tab rows,
+the field shrinks toward the Search button at the right end of its row, and that
+square then glides to its slot under New as the rows shift down one slot, never
+passing over New. An empty field is simply closed. A typed query is kept
+("parked"): the square then shows a ring and a small dot, and expanding the sidebar
+again by any means reopens the field with that query and its results: the square
+glides back to the right end of the row and unfolds leftward into the field. Reversing
+either move midway carries on from where the field is. Esc, the
+clear button and choosing a result clear the query as before, and switching
+workspace keeps a parked query. With reduced motion on, none of it moves; the
+rail simply shows or drops the ring and dot.
 Each result shows the page title with the site's domain beneath it in smaller,
 muted text. Pages without a web domain, such as extension pages, show the title
 alone in a standard-height row, and built-in `about:` pages show their address.
@@ -340,8 +355,8 @@ that glides from row to row and fades out when the pointer leaves the list. It
 is hidden while dragging a row and does not slide when the user has asked the
 system to reduce motion. The New and Search buttons above the list share that
 look with their own highlight, which glides between the two buttons and stays
-inside the action bar; moving into the list fades it out as the row highlight
-fades in. It is hidden while Search is open.
+inside the action bar (in the rail, between the New and Search squares); moving into
+the list fades it out as the row highlight fades in. It is hidden while Search is open.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.
@@ -466,7 +481,7 @@ stays as it is without side panels. While the
 sidebar's edge moves on a collapse or expand, its contents reorganise in place, one
 after another from the top: the workspace avatar, the New button's plus and each tab's
 favicon move to their rail places, the address bar folds away under the rising tab
-list, names, labels and row buttons fade, the active tab's highlight retracts to its
+list, the Search square moves to its slot under New, names, labels and row buttons fade, the active tab's highlight retracts to its
 rail square, and the footer buttons gather into the rail's column, toggle first. An
 expand plays the same in reverse. With reduced motion on, the change is instant. In hidden
 mode, hovering the left edge of the browser window slides the collapsed rail
