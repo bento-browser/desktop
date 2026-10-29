@@ -504,6 +504,12 @@ html:not([data-bento-collapsed='true'])
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  /* Newer Mux's inline-flex wrapper makes this a flex item, so the clip applies (the
+     published inline span ignores both overflow and vertical margins). Descenders
+     reach below its line-height 1 box. */
+  padding-block-end: var(--bento-text-descender-room);
+  margin-block-end: calc(-1 * var(--bento-text-descender-room));
 }
 
 .bento-tab-list__search-trigger {
@@ -550,13 +556,12 @@ html:not([data-bento-collapsed='true'])
   justify-content: flex-start;
   overflow: clip;
   overflow-clip-margin: content-box;
-}
 
-/* Mux lays the icon and label out in its content span the same way as the New
-   button's, so the label shares New's baseline. The gap is a margin because
-   the published span is inline; Mux main's is an inline-flex that inherits the
-   Button gap, which is zeroed here so the two do not add up. */
-.bento-tab-list__search-button .muxui-button-content {
+  /* The gap between icon and label is the label's margin below, in every Mux. The
+     published span around the icon and label is inline, so it spaces nothing. Newer Mux
+     makes that span an inline-flex with gap: inherit, so it takes this gap: 0 and
+     the two do not add up (the label would start 5.2px late and clip at the peek's
+     edge). Zeroing the Button's own gap leaves Mux's wrapper class name unnamed. */
   gap: 0;
 }
 
@@ -876,6 +881,9 @@ html:not([data-bento-collapsed='true'])
 .bento-tab-list-search__title {
   font-size: var(--bento-tab-row-font-size);
   line-height: 1;
+  /* Descenders reach below the line-height 1 box the clip would cut at. */
+  padding-block-end: var(--bento-text-descender-room);
+  margin-block-end: calc(-1 * var(--bento-text-descender-room));
 }
 
 .bento-tab-list-search__domain {
@@ -1023,7 +1031,10 @@ html[data-bento-rail-transition='expand']
 
 /* The field's own motion: margin and icon inset (the shrink onto the trigger, or the opening
    from it), the move (translate), the fill and the ring. The ring is left alone while a
-   query is parked. */
+   query is parked. The across move, the fill and the ring take the whole reveal spring pair
+   (the trigger's across move, railTransition.css: it keeps pace with chrome's host edge); the
+   down move is 0.6 of it and shares the list region's timing. Each phase's rule below sets
+   the durations and delays, in the order of the names. */
 :is(
     html[data-bento-rail-transition='collapse']
       .bento-tab-list-search:is([data-folding], [data-open]),
@@ -1033,12 +1044,6 @@ html[data-bento-rail-transition='expand']
   animation-name:
     var(--bento-rail-fold), var(--bento-rail-move-x), var(--bento-rail-move-y),
     var(--bento-rail-fold-fill), var(--bento-rail-fold-ring);
-  animation-duration:
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6);
   animation-timing-function: var(--muxui-semantic-motion-reveal-transition-spring-easing);
   animation-fill-mode: both;
 }
@@ -1054,20 +1059,38 @@ html[data-bento-rail-transition='expand']
     var(--bento-rail-fold-fill), none;
 }
 
+/* Collapse: the shrink takes 0.3 of the spring and is over by the time the square has left the
+   field's old place; the across move starts with it, so the field's right end rides the edge
+   from the first frame and the square it becomes is never behind the edge. */
 html[data-bento-rail-transition='collapse']
   .bento-tab-list-search:is([data-folding], [data-open])
   .bento-tab-list-search__field-row {
+  animation-duration:
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration);
   animation-delay:
     calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
     calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14),
-    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14);
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0);
 }
 
+/* Expand: the unfold starts at 0.125 and runs to the end of the spring (0.875 long), on the
+   same curve as the across move but later, so the field's left end never gets ahead of the
+   square's ride (a faster unfold would open it past its own left edge and slide it back). */
 html[data-bento-rail-transition='expand']
   .bento-tab-list-search:is([data-folding], [data-open])
   .bento-tab-list-search__field-row {
+  animation-duration:
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.875),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration),
+    calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration),
+    var(--muxui-semantic-motion-reveal-transition-spring-duration);
   animation-delay:
     calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.125),
     calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),

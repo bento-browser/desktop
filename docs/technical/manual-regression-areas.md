@@ -35,13 +35,23 @@ When changing core functionality, manually verify at least the affected subset:
   active) row's tint, an audible or muted row's favicon (the speaker control shifts it),
   a sidebar card fades instead of moving (an open sidebar search folds into the rail's
   Search square, see Sidebar search peek and grow, item 7);
+- sidebar expand from the rail (Cmd+S), in a regular window with and without side panels
+  and in a private window: no frame where the rail area is empty or shows a different
+  colour strip at the start of the slide, and the rail items move straight from their rail
+  places; the settled rail's avatar, New, Search, tab squares and footer buttons are centred
+  in the 52 px rail; in hide mode the edge-hover reveal shows the rail correctly and show
+  expands normally;
 - the rail colour (with side panels the collapsed rail takes the toolbar's colour: one
   surface with the window controls and the gap around the page, no divider line on its right
   edge; the colour and the lines fade with a collapse or expand on the same spring as the
   slide, with no snap at either end, in the toolbar, the host and the shell; no side
   panels keep neutral-5 throughout; the tab list band is
   neutral-18 in the rail, and the round workspace avatar has no square fill or outline behind
-  it (rest, hover, press, collapse and expand); hide, show, reduced motion, boot and theme changes are instant; the
+  it (rest, hover, press, collapse and expand): no ring or corner of the expanded switcher
+  card is left around the avatar during or after a collapse (the card's fill and its ring,
+  Mux's button shadow, fade out together, and nothing is drawn behind the avatar from the
+  moment its fill is gone), and an expand brings the ring in with the fill instead of at
+  once; keyboard focus on the rail avatar still shows Mux's focus ring; hide, show, reduced motion, boot and theme changes are instant; the
   hide-mode edge-hover rail takes the toolbar's colour too), in a light and a dark theme and
   with contrast "more";
 - workspace switch with different panel sets;
@@ -314,10 +324,12 @@ sync and Alt+Shift+R, with the sidebar expanded:
    New and Search and between Search and the first tab. Open search with
    an empty field, then collapse by the footer toggle and by Cmd+S: the field
    shrinks toward the trigger at the right end of its row (right edge fixed, like an
-   Esc close), then the square glides to the Search slot as the rows shift down one
-   slot, without a stop where the two meet and without touching the New square; the
-   square ends plain. With no field open the square starts moving at once (no pause
-   then a jump), in both directions. Repeat with a query typed: the results swap back to rows in the
+   Esc close) while the sidebar's edge carries it, and the square glides to the Search
+   slot as the rows shift down one slot, without a stop where the two meet and without
+   covering New's plus or its label; the square ends plain. With no field open the
+   square starts moving at once (no pause then a jump), in both directions. In both
+   directions the square stays about 10 px inside the strip's moving edge, never clipped
+   by it and never racing ahead of it. Repeat with a query typed: the results swap back to rows in the
    first moments, the square ends with a ring and a dot, and no result rows are
    squeezed into the rail. Press the square in the rail (nothing parked): the
    sidebar expands, the square glides to the right end of the action row and the

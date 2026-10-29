@@ -128,10 +128,15 @@ pressed fill is its background). `padding-block: 0` keeps the content box the fu
 row height: Mux's block padding (about 9.35px) would shrink it below the 1rem icon
 and clip the icon top and bottom. The published package lays the icon and
 label out inline in `.muxui-button-content`, which is not a flex container, so
-the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
-main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
-part's `gap` to 0 and the margin stays the only spacing in both. The
-peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
+the gap between them is a `margin-inline-start` on the label, not a `gap`. A newer
+Mux's wrapper (`.muxui-button__label`) is an inline-flex with `gap: inherit`, so
+the Search `Button` sets its own `gap: 0` (the wrapper inherits it) and the margin is
+the only spacing in both. Do not target the wrapper by class name: it has been
+renamed between Mux versions, and a missed selector adds the Button's gap to the
+margin, which pushes the label 5.2px right and cuts its end at the peek's clip
+edge ("Searc"). The New `Button` has no label margin, so it shows whatever spacing its Mux gives:
+the published package sits "New" flush against the plus (no gap), a newer Mux puts
+the Button's gap between them. The peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
 React Aria also sets `data-focus-visible` on the button.
 
 In the search field, Bento sets `opacity` and its transition on the public
@@ -161,6 +166,19 @@ actions width. The label foreground rules (default, selected, sleeping, active)
 stay unlayered because Mux text utilities are unlayered. A sleeping (discarded)
 label uses `--muxui-semantic-color-neutral-60`; keep any dark-mode value at or
 above 4.5:1 against the sidebar.
+
+Single-line sidebar text that ellipsizes (`overflow: hidden`) at `line-height: 1`
+(tab and folder titles, search result titles, the switcher's name, the New label)
+clips its descenders: Inter's g, j, p, q and y reach 0.4 to 1px below the line box
+the clip is cut at. Each such rule adds `padding-block-end:
+var(--bento-text-descender-room)` and the equal negative `margin-block-end`
+(`--bento-text-descender-room` is `0.25em`, in `bento-tokens.css`). The clip box
+grows downward and the margin box does not, so the text's place in its row, its
+centering and its baseline are unchanged, and `text-overflow: ellipsis` and the
+title's hover `mask-image` (which covers the border box) work as before. Do not
+change the line-height instead (a taller box changes the size of content-sized
+columns such as the search result's title and domain), and do not use
+`overflow-y: visible`: the hover mask would cut the descenders again. A new clipping text box at `line-height: 1` takes the same pair.
 
 Public ClearButton and Close parts occupy separate positions in the search row
 in the command palette, merge, and the Settings palette. The scoped static Close position prevents
@@ -873,13 +891,29 @@ the strip's edge wipes over it. It animates only `translate` and `opacity`, keye
   footer buttons, and the footer backdrop that rises with the divider) are the `reveal`
   spring pair at `calc()` 0.6 of its duration, so a staggered move still ends inside
   the slide. A collapse moves to the measured rail places and holds them until the
-  rail layout replaces it; an expand starts at them and moves back.
-- Fades (the workspace name, the New label, row titles, the switcher's fill and the
-  rail square that replaces it, folder outlines, the pinned and folder band, the
+  rail layout replaces it; an expand starts at them and moves back. The exception is the
+  Search square's across move (and the open search field's): it travels 150 to 250 px
+  against 15 to 30 for the other items, so it takes the whole spring pair with no delay,
+  like chrome's slide of the host, and keeps a constant 8 to 10 px gap to the strip's edge
+  (its down move stays at 0.6, with the list region).
+- Fades (the workspace name, the New label, row titles, the switcher's fill and ring,
+  folder outlines, the pinned and folder band, the
   address bar's fold, pinned panels) are the `state` pair. Trailing controls (the
   switcher chevron, Search, row buttons and audio controls, an open search field,
   sidebar cards) leave on the `dismiss` pair in a collapse and return on `state` in an
   expand, after `calc()` 0.3 of the spring duration (titles after 0.15).
+- The switcher trigger's ring is Mux's button shadow (`--muxui-button-shadow`: in a Mux
+  that sets one, an inset 1px edge and a faint drop shadow on the neutral button; none in
+  the npm rc.1). The trigger does not move during a phase, so its own shadow would stay at
+  the expanded box and hang around the avatar's rail place until the settle, and appear at
+  once in an expand. For the phase the trigger's `box-shadow` is `none` (except under
+  `:focus-visible`, so Mux's keyboard focus ring survives) and its fading fill layer
+  (`::before`, same box) paints `box-shadow: var(--muxui-button-shadow)`: the custom
+  property is inherited, so the layer draws whatever shadow Mux sets for the trigger's
+  state, and the ring fades with the fill on `state`. Do not copy the value into a Bento
+  property; follow Mux's. In the settled rail the trigger has `box-shadow: none` too (the
+  rule excludes `:focus-visible`, which is unlayered and would otherwise beat Mux's layered
+  focus ring).
 - A private window's band takes no part in the moves and fades: its glyph's start inset
   (rail width minus glyph size, halved, from tokens) is the same in both layouts, and its
   text keeps full opacity and starts at the rail's edge, so the strip's edge clips and

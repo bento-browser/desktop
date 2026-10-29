@@ -59,6 +59,12 @@
        values that the !important overrides there clobber. */
     --bento-tab-row-height: 2rem;
     --bento-tab-row-font-size: var(--text-xs-font-size);
+    /* Descender room for single-line text that clips (overflow hidden for the ellipsis) at
+       line-height 1: Inter's g, j, p, q and y reach below that line box. A clipping text box
+       takes it as padding-block-end and gives it back as an equal negative margin-block-end,
+       so the box's place in its row, its centering and the baseline stay as they were. Em,
+       so it follows the box's own font size (the var() substitutes into the using rule). */
+    --bento-text-descender-room: 0.25em;
     /* Sidebar search trigger. Peek width: the trigger's width while hovered or
        keyboard-focused, sized for the icon, its gap, the label 'Search' and
        the same inline padding as the New button. Inset: the square trigger's
