@@ -954,9 +954,20 @@ background-color` on the spring pair while a collapse or expand runs). The toolb
   reset in `.bento-shell-app--no-side-panels` to neutral-12, the old value), constant rather
   than following the look: the rail band (`::after` in a phase) is the rail's own part and
   must keep its colour while it fades out in an expand. The workspace avatar has no rail
-  square (no fill, no outline, at rest, hovered or pressed; the trigger is a circle there):
+  square (no fill, no ring, at rest, hovered or pressed; the trigger is a circle there):
   a square behind the round avatar showed its corners, and the phase only fades the
-  expanded pill's fill out.
+  expanded pill's fill and ring out. The ring is Mux's button shadow
+  (`--muxui-button-shadow`; an inset 1px edge and a faint drop shadow in a local Mux or
+  a later pin, none in the npm rc.1) and the trigger does not move in a phase, so the
+  phase moves it to the fading `::before` fill layer: the trigger's `box-shadow` is
+  `none` (not under `:focus-visible`, which keeps Mux's focus ring) and the layer paints
+  `box-shadow: var(--muxui-button-shadow)` (railTransition.css), with the same box and
+  radius; measured against the real shadow it differs by at most 3/255 per channel at
+  both ends, and it is gone when the fill is. Left on the trigger, the ring stayed at the
+  expanded box for the whole collapse, hung around the avatar and snapped off at the
+  settle, and came in at once in an expand. The settled rail trigger has `box-shadow: none`
+  (WorkspaceSwitcher.css, also `:not(:focus-visible)`: an unlayered `box-shadow` would
+  beat Mux's layered focus ring).
 - The sequence is `startSidebarPush` and `settleSidebarPush`; the end is
   `afterMotion` on the host's slide animation (`bento-sidebar-push-progress` for a fluid
   push; never a copied duration): it reads the
@@ -1112,15 +1123,17 @@ reaches chrome later), and the choreography persists nothing.
   expanded footer; a private window's band slot (`.bento-shell-app__workspace-switcher--private`)
   is lifted to `z-index: 4` for the phase only, since the band keeps its solid fill and the
   rising list region and folding address bar would otherwise paint over its lower edge (the
-  footer, also 4, comes later in the document); the switcher's fill fades out (the avatar has no
-  rail square); the active row draws a cap the size of the rail square over a tail that
+  footer, also 4, comes later in the document); the switcher's fill and ring fade out (the avatar
+  has no rail square); the active row draws a cap the size of the rail square over a tail that
   retracts under it, clipped by the row; folder outlines and the pinned and folder band
   cross-fade to the rail square; the hover and action highlights are hidden. The
   `transition: none` rule on the switcher trigger and tab rows keeps their background
   transitions from animating the phase's own background changes, and the list scroller
   has `overflow-anchor: none` for the phase.
 - The sidebar search: the Search trigger is a measured part (`search`, moving between its
-  expanded place and its rail slot like the New icon) and an open field shrinks onto the
+  expanded place and its rail slot like the New icon, except that its across move takes the
+  whole reveal spring pair instead of 0.6 of it, so it keeps pace with chrome's host edge, and
+  starts with the phase) and an open field shrinks onto the
   trigger and rides its offset (collapse), or rides it and unfolds (expand), as the moving
   `field` part (the trigger's own offset, plus seeds for a reversed phase). TabList closes the field and parks a typed query in the commit
   of the setting flip, before this read. Mechanism, timing and pitfalls:
@@ -1362,6 +1375,14 @@ workspaces.
 
 ## Workspace pitfalls
 
+- A tab row title, a folder label and a search result title ellipsize with
+  `overflow: hidden` at `line-height: 1`, which cuts the descenders of g, j, p, q and y
+  (0.4px in Chromium, about 1px in Firefox at 12.3px). Each carries
+  `padding-block-end: var(--bento-text-descender-room)` and the equal negative
+  `margin-block-end`, so the clip box grows and the row geometry, centering and baseline stay
+  put. Do not drop either half (the padding alone grows the box and moves a centered title up),
+  and do not move the fix to `line-height` or `overflow-y: visible` (the title's hover mask
+  clips at the border box). Check with a title like "Problem loading page" at rest and hovered.
 - Do not give tab or folder rows their own plain `:hover` background, and do not
   mix `--bento-surface-hover` into a row state that composites over the hover
   highlight. The highlight already supplies that tint: a selected row's `:hover`
@@ -1490,6 +1511,31 @@ workspaces.
   `transition: 0.8s margin-top ease-out` on `[fullscreenShouldAnimate]` is the fullscreen
   toolbox reveal, and pressing Cmd+S while it ran cancelled it and snapped the toolbox. Do
   not widen the list of elements without checking what upstream transitions they carry.
+- Do not leave the switcher trigger's own `box-shadow` on during a phase. With a Mux that
+  sets a neutral button shadow (the local checkout `dev:mux` builds against; later pins)
+  the trigger's ring stays at the expanded box for the whole collapse, since only its
+  `::before` fill fades, hangs around the avatar's rail place and snaps off at the settle,
+  and shows at full strength in the first frame of an expand. The npm rc.1 draws no ring,
+  so Ladle against the npm package cannot show it: check with `MUXUI_LOCAL` set on a plain
+  Ladle serve (docs/build-tooling.md, Local Mux UI) and, for a real frame, difference a
+  frame with and without `box-shadow: none !important` on the trigger and its `::before`.
+  Keep `:not(:focus-visible)` on both the phase rule and the rail rule: they are layered
+  and unlayered respectively and would otherwise remove Mux's keyboard focus ring.
+- Expand blank strip (the rail laid out at the expanded width). When chrome widens
+  `#bento-shell-host` at the start of an expand, Gecko repaints the shell's remote frame once
+  at the new size before the shell's next refresh (`BrowserChild::RecvUpdateDimensions` →
+  `PuppetWidget::Resize(…, repaint)` dispatches a `WidgetPaintTask`), and the shell's
+  ResizeObserver, which drops `data-bento-collapsed` and starts the expand, only runs in that
+  next refresh. So the first paint is the rail laid out 300 px wide: a full-width rail centres
+  its items around x 150, outside the host's clip at the start of the slide (52 px plus
+  progress), and the strip showed only background for 1-2 frames while the page had already
+  moved. Fix: in the rail, `.bento-shell-app__main` is capped at the rail token rounded up
+  (app.css), so that paint is the settled rail; the app keeps the shell's width, so its
+  background fills the rest and `observeRailViewport` still sees the resize, and a private
+  window's band fill is carried across the band's row by the app. Do not size the rail by the
+  viewport width, and do not cap `.bento-shell-app` itself: its ResizeObserver would stop
+  seeing the widening. The compositor keeps the old rail pixels on screen until the shell
+  paints, and holding chrome's slide does not prevent this blank.
 - Do not draw the rail's right edge line: `.bento-shell-app`'s border, the chrome divider
   and the push edge line all go in the rail look (with side panels). Dropping only the
   shell's border leaves the chrome divider, which paints the same pixel above it.

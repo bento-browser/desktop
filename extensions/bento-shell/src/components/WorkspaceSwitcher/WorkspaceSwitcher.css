@@ -136,6 +136,9 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
 .muxui-text.bento-workspace-switcher__trigger-name {
   color: var(--color-90);
   line-height: 1;
+  /* Descenders reach below the line-height 1 box the name's ellipsis clip would cut at. */
+  padding-block-end: var(--bento-text-descender-room);
+  margin-block-end: calc(-1 * var(--bento-text-descender-room));
   position: relative;
   top: 1px;
 }
@@ -223,6 +226,16 @@ html[data-bento-collapsed='true'] .muxui-button.bento-workspace-switcher__trigge
   border-radius: var(--muxui-semantic-shape-pill-radius);
   background-color: transparent;
   border-color: transparent;
+}
+
+/* The rail shows the round avatar alone: no ring either, the shadow Mux's button draws (an
+   inset edge and a drop shadow in a Mux that sets one). Only Mux's keyboard focus ring may
+   replace it, so the rule leaves :focus-visible alone (this rule is unlayered and would win
+   over Mux's layered focus ring). Mux's hover and press change only the background, so this
+   rule also covers them. */
+html[data-bento-collapsed='true']
+  .muxui-button.bento-workspace-switcher__trigger:not(:focus-visible) {
+  box-shadow: none;
 }
 
 /* The rail shows the round avatar alone: no square fill or outline behind it, at rest or

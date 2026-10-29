@@ -6,8 +6,10 @@
  * rail. A collapse animates to the rail places, an expand from them: each phase names
  * its keyframes in --bento-rail-move / -fade / -rise and the rules are shared.
  *
- * Timing: moves are 0.6 of the reveal spring pair; fades (text, fills, the address
- * bar's fold) are the `state` pair, and trailing controls leave on `dismiss`. Staggers are 1/32 of the spring
+ * Timing: moves are 0.6 of the reveal spring pair, except the Search square's across move
+ * (below), which takes the whole pair so it keeps pace with chrome's host edge; fades (text,
+ * fills, the address bar's fold) are the `state` pair, and trailing controls leave on
+ * `dismiss`. Staggers are 1/32 of the spring
  * duration: the header takes units 0 to 2 here, rows from 3 and the footer buttons
  * (toggle first) are written by script, since a delay may not read a non-Mux variable.
  * 'measure' only turns the row transitions off, for the synchronous reads and the settle.
@@ -72,6 +74,19 @@
       z-index: 4;
       border-top-color: transparent;
     }
+    /* The switcher trigger's ring is Mux's button shadow (an inset 1px edge and a faint drop
+       shadow in a Mux that sets one, none in the npm rc.1). It stays at the expanded box for
+       the whole phase, since the trigger does not move, so it would hang around the avatar's
+       rail place and snap off at the settle. The trigger drops it and the fading fill layer
+       draws it instead: the custom property is inherited, so the layer paints exactly the
+       shadow the trigger would (whatever state it is in) and the ring fades with the fill
+       (the box is the same: the button has no border). Keyboard focus keeps Mux's focus ring. */
+    & .bento-workspace-switcher__trigger:not(:focus-visible) {
+      box-shadow: none;
+    }
+    & .bento-workspace-switcher__trigger::before {
+      box-shadow: var(--muxui-button-shadow);
+    }
     & :is(.bento-tab-list__hover-highlight, .bento-tab-list__action-highlight) {
       visibility: hidden;
     }
@@ -85,7 +100,7 @@
       isolation: isolate;
     }
 
-    /* Drawn fills: the switcher's fill fades out (the rail avatar has none); the active
+    /* Drawn fills: the switcher's fill and ring fade out (the rail avatar has neither); the active
        row is a cap the size of the rail square over a tail that retracts under it
        (clipped by the row); a folder row's outline and the pinned and folder band
        cross-fade between the full row and the rail square. */
@@ -257,13 +272,19 @@
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
     }
     /* The Search square moves in two animations, across (translate) and down (transform), as
-       does the open search field's row (TabList.css): its vertical move shares the list
-       region's timing, so the square rises and settles with the list instead of overshooting
-       it, and only its horizontal travel is timed against the field's shrink. */
+       does the open search field's row (TabList.css). Its vertical move shares the list
+       region's timing (0.6 of the spring), so the square rises and settles with the list
+       instead of overshooting it. It travels 150 to 250 px across against 15 to 30 for the other
+       items, so its across move takes the whole spring pair from the start, like chrome's
+       slide of the host: it keeps a constant gap to the strip's edge (about 10 px) rather than
+       outrunning it. Both start at 0, which also holds it off the New square (the list's
+       rise leaves New's row long before the square reaches New's column; in an expand the
+       square is clear of the icon's column before the icon moves) and off New's label (faded
+       by then in a collapse, not yet shown in an expand). */
     & .bento-tab-list__new-actions .bento-tab-list__search-trigger {
       animation-name: var(--bento-rail-move-x), var(--bento-rail-move-y);
       animation-duration:
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6),
+        var(--muxui-semantic-motion-reveal-transition-spring-duration),
         calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6);
       animation-timing-function: var(--muxui-semantic-motion-reveal-transition-spring-easing);
       animation-fill-mode: both;
@@ -287,18 +308,13 @@
     & .bento-tab-list__new-action-label {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
     }
-    /* The plain trigger (no field to wait for, the field hides it) moves across and down
-       together from the start; across a beat later keeps it off the New square at the end. */
-    & .bento-tab-list__new-actions .bento-tab-list__search-trigger {
-      animation-delay:
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 64),
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0);
-    }
-    /* Behind a folding field (the trigger is hidden) it keeps the field row's timing, so a
-       reversal hands the square from one to the other without a jump (TabList.css). */
+    /* The plain trigger has no delay (the field it would wait for does not exist). Behind a
+       folding field (the trigger is hidden) it keeps the field row's timing, so a reversal
+       hands the square from one to the other without a jump (TabList.css): across from the
+       start, down a unit after. */
     & .bento-tab-list__new-actions .bento-tab-list__search-trigger[data-rail-folding] {
       animation-delay:
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.14),
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
         calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32);
     }
     &
@@ -331,13 +347,6 @@
     }
     & :is(.bento-workspace-switcher__chevron, .bento-sidebar-cards) {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3);
-    }
-    /* The plain trigger leaves at once, across and down together, ahead of the New icon, so
-       it clears New's column before the icon's own move can reach it. */
-    & .bento-tab-list__new-actions .bento-tab-list__search-trigger {
-      animation-delay:
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
-        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0);
     }
   }
 

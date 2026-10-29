@@ -481,7 +481,7 @@ stays as it is without side panels. While the
 sidebar's edge moves on a collapse or expand, its contents reorganise in place, one
 after another from the top: the workspace avatar, the New button's plus and each tab's
 favicon move to their rail places, the address bar folds away under the rising tab
-list, the Search square moves to its slot under New, names, labels and row buttons fade, the active tab's highlight retracts to its
+list, the Search square travels with the sidebar's edge to its slot under New, names, labels and row buttons fade, the workspace card's fill and outline fade, the active tab's highlight retracts to its
 rail square, and the footer buttons gather into the rail's column, toggle first. An
 expand plays the same in reverse. With reduced motion on, the change is instant. In hidden
 mode, hovering the left edge of the browser window slides the collapsed rail

@@ -320,6 +320,13 @@ Pitfalls:
   geometry transition (both the reveal spring pair, so 400 ms). The visual
   duration is too short for it: the hide would cut the spring's tail. A shorter
   one hides the field mid-close.
+- Keep `gap: 0` on the Search button, and the label's own `margin-inline-start` as the only
+  icon-to-label spacing. A newer Mux's content wrapper is an inline-flex with `gap: inherit`
+  (the published one is inline and has no gap), so a Button gap would add to the margin: the
+  label sat 5.2px late and its end was cut at the peek's clip edge ("Searc|h"). Setting the
+  Button's gap, not the wrapper's class name, works in both. Check the label's right edge
+  against the clip edge (the 84px button minus its inline padding) while hovered, in the
+  published Mux and in the local one.
 - Keep `padding-block: 0` on the Search button. Mux's block padding (about 9.35px)
   leaves a content box of about 13px, and the content-box clip would cut the 16px
   icon top and bottom.
@@ -384,27 +391,44 @@ list region's, so the field row IS the trigger once it has shrunk onto it). In a
 expand the trigger translates between its expanded place and its rail slot, instead of
 fading. While the field is open (or `data-folding` during a collapse) the trigger is hidden
 and the field row is the moving part (`TabList.css`, unlayered, because it overrides the
-closed field's styles). Collapse, in fractions of the reveal spring S (all on the spring
-pair, delays as `calc()` fractions): the input, clear button and results fade on `state`;
-the field shrinks toward the trigger at the right end of its row with its right edge fixed,
-as an Esc close does (`bento-rail-fold-in`: `margin-inline-start` to
-`calc(100% - trigger width)` with `width: auto`, and the icon inset, 0 to 0.3 S); the
-square then rides the trigger's offset to the rail slot, across (`translate`, 0.14 to 0.74
-S) overlapping the shrink's tail so the speed carries over, and down (`transform`, S/32 to
-0.6 S, the list region's own timing, so it never overshoots the rows). Its fill (and its
-ring, unless a query is parked) fades over the ride. The turn from the shrink (centre
-moving right) to the ride (moving left) is a sign change of the centre's speed; the ride
-starts at 0.14 S so the lowest frame near it stays above 30% of the peak at the frame
-alignment a collapse starts on (it dips at other alignments, and at 0.1x for the few
-frames the speed passes through zero). Expand is the same run backwards: across and down
-start at once (0), the unfold at 0.125 S, the input and clear button fade in at 0.4 S.
+closed field's styles). Timing, in fractions of the reveal spring S (all on the spring pair,
+delays as `calc()` fractions). The square's across move (`translate`) takes the whole pair
+(S), not the 0.6 S of the other moves: it travels 150 to 250 px against 15 to 30 for the
+other items, and at 0.6 S it did not keep pace with chrome's host edge (which slides on S):
+the plain square ran up to 63 px ahead of the edge in a collapse, sat up to 60 px beyond it
+(clipped by the strip for about 190 ms) in an expand, and a folding field was clipped by up
+to 97 px for about 120 ms. At S, starting with the phase, it keeps a constant 8 to 10 px gap
+to the edge in both directions (measured with every animation paused and sought at 4 ms
+steps), so it is never wiped by the edge and never ahead of it. Its down move (`transform`)
+stays 0.6 S with no delay, the list region's timing (the region starts S/32 after, a delay
+the plain square leaves out), so it rises and settles with the list without overshooting the
+rows. No delay on across also holds it off New: the list's rise takes New's row away before
+the square reaches New's column (in a collapse its top never gets above the Search slot, 5 px
+under the New square), and in an expand the square is clear of the icon's column about 14 ms
+in, before the icon starts moving (its delay is S/16); New's label has faded in a collapse by
+the time the square reaches it and has not appeared yet in an expand (its delay is 0.15 S).
+Collapse with a field: the input, clear button and results fade on `state`; the field shrinks
+toward the trigger at the right end of its row with its right edge fixed, as an Esc close does
+(`bento-rail-fold-in`: `margin-inline-start` to `calc(100% - trigger width)` with
+`width: auto`, and the icon inset, 0 to 0.3 S), while its across move runs from the start, so
+the right end rides the edge from the first frame and the square it becomes forms inside the
+strip (at 0.3 S it is a square about 9 px from the edge) and rides on to the slot. Down starts
+S/32, with the list region. Its fill (and its ring, unless a query is parked) fades over the
+whole ride (S). The turn from the shrink (centre moving right) to the ride (moving left) is a
+sign change of the centre's speed, at about 30 ms. Expand with a parked query is the same
+run backwards: across and down start at once (0), the unfold runs 0.125 S to S (0.875 S
+long, on the same curve as the across move but later, so the field's left end never gets ahead
+of the square: with the previous 0.3 S unfold the left edge reached 49 px left of its final
+place at 100 ms, off the strip, and slid back; at 0.875 S the lowest it gets is the final
+place), the input and clear button fade in at 0.4 S.
 The plain trigger (no field shows) has no shrink to wait for: it moves across and down
-together from the start (collapse: across S/64 after down, which keeps it off the New
-square at the end; expand: both at 0), so its speed never drops below 25% of the peak for
-more than a frame. While a collapse folds a field the hidden trigger keeps the field row's
-timing (`data-rail-folding`, set by `railLayout.ts` for the phase), so a reversal into an
-expand that parks nothing starts the trigger where the row was. The square never overlaps
-the New square. The field row ends the collapse as the parked square (ring kept, fill gone)
+together from the start in both directions (no delays). While a collapse folds a field the
+hidden trigger keeps the field row's timing (`data-rail-folding`, set by `railLayout.ts` for
+the phase: across 0, down S/32, the same durations), so a reversal into an expand that parks
+nothing starts the trigger where the row was. The square never covers New's plus or its label (0 overlapping frames at 1 ms steps); in an
+expand its rounded top-left corner can touch New's notional 32 px square by up to 0.8 px for
+about 3 ms, which is not drawn. The
+field row ends the collapse as the parked square (ring kept, fill gone)
 or as the plain trigger, so the handoff when the phase ends is unseen; `data-folding`
 clears as soon as the rail layout is reached. Every rule that reads it is keyed on
 `html[data-bento-rail-transition]` being `collapse` or `expand`, and on
