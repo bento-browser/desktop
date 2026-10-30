@@ -43,15 +43,21 @@ the command palette; the privacy one opens on the protection level list), descri
 [overlay-documents.md](overlay-documents.md) and
 [privacy-search.md](privacy-search.md#settings-palette-shell-side). A
 Settings group appears in the results only while the query is not empty: the command
-palette holds a static index of the Settings palette's root rows
+palette holds a static index of the Settings palette's flat control rows
 (`CommandPalette/settingsIndex.ts`: id, label, group and search words, no values and
 no settings state, because the palette chunk is size-ratcheted; `settingsIndex.test.ts`
-keeps it equal to `rootRows`). Choosing one writes `BENTO_OPEN_SETTING:<row id>:<ts>`;
+keeps it equal to `controlRows`). Choosing one writes `BENTO_OPEN_SETTING:<row id>:<ts>`;
 `handleSettingsTargetTitle` checks the id against a pattern and opens the Settings
 palette with it as the show's `target`, and the Settings document resolves it
-(`SettingsPalette/targets.ts`): a number or choice setting opens its own list, the
-privacy rows and shortcuts their lists, and a switch or the search-engine link the first
-list with the label typed in. An id the document does not know opens the first list.
+(`SettingsPalette/targets.ts`): a number or choice setting opens its own list after its
+category, the privacy rows and shortcuts their lists, and a switch or the search-engine
+link its category with the label typed in. `SettingsPalette/categories.ts` supplies the
+same ancestry for root-search drilldowns. An id the document does not know opens the
+category-only first list. Once a ready snapshot arrives, Settings checks that every
+ancestor has a visible opener; a target hidden by build, private-window or privacy/search
+hydration gates also falls back to that root. A show received before the first snapshot
+keeps its requested target until that validation. Readiness validates the current path
+and query, preserving search, Back and breadcrumb actions taken while loading. Stable control ids and title IPC are unchanged.
 Opening any of the command palette, workspace palette, merge palette or Settings palette
 dismisses the others. See [session-merge-backups.md](session-merge-backups.md) for the other
 open paths.

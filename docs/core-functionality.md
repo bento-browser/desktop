@@ -104,7 +104,7 @@ native Bookmarks sidebar uses Bento-scaled title styling, matches the Bento
 sidebar address field for bookmark search, and has its own resizable edge
 separate from the main Bento sidebar. The manual "Merge browser session" action
 opens from the command palette's "Merge browser session" command or from the
-"Merge browser session" row in the Backup and data group of the Settings palette
+"Merge browser session" row in the Backup and data category of the Settings palette
 (not shown in private windows); from Settings it opens over the same window. While a merge is running, a progress card floats over the
 bottom of the sidebar's tab list, above the footer: a progress ring (with the
 percentage inside once the tab totals are known), "Importing from" the source
@@ -434,7 +434,7 @@ icon-only clear affordance. While you type, a Settings group lists the settings
 that match by name (not in the empty palette, and without their values);
 choosing one opens the Settings palette at that setting: on its own list for a
 number, choice, search engine, privacy or shortcuts setting, and on the
-first list with its name typed in for a switch. A private window's results leave
+category with its name typed in for a switch. A private window's results leave
 out the backup settings.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
@@ -807,10 +807,13 @@ Bento Settings is a quick-pick palette over the window, not a page. The app menu
 "Bento Settings" item, the command palette's Open Settings command, and the
 onboarding dialog's Open Settings button open it; the command palette's
 Privacy command opens it on the protection level list, and a matching setting
-in the command palette's results opens it at that setting. It is a searchable list
-of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
-Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
-current value on each row. Enter flips a switch (the row shows the new state at
+in the command palette's results opens it at that setting inside its category. The first
+list contains categories with short descriptions: Appearance, Performance, Workspaces,
+Panels, Privacy and search, Backup and data, Keyboard shortcuts, and Reset Bento.
+Each category opens its controls with their current values; Keyboard shortcuts opens its
+reference directly. Search settings finds individual controls, advanced privacy settings
+and shortcuts across categories; a category's filter searches only its children. Opening
+a search result keeps the category in the path. Enter flips a switch (the row shows the new state at
 once and returns to the old one if the change cannot be saved) or opens a short
 list of choices, which opens on the current choice. A number with a wide range
 (Sleep tabs after, Backup interval, Default new panel width, a custom size) opens a value
@@ -826,17 +829,24 @@ or a click on the track and follows the pointer exactly while dragged), Page key
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 
+Developer builds with the Softcast demo enabled add a Tab appearance category after
+Appearance. Show tab state tints and Use custom tab state icons are independent
+switches, both On by default and saved for the whole profile. Turning tints off
+removes the status backgrounds; turning custom icons off restores Bento's loading
+indicator, website favicon or empty placeholder. Sleeping-tab styling and titles
+keep following the actual tab state. These controls are absent from ordinary builds.
+
 Every list where a value or choice changes (each number, the choices,
 protection level, default search engine, custom panel sizes and their actions, Advanced
 privacy, Backups and a stored backup, and each confirmation) opens with a short plain
 description of what the setting does, between the path and the field. It is static text:
 it does not scroll with the list and takes no focus, and a screen reader reads it with the
-field. The first list and the keyboard shortcuts have none. Where the options of a list
+field. The category root, category control lists and keyboard shortcuts have none. Where the options of a list
 behave differently (the choices, the protection levels, each Advanced privacy row, the
 size actions, the Backups rows and a stored backup's actions) every option carries a
 second, always visible line saying what it does, and the highlighted protection level
 still adds its benefits and caveats in two columns below that. Search engines and number
-presets have no second line. A list of four rows or fewer (the choices, protection level,
+presets have no second line. A list of four rows or fewer (including small categories, choices, protection level,
 a stored backup, size actions, a confirmation) has no search field: Up and Down move
 through it, Enter picks, and Esc and Back work as before. A confirmation puts what it does in that description, above
 its Cancel and confirm rows.
@@ -874,10 +884,11 @@ setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides 
 left-edge hover access. Bento bundles uBlock Origin enabled by default and
 leaves it removable/disableable by the user.
 
-Backup and data lists Export (a file download), Import (choose a file, review
-what it holds, then confirm), stored backups (restore and delete, each with a
-confirmation) and Merge browser session, which opens the merge palette. Reset
-Bento settings asks for confirmation, restores Bento settings, the protection
+Backup and data contains the automatic backup controls, an Export, import and stored
+backups list, and Merge browser session. The backups list offers Export (a file download),
+Import (choose a file, review what it holds, then confirm), stored backups (restore and delete, each with a
+confirmation) and Merge browser session, which opens the merge palette. The Reset Bento
+category contains Reset Bento settings, which asks for confirmation, restores Bento settings, the protection
 level and the search engine to their defaults, and closes the palette so the
 onboarding dialog can open again. Operations that take time keep running if the
 palette is closed, and reopening Settings reports how an operation ended if it

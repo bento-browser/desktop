@@ -22,7 +22,7 @@ import {
 } from './settingsClient';
 import type { BusUp } from '../bridge/shellBus';
 import { RELAY_UP_MAX_CHARS } from './relayLimit';
-import { rootRows } from '../components/SettingsPalette/rows';
+import { controlRows } from '../components/SettingsPalette/rows';
 import { createSettingsPaletteStore, type SettingsPaletteHost } from './settingsStore';
 
 const snapshot = (overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot => ({
@@ -228,7 +228,7 @@ describe('writes', () => {
     const { palette, request, emit, load, model } = setup();
     await load();
     const shadows = () =>
-      rootRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
+      controlRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
     let finish!: (value: unknown) => void;
     request.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
     const write = palette.actions.update({ panelShadowsEnabled: false });
@@ -251,7 +251,7 @@ describe('writes', () => {
     const { palette, request, load, model } = setup();
     await load();
     const shadows = () =>
-      rootRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
+      controlRows(model()).find((row) => row.id === 'setting:panelShadowsEnabled')!.switchOn;
     let fail!: (error: unknown) => void;
     request.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
     const write = palette.actions.update({ panelShadowsEnabled: false });

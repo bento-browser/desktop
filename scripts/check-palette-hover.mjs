@@ -40,7 +40,7 @@ const evaluate = async (expression) =>
   (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result
     ?.result?.value;
 
-const KEY_CODES = { Escape: 27, ArrowDown: 40, Tab: 9 };
+const KEY_CODES = { Enter: 13, Escape: 27, ArrowDown: 40, Tab: 9 };
 const press = async (key) => {
   const keyEvent = { key, code: key, windowsVirtualKeyCode: KEY_CODES[key] };
   await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...keyEvent });
@@ -102,18 +102,24 @@ await send('Emulation.setDeviceMetricsOverride', {
   mobile: false,
 });
 
-// Settings palette: forward by a click, pointer left where it was (over "Light"; "Follow system"
-// is the current option and must be focused).
+// Settings palette: enter Appearance, then park the pointer over Light and reopen the
+// choice list by keyboard. Follow system is current and must keep focus under that pointer.
 await open('settings-palette--1-root');
+const category = await evaluate(rowCentre('Appearance'));
+await click(category.x, category.y);
 const opener = await evaluate(rowCentre('Bento color mode'));
 await click(opener.x, opener.y);
+const light = await evaluate(rowCentre('Light'));
+await move(light.x, light.y);
+await press('Escape');
+await press('Enter');
 check(
   'forward, stationary pointer: current option focused',
   await evaluate(FOCUSED),
   'Follow system',
 );
 // One pixel inside the row under the pointer is a real movement: the hover is handed back.
-await move(opener.x, opener.y + 1);
+await move(light.x, light.y + 1);
 check('one-pixel move inside the row: that row takes the focus', await evaluate(FOCUSED), 'Light');
 const dark = await evaluate(rowCentre('Dark'));
 await move(dark.x - 30, dark.y);
@@ -122,11 +128,15 @@ check('a real move onto another row: it takes the focus', await evaluate(FOCUSED
 // Back by Esc with the pointer parked over a row other than the opener.
 await press('Escape');
 check('back, stationary pointer: opener row focused', await evaluate(FOCUSED), 'Bento color mode');
-const third = await evaluate(`(() => {
-  const rows = [...document.querySelectorAll('[role=option]')].slice(0, 5);
-  const box = rows[3].getBoundingClientRect();
-  return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
-})()`);
+await press('Escape');
+check(
+  'category back, stationary pointer: category opener focused',
+  await evaluate(FOCUSED),
+  'Appearance',
+);
+const performance = await evaluate(rowCentre('Performance'));
+await click(performance.x, performance.y);
+const third = await evaluate(rowCentre('Keep alive'));
 await move(third.x - 20, third.y);
 check('back list, after a real move: hover follows', await evaluate(FOCUSED), 'Keep alive');
 

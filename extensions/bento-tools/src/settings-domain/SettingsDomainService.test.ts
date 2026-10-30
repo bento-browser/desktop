@@ -301,6 +301,26 @@ describe('SettingsDomainService', () => {
   });
 
   describe('two validated entry points for settings', () => {
+    it('saves tab appearance from either window type and exposes both in snapshots and notices', async () => {
+      const h = await createHarness();
+      const caller = await overlay(h);
+      const listener = vi.fn();
+      h.service.onSettingsChange(listener);
+      await run(h, 'settings/update', { changes: { tabStateTintsEnabled: false } }, caller);
+      await run(
+        h,
+        'settings/update',
+        { changes: { customTabStateIconsEnabled: false } },
+        { ...caller, isPrivate: true },
+      );
+      const appearance = { tabStateTintsEnabled: false, customTabStateIconsEnabled: false };
+      expect(h.settings.snapshot()).toMatchObject(appearance);
+      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining(appearance), 2);
+      await expect(
+        run(h, 'snapshot/get', { domains: ['settings'] }, caller),
+      ).resolves.toMatchObject({ settings: appearance });
+    });
+
     it('limits the overlay operation to the editable inventory', async () => {
       const h = await createHarness();
       const caller = await overlay(h);

@@ -108,6 +108,16 @@ export interface BooleanSpec {
 }
 
 export const BOOLEAN_SPECS: Record<BooleanSettingKey, BooleanSpec> = {
+  tabStateTintsEnabled: {
+    key: 'tabStateTintsEnabled',
+    label: 'Show tab state tints',
+    keywords: ['tab appearance', 'status', 'background', 'color', 'quiet'],
+  },
+  customTabStateIconsEnabled: {
+    key: 'customTabStateIconsEnabled',
+    label: 'Use custom tab state icons',
+    keywords: ['tab appearance', 'status', 'favicon', 'softcast'],
+  },
   tabSleepEnabled: { key: 'tabSleepEnabled', label: 'Sleep idle tabs', keywords: ['tab sleep'] },
   panelCycleWraparound: {
     key: 'panelCycleWraparound',

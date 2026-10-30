@@ -1,6 +1,7 @@
 // Rows of every Settings palette stage, as data. The component renders them and runs their
 // `intent`; keeping both out of React makes the stage contents and the search testable.
 
+import { SETTINGS_CATEGORIES, categoryForRow, categoryLabel, categoryStage } from './categories';
 import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 import type { PrivacyAdvancedKey } from '@shared/protocol';
 import type { BackupListEntry } from '@shared/protocol';
@@ -265,9 +266,15 @@ function searchLabel(model: SettingsPaletteModel): string {
   );
 }
 
-export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
+export function controlRows(model: SettingsPaletteModel): PaletteRow[] {
   const rows: PaletteRow[] = [
     enumRow(model, 'Appearance', 'uiColorMode'),
+    ...(typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
+      ? [
+          toggleRow(model, 'Tab appearance', 'tabStateTintsEnabled'),
+          toggleRow(model, 'Tab appearance', 'customTabStateIconsEnabled'),
+        ]
+      : []),
     toggleRow(model, 'Performance', 'tabSleepEnabled'),
     numberRow(model, 'Performance', 'tabSleepAfterMinutes'),
     numberRow(model, 'Performance', 'tabSleepKeepAlivePerWorkspace'),
@@ -377,12 +384,29 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
   return rows;
 }
 
-/** Everything the root search can reach: the root rows, the advanced privacy rows and the
+/** The unfiltered root contains only visible categories, in their established order. */
+export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
+  const visible = new Set(controlRows(model).map((row) => categoryForRow(row.id)));
+  return SETTINGS_CATEGORIES.filter(({ id }) => visible.has(id)).map((category) => ({
+    id: `category:${category.id}`,
+    group: category.label,
+    label: category.label,
+    description: category.description,
+    trail: '›',
+    keywords: NO_KEYWORDS,
+    intent: { type: 'push', stage: categoryStage(category.id) },
+  }));
+}
+
+/** Everything the root search can reach: the flat controls, the advanced privacy rows and the
  * shortcuts. The results stay one line each: the advanced rows lose their description. */
 export function searchableRows(model: SettingsPaletteModel): PaletteRow[] {
   return [
-    ...rootRows(model),
-    ...advancedRows(model).map((row) => ({ ...row, description: undefined })),
+    ...controlRows(model),
+    ...(model.privacy && model.search ? advancedRows(model) : []).map((row) => ({
+      ...row,
+      description: undefined,
+    })),
     ...shortcutRows().map((row) => ({ ...row, info: false, intent: pushShortcuts })),
   ];
 }
@@ -815,6 +839,8 @@ export function rowsForStage(stage: Stage, model: SettingsPaletteModel): Palette
   switch (stage.kind) {
     case 'root':
       return rootRows(model);
+    case 'category':
+      return controlRows(model).filter((row) => categoryForRow(row.id) === stage.id);
     case 'number':
       return numberStageRows(NUMBER_SPECS[stage.key]);
     case 'sizeEdit':
@@ -866,6 +892,7 @@ export function showsFieldRow(stage: Stage, listRowCount: number, query = ''): b
 export function isFilterable(stage: Stage): boolean {
   return (
     stage.kind === 'root' ||
+    stage.kind === 'category' ||
     stage.kind === 'advanced' ||
     stage.kind === 'shortcuts' ||
     stage.kind === 'search' ||
@@ -878,6 +905,7 @@ export function isFilterable(stage: Stage): boolean {
 export function pageDescription(stage: Stage): string | null {
   switch (stage.kind) {
     case 'root':
+    case 'category':
     case 'shortcuts':
       return null;
     case 'number':
@@ -920,9 +948,20 @@ export function footerFor(
     case 'root':
       return {
         note: model.isPrivate ? 'Backup management is unavailable in private windows.' : undefined,
-        hints: [move, 'Enter open or toggle', esc],
-        status: model.isPrivate ? undefined : plural(rowCount, 'setting'),
+        hints: [move, query ? 'Enter open or toggle' : 'Enter open', esc],
+        status: query
+          ? plural(rowCount, 'result')
+          : `${rowCount} categor${rowCount === 1 ? 'y' : 'ies'}`,
       };
+    case 'category': {
+      const controls = rowsForStage(stage, model);
+      const action = controls.every((row) => row.intent.type === 'toggle')
+        ? 'Enter toggle'
+        : controls.every((row) => row.intent.type === 'push' || row.intent.type === 'link')
+          ? 'Enter open'
+          : 'Enter open or toggle';
+      return { hints: [move, action, esc] };
+    }
     case 'number':
     case 'sizeEdit':
       return {
@@ -968,6 +1007,8 @@ export function stageLabel(stage: Stage, model: SettingsPaletteModel): string {
   switch (stage.kind) {
     case 'root':
       return 'Settings';
+    case 'category':
+      return categoryLabel(stage.id);
     case 'number':
       return NUMBER_SPECS[stage.key].label;
     case 'enum':

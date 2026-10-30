@@ -15,7 +15,7 @@ import {
   formatBackupDate,
   isFilterable,
   pageDescription,
-  rootRows,
+  controlRows,
   rowAriaLabel,
   rowsForStage,
   searchableRows,
@@ -34,11 +34,12 @@ import type { SettingsPaletteModel } from './types';
 const labels = (rows: readonly PaletteRow[]) => rows.map((row) => row.label);
 const find = (rows: readonly PaletteRow[], id: string) => rows.find((row) => row.id === id)!;
 
-describe('root rows', () => {
+describe('control rows', () => {
   it('lists every group of the mock with the current value of each setting', () => {
-    const rows = rootRows(REGULAR_MODEL);
+    const rows = controlRows(REGULAR_MODEL);
     expect([...new Set(rows.map((row) => row.group))]).toEqual([
       'Appearance',
+      ...(__BENTO_SOFTCAST_DEMO__ ? ['Tab appearance'] : []),
       'Performance',
       'Workspaces',
       'Panels',
@@ -57,8 +58,36 @@ describe('root rows', () => {
     expect(find(rows, 'privacy:search').value).toBe('DuckDuckGo');
   });
 
+  it('gates the independent tab appearance switches with the demo capability', () => {
+    const rows = controlRows({
+      ...REGULAR_MODEL,
+      settings: { ...FIXTURE_SETTINGS, tabStateTintsEnabled: false },
+    });
+    const appearance = rows.filter((row) => row.group === 'Tab appearance');
+    expect(appearance).toEqual(
+      __BENTO_SOFTCAST_DEMO__
+        ? [
+            expect.objectContaining({
+              id: 'setting:tabStateTintsEnabled',
+              label: 'Show tab state tints',
+              value: 'Off',
+              switchOn: false,
+              intent: { type: 'toggle', key: 'tabStateTintsEnabled' },
+            }),
+            expect.objectContaining({
+              id: 'setting:customTabStateIconsEnabled',
+              label: 'Use custom tab state icons',
+              value: 'On',
+              switchOn: true,
+              intent: { type: 'toggle', key: 'customTabStateIconsEnabled' },
+            }),
+          ]
+        : [],
+    );
+  });
+
   it('toggles booleans in place and opens a stage for everything else', () => {
-    const rows = rootRows(REGULAR_MODEL);
+    const rows = controlRows(REGULAR_MODEL);
     expect(find(rows, 'setting:tabSleepEnabled').intent).toEqual({
       type: 'toggle',
       key: 'tabSleepEnabled',
@@ -75,8 +104,8 @@ describe('root rows', () => {
   });
 
   it('leaves out backup management and the automatic backup preferences in a private window', () => {
-    const regular = labels(rootRows(REGULAR_MODEL));
-    const priv = labels(rootRows(PRIVATE_MODEL));
+    const regular = labels(controlRows(REGULAR_MODEL));
+    const priv = labels(controlRows(PRIVATE_MODEL));
     for (const label of [
       'Automatic backups',
       'Backup interval',
@@ -87,14 +116,14 @@ describe('root rows', () => {
       expect(priv).not.toContain(label);
     }
     expect(priv).not.toContain('Export, import and stored backups');
-    expect(rootRows(PRIVATE_MODEL).some((row) => row.group === 'Backup and data')).toBe(false);
+    expect(controlRows(PRIVATE_MODEL).some((row) => row.group === 'Backup and data')).toBe(false);
     expect(priv).toContain('Protection level');
   });
 
   it('leaves out the reset in a private window, where tools refuses it', () => {
-    expect(rootRows(PRIVATE_MODEL).some((row) => row.id === 'reset:open')).toBe(false);
+    expect(controlRows(PRIVATE_MODEL).some((row) => row.id === 'reset:open')).toBe(false);
     expect(searchableRows(PRIVATE_MODEL).some((row) => row.id === 'reset:open')).toBe(false);
-    expect(rootRows(REGULAR_MODEL).some((row) => row.id === 'reset:open')).toBe(true);
+    expect(controlRows(REGULAR_MODEL).some((row) => row.id === 'reset:open')).toBe(true);
   });
 
   it('marks a write in flight on its row', () => {
@@ -102,13 +131,13 @@ describe('root rows', () => {
       ...REGULAR_MODEL,
       pending: new Set(['panelShadowsEnabled']),
     };
-    expect(find(rootRows(model), 'setting:panelShadowsEnabled').pending).toBe(true);
-    expect(find(rootRows(model), 'setting:panelCycleWraparound').pending).toBeFalsy();
+    expect(find(controlRows(model), 'setting:panelShadowsEnabled').pending).toBe(true);
+    expect(find(controlRows(model), 'setting:panelCycleWraparound').pending).toBeFalsy();
   });
 
   it('shows no privacy rows until privacy and search have loaded', () => {
     expect(
-      rootRows({ ...REGULAR_MODEL, privacy: null }).some((row) => row.id.startsWith('privacy:')),
+      controlRows({ ...REGULAR_MODEL, privacy: null }).some((row) => row.id.startsWith('privacy:')),
     ).toBe(false);
   });
 });
@@ -428,7 +457,7 @@ describe('stage chrome', () => {
     );
     expect(footerFor({ kind: 'root' }, REGULAR_MODEL, 23)).toMatchObject({
       note: undefined,
-      status: '23 settings',
+      status: '23 categories',
     });
   });
 
@@ -472,7 +501,7 @@ describe('stage chrome', () => {
   });
 
   it('shows the target state on a switch while its write is in flight', () => {
-    const off = rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelShadowsEnabled');
+    const off = controlRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelShadowsEnabled');
     const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
     expect(off).toMatchObject({ switchOn: stored, pending: false });
     const writing: SettingsPaletteModel = {
@@ -480,12 +509,12 @@ describe('stage chrome', () => {
       pending: new Set(['panelShadowsEnabled']),
       pendingTargets: new Map([['panelShadowsEnabled', !stored]]),
     };
-    const during = rootRows(writing).find((row) => row.id === 'setting:panelShadowsEnabled');
+    const during = controlRows(writing).find((row) => row.id === 'setting:panelShadowsEnabled');
     expect(during).toMatchObject({ switchOn: !stored, pending: true });
     // The row keeps the stored On or Off as its text value, and only toggle rows carry a switch.
     expect(during?.value).toBe(stored ? 'On' : 'Off');
     expect(
-      rootRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelCornerRadiusPx'),
+      controlRows(REGULAR_MODEL).find((row) => row.id === 'setting:panelCornerRadiusPx'),
     ).not.toHaveProperty('switchOn');
   });
 
@@ -498,18 +527,18 @@ describe('stage chrome', () => {
       pending: new Set(['panelShadowsEnabled']),
       pendingTargets: new Map([['panelShadowsEnabled', asked]]),
     };
-    expect(find(rootRows(broadcast), 'setting:panelShadowsEnabled').switchOn).toBe(asked);
+    expect(find(controlRows(broadcast), 'setting:panelShadowsEnabled').switchOn).toBe(asked);
   });
 
   it('shows the stored state once the write is over, and on a pending key with no target', () => {
     const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
     // A failed write leaves the stored value and no target.
-    expect(find(rootRows(REGULAR_MODEL), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+    expect(find(controlRows(REGULAR_MODEL), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
     const noTarget: SettingsPaletteModel = {
       ...REGULAR_MODEL,
       pending: new Set(['panelShadowsEnabled']),
     };
-    expect(find(rootRows(noTarget), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
+    expect(find(controlRows(noTarget), 'setting:panelShadowsEnabled').switchOn).toBe(stored);
   });
 
   it('follows the target of an advanced privacy switch too', () => {
@@ -527,7 +556,7 @@ describe('stage chrome', () => {
   it('names a switch row with its state, following the state the switch shows', () => {
     const stored = REGULAR_MODEL.settings.panelShadowsEnabled;
     const label = (model: SettingsPaletteModel) =>
-      rowAriaLabel(find(rootRows(model), 'setting:panelShadowsEnabled'));
+      rowAriaLabel(find(controlRows(model), 'setting:panelShadowsEnabled'));
     expect(label(REGULAR_MODEL)).toBe(`Show panel shadows, ${stored ? 'On' : 'Off'}`);
     expect(
       label({
@@ -538,7 +567,7 @@ describe('stage chrome', () => {
     ).toBe(`Show panel shadows, ${stored ? 'Off' : 'On'}`);
     // Any other row is named by its content.
     expect(
-      rowAriaLabel(find(rootRows(REGULAR_MODEL), 'setting:panelCornerRadiusPx')),
+      rowAriaLabel(find(controlRows(REGULAR_MODEL), 'setting:panelCornerRadiusPx')),
     ).toBeUndefined();
   });
 

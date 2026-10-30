@@ -592,7 +592,11 @@ describe('workspace backup import/export', () => {
           pinnedPanels: [],
         },
       ],
-      settings: { autoBackupMaxCount: 5 },
+      settings: {
+        autoBackupMaxCount: 5,
+        tabStateTintsEnabled: false,
+        customTabStateIconsEnabled: false,
+      },
       savedPanels: [],
     };
 
