@@ -516,14 +516,47 @@ export class TabRegistry {
     }
   }
 
-  async markClosing(id: number): Promise<void> {
+  /** Validate Bento-closed membership before consuming its mark. Unmarked imports keep
+   * their existing adoption path. Returns whether this was a Bento-closed tab. */
+  async hydrateRestoredTab(
+    id: number,
+    membership: {
+      hasWorkspace: (workspaceId: string) => boolean;
+      folderWorkspaceId: (folderId: string) => string | undefined;
+    },
+  ): Promise<boolean> {
+    const { workspaceId, folderId, closing } = await readSessionMetadataWithRetries(id, 8, 50);
+    const marked = this.#closingTabIds.has(id) || closing;
+    if (marked) {
+      const validWorkspace =
+        !this.#privateTabIds.has(id) &&
+        !!workspaceId &&
+        !isEphemeralWorkspaceId(workspaceId) &&
+        membership.hasWorkspace(workspaceId);
+      // Remove invalid values while the closing mark still blocks concurrent hydration.
+      if (workspaceId && !validWorkspace) {
+        await browser.sessions.removeTabValue(id, WORKSPACE_SESSION_KEY);
+      }
+      if (folderId && (!validWorkspace || membership.folderWorkspaceId(folderId) !== workspaceId)) {
+        await browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY);
+      }
+    }
+    await this.unmarkClosing(id);
+    await this.#hydrateOne(id);
+    return marked;
+  }
+
+  async markClosing(
+    id: number,
+    options: { preserveSessionMembership?: boolean } = {},
+  ): Promise<void> {
     this.#unmarkedClosingTabIds.delete(id);
     this.#closingTabIds.add(id);
     this.#pendingWorkspaceAssignments.delete(id);
     this.#pendingFolderAssignments.delete(id);
 
     const tab = this.#tabs.get(id);
-    if (tab?.workspaceId !== undefined) {
+    if (tab && (tab.workspaceId !== undefined || tab.folderId !== undefined)) {
       delete tab.workspaceId;
       const changes: Partial<TabSnapshot> = { workspaceId: undefined };
       if (tab.folderId !== undefined) {
@@ -538,10 +571,14 @@ export class TabRegistry {
         console.warn('[bento-tools] markClosing session write failed:', id, err);
       }
     };
+    const preserve = options.preserveSessionMembership === true && !this.#privateTabIds.has(id);
     await Promise.all([
       browser.sessions.setTabValue(id, CLOSING_TAB_SESSION_KEY, '1').catch(ignoreInvalidTab),
-      browser.sessions.removeTabValue(id, WORKSPACE_SESSION_KEY).catch(ignoreInvalidTab),
-      browser.sessions.removeTabValue(id, FOLDER_SESSION_KEY).catch(ignoreInvalidTab),
+      ...(preserve
+        ? []
+        : [WORKSPACE_SESSION_KEY, FOLDER_SESSION_KEY].map((key) =>
+            browser.sessions.removeTabValue(id, key).catch(ignoreInvalidTab),
+          )),
     ]);
   }
 
@@ -653,6 +690,7 @@ export class TabRegistry {
   };
 
   async #hydrateOne(id: number): Promise<void> {
+    const unmarkedBeforeRead = this.#unmarkedClosingTabIds.has(id);
     const [ws, folderId, customTitle, closing] = await Promise.all([
       readWorkspaceId(id),
       readFolderId(id),
@@ -661,8 +699,11 @@ export class TabRegistry {
     ]);
     const tab = this.#tabs.get(id);
     if (!tab) return;
+    // A restore validated and replaced these values while this older read was in flight.
+    if (!unmarkedBeforeRead && this.#unmarkedClosingTabIds.has(id)) return;
     const changes: Partial<TabSnapshot> = {};
-    if (closing && !this.#unmarkedClosingTabIds.has(id)) {
+    const markedClosing = closing && !this.#unmarkedClosingTabIds.has(id);
+    if (markedClosing) {
       this.#closingTabIds.add(id);
       if (tab.workspaceId !== undefined) {
         delete tab.workspaceId;
@@ -676,7 +717,7 @@ export class TabRegistry {
       tab.workspaceId = ws;
       changes.workspaceId = ws;
     }
-    if (!closing && folderId !== tab.folderId) {
+    if (!markedClosing && folderId !== tab.folderId) {
       if (folderId) tab.folderId = folderId;
       else delete tab.folderId;
       changes.folderId = folderId;

@@ -9,6 +9,7 @@
 import type { AudienceEvent } from '@shared/audience-event';
 import type {
   Action,
+  AddrbarRestoreOutcome,
   Event,
   ExternalMergeErrorCode,
   ExternalMergeProgress,
@@ -17,6 +18,7 @@ import type {
 } from '@shared/protocol';
 import { splitWindowLocalSettings } from '@shared/windowLocalSettings';
 import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
+import { moveWorkspaceTabsToWindow } from '../tabs/AdoptedTab';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
@@ -34,9 +36,11 @@ import {
 import {
   clearDevtoolsPanelMarker,
   clearPanelMarker,
+  readDevtoolsPanelMarker,
   setDevtoolsPanelMarker,
 } from '../panels/SessionMarker';
 import { searchAddressResults } from '../search/AddressSearch';
+import { eligibleClosedTabs } from '../search/ClosedSessions';
 import { readPrivacySnapshot, readSearchEnginesSnapshot } from '../privacy/ProtectionLevels';
 import { executeExternalMerge } from '../externalMerge/ExternalMergeExecutor';
 import { loadExternalMergeSources } from '../externalMerge/loadExternalMergeSources';
@@ -221,8 +225,16 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
     tab?.workspaceId ??
     (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
 
-  const undo = captureCloseUndo(ctx, tabId);
-  await ctx.tabs.markClosing(tabId);
+  const isDevtools = await isDevtoolsTab(ctx, tabId);
+  const undo = isDevtools ? undefined : captureCloseUndo(ctx, tabId);
+  const closeOptions = {
+    undo,
+    preserveSessionMembership: !isDevtools,
+    restoreIfKept: !isDevtools,
+    clearPanelMarker: isDevtools,
+  };
+  if (isDevtools) ctx.pinnedPanels.removeForTab(tabId);
+  await ctx.tabs.markClosing(tabId, { preserveSessionMembership: !isDevtools });
 
   if (workspaceId) {
     const panelTabIds = ctx.panels.getPanels(workspaceId);
@@ -247,13 +259,16 @@ async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number
       await closeTabAsRemoved(ctx, tabId, {
         delayMs: promoted ? 80 : 0,
         label: 'tab/closeMain',
-        undo,
+        ...closeOptions,
       });
       return;
     }
   }
 
-  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain', undo });
+  await closeTabAsRemoved(ctx, tabId, {
+    label: 'tab/closeMain',
+    ...closeOptions,
+  });
 }
 
 function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
@@ -455,7 +470,6 @@ function captureCloseUndo(ctx: HandlerContext, tabId: number): CloseUndo {
  * a normal tab.
  */
 async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUndo): Promise<void> {
-  await ctx.tabs.unmarkClosing(tabId);
   const windowId = (await tabWindowId(tabId)) ?? ctx.sourceWindowId;
   const shownWorkspaceId = ctx.workspaces.getActiveId(windowId);
   const originalId = undo.workspaceId;
@@ -466,6 +480,16 @@ async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUnd
     !ctx.workspaces.hasForWindow(originalId, windowId) ||
     shownWorkspaceId !== originalId
   ) {
+    // An opted-in close kept the old session keys after clearing live membership.
+    // The fallback must discard them before the kept tab joins its window's workspace.
+    await Promise.all(
+      ['bento.workspaceId', 'bento.folderId'].map((key) =>
+        browser.sessions.removeTabValue(tabId, key).catch(() => {
+          // A missing value is already the desired state.
+        }),
+      ),
+    );
+    await ctx.tabs.unmarkClosing(tabId);
     if (shownWorkspaceId) await ctx.tabs.assignWorkspace(tabId, shownWorkspaceId);
     if (undo.panels.length > 0) {
       // The panel marker stays on a closing tab; a marked tab that is no longer a panel
@@ -475,6 +499,7 @@ async function restoreKeptTab(ctx: HandlerContext, tabId: number, undo: CloseUnd
     }
     return;
   }
+  await ctx.tabs.unmarkClosing(tabId);
   await ctx.tabs.assignWorkspace(
     tabId,
     originalId,
@@ -545,11 +570,14 @@ async function closeTabAsRemoved(
     undo?: CloseUndo;
     /** False for ephemeral tabs (DevTools) that should not outlive a failed close. */
     restoreIfKept?: boolean;
+    preserveSessionMembership?: boolean;
   } = {},
 ): Promise<void> {
   const undo =
     options.restoreIfKept === false ? null : (options.undo ?? captureCloseUndo(ctx, tabId));
-  await ctx.tabs.markClosing(tabId);
+  await ctx.tabs.markClosing(tabId, {
+    preserveSessionMembership: options.preserveSessionMembership,
+  });
   if (options.clearPanelMarker) {
     void clearPanelMarker(tabId);
     void clearDevtoolsPanelMarker(tabId);
@@ -574,13 +602,26 @@ function closeDevtoolsTabs(ctx: HandlerContext, tabIds: Set<number>, label: stri
   }
 }
 
+async function isDevtoolsTab(ctx: HandlerContext, tabId: number): Promise<boolean> {
+  return (
+    ctx.panels
+      .findWorkspacesContainingTab(tabId)
+      .some((workspaceId) => ctx.panels.isDevtoolsPanel(workspaceId, tabId)) ||
+    (await readDevtoolsPanelMarker(tabId))
+  );
+}
+
 async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<void> {
   if (shouldCloseTabThroughMainPromotion(ctx, tabId)) {
     await closeMainTabWithPanelPromotion(ctx, tabId);
     return;
   }
-  const undo = captureCloseUndo(ctx, tabId);
-  await ctx.tabs.markClosing(tabId);
+  // Removing the panel also drops its DevTools link. Capture classification first,
+  // including the marker fallback for a toolbox no longer present in a layout.
+  const isDevtools = await isDevtoolsTab(ctx, tabId);
+  const undo = isDevtools ? undefined : captureCloseUndo(ctx, tabId);
+  if (isDevtools) ctx.pinnedPanels.removeForTab(tabId);
+  await ctx.tabs.markClosing(tabId, { preserveSessionMembership: !isDevtools });
   const affected = ctx.panels.findWorkspacesContainingTab(tabId);
   let delayActualTabRemove = false;
   if (affected.length > 0) {
@@ -602,7 +643,77 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
     // to restore the tab back as a panel instead of reopening it as a normal tab.
   }
   const delayMs = delayActualTabRemove ? 500 : 0;
-  await closeTabAsRemoved(ctx, tabId, { delayMs, label: 'tab/close', undo });
+  await closeTabAsRemoved(ctx, tabId, {
+    delayMs,
+    label: 'tab/close',
+    undo,
+    preserveSessionMembership: !isDevtools,
+    restoreIfKept: !isDevtools,
+    clearPanelMarker: isDevtools,
+  });
+}
+
+/** Reveal only the restored tab, in the window that owns its hydrated workspace. */
+async function revealRestoredTab(ctx: HandlerContext, tabId: number): Promise<number> {
+  await ctx.prepareRestoredTab?.(tabId);
+  const panelWorkspaceId = ctx.panels.findWorkspacesContainingPanelOrSubPanel(tabId)[0];
+  const workspaceId =
+    panelWorkspaceId ?? ctx.tabs.snapshot().find((tab) => tab.id === tabId)?.workspaceId;
+  const live = await browser.tabs.get(tabId);
+  const windowId =
+    (workspaceId ? ctx.workspaces.findOwningWindow(workspaceId) : null) ?? live.windowId;
+  if (typeof windowId !== 'number') throw new Error('Restored tab has no window');
+  const destination = await browser.windows.get(windowId);
+  const privateSource = ctx.sourceWindowPrivate === true;
+  if (
+    Boolean(live.incognito) !== privateSource ||
+    Boolean(destination.incognito) !== privateSource ||
+    (privateSource && windowId !== ctx.sourceWindowId)
+  ) {
+    throw new Error('Restored tab crosses a private-window boundary');
+  }
+  const stillOwned = () =>
+    !ctx.tabs.isClosing(tabId) &&
+    (!workspaceId ||
+      (ctx.workspaces.hasForWindow(workspaceId, windowId) &&
+        ctx.tabs.snapshot().some((tab) => tab.id === tabId && tab.workspaceId === workspaceId) &&
+        (ctx.workspaces.findOwningWindow(workspaceId) ?? windowId) === windowId));
+  if (!stillOwned()) throw new Error('Restored workspace changed');
+  if (live.windowId !== windowId) {
+    if (!workspaceId) throw new Error('Restored tab has no workspace to move');
+    await moveWorkspaceTabsToWindow([{ id: tabId, pinned: live.pinned }], windowId, workspaceId);
+  }
+  // Firefox may resolve a move without moving a tab (for example a pinned tab).
+  if ((await browser.tabs.get(tabId)).windowId !== windowId || !stillOwned()) {
+    throw new Error('Restored tab did not reach its workspace owner');
+  }
+  if (workspaceId && !privateSource) {
+    const result = ctx.workspaces.activate(workspaceId, windowId);
+    if (result === 'conflict') throw new Error('Restored workspace ownership changed');
+    if (result === 'activated' && !panelWorkspaceId) {
+      ctx.preferWorkspaceActivationTab(workspaceId, tabId, windowId);
+    }
+    // Reuse the activation orchestrator before selecting/revealing our explicit target.
+    await ctx.workspaces.flush();
+  }
+  const stillShown = () =>
+    stillOwned() && (!workspaceId || ctx.workspaces.getActiveId(windowId) === workspaceId);
+  if (!stillShown()) throw new Error('Restored workspace is no longer shown');
+  if (panelWorkspaceId) {
+    await ctx.emitPanelsSync(panelWorkspaceId, { scrollToPanelTabId: tabId, windowId });
+    if (!ctx.panels.findWorkspacesContainingPanelOrSubPanel(tabId).includes(panelWorkspaceId)) {
+      throw new Error('Restored panel disappeared');
+    }
+  } else if (!(await activateNonPanelTab(ctx, tabId, 'restore closed tab'))) {
+    throw new Error('Restored tab could not be activated');
+  }
+  if (!stillShown()) throw new Error('Restored workspace changed during reveal');
+  await browser.windows.update(windowId, { focused: true });
+  const revealed = await browser.tabs.get(tabId);
+  if (revealed.windowId !== windowId || !stillShown() || (!panelWorkspaceId && !revealed.active)) {
+    throw new Error('Restored tab is no longer revealed');
+  }
+  return windowId;
 }
 
 async function activateNonPanelTab(
@@ -822,7 +933,7 @@ export interface HandlerContext {
       scrollToPanelReveal?: 'full' | 'right-edge';
       windowId?: number;
     },
-  ) => void;
+  ) => void | Promise<void>;
   /** Rewrite session markers for every panel in the workspace with
    * their current indexes. Call after any mutation that changes panel
    * order so Cmd+Shift+T restores land in the right slot. */
@@ -846,6 +957,8 @@ export interface HandlerContext {
   syncPrivateWindow?: (windowId: number) => void;
   /** Whether the window that sent the current action is a private window. */
   sourceWindowPrivate?: boolean;
+  /** Await the existing native-restore panel classification and tab metadata hydration. */
+  prepareRestoredTab?: (tabId: number) => Promise<void>;
   /** WebExtension windowId of the chrome window whose shell document
    * dispatched the current action. Plumbed via the WireAction `__windowId`
    * envelope. Null for actions that arrived before the shell document
@@ -1939,7 +2052,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void (async () => {
         const isDevtools = ctx.panels.isDevtoolsPanel(action.workspaceId, action.tabId);
         const undo = isDevtools ? null : captureCloseUndo(ctx, action.tabId);
-        await ctx.tabs.markClosing(action.tabId);
+        await ctx.tabs.markClosing(action.tabId, { preserveSessionMembership: !isDevtools });
         if (isDevtools) {
           ctx.pinnedPanels.removeForTab(action.tabId);
         }
@@ -2024,11 +2137,56 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'addrbar/query':
       void (async () => {
         try {
-          const results = await searchAddressResults(action.query, action.limit);
-          replyToSource(ctx, { type: 'addrbar/results', query: action.query, results });
+          const results = await searchAddressResults(action.query, action.limit, {
+            windowId: ctx.sourceWindowId,
+            incognito: ctx.sourceWindowPrivate,
+          });
+          replyToSource(ctx, {
+            type: 'addrbar/results',
+            requestId: action.requestId,
+            query: action.query,
+            results,
+          });
         } catch (err) {
           console.warn('[bento-tools] addrbar/query failed:', err);
-          replyToSource(ctx, { type: 'addrbar/results', query: action.query, results: [] });
+          replyToSource(ctx, {
+            type: 'addrbar/results',
+            requestId: action.requestId,
+            query: action.query,
+            results: [],
+          });
+        }
+      })();
+      return;
+    case 'addrbar/restoreClosed':
+      void (async () => {
+        const reply = (outcome: AddrbarRestoreOutcome) =>
+          replyToSource(ctx, {
+            type: 'addrbar/restoreClosedResult',
+            requestId: action.requestId,
+            sessionId: action.sessionId,
+            outcome,
+          });
+        try {
+          const eligible = await eligibleClosedTabs({
+            windowId: ctx.sourceWindowId,
+            incognito: ctx.sourceWindowPrivate,
+          });
+          if (!eligible.some((session) => session.tab?.sessionId === action.sessionId)) {
+            reply({ status: 'unavailable' });
+            return;
+          }
+          const restored = await browser.sessions.restore(action.sessionId);
+          const tab = restored.tab;
+          if (typeof tab?.id !== 'number' || typeof tab.windowId !== 'number') {
+            reply({ status: 'failed' });
+            return;
+          }
+          const windowId = await revealRestoredTab(ctx, tab.id);
+          reply({ status: 'restored', tabId: tab.id, windowId });
+        } catch (err) {
+          console.warn('[bento-tools] addrbar/restoreClosed failed:', err);
+          reply({ status: 'failed' });
         }
       })();
       return;

@@ -292,7 +292,7 @@ sync and Alt+Shift+R, with the sidebar expanded:
 
 1. Hover the Search icon: it widens leftward on a spring (looks settled in about
    0.2s, fully at rest by 0.4s, no bounce) and the label is uncovered by the
-   button's edge as it widens, never faded in. At rest no part of "Search" shows
+   button's edge as it widens, never faded in. At rest no part of "Search tabs" shows
    beside the icon. The New button shrinks by the same amount, the bar keeps its
    width, and the hover highlight is exactly the widened trigger at every frame,
    including when you enter the bar directly over Search (it starts on the

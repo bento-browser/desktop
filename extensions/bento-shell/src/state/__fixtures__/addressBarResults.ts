@@ -29,3 +29,41 @@ export function seedAddressBarResults(query = 'bento'): void {
 export function seedEmptyAddressBarResults(): void {
   useAddressBarStore.getState().clear();
 }
+
+export function seedGroupedAddressBarResults(): void {
+  const now = Date.now();
+  useAddressBarStore.getState().seed('', [
+    {
+      kind: 'recentlyClosed',
+      sessionId: 'fixture-closed-1',
+      url: 'https://design.example/navigation',
+      title: 'Navigation patterns',
+      closedAt: now - 120_000,
+      score: 0,
+    },
+    {
+      kind: 'recentlyClosed',
+      sessionId: 'fixture-closed-2',
+      url: 'https://docs.example/grid',
+      title: 'CSS grid guide',
+      closedAt: now - 720_000,
+      score: 0,
+    },
+    {
+      kind: 'recentHistory',
+      url: 'https://roadmap.example/',
+      title: 'Bento roadmap',
+      lastVisitTime: now - 240_000,
+      score: 0,
+    },
+    {
+      kind: 'recentHistory',
+      url: 'https://motion.example/springs',
+      title: 'Spring animations',
+      lastVisitTime: now - 1_080_000,
+      score: 0,
+    },
+    { kind: 'topSite', url: 'https://code.example/', title: 'Code', score: 2 },
+    { kind: 'topSite', url: 'https://encyclopedia.example/', title: 'Encyclopedia', score: 1 },
+  ]);
+}

@@ -34,9 +34,11 @@ function canUseScope(
   return typeof scope.bridgeToken === 'string' && scope.bridgeToken.length > 0;
 }
 
+/** The element's rect, or null when it is not laid out (the collapsed sidebar hides the row). */
 function anchorRectFor(element: HTMLElement | null) {
   if (!element) return null;
   const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
   return {
     left: rect.left,
     top: rect.top,
@@ -50,12 +52,15 @@ export function SidebarAddressBar() {
   const rowRef = useRef<HTMLFormElement>(null);
   const securityButtonRef = useRef<HTMLButtonElement>(null);
   const lastOpenAtRef = useRef(0);
+  const lastAnsweredOpenRequestIdRef = useRef(useSidebarAddressStore.getState().openRequest?.id ?? 0);
   const lastHandledCopyResultIdRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
   const snapshot = useSidebarAddressStore((s) => s.snapshot);
   const pendingBookmarkToggleKey = useSidebarAddressStore((s) => s.pendingBookmarkToggleKey);
   const lastCopyResult = useSidebarAddressStore((s) => s.lastCopyResult);
+  const openRequest = useSidebarAddressStore((s) => s.openRequest);
+  const paletteOverRow = useSidebarAddressStore((s) => s.paletteOverRow);
 
   const clearCopyFeedbackTimer = useCallback(() => {
     if (copyFeedbackTimeoutRef.current !== null) {
@@ -114,6 +119,21 @@ export function SidebarAddressBar() {
     },
     [snapshot?.url],
   );
+
+  // Chrome's Cmd+L and Cmd+E ask the row to open the palette over it, because chrome cannot read
+  // the row's rect itself. The answer is the same open a click sends, plus the request id; with
+  // no row on screen it carries no anchor and chrome opens the centered palette.
+  useEffect(() => {
+    if (!openRequest || openRequest.id <= lastAnsweredOpenRequestIdRef.current) return;
+    lastAnsweredOpenRequestIdRef.current = openRequest.id;
+    const anchorRect = anchorRectFor(rowRef.current);
+    if (anchorRect) lastOpenAtRef.current = Date.now();
+    const url = useSidebarAddressStore.getState().snapshot?.url ?? '';
+    signalAddrbarOpen(openRequest.mode, anchorRect && openRequest.mode === 'current' ? url : '', {
+      requestId: openRequest.requestId,
+      ...(anchorRect ? { anchorRect } : {}),
+    });
+  }, [openRequest]);
 
   const handleBeginEdit = useCallback(() => {
     openAddressOverlay('current', snapshot?.url || '');
@@ -192,6 +212,7 @@ export function SidebarAddressBar() {
         ref={rowRef}
         className="bento-sidebar-address-bar__row"
         data-loading={snapshot?.loading ? 'true' : 'false'}
+        data-palette-over={paletteOverRow ? 'true' : undefined}
         onSubmit={handleSubmit}
       >
         <Tooltip

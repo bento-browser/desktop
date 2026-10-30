@@ -129,6 +129,9 @@ const FUNCTIONS = [
   'showSettingsPalette',
   'hideSettingsPalette',
   'handleSettingsTargetTitle',
+  'setAddrbarOverSidebarRow',
+  'syncAddrbarOverSidebarRow',
+  'handleSidebarAddressReadyTitle',
   'isAddrbarVisible',
   'nextAddrbarOpenId',
   'positionAddrbarHost',
@@ -138,6 +141,11 @@ const FUNCTIONS = [
   'retryPendingAddrbarOpen',
   'getAddrbarFocusPreservingFrame',
   'showAddrbar',
+  'openAddressEntry',
+  'cancelAddrbarOpenRequest',
+  'requestAddrbarOpen',
+  'takeAddrbarOpenRequest',
+  'handleAddrbarOpenAnswer',
   'hideAddrbar',
   'isConfirmVisible',
   'showConfirm',
@@ -160,6 +168,7 @@ const FUNCTIONS = [
   'dispatchShellAction',
   'savePanelMenuItems',
   'dispatchAddrbarOpen',
+  'dispatchSidebarAddressMessage',
   'dispatchMergePaletteLifecycle',
   'sendSettingsPaletteMessage',
   'dispatchSettingsPaletteShow',
@@ -183,6 +192,7 @@ const CONSTANTS = [
   'ADDRBAR_OPEN_RETRY_LIMIT',
   'ADDRBAR_OPEN_FALLBACK_REVEAL_MS',
   'ADDRBAR_HOST_TRANSITION',
+  'SIDEBAR_ADDRESS_RETRY_LIMIT',
   'menuOnSelectByContext',
 ];
 
@@ -207,6 +217,10 @@ const EXPORTED = [
   'hideSettingsPalette',
   'handleSettingsTargetTitle',
   'showAddrbar',
+  'requestAddrbarOpen',
+  'takeAddrbarOpenRequest',
+  'handleAddrbarOpenAnswer',
+  'handleSidebarAddressReadyTitle',
   'hideAddrbar',
   'revealPendingAddrbar',
   'showConfirm',
@@ -312,6 +326,7 @@ const HOSTS = {
  * role); 0 stands for reduced motion. An inline `transition: none` wins, as in CSS.
  */
 function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
+  let rowAnchorable = true;
   let clock = 1000;
   let nextTimer = 1;
   const timers = new Map();
@@ -368,6 +383,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
   const shellFrame = new FakeElement(registry, 'browser', sent);
   shellFrame.id = 'bento-shell-frame';
   registry.set(shellFrame.id, shellFrame);
+  const shellMessageManager = shellFrame.messageManager;
 
   const document = {
     getElementById: (id) => registry.get(id) ?? null,
@@ -442,9 +458,15 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
         };
       },
     },
-    computeAddrbarAnchoredPlacement: () => null,
+    // The placement itself is tested below; here an anchor just has to produce one.
+    computeAddrbarAnchoredPlacement: (anchorRect) =>
+      anchorRect ? { left: 1, top: 2, width: 3, height: 4, anchorWidth: 5, anchorHeight: 6 } : null,
     resolveClipboardUrlSuggestion: () => '',
+    // Cmd+L asks the sidebar row over its address channel; the row is not under test here.
+    canAnchorAddrbarToSidebarRow: () => rowAnchorable,
+    getBentoSidebarAddressBridgeToken: () => 'token',
     // The frame scripts' URLs only name what loadFrameScript loads.
+    SIDEBAR_ADDRESS_FRAME_SCRIPT_URL: 'sidebar-address',
     SHELL_ACTION_FRAME_SCRIPT_URL: 'shell-action',
     ADDRBAR_OPEN_FRAME_SCRIPT_URL: 'addrbar-open',
     MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL: 'merge-lifecycle',
@@ -457,6 +479,11 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     let settingsLifecycleSeq = 0;
     let addrbarOpenSeq = 0;
     let pendingAddrbarReveal = null;
+    let pendingAddrbarOpenRequest = null;
+    let addrbarOpenRequestSeq = 0;
+    let addrbarOverSidebarRow = false;
+    let addrbarOverSidebarRowSent = false;
+    let addrbarOverSidebarRowRetry = null;
     let pendingMenuContextId = null;
     let currentAddrbarMode = 'current';
     ${extractOverlaysSection()}
@@ -471,6 +498,18 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     events,
     sent,
     registry,
+    /** What chrome sent the sidebar row over the address channel. */
+    get sidebarMessages() {
+      return messages('BentoSidebarAddress').map((message) => message.data);
+    },
+    /** Whether the sidebar's message manager exists yet (false: sends fail until it does). */
+    setShellMessageManager: (available) => {
+      shellFrame.messageManager = available ? shellMessageManager : null;
+    },
+    /** Whether chrome sees an expanded, settled sidebar (false: rail, hidden or mid-push). */
+    setRowAnchorable: (value) => {
+      rowAnchorable = value;
+    },
     /** The overlay's document announces it (the BENTO_OVERLAY_READY title). */
     ready: (id) => api.overlays.markFrameReady(`bento-${id}-frame`),
     host: (id) => registry.get(`bento-${id}-host`),
@@ -917,6 +956,357 @@ test('the address bar does not take the focus from an overlay still waiting to o
 
   assert.equal(world.addrbarOpens().length, 1);
   assert.equal(world.addrbarOpens()[0].suppressFocus, true);
+});
+
+// ─── Cmd+L and Cmd+E ask the sidebar row to anchor the open ─────────────────
+
+test('Cmd+L asks the row, and the row answer ends the wait without a second open', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  assert.equal(world.sidebarMessages.length, 1);
+  const [request] = world.sidebarMessages;
+  assert.equal(request.kind, 'open-request');
+  assert.equal(request.mode, 'current');
+  assert.equal(request.bridgeToken, 'token');
+  assert.equal(request.windowId, 7);
+  assert.equal(world.getPendingAddrbarReveal(), null, 'nothing opens before the row answers');
+
+  assert.equal(world.takeAddrbarOpenRequest(request.requestId), true);
+  assert.equal(world.takeAddrbarOpenRequest(request.requestId), false, 'one answer per request');
+  world.advance(10_000);
+  assert.deepEqual(world.addrbarOpens(), [], 'the answered request does not also open centered');
+});
+
+test('an unanswered Cmd+L opens the centered palette once, and a late answer is dropped', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  const [{ requestId }] = world.sidebarMessages;
+
+  world.advance(119);
+  assert.deepEqual(world.addrbarOpens(), []);
+  world.advance(1);
+  assert.equal(world.addrbarOpens().length, 1);
+  assert.equal(world.addrbarOpens()[0].mode, 'current');
+  assert.equal(world.addrbarOpens()[0].placement, null);
+
+  assert.equal(world.takeAddrbarOpenRequest(requestId), false, 'a late anchored answer is dropped');
+});
+
+test('Cmd+T and a sidebar that is not expanded open the centered palette without asking the row', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('newTab');
+  assert.equal(world.addrbarOpens().length, 1);
+  assert.equal(world.addrbarOpens()[0].mode, 'newTab');
+
+  world.setRowAnchorable(false);
+  world.requestAddrbarOpen('current');
+  assert.equal(world.addrbarOpens().length, 2);
+  assert.deepEqual(world.sidebarMessages, []);
+});
+
+test('any other open, a hide or a newer request ends a pending Cmd+L request', () => {
+  for (const interrupt of [
+    (world) => world.showAddrbar('newTab'),
+    (world) => world.hideAddrbar(),
+    (world) => world.requestAddrbarOpen('current'),
+  ]) {
+    const world = warmWorld();
+    world.requestAddrbarOpen('current');
+    const [{ requestId }] = world.sidebarMessages;
+    interrupt(world);
+    assert.equal(world.takeAddrbarOpenRequest(requestId), false);
+  }
+});
+
+const ROW_RECT = { left: 6, top: 66, width: 240, height: 32 };
+
+function rowAnswer(world, overrides = {}) {
+  const [{ requestId }] = world.sidebarMessages;
+  return { requestId, mode: 'current', initialQuery: 'https://example.com/', anchorRect: ROW_RECT, ...overrides };
+}
+
+test('Esc or an outside click while Cmd+L waits for the row cancels the open', () => {
+  for (const dismiss of [(world) => world.pressEscape(), (world) => world.pointerDownOutside()]) {
+    const world = warmWorld();
+    world.requestAddrbarOpen('current');
+    const answer = rowAnswer(world);
+
+    dismiss(world);
+    world.handleAddrbarOpenAnswer(answer);
+    world.advance(10_000);
+    assert.deepEqual(world.addrbarOpens(), [], 'neither the late answer nor the timer opens it');
+    assert.equal(world.getPendingAddrbarReveal(), null);
+    assert.equal(world.host('addrbar').style.opacity, '0');
+  }
+});
+
+test('Esc while Cmd+L waits for the row is consumed, as for any open that has not appeared', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  assert.equal(world.pressEscape(), true);
+});
+
+test('another overlay opening while Cmd+L waits for the row cancels the open', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  const answer = rowAnswer(world);
+  world.showPalette();
+  world.handleAddrbarOpenAnswer(answer);
+  world.advance(10_000);
+  assert.deepEqual(world.addrbarOpens(), []);
+  assert.equal(world.isShown('palette'), true);
+});
+
+test('the row answer anchors the open while the sidebar is still expanded', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  world.handleAddrbarOpenAnswer(rowAnswer(world));
+  const [open] = world.addrbarOpens();
+  assert.equal(open.initialQuery, 'https://example.com/');
+  assert.notEqual(open.placement, null);
+  world.advance(10_000);
+  assert.equal(new Set(world.addrbarOpens().map((o) => o.openId)).size, 1);
+});
+
+test('an answer that finds the sidebar collapsed or hiding opens centered, with the fallback query', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('current');
+  const answer = rowAnswer(world);
+  world.setRowAnchorable(false); // the sidebar started to collapse or hide before the answer
+  world.handleAddrbarOpenAnswer(answer);
+  const opens = world.addrbarOpens();
+  assert.equal(opens.length, 1);
+  assert.equal(opens[0].placement, null);
+  assert.equal(opens[0].initialQuery, '');
+  assert.equal(opens[0].mode, 'current');
+  world.advance(10_000); // the retry resends the same open; the timer starts no second one
+  assert.equal(new Set(world.addrbarOpens().map((o) => o.openId)).size, 1);
+});
+
+test('a click on the row still opens anchored, with no request involved', () => {
+  const world = warmWorld();
+  world.setRowAnchorable(false);
+  world.handleAddrbarOpenAnswer({ mode: 'current', initialQuery: 'u', anchorRect: ROW_RECT });
+  assert.notEqual(world.addrbarOpens()[0].placement, null);
+});
+
+// ─── The row's border fades out while the anchored palette is over it ───────
+
+const overRowMessages = (world) =>
+  world.sidebarMessages.filter((message) => message.kind === 'palette-over-row');
+
+function revealAnchoredAddrbar(world) {
+  world.showAddrbar('current', 'u', { anchorRect: ROW_RECT });
+  const [{ openId }] = world.addrbarOpens();
+  world.revealPendingAddrbar(openId);
+}
+
+test('the anchored palette tells the row once as it fades in and once as it starts to hide', () => {
+  const world = warmWorld();
+  world.showAddrbar('current', 'u', { anchorRect: ROW_RECT });
+  assert.deepEqual(overRowMessages(world), [], 'nothing is sent before the palette is revealed');
+
+  const [{ openId }] = world.addrbarOpens();
+  world.revealPendingAddrbar(openId);
+  world.advance(10_000); // the fallback reveal finds nothing pending
+  const [shown] = overRowMessages(world);
+  assert.equal(overRowMessages(world).length, 1);
+  assert.equal(shown.open, true);
+  assert.equal(shown.windowId, 7);
+  assert.equal(shown.bridgeToken, 'token');
+
+  world.hideAddrbar();
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, false],
+  );
+  assert.equal(world.host('addrbar').style.opacity, '0');
+
+  world.hideAddrbar();
+  world.advance(10_000);
+  assert.equal(overRowMessages(world).length, 2, 'only changes are sent');
+});
+
+test('a centred open, and a hide that was never anchored, leave the row alone', () => {
+  const world = warmWorld();
+  world.requestAddrbarOpen('newTab');
+  world.revealPendingAddrbar(world.addrbarOpens()[0].openId);
+  world.hideAddrbar();
+  world.setRowAnchorable(false);
+  world.requestAddrbarOpen('current');
+  world.advance(10_000);
+  world.hideAddrbar();
+  assert.deepEqual(overRowMessages(world), []);
+});
+
+test('a centred open over an anchored one gives the row its border back', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.showAddrbar('newTab');
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, false],
+  );
+});
+
+test('an anchored open that is hidden before it is revealed never touches the row', () => {
+  const world = warmWorld();
+  world.showAddrbar('current', 'u', { anchorRect: ROW_RECT });
+  world.hideAddrbar();
+  world.advance(10_000);
+  assert.deepEqual(overRowMessages(world), []);
+});
+
+test('an open that cannot reach the row never lands after the hide that followed it', () => {
+  const world = warmWorld();
+  world.setShellMessageManager(false);
+  revealAnchoredAddrbar(world);
+  world.advance(250); // the open's delivery is retrying
+  world.hideAddrbar();
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(overRowMessages(world), [], 'the row was never told to hide its border');
+});
+
+test('an open that reaches the row late tells it once, while the palette is still open', () => {
+  const world = warmWorld();
+  world.setShellMessageManager(false);
+  revealAnchoredAddrbar(world);
+  world.advance(250);
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true],
+  );
+});
+
+test('a hide that cannot reach the row is retried until the border is back', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.setShellMessageManager(false);
+  world.hideAddrbar();
+  world.advance(250);
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, false],
+  );
+});
+
+test('a reopen while a hide is still retrying leaves the border hidden, with no stale hide', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.setShellMessageManager(false);
+  world.hideAddrbar();
+  world.advance(250);
+  world.showAddrbar('current', 'u', { anchorRect: ROW_RECT });
+  world.revealPendingAddrbar(world.addrbarOpens().at(-1).openId);
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true],
+  );
+});
+
+// A reloaded or re-created sidebar document starts with the row's border showing: it announces its
+// address channel (BENTO_SIDEBAR_ADDRESS_READY), and chrome sends the wanted state again.
+
+test('a new sidebar document is told the palette is over the row once it announces itself', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true],
+  );
+
+  // The document is recreated: it knows nothing yet, and chrome sends nothing until it listens.
+  world.advance(10_000);
+  assert.equal(overRowMessages(world).length, 1);
+  world.handleSidebarAddressReadyTitle();
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, true],
+  );
+
+  world.hideAddrbar();
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, true, false],
+  );
+});
+
+test('the next anchored reveal after a recreated document delivers, not skips', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.handleSidebarAddressReadyTitle();
+  world.hideAddrbar();
+  world.showAddrbar('current', 'u', { anchorRect: ROW_RECT });
+  world.revealPendingAddrbar(world.addrbarOpens().at(-1).openId);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, true, false, true],
+  );
+});
+
+test('a recreated document that finds the palette closed is sent nothing', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.hideAddrbar();
+  world.handleSidebarAddressReadyTitle();
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, false],
+  );
+  world.handleSidebarAddressReadyTitle();
+  assert.equal(overRowMessages(world).length, 2, 'a first load with the palette closed sends nothing');
+});
+
+test('a recreated document whose frame cannot be reached yet is told once it can', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.setShellMessageManager(false);
+  world.handleSidebarAddressReadyTitle();
+  world.advance(250);
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true, true],
+  );
+});
+
+test('the announcement does not bring back a hide that is still retrying', () => {
+  const world = warmWorld();
+  revealAnchoredAddrbar(world);
+  world.setShellMessageManager(false);
+  world.hideAddrbar();
+  world.handleSidebarAddressReadyTitle();
+  world.setShellMessageManager(true);
+  world.advance(10_000);
+  assert.deepEqual(
+    overRowMessages(world).map((message) => message.open),
+    [true],
+    'the new document already shows the border, so the hide has nothing to undo',
+  );
+});
+
+test('the shell announces the title the mount routes to the row resync', () => {
+  const shell = fs.readFileSync(
+    path.join(ROOT, 'extensions/bento-shell/src/bridge/useSidebarAddress.ts'),
+    'utf8',
+  );
+  const shellPrefix = /SIDEBAR_ADDRESS_READY_PREFIX = '([A-Z_:]+)'/.exec(shell)?.[1];
+  const mountPrefix = /const SIDEBAR_ADDRESS_READY_PREFIX = '([A-Z_:]+)'/.exec(MOUNT)?.[1];
+  assert.ok(shellPrefix);
+  assert.equal(mountPrefix, shellPrefix);
+  assert.match(
+    MOUNT,
+    /title\.startsWith\(SIDEBAR_ADDRESS_READY_PREFIX\)\) \{\s*handleSidebarAddressReadyTitle\(\);/,
+  );
 });
 
 // ─── The newest open wins, whichever document loads first ───────────────────
@@ -1576,4 +1966,81 @@ test('the address bar re-open during its fade keeps it shown', () => {
   world.advance(10_000);
   assert.equal(host.style.display, 'flex');
   assert.equal(host.hasAttribute('hidden'), false);
+});
+
+// ─── Anchored placement ─────────────────────────────────────────────────────
+
+function placementWorld({ browser, shell }) {
+  const sandbox = {
+    Math,
+    Number,
+    document: {
+      getElementById: (id) => ({
+        getBoundingClientRect: () => (id === 'browser' ? browser : shell),
+      }),
+    },
+  };
+  const names = [
+    'ADDRBAR_POPUP_WIDTH_PX',
+    'ADDRBAR_POPUP_HEIGHT_PX',
+    'ADDRBAR_ANCHORED_POPUP_WIDTH_PX',
+    'ADDRBAR_ANCHORED_POPUP_HEIGHT_PX',
+    'ADDRBAR_ANCHOR_MARGIN_PX',
+  ];
+  const script = `"use strict";
+    ${names.map(extractConst).join('\n')}
+    ${['readAddrbarAnchorNumber', 'roundAddrbarPx', 'computeAddrbarAnchoredPlacement']
+      .map(extractFunction)
+      .join('\n')}
+    ({ computeAddrbarAnchoredPlacement });`;
+  return vm.runInNewContext(script, sandbox, { filename: 'bento-shell-mount.js#placement' });
+}
+
+test('the anchored popup shares the row top-left corner and grows right and down', () => {
+  const { computeAddrbarAnchoredPlacement } = placementWorld({
+    browser: { left: 0, top: 80, width: 1400, height: 900 },
+    shell: { left: 0, top: 80 },
+  });
+  // A row at x 6, y 40 in the shell: 240 x 32.
+  const placement = plain(
+    computeAddrbarAnchoredPlacement({ left: 6, top: 40, width: 240, height: 32 }),
+  );
+  assert.deepEqual(placement, {
+    left: 6,
+    top: 40,
+    width: 512,
+    height: 378,
+    anchorWidth: 240,
+    anchorHeight: 32,
+  });
+});
+
+test("the popup's CSS margin at the window's right and bottom is chrome's placement margin", () => {
+  const tokens = fs.readFileSync(
+    path.join(ROOT, 'extensions/bento-shell/src/theme/bento-tokens.css'),
+    'utf8',
+  );
+  const rem = /--bento-address-bar-anchor-margin:\s*([\d.]+)rem;/.exec(tokens)?.[1];
+  assert.ok(rem, 'the token is missing');
+  const { ADDRBAR_ANCHOR_MARGIN_PX } = vm.runInNewContext(
+    `${extractConst('ADDRBAR_ANCHOR_MARGIN_PX')}\n({ ADDRBAR_ANCHOR_MARGIN_PX })`,
+  );
+  assert.equal(Number(rem) * 16, ADDRBAR_ANCHOR_MARGIN_PX);
+});
+
+test('the anchored popup keeps the row corner unless the row is outside the window', () => {
+  const { computeAddrbarAnchoredPlacement } = placementWorld({
+    browser: { left: 0, top: 0, width: 600, height: 500 },
+    shell: { left: 0, top: 0 },
+  });
+  const near = plain(computeAddrbarAnchoredPlacement({ left: 4, top: 2, width: 240, height: 32 }));
+  assert.equal(near.left, 4, 'a row inside the 12 px margin is not pushed in');
+  assert.equal(near.top, 2);
+
+  const outside = plain(
+    computeAddrbarAnchoredPlacement({ left: -50, top: 700, width: 240, height: 32 }),
+  );
+  assert.equal(outside.left, 0);
+  assert.equal(outside.top, 468);
+  assert.equal(outside.height, 180, 'the popup keeps a usable minimum height');
 });

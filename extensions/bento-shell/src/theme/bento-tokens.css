@@ -66,13 +66,13 @@
        so it follows the box's own font size (the var() substitutes into the using rule). */
     --bento-text-descender-room: 0.25em;
     /* Sidebar search trigger. Peek width: the trigger's width while hovered or
-       keyboard-focused, sized for the icon, its gap, the label 'Search' and
+       keyboard-focused, sized for the icon, its gap, the label 'Search tabs' and
        the same inline padding as the New button. Inset: the square trigger's
        icon offset (the icon is centered at rest and keeps that offset when it
        peeks). Clear scale: the clear button's size before it pops in. Dot: the
        mark on the rail's Search square while a collapse has parked a query (its size,
        how far it overhangs the square's corner, and the halo that sets it off). */
-    --bento-tab-list-search-peek-width: 5.25rem;
+    --bento-tab-list-search-peek-width: 7.1875rem;
     --bento-tab-list-search-trigger-inset: calc(
       (var(--bento-tab-row-height) - var(--bento-icon-size-sm)) / 2
     );
@@ -236,6 +236,10 @@
     --bento-address-bar-max-inline: 92vw;
     --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.125rem;
+    /* The room the anchored address bar popup leaves at the window's right and bottom. Must equal
+       ADDRBAR_ANCHOR_MARGIN_PX in bento-shell-mount.js (12px at the 16px root); a test keeps them
+       equal. */
+    --bento-address-bar-anchor-margin: 0.75rem;
     --bento-sidebar-address-row-height: 2rem;
     /* How far the address bar folds up while the list rises over it in a collapse
        or expand (sidebar/railTransition.css). */

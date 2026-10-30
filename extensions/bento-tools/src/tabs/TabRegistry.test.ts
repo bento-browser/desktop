@@ -698,3 +698,219 @@ describe('TabRegistry private windows', () => {
     expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
   });
 });
+
+describe('TabRegistry explicit restore hydration', () => {
+  const membership = {
+    hasWorkspace: (id: string) => id === 'saved-workspace',
+    folderWorkspaceId: (id: string) => (id === 'saved-folder' ? 'saved-workspace' : undefined),
+  };
+
+  function sessionValues(values: Record<string, string | object>) {
+    const stored = new Map(Object.entries(values));
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(async (_id, key) => stored.get(key));
+    vi.mocked(browser.sessions.setTabValue).mockImplementation(async (_id, key, value) => {
+      stored.set(key, value);
+    });
+    vi.mocked(browser.sessions.removeTabValue).mockImplementation(async (_id, key) => {
+      stored.delete(key);
+    });
+    return stored;
+  }
+
+  it('round-trips retained membership through repeated marks and a native-style new tab id', async () => {
+    const listeners = stubTabsBrowser([makeTab({ id: 41 })]);
+    const stored = sessionValues({
+      'bento.workspaceId': 'saved-workspace',
+      'bento.folderId': 'saved-folder',
+      'bento.customTitle': 'Saved title',
+    });
+    const tabs = new TabRegistry();
+    await tabs.init();
+    await tabs.markClosing(41, { preserveSessionMembership: true });
+    await tabs.markClosing(41, { preserveSessionMembership: true });
+    expect(tabs.snapshot()[0]).not.toHaveProperty('workspaceId');
+    expect(tabs.snapshot()[0]).not.toHaveProperty('folderId');
+    expect(stored.get('bento.closingTab')).toBe('1');
+    expect(stored.get('bento.workspaceId')).toBe('saved-workspace');
+    expect(stored.get('bento.folderId')).toBe('saved-folder');
+    listeners.removed?.(41, { windowId: 1, isWindowClosing: false });
+    listeners.created?.(makeTab({ id: 42 }));
+    await expect(tabs.hydrateRestoredTab(42, membership)).resolves.toBe(true);
+    expect(tabs.snapshot()[0]).toMatchObject({
+      id: 42,
+      workspaceId: 'saved-workspace',
+      folderId: 'saved-folder',
+      customTitle: 'Saved title',
+    });
+    expect(stored.has('bento.closingTab')).toBe(false);
+  });
+
+  it.each(['deleted-workspace', 'private:old-window'])(
+    'drops retained membership for invalid workspace %s before unmarking',
+    async (workspaceId) => {
+      const listeners = stubTabsBrowser();
+      const stored = sessionValues({
+        'bento.workspaceId': workspaceId,
+        'bento.folderId': 'saved-folder',
+        'bento.closingTab': '1',
+      });
+      const tabs = new TabRegistry();
+      await tabs.init();
+      listeners.created?.(makeTab({ id: 42 }));
+      await tabs.hydrateRestoredTab(42, membership);
+      expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+      expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+      expect(stored.size).toBe(0);
+      expect(vi.mocked(browser.sessions.removeTabValue).mock.calls.map(([, key]) => key)).toEqual([
+        'bento.workspaceId',
+        'bento.folderId',
+        'bento.closingTab',
+      ]);
+    },
+  );
+
+  it.each(['deleted-folder', 'moved-folder'])(
+    'drops %s without changing a valid saved workspace',
+    async (folderId) => {
+      const listeners = stubTabsBrowser();
+      const stored = sessionValues({
+        'bento.workspaceId': 'saved-workspace',
+        'bento.folderId': folderId,
+        'bento.closingTab': '1',
+      });
+      const tabs = new TabRegistry();
+      await tabs.init();
+      listeners.created?.(makeTab({ id: 42 }));
+      await tabs.hydrateRestoredTab(42, {
+        ...membership,
+        folderWorkspaceId: (id) => (id === 'moved-folder' ? 'other-workspace' : undefined),
+      });
+      expect(tabs.snapshot()[0]?.workspaceId).toBe('saved-workspace');
+      expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+      expect(stored.has('bento.folderId')).toBe(false);
+    },
+  );
+
+  it('leaves genuine unmarked import membership available for adoption', async () => {
+    const listeners = stubTabsBrowser();
+    const stored = sessionValues({ 'bento.workspaceId': 'imported-workspace' });
+    const tabs = new TabRegistry();
+    await tabs.init();
+    listeners.created?.(makeTab({ id: 42 }));
+    await expect(tabs.hydrateRestoredTab(42, membership)).resolves.toBe(false);
+    expect(tabs.snapshot()[0]?.workspaceId).toBe('imported-workspace');
+    expect(stored.get('bento.workspaceId')).toBe('imported-workspace');
+  });
+
+  it('sweeps a startup marked live tab destructively even if user close retained membership', async () => {
+    stubTabsBrowser([makeTab({ id: 42 })]);
+    const stored = sessionValues({
+      'bento.workspaceId': 'saved-workspace',
+      'bento.folderId': 'saved-folder',
+      'bento.closingTab': '1',
+    });
+    browser.tabs.remove = vi.fn().mockResolvedValue(undefined);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    await tabs.hydrateWorkspaceIds({ attempts: 1 });
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+    await tabs.closeMarkedTabs();
+    expect(browser.tabs.remove).toHaveBeenCalledWith(42);
+    expect(stored.has('bento.workspaceId')).toBe(false);
+    expect(stored.has('bento.folderId')).toBe(false);
+    expect(stored.get('bento.closingTab')).toBe('1');
+  });
+
+  it('clears private session membership even when preservation is requested', async () => {
+    stubTabsBrowser([makeTab({ id: 42, incognito: true })]);
+    const stored = sessionValues({
+      'bento.workspaceId': 'private:window',
+      'bento.folderId': 'private-folder',
+    });
+    const tabs = new TabRegistry();
+    await tabs.init();
+    await tabs.markClosing(42, { preserveSessionMembership: true });
+    expect(stored.has('bento.workspaceId')).toBe(false);
+    expect(stored.has('bento.folderId')).toBe(false);
+    expect(browser.sessions.setTabValue).toHaveBeenCalledExactlyOnceWith(
+      42,
+      'bento.closingTab',
+      '1',
+    );
+  });
+
+  it('clears pending assignments and lets a later destructive mark discard retained keys', async () => {
+    const listeners = stubTabsBrowser();
+    const stored = sessionValues({});
+    const tabs = new TabRegistry();
+    await tabs.init();
+    await tabs.assignWorkspaceEagerly(42, 'saved-workspace');
+    await tabs.assignFolderEagerly(42, 'saved-folder');
+    await tabs.markClosing(42, { preserveSessionMembership: true });
+    listeners.created?.(makeTab({ id: 42 }));
+    await tabs.hydrateWorkspaceIds({ attempts: 1 });
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+    expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+    expect(stored.get('bento.folderId')).toBe('saved-folder');
+    await tabs.markClosing(42);
+    expect(stored.has('bento.workspaceId')).toBe(false);
+    expect(stored.has('bento.folderId')).toBe(false);
+  });
+
+  it('clears live folder-only membership while retaining its session value when opted in', async () => {
+    stubTabsBrowser([makeTab({ id: 42 })]);
+    const stored = sessionValues({ 'bento.folderId': 'saved-folder' });
+    const tabs = new TabRegistry();
+    await tabs.init();
+    await tabs.markClosing(42, { preserveSessionMembership: true });
+    expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+    expect(stored.get('bento.folderId')).toBe('saved-folder');
+  });
+
+  it('does not let an older hydration read reapply an invalidated retained workspace', async () => {
+    const listeners = stubTabsBrowser();
+    sessionValues({
+      'bento.workspaceId': 'deleted-workspace',
+      'bento.closingTab': '1',
+    });
+    const tabs = new TabRegistry();
+    await tabs.init();
+    let finishRead!: (value: string) => void;
+    const oldRead = new Promise<string>((resolve) => (finishRead = resolve));
+    vi.mocked(browser.sessions.getTabValue).mockImplementationOnce(() => oldRead);
+    listeners.created?.(makeTab({ id: 42 }));
+    await tabs.hydrateRestoredTab(42, membership);
+    finishRead('deleted-workspace');
+    await oldRead;
+    // Let the suspended #hydrateOne finish, including its Promise.all continuation.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+    expect(tabs.isClosing(42)).toBe(false);
+  });
+
+  it('recovers native workspace, folder and title after clearing the close mark', async () => {
+    const listeners = stubTabsBrowser();
+    const tabs = new TabRegistry();
+    await tabs.init();
+    vi.mocked(browser.sessions.getTabValue).mockImplementation(
+      async (_id, key) =>
+        ({
+          'bento.workspaceId': 'saved-workspace',
+          'bento.folderId': 'saved-folder',
+          'bento.customTitle': 'Saved title',
+          'bento.closingTab': '1',
+        })[key],
+    );
+    listeners.created?.(makeTab({ id: 42 }));
+    await tabs.hydrateRestoredTab(42, membership);
+    expect(tabs.snapshot()[0]).toMatchObject({
+      id: 42,
+      workspaceId: 'saved-workspace',
+      folderId: 'saved-folder',
+      customTitle: 'Saved title',
+    });
+    expect(tabs.isClosing(42)).toBe(false);
+    expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+});

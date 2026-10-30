@@ -98,7 +98,12 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
   'privacy/setAdvanced': { type: 'privacy/setAdvanced', key: 'httpsOnlyMode', value: true },
   'privacy/setDefaultSearchEngine': { type: 'privacy/setDefaultSearchEngine', id: 'ddg' },
   'searchEngines/requestSnapshot': { type: 'searchEngines/requestSnapshot' },
-  'addrbar/query': { type: 'addrbar/query', query: 'bento', limit: 8 },
+  'addrbar/query': { type: 'addrbar/query', requestId: 'query-1', query: 'bento', limit: 8 },
+  'addrbar/restoreClosed': {
+    type: 'addrbar/restoreClosed',
+    requestId: 'restore-1',
+    sessionId: 'closed-1',
+  },
   'pinnedPanel/add': { type: 'pinnedPanel/add', workspaceId: 'ws-1', tabId: 9 },
   'pinnedPanel/remove': { type: 'pinnedPanel/remove', workspaceId: 'ws-1', tabId: -2 },
   'pinnedPanel/open': { type: 'pinnedPanel/open', workspaceId: 'ws-1', tabId: -1 },
@@ -397,5 +402,15 @@ describe('parseWireAction: malformed messages', () => {
       { type: 'tabs/close', ids: new Proxy([], {}) },
     ];
     for (const message of hostile) expect(() => parse(message)).not.toThrow();
+  });
+});
+
+describe('address request identifiers', () => {
+  it('requires bounded, nonempty ids and exact action keys', () => {
+    expect(parse({ type: 'addrbar/query', query: '' })).toBeNull();
+    expect(parse(withFields('addrbar/query', { requestId: '' }))).toBeNull();
+    expect(parse(withFields('addrbar/restoreClosed', { sessionId: '' }))).toBeNull();
+    expect(parse(withFields('addrbar/restoreClosed', { sessionId: 'x'.repeat(257) }))).toBeNull();
+    expect(parse(withFields('addrbar/restoreClosed', { url: 'https://wrong.test/' }))).toBeNull();
   });
 });

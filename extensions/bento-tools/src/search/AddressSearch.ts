@@ -1,4 +1,5 @@
 import type { AddrResult } from '@shared/protocol';
+import { eligibleClosedTabs, type ClosedSessionContext } from './ClosedSessions';
 
 const DEFAULT_LIMIT = 8;
 const HISTORY_CAP = 16;
@@ -59,49 +60,60 @@ function titleForUrl(title: string | undefined, url: string): string {
   return url;
 }
 
-async function getEmptyQueryResults(maxResults: number): Promise<AddrResult[]> {
-  try {
-    const topSites = await browser.topSites.get({
-      newtab: true,
-      limit: maxResults,
-      includeFavicon: true,
-    });
-    if (topSites.length > 0) {
-      return topSites
-        .filter((site) => !!site.url)
-        .map(
-          (site, index): AddrResult => ({
-            kind: 'topSite',
-            url: site.url,
-            title: titleForUrl(site.title, site.url),
-            favIconUrl: site.favicon,
-            score: maxResults - index,
-          }),
-        )
-        .slice(0, maxResults);
-    }
-  } catch {
-    // Fall back to recent history when topSites is unavailable or not ready.
-  }
-
-  const historyItems = await browser.history.search({
-    text: '',
-    startTime: 0,
-    maxResults,
-  });
-
-  return historyItems
-    .filter((item) => !!item.url)
-    .map(
-      (item): AddrResult => ({
-        kind: 'history',
+async function getEmptyQueryResults(context?: ClosedSessionContext): Promise<AddrResult[]> {
+  // Each source fails independently; native history/top-site order is intentional.
+  const [closed, history, topSites] = await Promise.all([
+    eligibleClosedTabs(context).catch(() => []),
+    Promise.resolve()
+      .then(() =>
+        browser.history.search({
+          text: '',
+          startTime: 0,
+          maxResults: 2,
+        }),
+      )
+      .catch(() => []),
+    Promise.resolve()
+      .then(() =>
+        browser.topSites.get({
+          newtab: true,
+          limit: 2,
+          includeFavicon: true,
+        }),
+      )
+      .catch(() => []),
+  ]);
+  return [
+    ...closed.slice(0, 2).map((session): AddrResult => ({
+      kind: 'recentlyClosed',
+      sessionId: session.tab.sessionId,
+      url: session.tab.url,
+      title: titleForUrl(session.tab.title, session.tab.url),
+      favIconUrl: session.tab.favIconUrl,
+      closedAt: session.lastModified,
+      score: 0,
+    })),
+    ...history
+      .filter((item) => !!item.url)
+      .slice(0, 2)
+      .map((item): AddrResult => ({
+        kind: 'recentHistory',
         url: item.url!,
         title: titleForUrl(item.title, item.url!),
-        score: historyScore('', item),
-      }),
-    )
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxResults);
+        lastVisitTime: item.lastVisitTime,
+        score: 0,
+      })),
+    ...topSites
+      .filter((site) => !!site.url)
+      .slice(0, 2)
+      .map((site, index): AddrResult => ({
+        kind: 'topSite',
+        url: site.url,
+        title: titleForUrl(site.title, site.url),
+        favIconUrl: site.favicon,
+        score: 2 - index,
+      })),
+  ];
 }
 
 function mergeResult(byUrl: Map<string, AddrResult>, key: string, result: AddrResult): void {
@@ -121,13 +133,14 @@ function mergeResult(byUrl: Map<string, AddrResult>, key: string, result: AddrRe
 export async function searchAddressResults(
   query: string,
   limit = DEFAULT_LIMIT,
+  context?: ClosedSessionContext,
 ): Promise<AddrResult[]> {
   const trimmed = query.trim();
   const maxResults = Math.max(1, Math.min(limit, 20));
   const byUrl = new Map<string, AddrResult>();
 
   if (!trimmed) {
-    return getEmptyQueryResults(maxResults);
+    return getEmptyQueryResults(context);
   }
 
   const [historyItems, bookmarkNodes] = await Promise.all([
