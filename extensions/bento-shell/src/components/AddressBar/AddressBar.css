@@ -254,10 +254,17 @@ html[data-bento-address-bar='true'] #root {
   box-shadow: none;
 }
 
+/* The placeholder colour is read from the registered --bento-placeholder-fg (theme/document-base.css),
+   so it fades with the mode flip; a `color` on ::placeholder itself would switch at the prepare. */
+.bento-address-bar__toolbar--anchored
+  .bento-address-bar__search-field
+  .muxui-command-palette__input {
+  --bento-placeholder-fg: var(--muxui-semantic-color-neutral-50);
+}
+
 .bento-address-bar__toolbar--anchored
   .bento-address-bar__search-field
   .muxui-command-palette__input::placeholder {
-  color: var(--muxui-semantic-color-neutral-50);
   opacity: 1;
 }
 

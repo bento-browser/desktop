@@ -1,5 +1,5 @@
 import { resolveThemeId } from './presets';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 export type ThemeColorScheme = 'light' | 'dark';
 
@@ -10,29 +10,54 @@ export interface ThemeScopeAttributes {
   'data-muxui-contrast': 'standard';
 }
 
-function readDocumentColorScheme(): ThemeColorScheme {
+export function readDocumentColorScheme(): ThemeColorScheme {
   if (typeof document === 'undefined') return 'light';
   return document.documentElement.getAttribute('data-color-mode') === 'dark' ? 'dark' : 'light';
 }
 
-/** Keep nested themed elements in sync when Auto resolves to a new mode. */
-export function useResolvedColorScheme(): ThemeColorScheme {
-  const [colorScheme, setColorScheme] = useState<ThemeColorScheme>(readDocumentColorScheme);
+const colorSchemeListeners = new Set<() => void>();
+let colorSchemeObserver: MutationObserver | null = null;
+let observedColorScheme: ThemeColorScheme = 'light';
 
-  useEffect(() => {
-    const html = document.documentElement;
-    const update = () => setColorScheme(readDocumentColorScheme());
-    update();
-    if (typeof MutationObserver === 'undefined') return;
-    const observer = new MutationObserver(update);
-    observer.observe(html, {
+/**
+ * One shared observer of the root's mode attributes; it runs while any scope subscribes.
+ * Listeners hear only a change of the resolved scheme: a listener that writes the same
+ * attribute again (applyRootTheme does) would otherwise call itself through the observer.
+ */
+export function subscribeColorScheme(notify: () => void): () => void {
+  colorSchemeListeners.add(notify);
+  if (!colorSchemeObserver && typeof MutationObserver !== 'undefined') {
+    observedColorScheme = readDocumentColorScheme();
+    colorSchemeObserver = new MutationObserver(() => {
+      const next = readDocumentColorScheme();
+      if (next === observedColorScheme) return;
+      observedColorScheme = next;
+      for (const listener of colorSchemeListeners) listener();
+    });
+    colorSchemeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['data-color-mode', 'data-muxui-color-scheme'],
     });
-    return () => observer.disconnect();
-  }, []);
+  }
+  return () => {
+    colorSchemeListeners.delete(notify);
+    if (colorSchemeListeners.size === 0) {
+      colorSchemeObserver?.disconnect();
+      colorSchemeObserver = null;
+    }
+  };
+}
 
-  return colorScheme;
+/**
+ * Keep nested themed elements in sync when the mode changes (a flip, or Auto resolving to a
+ * new mode). A store subscription, not state set from an effect: React renders the change
+ * synchronously in the same microtask checkpoint as the root attribute, so the scoped
+ * `data-muxui-color-scheme` attributes flip in the same style recalculation as the root and
+ * their colours fade with the rest of the document (a state update was rendered a frame or
+ * more later and started those fades up to 90 ms behind).
+ */
+export function useResolvedColorScheme(): ThemeColorScheme {
+  return useSyncExternalStore(subscribeColorScheme, readDocumentColorScheme, () => 'light');
 }
 
 /**

@@ -14,13 +14,15 @@
 @layer muxui, bento;
 
 /*
- * The one declaration of Bento's sublayer order: tokens, fonts, then component rules, then the
+ * The one declaration of Bento's sublayer order: the mode flip fade first (document-base.css; for
+ * important declarations the earliest layer wins, so the fade out-ranks the layers below it, and
+ * for normal ones it ranks lowest and holds none), then tokens, fonts, component rules, and the
  * shell layout (bento.app) on top. Layers rank by first declaration, and without this line the
  * rank depends on which file a bundler or dev server happens to evaluate first: the dev server
  * injects each CSS module in import order and the build concatenates by chunk order. Every entry
  * point and the Ladle provider import this file before any other Bento stylesheet. A new bento.*
  * layer goes in this list.
  */
-@layer bento.tokens, bento.fonts, bento.components, bento.app;
+@layer bento.mode-fade, bento.tokens, bento.fonts, bento.components, bento.app;
 
 @import '@muxui/react/styles.css' layer(muxui);
