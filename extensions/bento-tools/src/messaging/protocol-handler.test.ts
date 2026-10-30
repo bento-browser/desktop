@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handle, type HandlerContext } from './protocol-handler';
 import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
+import { TabRegistry } from '../tabs/TabRegistry';
+import { PanelStore } from '../panels/PanelStore';
+import { bentoTabMoves } from '../tabs/AdoptedTab';
 
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
-  return {
+  const context = {
     tabs: {
       isPrivate: vi.fn(() => false),
       markClosing: vi.fn().mockResolvedValue(undefined),
@@ -44,6 +47,8 @@ function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerCon
     sourceWindowId: 1,
     ...overrides,
   } as unknown as HandlerContext;
+  context.panels.isDevtoolsPanel ??= vi.fn(() => false);
+  return context;
 }
 
 /** Firefox drops a closed tab's id; a tab kept by a beforeunload prompt keeps it. */
@@ -84,6 +89,11 @@ describe('protocol handler panel close', () => {
     expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 123);
     expect(ctx.syncPanelMarkers).toHaveBeenCalledWith('ws-1');
     expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+    expect(ctx.tabs.markClosing).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(ctx.tabs.markClosing).mock.calls).toEqual([
+      [123, { preserveSessionMembership: true }],
+      [123, { preserveSessionMembership: true }],
+    ]);
   });
 
   it('removes pinned-panel bindings when a DevTools panel is removed', async () => {
@@ -106,6 +116,9 @@ describe('protocol handler panel close', () => {
     expect(removeForTab).toHaveBeenCalledWith(123);
     expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 123);
     expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
+    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(123, {
+      preserveSessionMembership: undefined,
+    });
   });
 
   it('promotes the leftmost panel before closing the active final sidebar tab', async () => {
@@ -142,6 +155,10 @@ describe('protocol handler panel close', () => {
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalledWith(10);
     });
+    expect(vi.mocked(ctx.tabs.markClosing).mock.calls).toEqual([
+      [10, { preserveSessionMembership: true }],
+      [10, { preserveSessionMembership: true }],
+    ]);
   });
 
   it('closes each selected tab once for a batch close action', async () => {
@@ -169,8 +186,12 @@ describe('protocol handler panel close', () => {
       expect(browser.tabs.remove).toHaveBeenCalledWith(20);
     });
     expect(browser.tabs.remove).toHaveBeenCalledTimes(2);
-    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(10);
-    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(20);
+    for (const id of [10, 20]) {
+      expect(vi.mocked(ctx.tabs.markClosing).mock.calls.filter(([tabId]) => tabId === id)).toEqual([
+        [id, { preserveSessionMembership: true }],
+        [id, { preserveSessionMembership: true }],
+      ]);
+    }
   });
 });
 
@@ -178,6 +199,71 @@ describe('protocol handler close that Firefox does not commit', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
+
+  it.each(['ws-1', 'ws-2', null])(
+    'rolls back retained session membership with the real registry when the window shows %s',
+    async (shownWorkspaceId) => {
+      stubClosingBrowser({ keep: new Set([123]) });
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+      const values = new Map<string, string | object>([
+        ['bento.workspaceId', 'ws-1'],
+        ['bento.folderId', 'folder-1'],
+      ]);
+      Object.assign(browser.sessions, {
+        getTabValue: vi.fn(async (_id: number, key: string) => values.get(key)),
+        setTabValue: vi.fn(async (_id: number, key: string, value: string | object) => {
+          values.set(key, value);
+        }),
+        removeTabValue: vi.fn(async (_id: number, key: string) => {
+          values.delete(key);
+        }),
+      });
+      Object.assign(browser.tabs, {
+        query: vi.fn(async () => [
+          { id: 123, windowId: 1, index: 0, title: 'Kept', active: false, pinned: false },
+        ]),
+        ...Object.fromEntries(
+          ['onCreated', 'onUpdated', 'onRemoved', 'onActivated', 'onMoved', 'onAttached'].map(
+            (event) => [event, { addListener: vi.fn() }],
+          ),
+        ),
+      });
+      const tabs = new TabRegistry();
+      await tabs.init();
+      const ctx = createCloseContext({
+        tabs,
+        workspaces: {
+          getActiveId: vi.fn(() => shownWorkspaceId),
+          hasForWindow: vi.fn(() => true),
+        } as unknown as HandlerContext['workspaces'],
+        panels: {
+          findWorkspacesContainingTab: vi.fn(() => []),
+          findWorkspacesContainingPanelOrSubPanel: vi.fn(() => []),
+          getWidth: vi.fn(),
+          getHeaderHidden: vi.fn(() => false),
+        } as unknown as HandlerContext['panels'],
+      });
+      handle({ type: 'tab/close', id: 123 }, ctx);
+      await vi.waitFor(() => {
+        expect(browser.tabs.remove).toHaveBeenCalledWith(123);
+        expect(tabs.isClosing(123)).toBe(false);
+        expect(tabs.snapshot()[0]?.workspaceId).toBe(shownWorkspaceId ?? undefined);
+      });
+      await tabs.hydrateWorkspaceIds({ attempts: 1 });
+      expect(tabs.snapshot()[0]?.workspaceId).toBe(shownWorkspaceId ?? undefined);
+      expect(tabs.snapshot()[0]?.folderId).toBe(
+        shownWorkspaceId === 'ws-1' ? 'folder-1' : undefined,
+      );
+      expect(values.get('bento.workspaceId')).toBe(shownWorkspaceId ?? undefined);
+      expect(values.get('bento.folderId')).toBe(
+        shownWorkspaceId === 'ws-1' ? 'folder-1' : undefined,
+      );
+      expect(values.has('bento.closingTab')).toBe(false);
+    },
+  );
 
   it('puts a panel back when the user keeps its tab on a beforeunload prompt', async () => {
     stubClosingBrowser({ keep: new Set([123]) });
@@ -2035,4 +2121,343 @@ describe('protocol handler settings and privacy actions', () => {
       ),
     );
   });
+});
+
+describe('address closed-session restore', () => {
+  const session = {
+    lastModified: 123,
+    tab: { sessionId: 'closed-a', windowId: 1, incognito: false, url: 'https://restore.test/' },
+  };
+  beforeEach(() => {
+    vi.stubGlobal('browser', {
+      sessions: {
+        getRecentlyClosed: vi.fn().mockResolvedValue([session]),
+        restore: vi.fn().mockResolvedValue({ tab: { id: 42, windowId: 1 } }),
+      },
+      tabs: {
+        get: vi.fn().mockResolvedValue({ id: 42, windowId: 1, active: true, pinned: false }),
+        update: vi.fn().mockResolvedValue({ id: 42 }),
+        create: vi.fn(),
+      },
+      windows: { get: vi.fn().mockResolvedValue({ id: 1 }), update: vi.fn() },
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  it('revalidates the exact session and echoes the correlated native result', async () => {
+    const ctx = createCloseContext({ sourceWindowPrivate: false });
+    vi.mocked((ctx.panels.findWorkspacesContainingPanelOrSubPanel ??= vi.fn())).mockReturnValue([]);
+    vi.mocked(ctx.tabs.snapshot).mockReturnValue([
+      { id: 42 } as ReturnType<typeof ctx.tabs.snapshot>[number],
+    ]);
+    handle({ type: 'addrbar/restoreClosed', requestId: 'restore-a', sessionId: 'closed-a' }, ctx);
+    await vi.waitFor(() =>
+      expect(ctx.send).toHaveBeenCalledWith({
+        type: 'addrbar/restoreClosedResult',
+        requestId: 'restore-a',
+        sessionId: 'closed-a',
+        outcome: { status: 'restored', tabId: 42, windowId: 1 },
+      }),
+    );
+    expect(browser.sessions.restore).toHaveBeenCalledExactlyOnceWith('closed-a');
+    expect(browser.tabs.update).toHaveBeenCalledWith(42, { active: true });
+    expect(browser.tabs.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    { sourceWindowId: 2, sourceWindowPrivate: false },
+    { sourceWindowId: 1, sourceWindowPrivate: true },
+    { sourceWindowId: null, sourceWindowPrivate: false },
+    { sourceWindowId: 1 },
+  ])('refuses ineligible or unknown source context %j', async (source) => {
+    const ctx = createCloseContext(source);
+    handle({ type: 'addrbar/restoreClosed', requestId: 'r', sessionId: 'closed-a' }, ctx);
+    await vi.waitFor(() =>
+      expect(ctx.send).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: { status: 'unavailable' } }),
+      ),
+    );
+    expect(browser.sessions.restore).not.toHaveBeenCalled();
+  });
+  it('never restores the latest session as a substitute for a stale selected id', async () => {
+    const ctx = createCloseContext({ sourceWindowPrivate: false });
+    handle({ type: 'addrbar/restoreClosed', requestId: 'r', sessionId: 'gone' }, ctx);
+    await vi.waitFor(() =>
+      expect(ctx.send).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: { status: 'unavailable' } }),
+      ),
+    );
+    expect(browser.sessions.restore).not.toHaveBeenCalled();
+  });
+  it('reports native errors to the private audience without a navigation fallback', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(browser.sessions.getRecentlyClosed).mockResolvedValueOnce([
+      { ...session, tab: { ...session.tab, incognito: true } },
+    ] as browser.sessions.Session[]);
+    vi.mocked(browser.sessions.restore).mockRejectedValueOnce(new Error('closed concurrently'));
+    const sendAudience = vi.fn();
+    const ctx = createCloseContext({ sourceWindowPrivate: true, sendAudience });
+    handle({ type: 'addrbar/restoreClosed', requestId: 'r', sessionId: 'closed-a' }, ctx);
+    await vi.waitFor(() =>
+      expect(sendAudience).toHaveBeenCalledWith(
+        { privateWindowId: 1 },
+        expect.objectContaining({ outcome: { status: 'failed' } }),
+      ),
+    );
+    expect(ctx.send).not.toHaveBeenCalled();
+    expect(browser.tabs.create).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe('address native restore ownership and reveal', () => {
+  afterEach(() => {
+    bentoTabMoves.forget([42]);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function fixture(panel = false, owner: number | null = 2) {
+    const live = { id: 42, windowId: 1, pinned: panel, active: false, incognito: false };
+    let shown = owner === 1 ? 'saved' : 'other';
+    const ctx = createCloseContext({ sourceWindowPrivate: false, sendAudience: vi.fn() });
+    Object.assign(ctx.tabs, {
+      snapshot: vi.fn(() => [{ ...live, workspaceId: 'saved' }]),
+    });
+    Object.assign(ctx.panels, {
+      findWorkspacesContainingPanelOrSubPanel: vi.fn(() => (panel ? ['saved'] : [])),
+    });
+    Object.assign(ctx.workspaces, {
+      findOwningWindow: vi.fn(() => owner),
+      getActiveId: vi.fn((id: number) => (id === owner ? 'saved' : shown)),
+      activate: vi.fn((_ws: string, id: number) => {
+        shown = 'saved';
+        owner = id;
+        return 'activated';
+      }),
+      flush: vi.fn().mockResolvedValue(undefined),
+    });
+    ctx.prepareRestoredTab = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('browser', {
+      sessions: {
+        getRecentlyClosed: vi.fn().mockResolvedValue([
+          {
+            lastModified: 1,
+            tab: { sessionId: 's', windowId: 1, incognito: false, url: 'https://restored.test' },
+          },
+        ]),
+        restore: vi.fn().mockResolvedValue({ tab: { id: 42, windowId: 1 } }),
+        removeTabValue: vi.fn(),
+      },
+      tabs: {
+        get: vi.fn(async () => ({ ...live })),
+        move: vi.fn(async (ids: number[], options: { windowId: number }) => {
+          expect(ids).toEqual([42]);
+          live.windowId = options.windowId;
+          return [{ ...live }];
+        }),
+        update: vi.fn(async () => {
+          live.active = true;
+          return { ...live };
+        }),
+        create: vi.fn(),
+      },
+      windows: {
+        get: vi.fn(async (id: number) => ({ id, incognito: false })),
+        update: vi.fn().mockResolvedValue({ id: 2 }),
+      },
+    });
+    const run = () =>
+      handle({ type: 'addrbar/restoreClosed', requestId: 'r', sessionId: 's' }, ctx);
+    const outcome = (value: object) =>
+      expect(ctx.sendAudience).toHaveBeenCalledWith('regular', {
+        type: 'addrbar/restoreClosedResult',
+        requestId: 'r',
+        sessionId: 's',
+        outcome: value,
+      });
+    return { ctx, live, run, outcome };
+  }
+
+  it.each([false, true])(
+    'moves the exact restored tab to its owner and awaits %s panel reveal',
+    async (panel) => {
+      const { ctx, run, outcome } = fixture(panel);
+      let prepare!: () => void;
+      let reveal!: () => void;
+      ctx.prepareRestoredTab = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            prepare = resolve;
+          }),
+      );
+      const revealing = new Promise<void>((resolve) => {
+        reveal = resolve;
+      });
+      if (panel) ctx.emitPanelsSync = vi.fn(() => revealing);
+      else
+        vi.mocked(browser.tabs.update).mockImplementationOnce(async () => {
+          await revealing;
+          return { id: 42, windowId: 2, active: true } as browser.tabs.Tab;
+        });
+      run();
+      await vi.waitFor(() => expect(ctx.prepareRestoredTab).toHaveBeenCalledWith(42));
+      expect(browser.tabs.move).not.toHaveBeenCalled();
+      expect(ctx.sendAudience).not.toHaveBeenCalled();
+      prepare();
+      await vi.waitFor(() =>
+        expect(panel ? ctx.emitPanelsSync : browser.tabs.update).toHaveBeenCalled(),
+      );
+      expect(browser.tabs.move).toHaveBeenCalledExactlyOnceWith([42], {
+        windowId: 2,
+        index: panel ? 0 : -1,
+      });
+      expect(bentoTabMoves.take(42, 2)).toBe('saved');
+      expect(ctx.workspaces.activate).toHaveBeenCalledWith('saved', 2);
+      expect(ctx.workspaces.flush).toHaveBeenCalledOnce();
+      expect(ctx.sendAudience).not.toHaveBeenCalled();
+      if (panel) {
+        expect(ctx.emitPanelsSync).toHaveBeenCalledWith('saved', {
+          scrollToPanelTabId: 42,
+          windowId: 2,
+        });
+        expect(browser.tabs.update).not.toHaveBeenCalled();
+      }
+      reveal();
+      // The native read after activation confirms the selected state too.
+      if (!panel)
+        vi.mocked(browser.tabs.get).mockResolvedValue({
+          id: 42,
+          windowId: 2,
+          active: true,
+        } as browser.tabs.Tab);
+      await vi.waitFor(() => outcome({ status: 'restored', tabId: 42, windowId: 2 }));
+      expect(browser.windows.update).toHaveBeenCalledWith(2, { focused: true });
+      expect(ctx.send).not.toHaveBeenCalled();
+      expect(browser.tabs.create).not.toHaveBeenCalled();
+      expect(ctx.tabs.assignWorkspaceEagerly).not.toHaveBeenCalled();
+      expect(browser.sessions.removeTabValue).not.toHaveBeenCalled();
+    },
+  );
+
+  it('activates an unowned saved workspace in the restored source window', async () => {
+    const { ctx, run, outcome } = fixture(false, null);
+    run();
+    await vi.waitFor(() => outcome({ status: 'restored', tabId: 42, windowId: 1 }));
+    expect(browser.tabs.move).not.toHaveBeenCalled();
+    expect(ctx.workspaces.activate).toHaveBeenCalledWith('saved', 1);
+  });
+
+  it.each([
+    'move rejects',
+    'move skipped',
+    'owner vanished',
+    'owner switched',
+    'activation conflict',
+    'activation fails',
+    'reveal fails',
+    'focus fails',
+    'private destination',
+  ])('reports failure when %s', async (failure) => {
+    const { ctx, run, outcome } = fixture(failure === 'reveal fails');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (failure === 'move rejects')
+      vi.mocked(browser.tabs.move).mockRejectedValueOnce(new Error('move failed'));
+    if (failure === 'move skipped') vi.mocked(browser.tabs.move).mockResolvedValueOnce([]);
+    if (failure === 'owner vanished')
+      vi.mocked(browser.windows.get).mockRejectedValueOnce(new Error('Invalid window ID'));
+    if (failure === 'owner switched')
+      vi.mocked(ctx.workspaces.findOwningWindow).mockReturnValueOnce(2).mockReturnValue(3);
+    if (failure === 'activation conflict')
+      vi.mocked(ctx.workspaces.activate).mockReturnValueOnce('conflict');
+    if (failure === 'activation fails')
+      vi.mocked(browser.tabs.update).mockRejectedValueOnce(new Error('activation failed'));
+    if (failure === 'reveal fails')
+      ctx.emitPanelsSync = vi.fn().mockRejectedValueOnce(new Error('reveal failed'));
+    if (failure === 'focus fails')
+      vi.mocked(browser.windows.update).mockRejectedValueOnce(new Error('Invalid window ID'));
+    if (failure === 'private destination')
+      vi.mocked(browser.windows.get).mockResolvedValueOnce({
+        id: 2,
+        incognito: true,
+      } as browser.windows.Window);
+    run();
+    await vi.waitFor(() => outcome({ status: 'failed' }));
+    expect(ctx.sendAudience).toHaveBeenCalledOnce();
+    expect(browser.tabs.create).not.toHaveBeenCalled();
+    if (failure === 'move rejects') expect(bentoTabMoves.take(42, 2)).toBeUndefined();
+    if (failure === 'owner vanished' || failure === 'private destination')
+      expect(browser.tabs.move).not.toHaveBeenCalled();
+  });
+});
+
+describe('actual tab/close DevTools policy with registry session values', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(['linked toolbox', 'marker-only main toolbox', 'regular tab'])(
+    'keeps the correct repeated-mark policy for %s',
+    async (kind) => {
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+      const devtools = kind !== 'regular tab';
+      const values = new Map<string, unknown>([
+        ['bento.workspaceId', 'ws-1'],
+        ['bento.folderId', 'folder-1'],
+        ...(devtools ? [['bento.isDevtoolsPanel', '1'] as const] : []),
+      ]);
+      stubClosingBrowser();
+      Object.assign(browser.sessions, {
+        getTabValue: vi.fn(async (_id: number, key: string) => values.get(key)),
+        setTabValue: vi.fn(async (_id: number, key: string, value: unknown) => {
+          values.set(key, value);
+        }),
+        removeTabValue: vi.fn(async (_id: number, key: string) => {
+          values.delete(key);
+        }),
+      });
+      Object.assign(browser.tabs, {
+        query: vi.fn(async () => [
+          {
+            id: 123,
+            windowId: 1,
+            index: 0,
+            title: 'Fixture',
+            active: kind === 'marker-only main toolbox',
+            pinned: false,
+          },
+        ]),
+        ...Object.fromEntries(
+          ['onCreated', 'onUpdated', 'onRemoved', 'onActivated', 'onMoved', 'onAttached'].map(
+            (event) => [event, { addListener: vi.fn() }],
+          ),
+        ),
+      });
+      const tabs = new TabRegistry();
+      await tabs.init();
+      const mark = vi.spyOn(tabs, 'markClosing');
+      const panels = new PanelStore();
+      if (kind === 'linked toolbox') panels.addDevtoolsPanel('ws-1', 123, null, 999);
+      const ctx = createCloseContext({
+        tabs,
+        panels,
+        pinnedPanels: { removeForTab: vi.fn() } as unknown as HandlerContext['pinnedPanels'],
+      });
+      handle({ type: 'tab/close', id: 123 }, ctx);
+      await vi.waitFor(() => expect(browser.tabs.remove).toHaveBeenCalledWith(123));
+      expect(mark.mock.calls).toEqual([
+        [123, { preserveSessionMembership: !devtools }],
+        [123, { preserveSessionMembership: !devtools }],
+      ]);
+      expect(values.get('bento.workspaceId')).toBe(devtools ? undefined : 'ws-1');
+      expect(values.get('bento.folderId')).toBe(devtools ? undefined : 'folder-1');
+      expect(tabs.snapshot()[0]?.workspaceId).toBeUndefined();
+      expect(tabs.snapshot()[0]?.folderId).toBeUndefined();
+      expect(values.get('bento.closingTab')).toBe('1');
+      expect(panels.isDevtoolsPanel('ws-1', 123)).toBe(false);
+      if (devtools) expect(values.has('bento.isDevtoolsPanel')).toBe(false);
+    },
+  );
 });

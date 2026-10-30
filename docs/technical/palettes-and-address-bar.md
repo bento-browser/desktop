@@ -68,7 +68,7 @@ palette document stays loaded, so it shows with the query it had.
 
 ### Row highlight
 
-The command palette and the Settings palette share one highlight
+The command palette, address bar and Settings palette share one highlight
 (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
 own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
 (transform and block-size on the Mux `state` pair, the sidebar hover highlight's 120 ms) to the row holding the virtual
@@ -86,6 +86,10 @@ caveats, make the slab change size as it moves, on the same `state` pair.
 
 Pitfalls:
 
+- Clear is reachable with Tab, but a remaining keyboard activation issue was reproduced in
+  both palettes in isolated Chromium: with a nonempty query, press ArrowDown, Tab to Clear,
+  then Enter or Space. Focus returns to the input without clearing the query. The shared
+  `IN_TAB_ORDER` helper does not resolve that sequence; native Firefox reproduction is unverified.
 - React Aria moves focus on hover only when its last input modality is the pointer, and it
   learns that from `pointermove`, which arrives after the `pointerover` that starts the hover:
   the first row entered after a key press took no focus. The hook dispatches a synthetic
@@ -245,11 +249,11 @@ domain a fifth grid item or the kind label is pushed by long domains.
 
 ### Search trigger and field motion
 
-The trigger is a Mux `Button` (ghost, `sm`) with the search icon and a `Search`
+The trigger is a Mux `Button` (ghost, `sm`) with the search icon and a `Search tabs`
 label, inside `span.bento-tab-list__search-trigger` (which carries the `title`).
 Its accessible name stays the `aria-label` "Search tabs and panels". At rest it is
 the 2rem square; hovering it, or keyboard focus-visible on it, widens it leftward
-to `--bento-tab-list-search-peek-width` (5.25rem, icon, gap, the label and the
+to `--bento-tab-list-search-peek-width` (7.1875rem, icon, gap, the label and the
 New button's inline padding), while the New button (`flex: 1`) shrinks by the
 same amount so the bar keeps its width. The label never fades: it is always
 opaque and the button's clip uncovers it (below). Mux's button
@@ -489,7 +493,11 @@ capture phase, opens the overlay, and sends the mode to the addrbar frame
 through a frame script that posts on `BroadcastChannel('bento-addrbar-bus')`
 from the content global. `Cmd/Ctrl+E` is also forwarded by the `BentoKey`
 content actor so the current-tab address dialog opens while web content owns
-focus. Empty new-tab opens read `text/plain` from the global clipboard in
+focus. `Cmd/Ctrl+L` and `Cmd/Ctrl+E` open the palette over the expanded sidebar's
+address row when it is on screen (an open request to the row, with a centered
+fallback), and `Cmd/Ctrl+T` always opens it centered; the request, the anchored
+header and the grow are in
+[address-entry.md](address-entry.md#open-request-cmdl-and-cmde). Empty new-tab opens read `text/plain` from the global clipboard in
 chrome, sanitize it with Firefox URL bar paste handling when available, resolve
 it through `Services.uriFixup`, reject keyword-search results, and forward only
 `http`/`https` specs as `clipboardUrl`. `resolveClipboardUrlSuggestion` first
@@ -506,24 +514,30 @@ for a copied URL and the pasteboard is not read; with the pref true, the row
 appears.
 
 The overlay uses the same shell-to-tools port as the rest of Bento. Query
-actions use `addrbar/query`; tools answers with `addrbar/results` and echoes the
-query so the shell can discard stale async results. The tools search module
-queries Firefox new-tab top sites for empty input, queries all history with
-`browser.history.search({ startTime: 0 })` after typing, searches bookmarks with
-`browser.bookmarks.search(query)`, filters bookmark folders out, dedupes by
-normalized URL, and ranks host-prefix matches, history recency and visit count,
-and bookmark matches. Favicons are best-effort: open tabs provide
-`TabSnapshot.favIconUrl`, top-site rows can include `browser.topSites` favicons,
-but history and bookmark APIs do not return favicons.
-The React overlay renders typed-only active-workspace tab/panel rows, async
-top-site/history/bookmark rows, an empty-new-tab clipboard URL row, and
-synthetic search/open row through Mux UI's `CommandPalette` recipe and
-`useCommandPalette` hook. Empty new-tab mode also renders saved-panel rows from
-the saved-panel mirror and opens them through `panel/openAt`. Sorting is
-disabled so the groups keep Bento's fixed order: clipboard when present, saved
-panels, typed open tabs, typed panels, top sites or typed history/bookmarks, then
-search/open. Empty query preserves top-site results but returns no
-open-tab/open-panel autocomplete rows.
+actions use `addrbar/query`; `addrbar/results` echoes both query and opaque
+request id. The store accepts only the latest registered pair. Empty queries
+independently fetch Recently Closed, Recent History and Top Sites, capped at two
+rows each in that order; unavailable/empty groups have no headings. Closed tabs
+are scoped to the trusted current window/private status, retain separate session
+ids even at equal URLs, and use native session restoration after revalidation.
+The correlated restore result closes only the open that requested it; failure
+shows a status and refreshes results. See
+[address-entry.md](address-entry.md) for eligibility, hydration/reveal, retained
+user-close membership, and deleted-workspace/folder fallback.
+
+Typed queries retain history/bookmark normalized-URL deduplication and ranking
+by host prefix, recency, visit count and bookmark matches. They also include
+active-workspace open tabs/panels and the synthetic search/open row. Favicons are
+best-effort: open tabs and top sites can provide them, while history/bookmark
+APIs do not. Empty new-tab opens append Clipboard and Saved Panels after the
+three primary groups; saved panels still dispatch `panel/openAt`. No open-tab or
+open-panel rows are built for empty input.
+
+All rows use public Mux `CommandPalette` parts and the shared highlight. Recent
+rows show domains and compact elapsed timestamps, with Reopen on the focused
+closed row. Top Sites use one line so six primary rows fit the 512-by-378 anchored
+popup; the list scrolls in shorter windows or for optional suggestions. Empty
+Enter honors Mux's focused option. Typed Enter retains synthetic submission.
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload.

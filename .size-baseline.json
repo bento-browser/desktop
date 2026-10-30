@@ -1,13 +1,13 @@
 {
   "build": "BENTO_RELEASE=1 pnpm run ext:build",
   "gzipBytes": {
-    "extensions/bento-shell/dist/assets/shell.js": 382434,
+    "extensions/bento-shell/dist/assets/shell.js": 386323,
     "extensions/bento-shell/dist/assets/palette.js": 200623,
-    "extensions/bento-shell/dist/assets/address-bar.js": 292213,
+    "extensions/bento-shell/dist/assets/address-bar.js": 298320,
     "extensions/bento-shell/dist/assets/confirm.js": 194492,
     "extensions/bento-shell/dist/assets/edit-workspace.js": 351323,
-    "extensions/bento-shell/dist/assets/welcome.js": 328235,
-    "extensions/bento-shell/dist/assets/menu.js": 271111,
+    "extensions/bento-shell/dist/assets/welcome.js": 331767,
+    "extensions/bento-shell/dist/assets/menu.js": 273825,
     "extensions/bento-shell/dist/assets/workspace-palette.js": 352967,
     "extensions/bento-shell/dist/assets/merge-palette.js": 208139,
     "extensions/bento-shell/dist/assets/settings-palette.js": 217773,
@@ -17,6 +17,6 @@
     "extensions/bento-shell/dist/assets/style.css": 72197,
     "extensions/bento-shell/dist/assets/panel-newtab.css": 18260,
     "extensions/bento-shell/dist/assets/background.js": 3311,
-    "extensions/bento-tools/dist/background.js": 57852
+    "extensions/bento-tools/dist/background.js": 60026
   }
 }

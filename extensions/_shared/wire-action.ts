@@ -236,9 +236,11 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'privacy/setDefaultSearchEngine': { id },
   'searchEngines/requestSnapshot': {},
   'addrbar/query': {
+    requestId: id,
     query: text(MAX_QUERY_LENGTH),
     limit: optional((v): v is number => isInteger(v, 1, MAX_ADDRESS_RESULTS)),
   },
+  'addrbar/restoreClosed': { requestId: id, sessionId: id },
   'pinnedPanel/add': { workspaceId: id, tabId: nat },
   'pinnedPanel/remove': pinKey,
   'pinnedPanel/open': pinKey,

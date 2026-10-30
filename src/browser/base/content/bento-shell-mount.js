@@ -2201,6 +2201,8 @@
   // them, and it runs at once for a ready overlay. The matching hide* function
   // calls overlays.cancel(id), so a hide that arrives first wins.
   function openOverlay(id, reveal) {
+    // The newest open wins: a Cmd+L still waiting for the sidebar row loses to this one.
+    cancelAddrbarOpenRequest();
     if (!overlays.open(id, 'show', reveal)) {
       console.warn('[bento-shell-mount] overlay frame unavailable:', id);
     }
@@ -2484,9 +2486,62 @@
   const ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)';
   let addrbarOpenSeq = 0;
   let pendingAddrbarReveal = null;
+  // The Cmd+L / Cmd+E open waiting for the sidebar row's answer (requestAddrbarOpen).
+  let pendingAddrbarOpenRequest = null;
+  let addrbarOpenRequestSeq = 0;
+  // Whether the anchored palette should be over the sidebar row (the row fades its border out
+  // meanwhile), recorded the moment the palette asks, and what the row was last told. A message
+  // that cannot be delivered is retried here and every attempt re-reads the wanted value, so only
+  // the latest value ever arrives: a retry queued by an open cannot land after the hide that
+  // followed it. dispatchSidebarAddressMessage would resend the message it was given, so this
+  // kind passes an `attempt` at its retry limit, which sends once and queues no retry.
+  const SIDEBAR_ADDRESS_RETRY_LIMIT = 10;
+  let addrbarOverSidebarRow = false;
+  let addrbarOverSidebarRowSent = false;
+  let addrbarOverSidebarRowRetry = null;
 
+  function setAddrbarOverSidebarRow(over) {
+    addrbarOverSidebarRow = over;
+    syncAddrbarOverSidebarRow();
+  }
+
+  function syncAddrbarOverSidebarRow(attempt = 0) {
+    if (addrbarOverSidebarRowRetry !== null) clearTimeout(addrbarOverSidebarRowRetry);
+    addrbarOverSidebarRowRetry = null;
+    const open = addrbarOverSidebarRow;
+    if (addrbarOverSidebarRowSent === open) return;
+    const sent = dispatchSidebarAddressMessage(
+      {
+        kind: 'palette-over-row',
+        windowId: getChromeWindowId(),
+        bridgeToken: getBentoSidebarAddressBridgeToken(),
+        messageId: Date.now(),
+        open,
+      },
+      SIDEBAR_ADDRESS_RETRY_LIMIT,
+    );
+    if (sent) {
+      addrbarOverSidebarRowSent = open;
+    } else if (attempt < SIDEBAR_ADDRESS_RETRY_LIMIT) {
+      addrbarOverSidebarRowRetry = setTimeout(() => syncAddrbarOverSidebarRow(attempt + 1), 100);
+    }
+  }
+
+  // The sidebar document announces its address channel once per document: a first load, a reload
+  // (Alt+Shift+R) or a re-created frame. A new document starts with the row's border showing, so
+  // what chrome last sent it is gone with the old one: forget it, and send the wanted state again
+  // (true when the palette is open over the row; nothing when it is closed).
+  function handleSidebarAddressReadyTitle() {
+    addrbarOverSidebarRowSent = false;
+    syncAddrbarOverSidebarRow();
+  }
+
+  // A Cmd+L / Cmd+E waiting for the sidebar row's answer counts as open, like an open that
+  // waits for its document: Esc, an outside click and the other dismissals all ask
+  // isOverlayOpen, so they reach hideAddrbar and cancel it instead of missing it and then
+  // seeing the palette appear.
   function isAddrbarVisible(host) {
-    return host.style.display !== 'none';
+    return host.style.display !== 'none' || pendingAddrbarOpenRequest !== null;
   }
 
   function nextAddrbarOpenId() {
@@ -2499,6 +2554,12 @@
     return Number.isFinite(number) ? number : 0;
   }
 
+  function roundAddrbarPx(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  // The popup is the sidebar address row grown: its top-left corner is the row's, so it moves
+  // only when the row itself is outside the window. The right and bottom edges keep the margin.
   function computeAddrbarAnchoredPlacement(anchorRect) {
     if (!anchorRect) return null;
     const browser = document.getElementById('browser');
@@ -2514,25 +2575,24 @@
     const anchorHeight = Math.max(1, readAddrbarAnchorNumber(anchorRect.height));
     const viewportWidth = Math.max(1, browserRect.width);
     const viewportHeight = Math.max(1, browserRect.height);
-    const left = Math.max(
-      ADDRBAR_ANCHOR_MARGIN_PX,
-      Math.min(anchorLeft, viewportWidth - ADDRBAR_ANCHOR_MARGIN_PX - anchorWidth),
-    );
+    const left = Math.max(0, Math.min(anchorLeft, viewportWidth - anchorWidth));
+    const top = Math.max(0, Math.min(anchorTop, viewportHeight - anchorHeight));
     const availableWidth = Math.max(
       anchorWidth,
       viewportWidth - left - ADDRBAR_ANCHOR_MARGIN_PX,
     );
     const width = Math.min(ADDRBAR_ANCHORED_POPUP_WIDTH_PX, availableWidth);
-    const top = Math.max(ADDRBAR_ANCHOR_MARGIN_PX, anchorTop + anchorHeight + 4);
     const height = Math.min(
       ADDRBAR_ANCHORED_POPUP_HEIGHT_PX,
       Math.max(180, viewportHeight - top - ADDRBAR_ANCHOR_MARGIN_PX),
     );
     return {
-      left: Math.round(left),
-      top: Math.round(top),
+      left: roundAddrbarPx(left),
+      top: roundAddrbarPx(top),
       width: Math.round(width),
       height: Math.round(height),
+      anchorWidth: roundAddrbarPx(anchorWidth),
+      anchorHeight: roundAddrbarPx(anchorHeight),
     };
   }
 
@@ -2595,6 +2655,8 @@
       : null;
     host.style.pointerEvents = 'auto';
     host.style.opacity = '1';
+    // The row's border fades out as the anchored palette's fades in.
+    if (pending.placement) setAddrbarOverSidebarRow(true);
     if (focusPreservingFrame) focusPreservingFrame.focus();
     else frame?.focus();
   }
@@ -2746,8 +2808,11 @@
 
   function showAddrbar(mode, initialQuery = '', options = {}) {
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
+    cancelAddrbarOpenRequest();
     const openId = nextAddrbarOpenId();
     const placement = computeAddrbarAnchoredPlacement(options.anchorRect);
+    // A centred open replaces an anchored palette at once, so the row's border returns.
+    if (!placement) setAddrbarOverSidebarRow(false);
     let clipboardUrl = '';
     if (typeof options.clipboardUrl === 'string' && options.clipboardUrl) {
       clipboardUrl = options.clipboardUrl;
@@ -2810,9 +2875,95 @@
     showAddrbar(nextMode, initialQuery);
   }
 
+  function cancelAddrbarOpenRequest() {
+    const pending = pendingAddrbarOpenRequest;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingAddrbarOpenRequest = null;
+  }
+
+  // Whether the expanded sidebar's address row can be on screen to open the palette over:
+  // not in the rail, hidden (even revealed on edge hover), or mid-push.
+  function canAnchorAddrbarToSidebarRow() {
+    const host = document.getElementById('bento-shell-host');
+    if (!host || isSidebarCollapsedTarget(host) || isSidebarHiddenTarget(host)) return false;
+    return !isBentoSidebarPushing();
+  }
+
+  // Cmd+L and Cmd+E. Chrome cannot read the row's rect (the shell is a separate frame), so it
+  // asks the row over the sidebar address channel; the row answers with the same
+  // BENTO_OPEN_ADDRBAR a click sends, plus the request id, anchored when it is shown and
+  // without an anchor when it is not. No answer in ADDRBAR_OPEN_RETRY_MS opens the centered
+  // palette, and the answer that comes later finds no request and is dropped
+  // (takeAddrbarOpenRequest), so an open is neither doubled nor lost. Cmd+T, the New tab
+  // action and the native urlbar fallback never ask: they stay centered.
+  function requestAddrbarOpen(mode) {
+    const nextMode = mode === 'newTab' ? 'newTab' : 'current';
+    cancelAddrbarOpenRequest();
+    if (nextMode === 'newTab' || !canAnchorAddrbarToSidebarRow()) {
+      openAddressEntry(nextMode);
+      return;
+    }
+    addrbarOpenRequestSeq += 1;
+    const requestId = `${Date.now()}-${addrbarOpenRequestSeq}`;
+    const sent = dispatchSidebarAddressMessage({
+      kind: 'open-request',
+      windowId: getChromeWindowId(),
+      bridgeToken: getBentoSidebarAddressBridgeToken(),
+      messageId: Date.now(),
+      requestId,
+      mode: nextMode,
+    });
+    if (!sent) {
+      openAddressEntry(nextMode);
+      return;
+    }
+    pendingAddrbarOpenRequest = {
+      requestId,
+      timer: setTimeout(() => {
+        if (pendingAddrbarOpenRequest?.requestId !== requestId) return;
+        pendingAddrbarOpenRequest = null;
+        openAddressEntry(nextMode);
+      }, ADDRBAR_OPEN_RETRY_MS),
+    };
+  }
+
+  // Whether an answer to an open request is still wanted; taking it ends the wait.
+  function takeAddrbarOpenRequest(requestId) {
+    if (pendingAddrbarOpenRequest?.requestId !== requestId) return false;
+    cancelAddrbarOpenRequest();
+    return true;
+  }
+
+  // An open the sidebar row sent (BENTO_OPEN_ADDRBAR): a click on it, or its answer to
+  // requestAddrbarOpen. An answer nobody waits for any more is dropped. An answer is
+  // acted on only while the row can still be anchored to: the sidebar may have collapsed or
+  // started to hide since the request, and the row's frame-local rect stays positive while
+  // it slides away, so the anchor would land on moving or invisible geometry. Then the open
+  // is the centered one, with the query the unanswered fallback uses.
+  function handleAddrbarOpenAnswer(payload) {
+    if (payload.requestId) {
+      if (!takeAddrbarOpenRequest(payload.requestId)) return;
+      if (payload.anchorRect && !canAnchorAddrbarToSidebarRow()) {
+        openAddressEntry(payload.mode);
+        return;
+      }
+    }
+    if (payload.anchorRect) {
+      showAddrbar(payload.mode, payload.initialQuery, {
+        anchorRect: payload.anchorRect,
+        clipboardUrl: payload.clipboardUrl,
+      });
+    } else {
+      openAddressEntry(payload.mode, payload.initialQuery);
+    }
+  }
+
   function hideAddrbar() {
     overlays.cancel('addrbar');
+    cancelAddrbarOpenRequest();
     clearPendingAddrbarReveal();
+    setAddrbarOverSidebarRow(false);
     const host = document.getElementById('bento-addrbar-host');
     if (!host) return;
     host.style.pointerEvents = 'none';
@@ -3795,6 +3946,8 @@
   const SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX = 'BENTO_SIDEBAR_ADDRESS_BOOKMARK_TOGGLE:';
   const SIDEBAR_ADDRESS_IDENTITY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_IDENTITY:';
   const SIDEBAR_ADDRESS_COPY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_COPY:';
+  // Once per sidebar document, after it subscribed to the address channel (bridge/useSidebarAddress.ts).
+  const SIDEBAR_ADDRESS_READY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_READY:';
   // Same pattern for the confirm overlay (workspace deletion, etc.). The
   // confirm payload itself travels via BroadcastChannel('bento-confirm-bus')
   // — the title is just the visibility signal.
@@ -6144,7 +6297,7 @@
   function parseAddrbarOpenPayload(encodedPayload) {
     const decoded = decodeAddrbarPayload(encodedPayload).trim();
     if (!decoded.startsWith('{')) {
-      return { mode: decoded === 'newTab' ? 'newTab' : 'current', initialQuery: '' };
+      return { mode: decoded === 'newTab' ? 'newTab' : 'current', initialQuery: '', requestId: '' };
     }
     const parsed = JSON.parse(decoded);
     const anchorRect =
@@ -6160,6 +6313,7 @@
       mode: parsed?.mode === 'newTab' ? 'newTab' : 'current',
       initialQuery: typeof parsed?.initialQuery === 'string' ? parsed.initialQuery : '',
       clipboardUrl: typeof parsed?.clipboardUrl === 'string' ? parsed.clipboardUrl : '',
+      requestId: typeof parsed?.requestId === 'string' ? parsed.requestId : '',
       anchorRect,
     };
   }
@@ -6172,15 +6326,7 @@
       return;
     }
     try {
-      const payload = parseAddrbarOpenPayload(tail.slice(colon + 1));
-      if (payload.anchorRect) {
-        showAddrbar(payload.mode, payload.initialQuery, {
-          anchorRect: payload.anchorRect,
-          clipboardUrl: payload.clipboardUrl,
-        });
-      } else {
-        openAddressEntry(payload.mode, payload.initialQuery);
-      }
+      handleAddrbarOpenAnswer(parseAddrbarOpenPayload(tail.slice(colon + 1)));
     } catch (err) {
       console.warn('[bento-shell-mount] addrbar open payload decode failed:', err);
       openAddressEntry('newTab');
@@ -9625,7 +9771,7 @@
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
-        if (attempt < 10) {
+        if (attempt < SIDEBAR_ADDRESS_RETRY_LIMIT) {
           setTimeout(() => dispatchSidebarAddressMessage(message, attempt + 1), 100);
         }
         return false;
@@ -17500,6 +17646,8 @@
         handleSidebarAddressIdentityTitle(title);
       } else if (title.startsWith(SIDEBAR_ADDRESS_COPY_PREFIX)) {
         handleSidebarAddressCopyTitle(title);
+      } else if (title.startsWith(SIDEBAR_ADDRESS_READY_PREFIX)) {
+        handleSidebarAddressReadyTitle();
       } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
       else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
       else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
@@ -17814,7 +17962,7 @@
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-        openAddressEntry(e.code === 'KeyT' ? 'newTab' : 'current');
+        requestAddrbarOpen(e.code === 'KeyT' ? 'newTab' : 'current');
       },
       true,
     );
@@ -18804,7 +18952,7 @@
       navigateFocusedPanelHistory(dir);
     });
     window.addEventListener('BentoKey:AddrbarOpen', (e) => {
-      openAddressEntry(e?.detail?.mode === 'newTab' ? 'newTab' : 'current');
+      requestAddrbarOpen(e?.detail?.mode === 'newTab' ? 'newTab' : 'current');
     });
   }
 
