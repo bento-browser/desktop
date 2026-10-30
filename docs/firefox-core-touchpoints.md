@@ -354,7 +354,13 @@ Use this shape for new or changed touchpoints:
   palette items, and overflow-panel preview through the same generated Mux UI/Bento
   chrome tokens, themes Firefox's Passwords `about:logins` documents,
   shared shadow-component stylesheet, and sidebar megalist surface through the
-  generated Mux UI/Bento chrome tokens,
+  generated Mux UI/Bento chrome tokens (Passwords `about:logins` and the megalist sidebar are
+  written with `data-color-mode="light"` and `color-scheme` light in patches 13 and 14, so they
+  stay light in dark mode and do not fade; making them follow the mode needs a hook in the
+  pages' own scripts like patch 12's `syncColorMode` block, which the patches do not carry
+  context for, and for `about:logins`, a content-process page without `topChromeWindow`, a
+  source of the window's mode (a `matchMedia` of Bento's content override if it tracks the
+  mode, otherwise an actor message); not done),
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -1313,26 +1319,62 @@ rel="stylesheet">` load and error events on chrome documents, and the
 ### Chrome Layout Stylesheet
 
 - Status: Active
-- Last updated: 2026-10-25
-- Mode flip fade (2026-10-25): `applyChromeColorMode` sets the transient root attribute
-  `data-bento-mode-fade` with `data-color-mode` and removes it after the motion, and one
-  unlayered `!important` `transition` rule at the end of `bento-chrome-theme.css` fades every
-  colour property of every chrome element (Firefox's own toolbar, urlbar and button
-  elements included) on the Mux `state` pair; no new Firefox surface, no patch change.
+- Last updated: 2026-10-26
+- Mode flip fade (2026-10-25, reworked 2026-10-26): `applyChromeColorMode` prepares the flip in the
+  next animation frame: it sets the transient root attribute `data-bento-mode-fade` with
+  `data-color-mode` and the registered delay `--bento-mode-fade-delay` (the time left until the
+  flip's deadline), announces the mode at the deadline, and removes the attribute and the delay after
+  the motion. One `!important` `transition` rule at the end of `bento-chrome-theme.css`, in
+  `@layer bento.chrome-theme.fade` (with the exclusion below in `bento.chrome-theme.fade-exclusion`,
+  ordered first) so it out-ranks every unlayered `transition: none !important` (Bento's own and
+  Firefox's ID-selector ones) and every important transition of `bento.chrome-theme` itself (the
+  Customize Toolbar buttons), fades every colour property of every chrome
+  element (Firefox's own toolbar, urlbar and button elements included) on the Mux `state`
+  pair. A generated region of the same layer (`fade-twins:begin` to `fade-twins:end`, written by
+  `node scripts/fade-twins.mjs` from `bento-shell-mount.css`) repeats every Bento rule that declares
+  a non-colour transition with its own entries first and the shared colour list after, so a
+  running opacity or transform motion (a workspace switch) is not cancelled by a flip; the
+  `.browserSidebarContainer` and `.bento-panel-header` twins list the colours without `color`,
+  because Firefox's `showSplitViewPanels` rewrites the panels' classes in the panel reconcile and
+  cancelled an own `color` transition there. It leaves out the native tab strip (`#tabbrowser-tabs`)
+  and the panel containers of background tabs (`#tabbrowser-tabpanels > .browserSidebarContainer`
+  that are not selected, split or `.split-view-panel-active`), which paint nothing but hold most of
+  the elements of a window with many tabs; these are Firefox ids and classes the rule names, so a
+  Firefox change to them is a regression to check (they have registry entries:
+  `#navigator-toolbox[tabs-hidden]`, `.browserSidebarContainer panel container`,
+  `tabpanels .deck-selected class`, `tabpanels split-view-panel classes`). No new Firefox surface
+  for the chrome window except one id: with the native tab strip shown, its overflow arrows are
+  toolbarbuttons inside `#tabbrowser-arrowscrollbox`'s shadow tree, which a selector does not reach.
+  Bento sets the inherited `--toolbarbutton-icon-fill` on the arrowscrollbox from the registered
+  `<color>` carrier `--bento-arrow-fill` (`bento-chrome-theme.css`; registered in
+  `bento-shell-mount.css`), so the shadow content follows the animated value (registry entry
+  `#tabbrowser-arrowscrollbox`). The window's other shadow roots with colours of their own are the
+  other arrowscrollbox elements of the native strip (such as `#pinned-tabs-container`), which were
+  measured only while the strip is hidden, where they paint nothing.
+  About   `about:preferences`: patch 12 now also fades the page (see the patch 12 entry below).
   The colour change also reaches chrome directly: the `bentoPrivacy.notifyUiColorMode`
   experiment method fires a `bento-ui-color-mode-set` window event at each
   `navigator:browser` window (`Services.wm.getEnumerator`, `dispatchEvent`; public APIs, no new
-  registry entry) and the mount script applies it, with `BENTO_PANELS` as the backstop. The
+  registry entry) and the mount script applies it, with `BENTO_PANELS` as the backstop (a later
+  request for the mode the waiting flip already shows joins it). The
   stamp the event carries includes `flipAt`, the time the change should show (a plain
-  `Date.now()` epoch value from bento-tools): the mount script waits for the first
-  `requestAnimationFrame` at or after it before writing `data-color-mode`, so the window flips
-  with the shell documents; no new Firefox member is used.
-  `about:preferences` (patch 12) is deliberately not part of it. After a Firefox update, flip
+  `Date.now()` epoch value from bento-tools): the mount script turns it into a deadline on the
+  window's monotonic clock on receipt and announces the mode on the `bento-ui-color-mode`
+  topic at that deadline, so the window flips with the shell documents; no new Firefox member is
+  used. A window that hides during a prepared or running fade drops the attribute and the delay
+  at once.
+  After a Firefox update, flip
   the mode in a running build and check in the Browser Toolbox Console that
   `document.getAnimations().filter(a => 'transitionProperty' in a)` is non-empty in the
-  first frames and every entry has a 120 ms `ease` effect; a chrome element that snaps
+  first frames and every entry has a 120 ms `ease` effect and the same
+  `startTime + effect.getTiming().delay` (the attribute timestamps are the prepare, up to the
+  120 ms lead earlier, not the visible start); a chrome element that snaps
   has a `transition: ... !important` of higher specificity upstream or an unregistered
-  custom property inside a gradient (see theming.md, "Mode flip fade").
+  custom property inside a gradient (see theming.md, "Mode flip fade"). With the native tab
+  strip shown (`bento.chrome.hideNativeTabs` false) and enough tabs for the strip to overflow,
+  check that `getComputedStyle(document.getElementById('tabbrowser-arrowscrollbox')).getPropertyValue('--toolbarbutton-icon-fill')`
+  animates through the flip and that the arrow icons (`#scrollbutton-up` in the shadow root)
+  follow it.
 - Last updated before that: 2026-10-17
 - Motion tokens (2026-10-17): the transitions and animations in
   `bento-shell-mount.css` and `bento-chrome-theme.css` read the Mux
@@ -1610,7 +1652,19 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   page looks its host window up again each time (`topChromeWindow`), because a
   Settings tab moved to another window keeps its document. A move into a window
   whose mode already differs announces nothing, so the page also re-reads on
-  `visibilitychange` (when visible) and window `focus`.
+  `visibilitychange` (when visible) and window `focus`. A change after the first copy also
+  fades the page's own colours (2026-10-25): `preferences.js` adopts a small stylesheet into
+  the document, sets `data-bento-mode-fade` on the root while the colours change and removes
+  it after the root's computed `transition-duration` (a timer, not frames, so a page that is hidden
+  during the fade still loses the attribute); moz-* shadow DOM is out of reach. The page follows the
+  `bento-ui-color-mode` notification, which the window announces at the flip's deadline, so the page
+  starts its fade with the other documents (its re-read on `focus` or `visibilitychange` reads the
+  window's attribute, which changes at the prepare, up to the lead earlier). Under
+  reduced motion or in a hidden page the change does not fade and ends a running fade (the same
+  gate as the window and the shell). The addition is one block of about 28 lines in the same
+  hunk (the hunk is 68 added lines in all), checked with `git apply --check`
+  against a synthetic file and `pnpm run firefox:patches:test`; it has not run in a real
+  build (no engine here), so the first build after the merge must check it.
 - Vanilla Firefox surface touched or depended on: the native preferences XHTML
   layout and in-content theme cascade, including `#categories`,
   `.main-content`, `.pane-container`, `chrome://global/skin/in-content/common.css`,
@@ -1631,7 +1685,10 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   (the page's own `prefers-color-scheme` does not), also after moving the
   Settings tab to a new window (`gBrowser.replaceTabWithWindow`) and closing the
   first one, after moving it into a window whose mode differs from the one it
-  left (with no toggle afterwards it must adopt the destination's mode), and that
+  left (with no toggle afterwards it must adopt the destination's mode), that
+  flipping the mode with the page open fades its colours (its root carries
+  `data-bento-mode-fade` for the duration of the `state` transition, then loses it, and
+  the first load in dark mode does not fade), and that
   a card has a fill and a radius. Open `about:preferences` in a wide
   Bento window and confirm the search field and settings pane are centered in
   the area beside the category nav; narrow the window and confirm the pane still
@@ -2629,6 +2686,10 @@ below is generated; edit the registry, then run
 | `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:607` |
 | `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule. | `src/browser/base/content/bento-shell-mount.css#split-view-footer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4114` |
 | `#navigator-toolbox[fullscreenShouldAnimate]` | source (engine only) | The sidebar push's colour transition on the toolbar surfaces replaces their transition list, so it skips #navigator-toolbox while Firefox's fullscreen reveal (`transition: 0.8s margin-top` on this attribute, set by browser-fullScreenAndPointerLock.js) runs. | `src/browser/base/content/bento-shell-mount.css#fullscreenShouldAnimate` | `browser/themes/shared/browser-shared.css:221` |
+| `#navigator-toolbox[tabs-hidden]` | source (engine only) | The mode flip fade skips the native tab strip (#tabbrowser-tabs) only while Firefox marks the toolbox tabs-hidden, which TabBarVisibility.update() sets from the hidden-tabs state Bento turns on; a profile that shows the strip keeps the fade there. | `src/browser/base/content/bento-chrome-theme.css#tabs-hidden` | `browser/components/tabbrowser/content/tab-bar-visibility.js:36` |
+| `.browserSidebarContainer panel container` | source (engine only) | Every tab keeps a .browserSidebarContainer in #tabbrowser-tabpanels; the mode flip fade gives the ones that are neither selected nor split no transitions (hundreds of invisible elements with many tabs). | `src/browser/base/content/bento-chrome-theme.css#browserSidebarContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3120` |
+| `tabpanels .deck-selected class` | source (engine only) | The tabpanels deck marks the selected panel container .deck-selected; the mode flip fade keeps the selected container (and .split-view-panel and .split-view-panel-active ones) out of its exclusion. | `src/browser/base/content/bento-chrome-theme.css#deck-selected` | `toolkit/content/widgets/tabbox.js:218` |
+| `#tabbrowser-arrowscrollbox` | source (engine only) | The native tab strip's arrowscrollbox, whose shadow-tree overflow arrows take their icon fill from the inherited --toolbarbutton-icon-fill. Bento sets that property from the registered --bento-arrow-fill on this element so the arrows fade with the mode flip (a profile that shows the strip). | `src/browser/base/content/bento-chrome-theme.css#tabbrowser-arrowscrollbox` | `browser/base/content/navigator-toolbox.inc.xhtml:60` |
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3116` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:241` |
 | `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:237` |

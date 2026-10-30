@@ -57,6 +57,25 @@ function FooterTooltip({
   return <Tooltip content={label} delay={400} placement="top" offset={8} trigger={children} />;
 }
 
+/**
+ * The footer's colour mode button. It reads the saved mode itself: read in `App`, a flip
+ * re-rendered the whole sidebar (every tab row) at the moment the change arrived, which delays
+ * the sidebar's part of the flip fade in proportion to the tab count.
+ */
+function FooterColorModeCycle() {
+  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
+  return (
+    <ColorModeCycle
+      value={uiColorMode}
+      onChange={(next: UiColorModePref) =>
+        dispatch({ type: 'settings/update', changes: { uiColorMode: next } })
+      }
+      modes={UI_COLOR_MODE_ORDER}
+      surfaceLabel="Bento UI"
+    />
+  );
+}
+
 function signalScrollToMain() {
   sendChromeTitle(`BENTO_SCROLL_TO_MAIN_${Date.now()}`);
 }
@@ -442,12 +461,9 @@ export function App() {
       `BENTO_TAB_MOVE:${Date.now()}:${id}:${anchorId}:${before ? 'before' : 'after'}`,
     );
   };
-  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
   const sidebarCollapsedSetting = useSettingsStore((s) => s.current?.sidebarCollapsed ?? false);
   const sidebarHidden = useSettingsStore((s) => s.current?.sidebarHidden ?? false);
   const sidebarCollapsed = sidebarHidden || sidebarCollapsedSetting;
-  const setUiColorMode = (next: UiColorModePref) =>
-    dispatch({ type: 'settings/update', changes: { uiColorMode: next } });
   const toggleSidebarCollapsed = () => {
     dispatch({
       type: 'settings/update',
@@ -563,12 +579,7 @@ export function App() {
             </IconButton>
           </FooterTooltip>
           <FooterTooltip label="Color mode" disabled={sidebarCollapsed}>
-            <ColorModeCycle
-              value={uiColorMode}
-              onChange={setUiColorMode}
-              modes={UI_COLOR_MODE_ORDER}
-              surfaceLabel="Bento UI"
-            />
+            <FooterColorModeCycle />
           </FooterTooltip>
           <FooterTooltip label="Firefox menu" disabled={sidebarCollapsed}>
             <IconButton
