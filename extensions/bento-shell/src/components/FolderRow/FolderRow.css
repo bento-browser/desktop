@@ -66,6 +66,9 @@
     font-size: var(--bento-tab-row-font-size);
     line-height: 1;
     margin: 0;
+    /* Descenders reach below the line-height 1 box the clip would cut at. */
+    padding-block-end: var(--bento-text-descender-room);
+    margin-block-end: calc(-1 * var(--bento-text-descender-room));
   }
 
   .bento-folder-row__count {

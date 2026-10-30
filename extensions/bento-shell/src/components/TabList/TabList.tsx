@@ -28,12 +28,21 @@ import {
   rowKey,
 } from './displayRows';
 import { matchesTabSearch, searchResultDomain } from './tabSearch';
+import {
+  INITIAL_SEARCH,
+  hasSearchQuery,
+  isSearchParked,
+  openSearch,
+  searchOnRailChange,
+} from './searchState';
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { afterMotion } from '../../motion/afterMotion';
+import { useRailTransitioning } from '../../sidebar/railPhase';
 import { useRailViewport } from '../../sidebar/railViewport';
+import { useSettingsStore } from '../../state/settings';
 import { useSidebarCardsStore } from '../../state/sidebarCards';
 
 export interface TabListProps {
@@ -73,6 +82,9 @@ const WORKSPACE_SLIDE_EXIT_MOTION = {
 const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
 const SCROLLBAR_THUMB_MIN_HEIGHT = 24;
 const SCROLLBAR_SCROLL_VISIBLE_MS = 700;
+// The footer's collapse button (App.tsx). A pointer press on it folds an open search field into
+// the rail instead of closing it first, so the outside-press and blur closes skip that press.
+const SIDEBAR_COLLAPSE_BUTTON = '[aria-label="Collapse sidebar"]';
 
 interface ScrollMetrics {
   scrollTop: number;
@@ -242,6 +254,8 @@ interface TabListPaneProps {
   className: string;
   searchOpen: boolean;
   searchQuery: string;
+  /** The field closed because the sidebar collapsed (SearchState.folded). */
+  searchFolded: boolean;
   searchResults: TabListSearchResult[];
   revealTabId?: number | null;
   revealTabRequest?: number;
@@ -276,6 +290,7 @@ function TabListPane({
   className,
   searchOpen,
   searchQuery,
+  searchFolded,
   searchResults,
   revealTabId,
   revealTabRequest,
@@ -309,7 +324,21 @@ function TabListPane({
   const [scrollbarDragging, setScrollbarDragging] = useState(false);
   const [scrollbarScrolling, setScrollbarScrolling] = useState(false);
   const rowSlotSize = rowHeight + rowGap;
-  const searchFiltering = searchOpen && searchQuery.trim().length > 0;
+  const queryTyped = hasSearchQuery(searchQuery);
+  const searchParked = isSearchParked({ open: searchOpen, query: searchQuery });
+  // Results replace the rows only in the expanded layout and while no collapse or expand runs:
+  // the choreography measures the rows when a phase starts, and a reversal (expanding during
+  // a collapse) renders a reopened field while the collapse's phase is still the attribute.
+  const railTransitioning = useRailTransitioning();
+  const searchFiltering = searchOpen && queryTyped && !sidebarCollapsed && !railTransitioning;
+  // The results a collapse fades out over the rows are the ones that were showing: not those
+  // of an expand that is reversed (its rows were still up).
+  const [seenFolded, setSeenFolded] = useState(searchFolded);
+  const [foldedResults, setFoldedResults] = useState(false);
+  if (seenFolded !== searchFolded) {
+    setSeenFolded(searchFolded);
+    setFoldedResults(searchFolded && !railTransitioning);
+  }
   // Drag source — the tab id the user is currently grabbing, or null.
   // Removed-but-fading rows in displayedIds keep their slot; locking the
   // source id (not its filtered index) means the indicator math stays
@@ -938,24 +967,43 @@ function TabListPane({
     [updateScrollMetrics],
   );
 
+  // Opened in the rail (to expand the sidebar first) the field is not shown yet: it takes
+  // the focus once the layout is expanded. A restored query keeps the caret at its end.
+  // No scrolling: the field is still the Search square's width while it unfolds, and
+  // scrolling its clipped row to the input would shift the icon.
   useEffect(() => {
-    if (!searchOpen) return;
-    searchInputRef.current?.focus();
-    searchInputRef.current?.select();
-  }, [searchOpen]);
+    const input = searchInputRef.current;
+    if (!searchOpen || sidebarCollapsed || !input) return;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, [searchOpen, sidebarCollapsed]);
 
   useLayoutEffect(() => {
-    if (!searchOpen) return;
-    searchInputRef.current?.focus();
-  }, [searchFiltering, searchOpen]);
+    if (!searchOpen || sidebarCollapsed) return;
+    searchInputRef.current?.focus({ preventScroll: true });
+  }, [searchFiltering, searchOpen, sidebarCollapsed]);
 
+  // A press on the collapse button lets the sidebar fold an empty field instead. The press
+  // also blurs the input, so it is remembered until the pointer comes up.
+  const keepSearchOpenRef = useRef(false);
   useEffect(() => {
-    if (!searchOpen || searchQuery.trim().length > 0) return;
+    if (!searchOpen || queryTyped) return;
     const closeIfOutsideSearch = (event: PointerEvent) => {
-      const target = event.target as Node | null;
+      const target = event.target as Element | null;
       if (!target) return;
       const searchRoot = searchInputRef.current?.closest('.bento-tab-list-search');
       if (searchRoot?.contains(target)) return;
+      if (target.closest(SIDEBAR_COLLAPSE_BUTTON)) {
+        keepSearchOpenRef.current = true;
+        document.addEventListener(
+          'pointerup',
+          () => {
+            keepSearchOpenRef.current = false;
+          },
+          { once: true, capture: true },
+        );
+        return;
+      }
       onCloseSearch();
     };
     const closeOnWindowBlur = () => onCloseSearch();
@@ -965,13 +1013,17 @@ function TabListPane({
       document.removeEventListener('pointerdown', closeIfOutsideSearch, true);
       window.removeEventListener('blur', closeOnWindowBlur);
     };
-  }, [onCloseSearch, searchOpen, searchQuery]);
+  }, [onCloseSearch, queryTyped, searchOpen]);
 
   // A square icon at rest. Hover or keyboard focus widens it leftward; the label is
   // always rendered at full opacity and the button's clip reveals it as it widens
   // (TabList.css). The accessible name stays the aria-label.
   const renderSearchButton = () => (
-    <span className="bento-tab-list__search-trigger" title="Search tabs and panels">
+    <span
+      className="bento-tab-list__search-trigger"
+      title="Search tabs and panels"
+      data-parked={searchParked ? '' : undefined}
+    >
       <Button
         variant="ghost"
         size="sm"
@@ -980,7 +1032,7 @@ function TabListPane({
         onActivate={onOpenSearch}
       >
         <BentoIcon icon={Search} size="sm" />
-        <span className="bento-tab-list__search-label">Search</span>
+        <span className="bento-tab-list__search-label">Search tabs</span>
       </Button>
     </span>
   );
@@ -1012,11 +1064,16 @@ function TabListPane({
     <div
       className={'bento-tab-list-search' + (filtering ? ' bento-tab-list-search--filtering' : '')}
       data-open={searchOpen ? '' : undefined}
+      data-folding={searchFolded ? '' : undefined}
+      data-has-query={queryTyped ? '' : undefined}
       inert={!searchOpen}
       onBlur={(e) => {
         const nextFocus = e.relatedTarget as Node | null;
         if (nextFocus && e.currentTarget.contains(nextFocus)) return;
-        if (searchQuery.trim().length === 0) onCloseSearch();
+        // Only a press on the collapse button keeps it (the ref); tabbing to the button
+        // closes an empty field like tabbing anywhere else.
+        if (keepSearchOpenRef.current) return;
+        if (!queryTyped) onCloseSearch();
       }}
     >
       <div className="bento-tab-list-search__field-row">
@@ -1059,8 +1116,9 @@ function TabListPane({
           </IconButton>
         </span>
       </div>
-      {searchQuery.trim().length > 0 && (
-        // The floating cards cover the end of the pane here too, so the last result
+      {(searchFiltering || (foldedResults && queryTyped && !sidebarCollapsed)) && (
+        // While the field folds into the rail the results stay up to fade out over the rows
+        // coming back. The floating cards cover the end of the pane here too, so the last result
         // scrolls clear of them, as the last row does.
         <div className="bento-tab-list-search__results" style={{ paddingBlockEnd: cardsInset }}>
           {searchResults.map((result) => {
@@ -1308,8 +1366,25 @@ export function TabList({
   );
   const visualTabOrder = useMemo(() => flattenTabOrder(visualRows), [visualRows]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [search, setSearch] = useState(INITIAL_SEARCH);
+  const { open: searchOpen, query: searchQuery } = search;
+  // The setting, as App reads it: the shell learns of a collapse before chrome narrows the
+  // host. The search state follows it during render, so the same commit that starts the
+  // choreography already has the rows back (the choreography measures them).
+  const railBound = useSettingsStore(
+    (s) => (s.current?.sidebarCollapsed ?? false) || (s.current?.sidebarHidden ?? false),
+  );
+  const [seenRailBound, setSeenRailBound] = useState(railBound);
+  if (seenRailBound !== railBound) {
+    setSeenRailBound(railBound);
+    setSearch(searchOnRailChange(search, railBound));
+  }
+  // The fold is over once the layout is the rail: the flag only draws it for the phase.
+  const railLayout = useRailViewport();
+  useEffect(() => {
+    if (railLayout)
+      setSearch((current) => (current.folded ? { ...current, folded: false } : current));
+  }, [railLayout]);
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
   const revealTabId = useMemo(() => {
@@ -1490,15 +1565,28 @@ export function TabList({
       } else {
         onActivate(result.id);
       }
-      setSearchOpen(false);
-      setSearchQuery('');
+      setSearch(INITIAL_SEARCH);
     },
     [onActivate],
   );
 
+  // Closing is only for an open field: a field the sidebar folded keeps its parked query.
   const handleCloseSearch = useCallback(() => {
-    setSearchOpen(false);
-    setSearchQuery('');
+    setSearch((current) => (current.open ? INITIAL_SEARCH : current));
+  }, []);
+  // From the rail the Search square expands the sidebar first, the same setting the footer
+  // toggle sets; the field opens as the expand begins.
+  const handleOpenSearch = useCallback(() => {
+    setSearch(openSearch);
+    if (railBound) {
+      dispatch({
+        type: 'settings/update',
+        changes: { sidebarHidden: false, sidebarCollapsed: false },
+      });
+    }
+  }, [railBound]);
+  const handleSearchQueryChange = useCallback((query: string) => {
+    setSearch((current) => ({ ...current, query }));
   }, []);
   // Readiness gate: render the skeleton until BOTH stores have hydrated
   // for the active workspace. tabsStore.hydrated flips on the first
@@ -1600,6 +1688,7 @@ export function TabList({
             className={`bento-tab-list-pane bento-tab-list-pane--exit-${outgoing.direction}`}
             searchOpen={false}
             searchQuery=""
+            searchFolded={false}
             searchResults={[]}
             revealTabId={null}
             revealTabRequest={undefined}
@@ -1636,12 +1725,13 @@ export function TabList({
           className={incomingClass}
           searchOpen={searchOpen}
           searchQuery={searchQuery}
+          searchFolded={search.folded}
           searchResults={searchResults}
           revealTabId={revealTabId}
           revealTabRequest={revealTabRequest}
-          onOpenSearch={() => setSearchOpen(true)}
+          onOpenSearch={handleOpenSearch}
           onCloseSearch={handleCloseSearch}
-          onSearchQueryChange={setSearchQuery}
+          onSearchQueryChange={handleSearchQueryChange}
           onRunSearchResult={handleRunSearchResult}
         />
       </div>

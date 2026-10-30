@@ -271,7 +271,12 @@ describe('panel operations find the Private workspace', () => {
   it('puts a private panel back when the user keeps its tab on a close prompt', async () => {
     const { ctx, privateWorkspace } = await createContext(PRIVATE_WINDOW);
     vi.stubGlobal('browser', {
-      sessions: { removeTabValue: vi.fn(async () => undefined) },
+      ...browser,
+      sessions: {
+        ...browser.sessions,
+        getTabValue: vi.fn(async () => undefined),
+        removeTabValue: vi.fn(async () => undefined),
+      },
       tabs: {
         get: vi.fn(async (id: number) => ({ id, windowId: PRIVATE_WINDOW })),
         update: vi.fn(async () => ({ id: PRIVATE_TAB })),
@@ -283,6 +288,7 @@ describe('panel operations find the Private workspace', () => {
     const insertAtRestoreLocation = vi.fn(() => true);
     (ctx as unknown as { panels: unknown }).panels = {
       findWorkspacesContainingTab: vi.fn(() => [privateWorkspace.id]),
+      isDevtoolsPanel: vi.fn(() => false),
       getPanelLayoutStatus: vi.fn(() => 'root-panel'),
       getPanelRestoreLocation: vi.fn(() => location),
       getWidth: vi.fn(() => undefined),
@@ -303,6 +309,10 @@ describe('panel operations find the Private workspace', () => {
         location,
       ),
     );
+    expect(browser.tabs.remove).toHaveBeenCalledWith(PRIVATE_TAB);
+    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(PRIVATE_TAB, {
+      preserveSessionMembership: true,
+    });
     expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(PRIVATE_TAB, privateWorkspace.id, {});
   });
 });

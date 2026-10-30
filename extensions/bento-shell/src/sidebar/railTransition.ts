@@ -31,6 +31,9 @@ export type RailPhase = 'collapse' | 'expand';
 /** Moving elements' geometry in one layout; opaque to the controller. */
 export type RailLayout = object;
 
+/** Where the search square and field are when a phase is reversed; opaque to the controller. */
+export type RailSeed = object;
+
 export interface RailTransitionHost {
   /** <html>: carries the rail and phase attributes. */
   html: Element;
@@ -38,8 +41,14 @@ export interface RailTransitionHost {
   read(): RailLayout | null;
   /** Rail geometry read while the shell is expanded: one synchronous rail layout. */
   readAsRail(): RailLayout | null;
-  /** Writes the offsets and stagger delays for a phase. */
-  apply(phase: RailPhase, expanded: RailLayout, rail: RailLayout): void;
+  /**
+   * Where the search square and field are right now, read while the running phase still
+   * animates them. A reversal passes it to the next `apply`, so those parts carry on from
+   * there instead of from the phase's own start (a restart would step them).
+   */
+  capture?(): RailSeed | null;
+  /** Writes the offsets and stagger delays for a phase (`seed`: see `capture`). */
+  apply(phase: RailPhase, expanded: RailLayout, rail: RailLayout, seed?: RailSeed | null): void;
   /** Removes what `apply` wrote. */
   clear(): void;
   /** Flushes style, so a switch made with transitions off lands before they come back. */
@@ -75,6 +84,8 @@ export function createRailTransition(host: RailTransitionHost): RailTransition {
   let running: Running | null = null;
   // Rail geometry recorded at an expand flip, waiting for the viewport to widen.
   let pendingExpand: RailLayout | null = null;
+  // Where the search parts were when a running phase was reversed, for the next `begin`.
+  let seed: RailSeed | null = null;
   // The last width report; the collapse fallback settles to it.
   let viewportRail = html.getAttribute(RAIL_ATTRIBUTE) === 'true';
 
@@ -102,7 +113,8 @@ export function createRailTransition(host: RailTransitionHost): RailTransition {
   };
 
   const begin = (phase: RailPhase, expanded: RailLayout, rail: RailLayout) => {
-    host.apply(phase, expanded, rail);
+    host.apply(phase, expanded, rail, seed);
+    seed = null;
     html.setAttribute(RAIL_TRANSITION_ATTRIBUTE, phase);
     const current: Running = { phase, expanded, rail, cancelWait: () => {} };
     running = current;
@@ -148,16 +160,22 @@ export function createRailTransition(host: RailTransitionHost): RailTransition {
         return;
       }
       if (nowCollapsed) {
-        if (running) settle(false);
+        if (running) {
+          seed = host.capture?.() ?? null;
+          settle(false);
+        }
         if (!isRail()) startCollapse();
+        seed = null;
         return;
       }
       if (running?.phase === 'collapse') {
         // Chrome settles the slide at the rail and widens in one go, so no resize
         // arrives: start from the rail the collapse measured.
         const { rail } = running;
+        seed = host.capture?.() ?? null;
         settle(false);
         startExpand(rail);
+        seed = null;
         return;
       }
       if (isRail()) pendingExpand = host.read();

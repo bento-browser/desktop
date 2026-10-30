@@ -128,10 +128,15 @@ pressed fill is its background). `padding-block: 0` keeps the content box the fu
 row height: Mux's block padding (about 9.35px) would shrink it below the 1rem icon
 and clip the icon top and bottom. The published package lays the icon and
 label out inline in `.muxui-button-content`, which is not a flex container, so
-the gap between them is a `margin-inline-start` on the label, not a `gap`. Mux
-main's wrapper is an inline-flex with `gap: inherit`, so the trigger sets that
-part's `gap` to 0 and the margin stays the only spacing in both. The
-peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
+the gap between them is a `margin-inline-start` on the label, not a `gap`. A newer
+Mux's wrapper (`.muxui-button__label`) is an inline-flex with `gap: inherit`, so
+the Search `Button` sets its own `gap: 0` (the wrapper inherits it) and the margin is
+the only spacing in both. Do not target the wrapper by class name: it has been
+renamed between Mux versions, and a missed selector adds the Button's gap to the
+margin, which pushes the label 5.2px right and cuts its end at the peek's clip
+edge ("Searc"). The New `Button` has no label margin, so it shows whatever spacing its Mux gives:
+the published package sits "New" flush against the plus (no gap), a newer Mux puts
+the Button's gap between them. The peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
 React Aria also sets `data-focus-visible` on the button.
 
 In the search field, Bento sets `opacity` and its transition on the public
@@ -162,6 +167,19 @@ stay unlayered because Mux text utilities are unlayered. A sleeping (discarded)
 label uses `--muxui-semantic-color-neutral-60`; keep any dark-mode value at or
 above 4.5:1 against the sidebar.
 
+Single-line sidebar text that ellipsizes (`overflow: hidden`) at `line-height: 1`
+(tab and folder titles, search result titles, the switcher's name, the New label)
+clips its descenders: Inter's g, j, p, q and y reach 0.4 to 1px below the line box
+the clip is cut at. Each such rule adds `padding-block-end:
+var(--bento-text-descender-room)` and the equal negative `margin-block-end`
+(`--bento-text-descender-room` is `0.25em`, in `bento-tokens.css`). The clip box
+grows downward and the margin box does not, so the text's place in its row, its
+centering and its baseline are unchanged, and `text-overflow: ellipsis` and the
+title's hover `mask-image` (which covers the border box) work as before. Do not
+change the line-height instead (a taller box changes the size of content-sized
+columns such as the search result's title and domain), and do not use
+`overflow-y: visible`: the hover mask would cut the descenders again. A new clipping text box at `line-height: 1` takes the same pair.
+
 Public ClearButton and Close parts occupy separate positions in the search row
 in the command palette, merge, and the Settings palette. The scoped static Close position prevents
 the sticky search row's Input/Clear/Refresh from covering the button. A native Input Escape
@@ -170,7 +188,12 @@ consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
 The Settings palette (`components/SettingsPalette`) is a staged quick pick on the same
-CommandPalette parts and adds these customisations. Its popup is a sibling of the Root,
+CommandPalette parts and adds these customisations. Its unfiltered root contains category
+openers, reusing the existing title, described second line and chevron composition, with
+no values or group headers. Category control lists also omit repeated group headings;
+only global search groups results by area. Small categories keep the same hidden-field
+rule as other lists. The shortcuts category opens its existing reference directly.
+Its popup is a sibling of the Root,
 so its size rule finds it through the dialog
 (`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads the
 command palette's `--bento-command-palette-width`, `-height` and the two max tokens: the
@@ -224,8 +247,8 @@ Danger text uses `--muxui-semantic-action-danger-foreground`, invalid text
 animating (a switch row shows its target state instead). A stage change slides the list in
 from the side it came from with one keyframe animation on the `reveal` pair
 (`bento-settings-stage-forward` and `-back`, a `--muxui-semantic-layout-inset-large` offset;
-none under reduced motion). The Settings palette and the command palette share one row
-highlight (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): the rows paint
+none under reduced motion). The Settings palette, command palette and address bar share
+one row highlight (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): the rows paint
 no fill (focused, hovered, pressed and selected rows are transparent under
 `.bento-row-highlight`) and one slab, the list's `::before`, moves to the focused row. Its
 box is written into `--bento-row-highlight-*` properties by the hook; it transitions
@@ -254,7 +277,8 @@ pinned Mux version documents the prop:
   line (and the protection detail), and the row is named by `aria-label` (label, note, value)
   so the line is read once, as the description. Replaced if Mux registers the slot from
   `ItemDescription`.
-- `shouldFocusOnHover: true` on `CommandPalette.ListBox` in both palettes
+- `shouldFocusOnHover: true` on `CommandPalette.ListBox` in the command palette, address bar
+  and Settings palette
   (`FOCUS_ON_HOVER` in `useRowHighlight.ts`): pointer hover moves the virtual focus, so
   the keyboard and the pointer share the one highlight. React Aria only does this once its
   last input was the pointer, which it learns from `pointermove`; the hook dispatches one
@@ -263,11 +287,67 @@ pinned Mux version documents the prop:
   until the pointer really moves (see the highlight pitfalls in
   [palettes-and-address-bar.md](technical/palettes-and-address-bar.md#row-highlight)).
 - `IN_TAB_ORDER` (`components/primitives/inTabOrder.ts`) on `CommandPalette.ClearButton` in
-  both palettes and on `CommandPalette.Close` in the command palette, the buttons that sit
-  inside the SearchField: `excludeFromTabOrder: false`, because the SearchField's button
+  the command and Settings palettes, the address bar's Clear `Button`, and
+  `CommandPalette.Close` in the command palette, the buttons that sit inside the
+  SearchField: `excludeFromTabOrder: false`, because the SearchField's button
   context makes every button in it `tabindex="-1"`; and an `onPressStart` that takes the focus
   back for a key press, because the context's press-start focuses the input, which moved the
   focus off the button before its key-up and left Enter and Space doing nothing.
+
+The address bar (`components/AddressBar`) is the same CommandPalette recipe, with one
+anchored variant: opened from the sidebar address row it is that row grown (design and
+motion in [address-entry.md](technical/address-entry.md#anchored-popup-is-the-row-grown)).
+Its customisations: the popup (a `position: fixed` Mux popup, so unlayered rules with a
+`:has(.bento-address-bar__popup--anchored)` scope) takes the row's border colour,
+`opacity: 1 !important` (Mux's one-time entry fade would hide the first open's start frame),
+`max-height: none` (Mux caps the popup at `min(84vh, 45rem)`, which in a short window is
+below the placement's height that the shadow is sized from) with a width and height from
+`--bento-address-bar-fit-width` and `-height`, the one size the popup and its shadow share
+(chrome's placement capped by the room left in the window, with
+`--bento-address-bar-anchor-margin` at the right and bottom, equal to chrome's
+`ADDRBAR_ANCHOR_MARGIN_PX`), and no `box-shadow` of its own, because the grow's `clip-path`
+would cut it; a `bento-address-bar__shadow` sibling draws the elevation and scales from the
+row's box with the clip, both from the popup's measured size. Its radius is not overridden: it keeps Mux's `shape-container-radius`, the same as
+the command palette and the centered address popup, and the shadow sibling sets the same
+token. The row's `--bento-sidebar-address-field-radius` reaches the popup only as the registered
+`<length>` `--bento-address-bar-grow-from-radius`, which the grow reads as px for its
+start-frame clip. The header
+(`bento-address-bar__toolbar--anchored`) repeats the row's height, padding, gap, icon slot
+and input typography with the `CommandPalette.Input` field outline off. The row's input and
+this header's input both set `padding-inline-start: 0` (the end padding stays Mux's field
+padding), so the space right of the icon equals the space left of it. The header also sizes
+the `Button` Clear and the `Select` engine trigger to `--bento-sidebar-address-button-size`. Script sets `data-bento-grow` and an inline
+`clip-path` on the popup, and `data-bento-grow`, an inline `transform` and `will-change` on
+the shadow (`useAddressBarGrow.ts`), since `CommandPalette.Popup` takes no `style` for its
+outer element. The sidebar row it grows from (`SidebarAddressBar.css`) has one extra state,
+`[data-palette-over='true']`, set while chrome shows the anchored palette over it: its
+`border-color` goes `transparent`, so the row's 6px border does not show in the crescent
+outside the popup's rounder 12px corner. The row transitions `border-color` on the `modal`
+pair, the same as chrome's host fade, so the two borders cross-fade
+([address-entry.md](technical/address-entry.md#row-border-fade)).
+
+The address engine `Select.Root` is a React sibling of `CommandPalette.Content`
+inside `CommandPalette.Popup`. Content wraps its children in Autocomplete;
+nesting another collection there shares its listbox ref, ID and virtual focus,
+breaking engine keyboard selection. A public React `createPortal` mounts the
+Select into the toolbar's stable `bento-address-bar__engine-slot`. The slot uses
+`display: contents` so the Select keeps its existing flex geometry. Search and
+results stay inside Content; controlled Select callbacks, non-modal popup and
+the palette's pointer-capture guards stay unchanged. A portal preserves React
+context and event ancestry, so the Select must originate outside Content, while
+still under Popup for dialog focus and dismissal. Do not compensate with manual
+key handlers, focus timers or generated-ID overrides.
+
+The picker's compact geometry uses its own `bento-address-bar__engine-*`
+classes, without Mux part-class prerequisites: npm and local Mux use different
+Select part names. The trigger keeps `width: auto`, `min-width: 0`, compact
+padding/gap and centered contents; the anchored header sets its height. The
+selected name stays in the screen-reader-only `Select.Value`, and the popup
+keeps Mux's menu sizing and Bento's neutral surface. The Bento chevron rotates
+on `aria-expanded='true'` using Mux's `reveal` transition. Anchored resting fill
+and outline are transparent only outside hover, native `:focus-visible`,
+either Mux focus-visible attribute, and the expanded state, preserving Mux's
+interactive feedback across both builds.
 
 Recorded exception to the layering rule: the Settings slider is a native `<input type="range">`
 (`components/SettingsPalette/RangeSlider.tsx`), not the Mux `Slider`. Why: Mux's `Slider` lives in
@@ -871,16 +951,16 @@ Rules:
 
 Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
 
-| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Default                                                          |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css` in the first bento layer, `bento.mode-fade`, so a layered `transition: none !important` such as the rail choreography's does not switch it off; `bento-chrome-theme.css` in `bento.chrome-theme`, which out-ranks the unlayered `transition: none !important` rules of the chrome; each entry also reads `var(--bento-mode-fade-delay)`, the one non-Mux value allowed in a transition, which holds a prepared flip until its time; see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
-| `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 150 ms, `ease`                                                   |
-| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, and the onboarding-to-import card morph                                                                                                                                                                                                                    | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
-| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 120 ms, `ease-in`                                                |
-| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
-| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 120 ms, modal easing                                             |
-| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 600 ms, `ease`                                                   |
-| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                                                                                                                                                                                                                                                | per token                                                        |
+| Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Default                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the anchored address bar's result list, which fades in after the grow's visual duration; the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css` in the first bento layer, `bento.mode-fade`, so a layered `transition: none !important` such as the rail choreography's does not switch it off; `bento-chrome-theme.css` in `bento.chrome-theme`, which out-ranks the unlayered `transition: none !important` rules of the chrome; each entry also reads `var(--bento-mode-fade-delay)`, the one non-Mux value allowed in a transition, which holds a prepared flip until its time; see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
+| `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 150 ms, `ease`                                                   |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, the onboarding-to-import card morph and the address palette's grow from the sidebar row (`clip-path`, with its elevation's `transform` and `opacity`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 120 ms, `ease-in`                                                |
+| `modal`          | Overlay hosts and scrims fading in and out, the address bar popup, and the sidebar address row's border fading with it (`SidebarAddressBar.css`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
+| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 120 ms, modal easing                                             |
+| `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 600 ms, `ease`                                                   |
+| `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | per token                                                        |
 
 Loops: the panel loading spinner (`spin` with `constant-easing`, dash arc with
 `sweep` and `progress-easing`), the startup veil pulse and the tab list shimmer
@@ -920,13 +1000,29 @@ the strip's edge wipes over it. It animates only `translate` and `opacity`, keye
   footer buttons, and the footer backdrop that rises with the divider) are the `reveal`
   spring pair at `calc()` 0.6 of its duration, so a staggered move still ends inside
   the slide. A collapse moves to the measured rail places and holds them until the
-  rail layout replaces it; an expand starts at them and moves back.
-- Fades (the workspace name, the New label, row titles, the switcher's fill and the
-  rail square that replaces it, folder outlines, the pinned and folder band, the
+  rail layout replaces it; an expand starts at them and moves back. The exception is the
+  Search square's across move (and the open search field's): it travels 150 to 250 px
+  against 15 to 30 for the other items, so it takes the whole spring pair with no delay,
+  like chrome's slide of the host, and keeps a constant 8 to 10 px gap to the strip's edge
+  (its down move stays at 0.6, with the list region).
+- Fades (the workspace name, the New label, row titles, the switcher's fill and ring,
+  folder outlines, the pinned and folder band, the
   address bar's fold, pinned panels) are the `state` pair. Trailing controls (the
   switcher chevron, Search, row buttons and audio controls, an open search field,
   sidebar cards) leave on the `dismiss` pair in a collapse and return on `state` in an
   expand, after `calc()` 0.3 of the spring duration (titles after 0.15).
+- The switcher trigger's ring is Mux's button shadow (`--muxui-button-shadow`: in a Mux
+  that sets one, an inset 1px edge and a faint drop shadow on the neutral button; none in
+  the npm rc.1). The trigger does not move during a phase, so its own shadow would stay at
+  the expanded box and hang around the avatar's rail place until the settle, and appear at
+  once in an expand. For the phase the trigger's `box-shadow` is `none` (except under
+  `:focus-visible`, so Mux's keyboard focus ring survives) and its fading fill layer
+  (`::before`, same box) paints `box-shadow: var(--muxui-button-shadow)`: the custom
+  property is inherited, so the layer draws whatever shadow Mux sets for the trigger's
+  state, and the ring fades with the fill on `state`. Do not copy the value into a Bento
+  property; follow Mux's. In the settled rail the trigger has `box-shadow: none` too (the
+  rule excludes `:focus-visible`, which is unlayered and would otherwise beat Mux's layered
+  focus ring).
 - A private window's band takes no part in the moves and fades: its glyph's start inset
   (rail width minus glyph size, halved, from tokens) is the same in both layouts, and its
   text keeps full opacity and starts at the rail's edge, so the strip's edge clips and
@@ -952,6 +1048,15 @@ the strip's edge wipes over it. It animates only `translate` and `opacity`, keye
   clear button's open `scale`; the New button follows through flex, and the closed
   overlay's `visibility` hide runs the same spring duration. The closed field row's
   fade waits the spring's visual duration; the other fades stay on `state`.
+  The anchored address palette's grow (`AddressBar.css`, `useAddressBarGrow.ts`) is the
+  `reveal` spring pair on the popup's `clip-path`, from the sidebar row's box to the full
+  popup; the clip values are literal pixels written by script, since a `var()` inside a
+  compositor value grades C-tier in MotionScore. The elevation sibling's `transform`
+  (a scale from the row's box to full size, literal numbers) and `opacity` run on the same
+  spring pair with no delay, so its box is the clip's visible box every frame; a delayed or
+  full-size shadow leaves the page showing through the clip's spring tail. The results list
+  fades on the `state` pair after `reveal-transition-spring-visual-duration`, and the
+  chrome host fade (`modal`) stays the open and close. Reduced motion opens at full size.
   The onboarding-to-import card morph (`bento-migration-host.css`) is a `reveal` spring
   pair too: the card's `left`, `top`, `width`, `height`, `border-radius` and
   `border-color`, and its sheen layer's `opacity`, run on the spring duration and easing
@@ -984,3 +1089,13 @@ Chrome-only notes:
   mode) is set to `--muxui-semantic-motion-reveal-transition-duration`.
 - Keep property names literal in inline strings: the drag code checks
   `style.transition.includes('transform')`.
+
+### Address palette grouped recents
+
+`AddressBar` uses public `CommandPalette.Section`, `SectionHeader`, `ItemContent`
+and `ItemMeta` for its empty-input groups. The recents-only list modifier removes
+row/section trailing margins, uses Mux's tight inset, and keeps Top Sites on one
+line so all six primary rows fit the anchored popup. Timestamp metadata uses
+tabular numerals and the existing sidebar-row height for alignment; focused
+closed rows reveal their Reopen text. The shared `useRowHighlight` still owns
+all hover/focus/pressed fills, and constrained lists retain native scrolling.

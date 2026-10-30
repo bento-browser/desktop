@@ -35,6 +35,8 @@ export type SettingRule =
   | { type: 'integerArray'; min: number; max: number; maxItems: number };
 
 export const EDITABLE_SETTING_RULES = {
+  tabStateTintsEnabled: { type: 'boolean' },
+  customTabStateIconsEnabled: { type: 'boolean' },
   tabSleepEnabled: { type: 'boolean' },
   tabSleepAfterMinutes: { type: 'integer', min: 1, max: 1440 },
   tabSleepKeepAlivePerWorkspace: { type: 'integer', min: 1, max: 50 },
