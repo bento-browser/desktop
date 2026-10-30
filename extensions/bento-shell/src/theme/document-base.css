@@ -78,9 +78,9 @@ body {
  * lands in the middle of a motion still fades its colours. Mux's own important rules are not
  * Bento's: the `muxui` layer precedes `bento`, so its `transition: none !important` rules (the
  * toggle-group motion label and the reduced-motion blocks of styles.css) win over this one. Gradients fade only over registered
- * <color> properties (--bento-corner-fill, the search result actions backing, the settings
- * switch hover tint, the workspace theme cards' hover tint, the placeholder colour); the list below
- * names each one. Not reached: web content and Mux/Firefox shadow DOM.
+ * <color> properties (--bento-corner-fill, --bento-private-band-fill, the search result actions
+ * backing, the settings switch hover tint, the workspace theme cards' hover tint, the placeholder
+ * colour); the list below names each one. Not reached: web content and Mux/Firefox shadow DOM.
  *
  * The catch-all replaces an element's whole transition list, so a rule with a non-colour
  * transition (a row's transform, an overlay's opacity) has a generated twin below that keeps
@@ -103,6 +103,7 @@ body {
       caret-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       stop-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-corner-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-private-band-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-search-result-actions-bg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-switch-hover-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-placeholder-fg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
@@ -124,6 +125,7 @@ body {
       caret-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       stop-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-corner-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-private-band-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-search-result-actions-bg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-switch-hover-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-placeholder-fg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
