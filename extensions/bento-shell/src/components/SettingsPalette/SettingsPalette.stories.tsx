@@ -4,7 +4,7 @@
 // editors and stages work in the story. `useFakeSettingsPalette` stands in for the tools
 // connection; nothing here touches the relay.
 
-import { useEffect, type ComponentProps } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import {
   IMPORT_PREVIEW_MODEL,
   PRIVATE_MODEL,
@@ -13,7 +13,9 @@ import {
 } from '../../state/__fixtures__/settingsPalette';
 import type { SettingsPaletteModel } from './types';
 import SettingsPalette from './SettingsPalette';
-import type { Stage } from './stageStack';
+import { openerRows, settingPath } from './categories';
+import { ROOT_STAGE, type Stage } from './stageStack';
+import { ROOT_TARGET, resolveSettingsTarget } from './targets';
 import './SettingsPalette.stories.css';
 
 /** The story has no host to hide it; a close request is counted on <body> for inspection. */
@@ -91,11 +93,39 @@ function Story({
   );
 }
 
-const at = (...stages: Stage[]) => [{ kind: 'root' } as const, ...stages];
+const at = (...stages: Stage[]) => [
+  ...settingPath(openerRows([ROOT_STAGE, ...stages])[0] ?? ''),
+  ...stages,
+];
 
-/** Step 1: the root, grouped. */
+/** Step 1: category labels and descriptions. */
 export const Root = () => <Story />;
 Root.storyName = '1 Root';
+
+export const Appearance = () => <Story stages={at({ kind: 'category', id: 'appearance' })} />;
+Appearance.storyName = 'Category (Appearance)';
+
+export const TabAppearance = () => <Story stages={at({ kind: 'category', id: 'tabAppearance' })} />;
+TabAppearance.storyName = 'Category (Tab appearance, demo only)';
+
+export const Performance = () => <Story stages={at({ kind: 'category', id: 'performance' })} />;
+Performance.storyName = 'Category (Performance)';
+
+export const Panels = () => <Story stages={at({ kind: 'category', id: 'panels' })} />;
+Panels.storyName = 'Category (Panels)';
+
+export const LightTabAppearance = () => (
+  <Story mode="light" stages={at({ kind: 'category', id: 'tabAppearance' })} />
+);
+LightTabAppearance.storyName = 'Light mode (Tab appearance, demo only)';
+
+export const RootSearch = () => <Story typed="radius" />;
+RootSearch.storyName = 'Search settings across categories';
+
+export const CategorySearch = () => (
+  <Story stages={at({ kind: 'category', id: 'panels' })} typed="shadows" />
+);
+CategorySearch.storyName = 'Filter category controls';
 
 /** Step 2: a number stage with a large range keeps the typed field and its presets. */
 export const NumberStage = () => (
@@ -223,9 +253,10 @@ FailedWrite.storyName = 'Failed write notice';
 
 export const PendingWrite = () => (
   <Story
+    stages={at({ kind: 'category', id: 'panels' })}
     model={{
       ...REGULAR_MODEL,
-      pending: new Set(['panelShadowsEnabled', 'tabSleepAfterMinutes']),
+      pending: new Set(['panelShadowsEnabled', 'panelCornerRadiusPx']),
       pendingTargets: new Map([
         ['panelShadowsEnabled', !REGULAR_MODEL.settings.panelShadowsEnabled],
       ]),
@@ -316,3 +347,65 @@ export const BackupRowActions = () => (
   />
 );
 BackupRowActions.storyName = 'A stored backup (actions with lines)';
+
+/** Controlled mounted fixture for loading/show regressions. The test dispatches the named
+ * CustomEvent on window; it never connects to tools or changes a real profile. */
+export const LoadingToReady = () => {
+  const fake = useFakeSettingsPalette(REGULAR_MODEL);
+  const [snapshot, setSnapshot] = useState({
+    ready: false,
+    isPrivate: false,
+    privacy: true,
+    search: true,
+  });
+  const [show, setShow] = useState({ openToken: 0, target: ROOT_TARGET });
+  useEffect(() => {
+    type Transition =
+      | { kind: 'ready'; isPrivate?: boolean; privacy?: boolean; search?: boolean }
+      | { kind: 'show'; target: string | null; loading?: boolean };
+    const transition = (event: Event) => {
+      const detail = (event as CustomEvent<Transition>).detail;
+      if (detail.kind === 'ready') {
+        setSnapshot((current) => ({
+          ready: true,
+          isPrivate: detail.isPrivate ?? current.isPrivate,
+          privacy: detail.privacy ?? current.privacy,
+          search: detail.search ?? current.search,
+        }));
+      } else {
+        if (detail.loading) setSnapshot((current) => ({ ...current, ready: false }));
+        setShow((current) => ({
+          openToken: current.openToken + 1,
+          target: (detail.target && resolveSettingsTarget(detail.target)) || ROOT_TARGET,
+        }));
+      }
+    };
+    window.addEventListener('bento-settings-story-transition', transition);
+    return () => window.removeEventListener('bento-settings-story-transition', transition);
+  }, []);
+  const view =
+    !snapshot.ready || fake.view.kind !== 'ready'
+      ? ({ kind: 'loading' } as const)
+      : {
+          kind: 'ready' as const,
+          model: {
+            ...fake.view.model,
+            isPrivate: snapshot.isPrivate,
+            privacy: snapshot.privacy ? fake.view.model.privacy : null,
+            search: snapshot.search ? fake.view.model.search : null,
+          },
+        };
+  return (
+    <div data-settings-story-ready={snapshot.ready}>
+      <SettingsPalette
+        view={view}
+        actions={fake.actions}
+        onClose={onClose}
+        initialStages={show.target.stages}
+        initialQuery={show.target.query}
+        openToken={show.openToken}
+      />
+    </div>
+  );
+};
+LoadingToReady.storyName = 'Loading to ready (functional fixture)';

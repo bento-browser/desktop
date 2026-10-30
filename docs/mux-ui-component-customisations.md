@@ -188,7 +188,12 @@ consume Escape while the controlled leaf query remains unchanged. Preserve IME
 composition before handling that key.
 
 The Settings palette (`components/SettingsPalette`) is a staged quick pick on the same
-CommandPalette parts and adds these customisations. Its popup is a sibling of the Root,
+CommandPalette parts and adds these customisations. Its unfiltered root contains category
+openers, reusing the existing title, described second line and chevron composition, with
+no values or group headers. Category control lists also omit repeated group headings;
+only global search groups results by area. Small categories keep the same hidden-field
+rule as other lists. The shortcuts category opens its existing reference directly.
+Its popup is a sibling of the Root,
 so its size rule finds it through the dialog
 (`.muxui-command-palette__popup:has(> .bento-settings-palette__dialog)`) and reads the
 command palette's `--bento-command-palette-width`, `-height` and the two max tokens: the

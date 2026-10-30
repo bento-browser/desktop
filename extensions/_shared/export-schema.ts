@@ -140,6 +140,8 @@ function isPanelLayout(value: unknown, panelKeys: Set<string>): value is PanelLa
 }
 
 const BOOLEAN_SETTING_KEYS = new Set<keyof BentoSettings>([
+  'tabStateTintsEnabled',
+  'customTabStateIconsEnabled',
   'tabSleepEnabled',
   'commandPaletteEnabled',
   'welcomeSeen',

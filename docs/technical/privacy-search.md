@@ -243,10 +243,19 @@ parts, and it is split so each piece is testable without the browser:
   (`stageStack.ts`), the typed value of an editor stage (`useStageEditor.ts`) and the
   search text. `settingsCatalog.ts` holds labels, groups, bounds and presets (a test
   compares the bounds with `_shared/settings-rules.ts`), `settingsCopy.ts` all page and option
-  copy (below), and `rows.ts` turns the
+  copy (below), `categories.ts` category labels and descriptions, and `rows.ts` turns the
   model and a stage into rows, each carrying an intent, so what every stage shows is
   asserted in `rows.test.ts` and the component only renders and dispatches them.
-- Page descriptions and option lines. Copy lives only in `settingsCopy.ts`, typed by the
+  `rootRows` contains only described category openers; `controlRows` retains the flat
+  controls for global search and command-index parity. Category stages filter those
+  controls by stable category ids. Shortcuts opens its existing reference directly.
+  Tab appearance retains its demo-build gate, Backup and Reset their private-window gate,
+  and Privacy and search requires both hydrated models. `categories.ts` shares category
+  ancestry between command targets and root-search drilldowns, adding Advanced privacy
+  before its enum pages. Its opener map seeds return focus for inserted ancestors and deep
+  links, so Back to the unfiltered root focuses the category rather than a missing control.
+  Category stage keys include their id, remounting the list on moves between categories.
+- Page descriptions and control option lines. Copy lives in `settingsCopy.ts`, typed by the
   catalog's keys (`NUMBER_DESCRIPTIONS`, `ENUM_DESCRIPTIONS`, `ENUM_OPTION_DESCRIPTIONS`,
   `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text) plus
   `STAGE_DESCRIPTIONS`, `CONFIRM_DESCRIPTIONS`, `SIZE_ACTION_DESCRIPTIONS`,
@@ -254,7 +263,7 @@ parts, and it is split so each piece is testable without the browser:
   the catalog stays labels, keys and bounds; only `rows.ts` imports it. The protection levels' second
   line is `summary` from `_shared/privacy-levels.ts` (not copied), and their `detail` is only
   benefits and caveats. `pageDescription(stage)` in `rows.ts` returns the page text (null on
-  the root and the shortcuts); the component renders it as `CommandPalette.Description` between
+  the root, category control lists and the shortcuts); the component renders it as `CommandPalette.Description` between
   the nav row and the field row, outside the list so it does not scroll, and the search field
   and input carry `aria-describedby` to it. An option's `PaletteRow.description` renders as
   `CommandPalette.ItemDescription`, a flex-wrapped second line under the row. The Mux item
@@ -272,7 +281,7 @@ parts, and it is split so each piece is testable without the browser:
   root, in editors, on lists of more than four rows (counted before any filter) and while a
   filter is typed (a model update can shrink a filtered list to four rows, and its Clear
   button must not become an invisible tab stop), and drops it on a shorter list (the choices,
-  protection level, a stored backup, size actions, a confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
+  protection level, small categories, a stored backup, size actions, a confirmation). The `Input` is not removed: it holds the focus and carries Up, Down, Enter,
   Esc and Backspace for the list (React Aria drives the virtual focus from it), so the field
   gets `data-hidden` (visually hidden, still in the tab order and read, labelled with the
   page name) and the input `readOnly`; `onFieldChange` ignores typing there, so a list never
@@ -339,7 +348,7 @@ import.`) when it is over `SETTINGS_LIMITS.backupFileBytes` (10 MiB) or when, es
   overlay when another overlay opens, on Esc and on an outside click, and the document
   stays loaded; waiting for the next show would let that revert overwrite a value saved
   meanwhile from another window). Each show bumps `openToken` (the palette returns to the stages
-  and search text `resolveSettingsTarget` gives for the show's `target`: the root, the
+  and search text `resolveSettingsTarget` gives for the show's `target`, including category ancestry: the root, the
   protection level list for the privacy link, or the setting a command palette result
   named) and refreshes the snapshot. `main.tsx` announces readiness after that listener exists,
   so the first show is never lost.

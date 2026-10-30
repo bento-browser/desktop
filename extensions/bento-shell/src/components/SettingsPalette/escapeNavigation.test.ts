@@ -38,10 +38,10 @@ describe('Esc', () => {
 
   it('reaches every stage the palette pushes, down to the confirmations and the size editor', () => {
     const paths = stacks.map((stack) => stack.map((stage) => stage.kind).join('>'));
-    expect(paths).toContain('root>sizes>sizeActions>sizeEdit');
-    expect(paths).toContain('root>backups>backupRow>confirm');
-    expect(paths).toContain('root>confirm');
-    expect(paths).toContain('root>advanced>enum');
+    expect(paths).toContain('root>category>sizes>sizeActions>sizeEdit');
+    expect(paths).toContain('root>category>backups>backupRow>confirm');
+    expect(paths).toContain('root>category>confirm');
+    expect(paths).toContain('root>category>advanced>enum');
     expect(stacks.some((stack) => topStage(stack).kind === 'protection')).toBe(true);
   });
 
@@ -66,26 +66,45 @@ describe('Esc', () => {
         kind: 'confirm',
         action: { kind: action, backupId: 'b2', label: 'L' },
       };
-      const stack = [ROOT_STAGE, { kind: 'backups' }, backupRow, confirm] as Stage[];
+      const stack = [
+        ROOT_STAGE,
+        { kind: 'category', id: 'backup' },
+        { kind: 'backups' },
+        backupRow,
+        confirm,
+      ] as Stage[];
       expect(escapeOutcome(stack, idle)).toBe('back');
       expect(topStage(popStage(stack))).toBe(backupRow);
     }
   });
 
   it('dismisses an import preview before it leaves the Backups stage', () => {
-    const backups = [ROOT_STAGE, { kind: 'backups' }] as Stage[];
+    const backups = [
+      ROOT_STAGE,
+      { kind: 'category', id: 'backup' },
+      { kind: 'backups' },
+    ] as Stage[];
     expect(escapeOutcome(backups, { query: '', importPreview: true })).toBe('cancelImport');
     // Once the preview is gone the next Esc is the ordinary one stage back.
     expect(escapeOutcome(backups, idle)).toBe('back');
   });
 
   it('leaves a preview alone while another stage is on top of Backups', () => {
-    const row = [ROOT_STAGE, { kind: 'backups' }, { kind: 'backupRow', backupId: 'b', label: 'L' }];
+    const row = [
+      ROOT_STAGE,
+      { kind: 'category', id: 'backup' },
+      { kind: 'backups' },
+      { kind: 'backupRow', backupId: 'b', label: 'L' },
+    ];
     expect(escapeOutcome(row as Stage[], { query: '', importPreview: true })).toBe('back');
   });
 
   it('clears a search first in a list, and never reads the field of an editor as a search', () => {
-    const advanced = [ROOT_STAGE, { kind: 'advanced' }] as Stage[];
+    const advanced = [
+      ROOT_STAGE,
+      { kind: 'category', id: 'privacy' },
+      { kind: 'advanced' },
+    ] as Stage[];
     expect(escapeOutcome(advanced, { query: 'rtc', importPreview: false })).toBe('clearQuery');
     expect(escapeOutcome(advanced, idle)).toBe('back');
     expect(escapeOutcome([ROOT_STAGE], { query: 'radius', importPreview: false })).toBe(
@@ -93,13 +112,18 @@ describe('Esc', () => {
     );
     const sizeEdit = [
       ROOT_STAGE,
+      { kind: 'category', id: 'panels' },
       { kind: 'sizes' },
       { kind: 'sizeActions', index: 0 },
       { kind: 'sizeEdit', index: 0 },
     ] as Stage[];
     expect(escapeOutcome(sizeEdit, { query: '480', importPreview: false })).toBe('back');
     // A search typed on the Backups stage goes before the preview does.
-    const backups = [ROOT_STAGE, { kind: 'backups' }] as Stage[];
+    const backups = [
+      ROOT_STAGE,
+      { kind: 'category', id: 'backup' },
+      { kind: 'backups' },
+    ] as Stage[];
     expect(escapeOutcome(backups, { query: 'x', importPreview: true })).toBe('clearQuery');
   });
 });

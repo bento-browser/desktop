@@ -193,6 +193,10 @@ export interface BentoSettings {
    * rest. 'system' resolves to the current OS color scheme at render time
    * while preserving the user-facing Auto setting. */
   uiColorMode: UiColorModePref;
+  /** Show status tints on tab rows when the shell supports them. */
+  tabStateTintsEnabled: boolean;
+  /** Use custom tab-state artwork when the shell supports it. Independent of tints. */
+  customTabStateIconsEnabled: boolean;
   /** Color mode hint forwarded to web content via
    * browser.browserSettings.overrideContentColorScheme. The page is
    * told to render in the chosen mode regardless of OS preference.

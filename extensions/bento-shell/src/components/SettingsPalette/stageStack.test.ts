@@ -78,6 +78,9 @@ describe('stage stack', () => {
     expect(stageKey({ kind: 'enum', key: 'uiColorMode' })).not.toBe(
       stageKey({ kind: 'enum', key: 'httpsOnlyMode' }),
     );
+    expect(stageKey({ kind: 'category', id: 'appearance' })).not.toBe(
+      stageKey({ kind: 'category', id: 'panels' }),
+    );
     expect(stageKey({ kind: 'sizes' })).not.toBe(stageKey({ kind: 'root' }));
   });
 });
