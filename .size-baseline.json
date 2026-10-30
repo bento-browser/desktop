@@ -10,11 +10,11 @@
     "extensions/bento-shell/dist/assets/menu.js": 273825,
     "extensions/bento-shell/dist/assets/workspace-palette.js": 352967,
     "extensions/bento-shell/dist/assets/merge-palette.js": 208139,
-    "extensions/bento-shell/dist/assets/settings-palette.js": 217773,
+    "extensions/bento-shell/dist/assets/settings-palette.js": 220423,
     "extensions/bento-shell/dist/assets/workspace-switcher.js": 293990,
     "extensions/bento-shell/dist/assets/panel-trailer.js": 304209,
     "extensions/bento-shell/dist/assets/panel-navigator-tooltip.js": 195948,
-    "extensions/bento-shell/dist/assets/style.css": 72197,
+    "extensions/bento-shell/dist/assets/style.css": 73245,
     "extensions/bento-shell/dist/assets/panel-newtab.css": 18260,
     "extensions/bento-shell/dist/assets/background.js": 3311,
     "extensions/bento-tools/dist/background.js": 60026

@@ -32,6 +32,8 @@ function makeTab(overrides: Partial<TabSnapshot> & { id: number }): TabSnapshot 
 
 function makeSettings(overrides: Partial<BentoSettings> = {}): SettingsStore {
   const settings: BentoSettings = {
+    tabStateTintsEnabled: true,
+    customTabStateIconsEnabled: true,
     tabSleepEnabled: true,
     tabSleepAfterMinutes: 1,
     tabSleepKeepAlivePerWorkspace: 1,

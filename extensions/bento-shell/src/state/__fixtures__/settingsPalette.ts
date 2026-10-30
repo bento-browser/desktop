@@ -17,6 +17,8 @@ import type {
 } from '../../components/SettingsPalette/types';
 
 export const FIXTURE_SETTINGS: EditableSettings = {
+  tabStateTintsEnabled: true,
+  customTabStateIconsEnabled: true,
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
