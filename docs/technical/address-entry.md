@@ -786,6 +786,16 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.
+- Scope engine-picker geometry to `bento-address-bar__engine-*` classes, not
+  Mux Select part names. The local Mux rename from `muxui-select-trigger` to
+  `muxui-select__trigger` left the old overrides unmatched and restored the
+  default 10rem trigger minimum (160px at the 16px root). Keep the compact
+  `width: auto`/`min-width: 0` override, hidden selected name, anchored height,
+  and independent menu sizing. Resting transparency must exclude hover,
+  native `:focus-visible`, `[data-focus-visible]`,
+  `[data-muxui-state-focus-visible]` and `[aria-expanded='true']`; the last also
+  drives the Bento chevron's rotation. Check anchored/centered and light/dark
+  states against both npm and existing local generated Mux output.
 - Keep the engine Select outside `CommandPalette.Content` in React ancestry,
   even though its toolbar host is inside Content in the DOM. Nesting the Select
   under Content makes it inherit Autocomplete's collection ref, listbox ID and
