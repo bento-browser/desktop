@@ -27,6 +27,8 @@ export const COLOR_FLIP_LEAD_MS = 120;
 const VERSION = 2;
 
 export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
+  tabStateTintsEnabled: true,
+  customTabStateIconsEnabled: true,
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,

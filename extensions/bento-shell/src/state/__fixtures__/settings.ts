@@ -6,6 +6,8 @@ import type { BentoSettings } from '@shared/protocol';
 import { useSettingsStore } from '../settings';
 
 export const DEFAULT_FIXTURE: BentoSettings = {
+  tabStateTintsEnabled: true,
+  customTabStateIconsEnabled: true,
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,

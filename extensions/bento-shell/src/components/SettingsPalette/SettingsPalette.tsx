@@ -1,7 +1,7 @@
 // Layer-2 component: SettingsPalette.
 //
-// Bento's settings as a staged quick pick on the Mux CommandPalette parts. The root lists every
-// setting grouped, with its value on the right; choosing a row toggles it in place or opens a
+// Bento's settings as a staged quick pick on the Mux CommandPalette parts. The root lists
+// categories; each category lists controls with their values. Choosing a control toggles it or opens a
 // stage (a list of choices, a number typed in the search field, or a number moved on a slider
 // when its range is small). A nav row above the field holds Back, the path to the current page
 // (every ancestor a button) and Close, and Esc goes back one stage, closing from the root.
@@ -38,6 +38,7 @@ import {
   ROW_HIGHLIGHT_CLASS,
   useRowHighlight,
 } from '../primitives/useRowHighlight';
+import { openerRows, settingPath } from './categories';
 import { toggleChange } from './editing';
 import {
   editorSpecFor,
@@ -73,6 +74,7 @@ import {
   topStage,
   type Stage,
 } from './stageStack';
+import { targetForModel } from './targets';
 import type { SettingsPaletteActions, SettingsPaletteView } from './types';
 import { useStageEditor } from './useStageEditor';
 import './SettingsPalette.css';
@@ -104,7 +106,7 @@ const TRAIL_ICONS = {
 /** The stages whose rows are headed by their group (the others are one plain list). */
 function showsGroupHeaders(stage: Stage, searching: boolean): boolean {
   if (searching) return true;
-  return stage.kind === 'root' || stage.kind === 'backups' || stage.kind === 'confirm';
+  return stage.kind === 'backups' || stage.kind === 'confirm';
 }
 
 /** Links every option of the list to its own description line (and the protection detail), as
@@ -225,16 +227,22 @@ export default function SettingsPalette({
   hideToken = 0,
 }: SettingsPaletteProps) {
   const model = view.kind === 'ready' ? view.model : null;
-  const start = useMemo(() => [...(initialStages ?? initialStack())], [initialStages]);
+  // Show messages can arrive before the first snapshot. Keep that request until the model
+  // is ready, then validate its entire path against this window's visible controls.
+  const target = useMemo(() => {
+    const requested = { stages: initialStages ?? initialStack(), query: initialQuery };
+    return model ? targetForModel(requested, model) : requested;
+  }, [initialStages, initialQuery, model]);
+  const start = useMemo(() => [...target.stages], [target.stages]);
   const [stack, setStack] = useState<Stage[]>(start);
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(target.query);
   // Which way the last move went (the list slides in from that side) and the row to open the
   // list on when going back: the one that opened the page being left. The row belongs to the
   // show it was set in (a new show's list mounts before the state is reset).
   const [travel, setTravel] = useState<'forward' | 'back' | null>(null);
   const [returnRow, setReturnRow] = useState<{ id: string; show: number } | null>(null);
   // The row that opened the stage above each depth: `openers[i]` is a row of `stack[i]`.
-  const openers = useRef<(string | undefined)[]>([]);
+  const openers = useRef<(string | undefined)[]>(openerRows(start));
   const stage = topStage(stack);
   const editor = useStageEditor(stage, model, actions);
   const latest = useRef({ model, actions });
@@ -269,12 +277,26 @@ export default function SettingsPalette({
     // Focus once per slider page; the helper only reads refs.
   }, [sliderStageKey]);
 
-  // Begins the editor of a stage the palette opened on (a story, a deep link) once the model is there.
+  // Validate the current path when a snapshot becomes ready. Search and Back remain usable
+  // during loading, so readiness must not reapply the original show over those interactions.
   const began = useRef(false);
   useEffect(() => {
-    if (began.current || !model) return;
+    if (!model) {
+      began.current = false;
+      return;
+    }
+    if (began.current) return;
     began.current = true;
-    if (isEditorStage(stage)) editor.begin(stage, model);
+    const current = targetForModel({ stages: stack, query }, model);
+    if (current.stages !== stack) {
+      setStack([...current.stages]);
+      setQuery(current.query);
+      openers.current = openerRows(current.stages);
+      setReturnRow(null);
+      setTravel(null);
+    }
+    const top = topStage(current.stages);
+    if (isEditorStage(top)) editor.begin(top, model);
   });
 
   // A new show starts from the beginning: an unfinished edit is put back first.
@@ -289,10 +311,10 @@ export default function SettingsPalette({
     // The notice is not cleared here: the store does that when it is told of the show, and then
     // reports what ended while the palette was hidden, which a clear after it would erase.
     setStack(start);
-    setQuery(initialQuery);
+    setQuery(target.query);
     setTravel(null);
     setReturnRow(null);
-    openers.current = [];
+    openers.current = openerRows(start);
     const top = topStage(start);
     if (model && isEditorStage(top)) editor.begin(top, model);
     focusPrimary();
@@ -325,11 +347,16 @@ export default function SettingsPalette({
     actions.clearNotice();
     setQuery('');
     if (model) editor.begin(next, model);
-    openers.current.length = stack.length;
-    openers.current[stack.length - 1] = opener;
+    const path =
+      stage.kind === 'root' && opener && !opener.startsWith('category:')
+        ? settingPath(opener, next)
+        : pushStage(stack, next);
+    openers.current = openerRows(path);
+    // Keep the activated child row when the path came from a search result.
+    if (path.at(-2)?.kind !== 'root') openers.current[path.length - 2] = opener;
     setReturnRow(null);
     setTravel('forward');
-    setStack((current) => pushStage(current, next));
+    setStack(path);
   };
 
   /** Settles the list on the stage at `depth` after going back to it. */
@@ -583,7 +610,7 @@ export default function SettingsPalette({
 
   const searching = stage.kind === 'root' && query !== '';
   const groups = groupRows(rows);
-  const withHeaders = showsGroupHeaders(stage, searching || (isFilterable(stage) && query !== ''));
+  const withHeaders = showsGroupHeaders(stage, searching);
   // The shortcuts are all static rows, and still the thing the footer counts there.
   const counted = stage.kind === 'shortcuts' ? rows.length : rows.filter((row) => !row.info).length;
   const footer: FooterCopy = model

@@ -73,6 +73,48 @@
     width: calc(100% - var(--bento-tab-folder-indent));
   }
 
+  /* A Quiet: translucent status paint sits over TabList's neutral hover.
+     Keep one-class specificity so the active/selected fills below win. */
+  .bento-tab-row:where([data-softcast-state]) {
+    --bento-tab-row-softcast-tint: 10%;
+  }
+
+  :where([data-muxui-color-scheme='dark']) .bento-tab-row:where([data-softcast-state]) {
+    --bento-tab-row-softcast-tint: 14%;
+  }
+
+  .bento-tab-row:where([data-softcast-state='unavailable']) {
+    background-color: color-mix(
+      in oklab,
+      var(--muxui-semantic-color-neutral-60) var(--bento-tab-row-softcast-tint),
+      transparent
+    );
+  }
+
+  .bento-tab-row:where([data-softcast-state='certificate-warning']) {
+    background-color: color-mix(
+      in oklab,
+      var(--muxui-semantic-status-warning) var(--bento-tab-row-softcast-tint),
+      transparent
+    );
+  }
+
+  .bento-tab-row:where([data-softcast-state='blocked'], [data-softcast-state='crashed']) {
+    background-color: color-mix(
+      in oklab,
+      var(--muxui-reference-color-error-60) var(--bento-tab-row-softcast-tint),
+      transparent
+    );
+  }
+
+  .bento-tab-row:where([data-softcast-state='internal-settings']) {
+    background-color: color-mix(
+      in oklab,
+      var(--muxui-reference-color-teal-60) var(--bento-tab-row-softcast-tint),
+      transparent
+    );
+  }
+
   /* No plain :hover fill: TabList's sliding hover highlight paints it behind
      the row. Active rows are opaque and cover it; selected rows are translucent
      and composite over it. */
@@ -150,6 +192,38 @@
     filter: grayscale(1);
   }
 
+  /* Sleeping art already includes its muted treatment. */
+  .bento-tab-row--discarded .bento-tab-row__softcast[data-softcast-state='sleeping'] {
+    opacity: 1;
+    filter: none;
+  }
+
+  .bento-tab-row__softcast--spin {
+    animation: bento-softcast-spin var(--muxui-semantic-motion-progress-spin-duration)
+      var(--muxui-semantic-motion-constant-easing) infinite;
+    animation-play-state: paused;
+  }
+
+  .bento-tab-row__softcast--spin[data-running='true'] {
+    animation-play-state: running;
+  }
+
+  :where([data-reduced-motion], [data-muxui-motion='reduced']) .bento-tab-row__softcast--spin {
+    animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bento-tab-row__softcast--spin {
+      animation: none;
+    }
+  }
+
+  @keyframes bento-softcast-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .bento-tab-row--has-audio-control {
     grid-template-columns: 0.625rem minmax(0, 1fr);
     padding-inline-start: calc(var(--space-s) + var(--bento-favicon-size));
@@ -182,6 +256,9 @@
     font-size: var(--bento-tab-row-font-size);
     line-height: 1;
     margin: 0;
+    /* Descenders reach below the line-height 1 box the clip would cut at. */
+    padding-block-end: var(--bento-text-descender-room);
+    margin-block-end: calc(-1 * var(--bento-text-descender-room));
     align-self: center;
     /* mask-image is discrete: the mask applies at once on hover and, through
        the delay below (the state duration, matching the actions' fade-out),

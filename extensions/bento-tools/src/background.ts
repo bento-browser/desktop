@@ -1358,29 +1358,13 @@ tabs.onDeltas((deltas) => {
         const sourceWindowId =
           typeof d.tab.windowId === 'number' && d.tab.windowId >= 0 ? d.tab.windowId : null;
         void (async () => {
-          const panelMarker = await readPanelMarker(d.tab.id);
-          if (panelMarker) {
-            const markerWorkspaceExists = workspaces
-              .snapshot()
-              .workspaces.some((w) => w.id === panelMarker.workspaceId);
-            await tabs.unmarkClosing(d.tab.id);
-            if (markerWorkspaceExists) {
-              return;
-            }
-            void clearPanelMarker(d.tab.id);
-          }
-          if (await tabs.isClosingOrMarked(d.tab.id)) {
-            // Firefox preserves WebExtension session values through the
-            // close -> Cmd+Shift+T undo-close path. Bento's close path marks
-            // tabs as closing so stale live tabs can be swept at boot, but a
-            // newly-created tab with that marker is the user's explicit
-            // restore request. Consume the marker and let the normal
-            // workspace assignment below run.
-            await tabs.unmarkClosing(d.tab.id);
-          }
+          // Boot owns startup tabs, including sweeping retained closing marks.
+          if (!adoptionGate.isSettled()) return;
+          const bentoClosed = await restorePanelFromMarkerOnce(d.tab.id, lastActiveNonPanelTabId);
+          if (isPanelOrSubPanelTabId(d.tab.id)) return;
           const sessionWs = await readTabSessionValueWithRetries(d.tab.id, 'bento.workspaceId');
           if (sessionWs && typeof sessionWs === 'string') {
-            if (!workspaces.has(sessionWs)) {
+            if (!bentoClosed && !workspaces.has(sessionWs)) {
               await workspaces
                 .adoptImportedWorkspacesFromSession(sourceWindowId)
                 .catch((err) =>
@@ -1723,18 +1707,41 @@ function findNonPanelTabForWorkspace(
   return candidate?.id ?? null;
 }
 
+// The palette awaits the same classification as onCreated before choosing tab or panel focus.
+const panelRestoreTasks = new Map<number, Promise<boolean>>();
+function restorePanelFromMarkerOnce(
+  tabId: number,
+  previousNonPanelTabId: number | null,
+): Promise<boolean> {
+  if (!adoptionGate.isSettled()) return Promise.resolve(false);
+  const pending = panelRestoreTasks.get(tabId);
+  if (pending) return pending;
+  if (isPanelOrSubPanelTabId(tabId)) return Promise.resolve(false);
+  const task = maybeRestorePanelFromMarker(tabId, previousNonPanelTabId);
+  panelRestoreTasks.set(tabId, task);
+  void task.then(
+    () => panelRestoreTasks.delete(tabId),
+    () => panelRestoreTasks.delete(tabId),
+  );
+  return task;
+}
+
 async function maybeRestorePanelFromMarker(
   tabId: number,
   previousNonPanelTabId: number | null,
-): Promise<void> {
+): Promise<boolean> {
   const marker = await readPanelMarkerWithRetries(tabId);
-  if (!marker) return;
+  const bentoClosed = await tabs.hydrateRestoredTab(tabId, {
+    hasWorkspace: (workspaceId) => workspaces.has(workspaceId),
+    folderWorkspaceId: (folderId) => tabFolders.get(folderId)?.workspaceId,
+  });
+  if (!marker) return bentoClosed;
   const restoredTab = await browser.tabs.get(tabId).catch(() => null);
   const restoredWindowId =
     typeof restoredTab?.windowId === 'number' && restoredTab.windowId >= 0
       ? restoredTab.windowId
       : null;
-  if (!workspaces.has(marker.workspaceId)) {
+  if (!bentoClosed && !workspaces.has(marker.workspaceId)) {
     await workspaces
       .adoptImportedWorkspacesFromSession(restoredWindowId)
       .catch((err) => console.warn('[bento-tools] imported workspace adoption failed:', err));
@@ -1746,11 +1753,10 @@ async function maybeRestorePanelFromMarker(
   const hasDevtoolsMarker = await readDevtoolsPanelMarker(tabId);
   const shouldPinImportedPanel =
     (marker.pinnedPanel === true || importedPinMarker === true) && !hasDevtoolsMarker;
-  await tabs.unmarkClosing(tabId);
   const workspace = workspaces.snapshot().workspaces.find((w) => w.id === marker.workspaceId);
   if (!workspace) {
-    void clearPanelMarker(tabId);
-    return;
+    await clearPanelMarker(tabId);
+    return bentoClosed;
   }
   markerSync.captureKey(tabId, marker);
   tabs.assignWorkspaceEagerly(tabId, marker.workspaceId);
@@ -1788,13 +1794,13 @@ async function maybeRestorePanelFromMarker(
       previousNonPanelTabId !== null && previousNonPanelTabId !== tabId
         ? previousNonPanelTabId
         : workspaceFallbackTabId;
-    if (preferredFallbackTabId === null || preferredFallbackTabId === tabId) return;
+    if (preferredFallbackTabId === null || preferredFallbackTabId === tabId) return bentoClosed;
     const query =
       restoredWindowId !== null
         ? { active: true, windowId: restoredWindowId }
         : { active: true, currentWindow: true };
     const [active] = await browser.tabs.query(query);
-    if (active?.id !== tabId) return;
+    if (active?.id !== tabId) return bentoClosed;
     const reverted = await activateNonPanelTab(
       preferredFallbackTabId,
       'revert from panel restore',
@@ -1814,6 +1820,7 @@ async function maybeRestorePanelFromMarker(
   } catch (err) {
     console.warn('[bento-tools] revert from panel restore failed:', err);
   }
+  return bentoClosed;
 }
 
 async function maybePromotePanelOpenerTab(
@@ -1869,7 +1876,7 @@ browser.tabs.onCreated.addListener((tab) => {
   const previousNonPanelTabId = lastActiveNonPanelTabId;
   const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
   maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated', windowId);
-  void maybeRestorePanelFromMarker(tab.id, previousNonPanelTabId).then(() =>
+  void restorePanelFromMarkerOnce(tab.id, previousNonPanelTabId).then(() =>
     maybePromotePanelOpenerTab(tab, previousNonPanelTabId),
   );
 });
@@ -2352,6 +2359,9 @@ browser.runtime.onConnectExternal.addListener((port) => {
         sendAudience,
         syncPrivateWindow,
         sourceWindowPrivate: workspaces.isPrivateWindow(sourceWindowId),
+        prepareRestoredTab: async (tabId) => {
+          await restorePanelFromMarkerOnce(tabId, lastActiveNonPanelTabId);
+        },
         broadcast: broadcastEvent,
         settingsDomain,
         emitPanelsSync,

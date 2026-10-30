@@ -2,8 +2,17 @@
  * for input, groups, result rows, and empty state. Bento only constrains the
  * chrome overlay frame and favicon sizing. */
 
-/* Mux UI CommandPalette CSS is unlayered, so these narrow unlayered
- * selectors intentionally beat its popup/listbox sizing rules. */
+/* The sidebar row's corner radius as a computed length, for the grow's start frame
+ * (useAddressBarGrow.ts). Registered so getComputedStyle returns px, where an unregistered
+ * custom property returns the unresolved `0.375rem` text. Set on the anchored popup below. */
+@property --bento-address-bar-grow-from-radius {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* Mux UI styles are imported in the muxui layer. These narrow unlayered
+ * overrides own the address palette's popup/listbox sizing. */
 .muxui-command-palette__backdrop.bento-address-bar__backdrop {
   position: fixed;
   inset: 0;
@@ -61,17 +70,110 @@ html[data-bento-address-bar='true'] #root {
   transform: translateX(-50%);
 }
 
+/* The anchored popup's box, defined once for the popup and its shadow: chrome's placement size
+ * (inline custom properties on the backdrop), capped by the room left in the window. Chrome places
+ * the popup once, at open, and does not place it again when the window changes under it, so a
+ * placement that fitted can stand past a window shrunk since, and the list would scroll under the
+ * window's edge. The cap never binds while the placement fits: chrome leaves the same margin
+ * (--bento-address-bar-anchor-margin) at the right and bottom, and its 180px minimum height is
+ * the one placement that can exceed the room. */
+.muxui-command-palette__backdrop.bento-address-bar__backdrop:has(
+    .bento-address-bar__popup--anchored
+  ) {
+  --bento-address-bar-fit-width: min(
+    var(--bento-address-bar-popup-width, 0px),
+    calc(100vw - var(--bento-address-bar-popup-left, 0px) - var(--bento-address-bar-anchor-margin))
+  );
+  --bento-address-bar-fit-height: min(
+    var(--bento-address-bar-popup-height, 0px),
+    calc(100vh - var(--bento-address-bar-popup-top, 0px) - var(--bento-address-bar-anchor-margin))
+  );
+}
+
+/* Anchored: the popup is the sidebar address row grown (docs/technical/address-entry.md). Its
+ * top-left corner is the row's, and it takes the row's border colour; the header below is the
+ * row. Its radius is Mux's container radius, the command palette's (no override here); the row's
+ * radius is kept only as the grow's start-frame clip radius. It never fades in here: chrome's host
+ * fade is the open, and the grow (useAddressBarGrow.ts) replays on every open, so Mux's one-time
+ * entry opacity and `data-entering` must not hide the start frame.
+ *
+ * Its size is the shared fit size above, not Mux's `min(84vh, 45rem)` height cap, which in a
+ * short window is below the placement's height (chrome clamps the placement to the window
+ * itself) and would leave the shadow, sized from the placement, standing past the popup. */
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
   .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored) {
+  --bento-address-bar-grow-from-radius: var(--bento-sidebar-address-field-radius);
+
+  box-sizing: border-box;
+  width: var(--bento-address-bar-fit-width);
+  height: var(--bento-address-bar-fit-height);
+  max-height: none;
+  border-color: var(--muxui-semantic-color-neutral-18);
+  box-shadow: none;
+  opacity: 1 !important;
   transform: none;
+  transition: none;
+}
+
+/* The popup's elevation, drawn under it on its own element: the grow clips the popup to the
+ * row's box, which would cut a shadow the popup carried itself. It is drawn at the popup's final
+ * box and grows with the clip (transform and opacity below), top-left pinned like the popup. */
+.muxui-command-palette__backdrop.bento-address-bar__backdrop .bento-address-bar__shadow {
+  position: fixed;
+  top: var(--bento-address-bar-popup-top, 0);
+  left: var(--bento-address-bar-popup-left, 0);
+  box-sizing: border-box;
+  width: var(--bento-address-bar-fit-width);
+  height: var(--bento-address-bar-fit-height);
+  border-radius: var(--muxui-semantic-shape-container-radius);
+  box-shadow: var(--muxui-semantic-elevation-modal);
+  transform-origin: 0 0;
+  pointer-events: none;
 }
 
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
   .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-entering],
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
   .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-exiting] {
-  opacity: 0;
   transform: none;
+}
+
+/* The grow: the clip goes from the row's box to the popup on the reveal spring pair, the one
+ * the sidebar push, the Search peek and the import card morph run on. The clip values are
+ * literal pixels written by useAddressBarGrow.ts. */
+.muxui-command-palette__backdrop.bento-address-bar__backdrop
+  .muxui-command-palette__popup[data-bento-grow='running'] {
+  transition: clip-path var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+
+/* The elevation grows with the clip on the same spring pair: its scale (literal numbers written
+ * by the hook) goes from the row's box to full size while its opacity rises, so its box is the
+ * clip's visible box every frame. A full-size shadow before the spring settled would stand
+ * behind a still-clipped popup, and the page would show through the gap. */
+.bento-address-bar__shadow[data-bento-grow='start'] {
+  opacity: 0;
+}
+
+.bento-address-bar__shadow[data-bento-grow='running'] {
+  transition:
+    transform var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    opacity var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+
+/* The results wait out the spring's visual duration (when it has all but covered the move),
+ * then fade in on the state pair. */
+.muxui-command-palette__popup[data-bento-grow='start']
+  :is(.bento-address-bar__listbox, .bento-address-bar__empty) {
+  opacity: 0;
+}
+
+.muxui-command-palette__popup[data-bento-grow='running']
+  :is(.bento-address-bar__listbox, .bento-address-bar__empty) {
+  transition: opacity var(--muxui-semantic-motion-state-transition)
+    var(--muxui-semantic-motion-reveal-transition-spring-visual-duration);
 }
 
 :is(.bento-address-bar__dialog, .bento-address-bar__content, .bento-address-bar__listbox) {
@@ -111,13 +213,85 @@ html[data-bento-address-bar='true'] #root {
   width: auto;
 }
 
-.muxui-select.bento-address-bar__engine-select {
+/* Anchored header: the sidebar address row, field for field. The popup's top border is the row's
+ * top border and this header's bottom border is the row's bottom one, so the header is one
+ * hairline short of the row's height; the search icon takes the lock button's slot and the
+ * text starts where the row's URL starts: one gap after the icon slot, with no start padding,
+ * so the space right of the icon equals the space left of it. No field outline: the header is
+ * the field. */
+.bento-row.bento-address-bar__toolbar--anchored {
+  gap: var(--muxui-reference-dimension-space-4xs);
+  height: calc(var(--bento-sidebar-address-row-height) - var(--bento-border-hairline));
+  padding: 0 var(--muxui-reference-dimension-space-4xs);
+}
+
+.bento-address-bar__toolbar--anchored .bento-address-bar__search-field {
+  align-self: stretch;
+  gap: var(--muxui-reference-dimension-space-4xs);
+}
+
+.bento-address-bar__row-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--bento-sidebar-address-button-size);
+  height: var(--bento-sidebar-address-button-size);
+  color: var(--muxui-semantic-color-neutral-70);
+}
+
+.bento-address-bar__toolbar--anchored
+  .bento-address-bar__search-field
+  .muxui-command-palette__input {
+  height: 100%;
+  min-block-size: 0;
+  padding-block: 0;
+  padding-inline: 0 var(--muxui-field-padding-inline);
+  border-radius: 0;
+  color: var(--muxui-semantic-color-neutral-90);
+  font: var(--text-font-weight) var(--bento-tab-row-font-size) / 1 var(--text-font-family);
+  letter-spacing: var(--text-letter-spacing);
+  outline: 0;
+  box-shadow: none;
+}
+
+.bento-address-bar__toolbar--anchored
+  .bento-address-bar__search-field
+  .muxui-command-palette__input::placeholder {
+  color: var(--muxui-semantic-color-neutral-50);
+  opacity: 1;
+}
+
+.bento-address-bar__toolbar--anchored .muxui-button.bento-address-bar__clear-button,
+.bento-address-bar__toolbar--anchored .bento-address-bar__engine-trigger {
+  height: var(--bento-sidebar-address-button-size);
+  min-block-size: 0;
+}
+
+/* The engine picker is a plain control in the header, not a field of its own, until it is
+ * hovered, focused or open. */
+.bento-address-bar__toolbar--anchored
+  .bento-address-bar__engine-trigger:not(
+    :hover,
+    :focus-visible,
+    [data-focus-visible],
+    [data-muxui-state-focus-visible],
+    [aria-expanded='true']
+  ) {
+  background-color: transparent;
+  outline-color: transparent;
+}
+
+.bento-address-bar__engine-slot {
+  display: contents;
+}
+
+.bento-address-bar__engine-select {
   flex: 0 0 auto;
   width: max-content;
   min-width: 0;
 }
 
-.muxui-select-trigger.bento-address-bar__engine-trigger {
+.bento-address-bar__engine-trigger {
   box-sizing: border-box;
   width: auto;
   min-width: 0;
@@ -126,21 +300,18 @@ html[data-bento-address-bar='true'] #root {
   justify-content: center;
 }
 
-.muxui-select-trigger.bento-address-bar__engine-trigger .muxui-select-value {
-  flex: 0 0 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.muxui-select-trigger.bento-address-bar__engine-trigger .muxui-select-arrow {
+.bento-address-bar__engine-chevron {
   width: var(--bento-sidebar-address-chevron-size);
   height: var(--bento-sidebar-address-chevron-size);
   font-size: var(--bento-sidebar-address-chevron-size);
+  transition: transform var(--muxui-semantic-motion-reveal-transition);
 }
 
-.muxui-select-popover.bento-address-bar__engine-popover {
+.bento-address-bar__engine-trigger[aria-expanded='true'] .bento-address-bar__engine-chevron {
+  transform: rotate(180deg);
+}
+
+.bento-address-bar__engine-popover {
   background-color: var(--neutral-5);
 }
 
@@ -181,4 +352,61 @@ html[data-bento-address-bar='true'] #root {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+/* Empty suggestions use the approved six-row density; the same list still scrolls
+ * when chrome constrains the popup, or optional suggestions follow the groups. */
+.bento-address-bar__listbox--recents .muxui-command-palette__section {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.bento-address-bar__listbox--recents .muxui-command-palette__section-header {
+  margin: 0;
+  padding-block: var(--muxui-semantic-layout-inset-tight);
+}
+
+.bento-address-bar__listbox--recents .muxui-command-palette__item {
+  box-sizing: border-box;
+  min-block-size: 0;
+  margin: 0;
+  padding-block: var(--muxui-semantic-layout-inset-tight);
+}
+
+.bento-address-bar__listbox--recents .muxui-command-palette__item-content {
+  gap: 0;
+}
+
+.bento-address-bar__listbox--recents [data-kind='topSite'] .muxui-command-palette__item-content {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--muxui-semantic-layout-action-gap);
+}
+
+.bento-address-bar__listbox--recents [data-kind='topSite'] .muxui-command-palette__item-title {
+  flex-shrink: 0;
+  max-width: 50%;
+}
+
+.bento-address-bar__reopen {
+  visibility: hidden;
+}
+
+.muxui-command-palette__item:is([data-focused], [data-hovered], [data-pending])
+  .bento-address-bar__reopen {
+  visibility: visible;
+}
+
+.bento-address-bar__timestamp {
+  min-width: var(--bento-sidebar-address-row-height);
+  margin-left: 0;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.bento-address-bar__status {
+  flex: 0 0 auto;
+  padding: var(--muxui-semantic-layout-inset-tight) var(--muxui-semantic-layout-inset-medium);
+  color: var(--muxui-semantic-color-neutral-80);
+  font-size: var(--muxui-semantic-typography-tiny-size);
 }

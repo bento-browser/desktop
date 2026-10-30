@@ -51,7 +51,6 @@
        the rail look below paints the brand background and the inset fills stay put. */
     --bento-toolbar-main-bg: var(--muxui-semantic-color-neutral-5);
     --bento-rail-band-fill: var(--muxui-semantic-color-neutral-12);
-    --bento-rail-square-base: var(--muxui-semantic-color-neutral-5);
   }
 
   /* The rail look: with side panels, the collapsed rail paints the toolbar's main colour
@@ -81,6 +80,32 @@
      by whole device pixels), a step at the switch; a 52 px box centres it at 10. */
   html[data-bento-collapsed='true'] .bento-shell-app {
     border-inline-end-width: 0;
+  }
+
+  /* The rail's column is at most the rail wide, at the start of a wider shell. Gecko paints
+     a resized remote frame once before the frame's next resize-observer step (the widget's
+     resize repaint), so the first paint of an expand is still the rail, laid out at the
+     expanded width: a full-width rail centres its items there, outside the host's clip at
+     the start of the slide, and that frame shows an empty strip. Capped, that paint is the
+     settled rail. The cap is the token rounded up, never below the host chrome pins at the
+     token rounded to whole pixels, so it does not narrow the settled rail. The app keeps the
+     shell's width (railViewport.ts observes it) and its background fills the rest. */
+  html[data-bento-collapsed='true'] .bento-shell-app__main {
+    max-width: round(up, var(--bento-tab-strip-width-collapsed), 1px);
+  }
+
+  /* A private window's band spans the shell edge to edge (PrivateBand.css), so in that paint
+     the app carries the band's fill across the band's row right of the capped column, as
+     the expanded band shows it in the next frame. Under the band in the settled rail. */
+  html[data-bento-collapsed='true']
+    .bento-shell-app:has(> .bento-shell-app__main > .bento-shell-app__workspace-switcher--private) {
+    background-image: linear-gradient(
+      var(--muxui-semantic-color-neutral-90),
+      var(--muxui-semantic-color-neutral-90)
+    );
+    background-position: 0 var(--bento-panel-top-inset);
+    background-repeat: no-repeat;
+    background-size: 100% var(--bento-private-band-height);
   }
 
   .bento-shell-app__main {
@@ -175,8 +200,11 @@
     padding-inline: var(--bento-sidebar-collapsed-inline-padding);
   }
 
+  /* The rail's stack (switcher, New, Search, tabs) keeps one section gap between squares:
+     the switcher's own end padding is the gap above New, as the tab list's is below Search. */
   html[data-bento-collapsed='true'] .bento-shell-app__workspace-switcher {
     align-items: center;
+    padding-block-end: var(--bento-sidebar-section-gap);
     padding-inline: 0;
   }
 }

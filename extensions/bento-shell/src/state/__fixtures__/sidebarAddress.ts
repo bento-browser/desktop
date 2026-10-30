@@ -31,3 +31,8 @@ export function seedSidebarAddressSnapshot(overrides: Partial<SidebarAddressSnap
   useSidebarAddressStore.getState().reset();
   useSidebarAddressStore.getState().applySnapshot(makeSidebarAddressSnapshot(overrides));
 }
+
+/** The address palette is shown anchored over the row: the row's border is faded out. */
+export function seedPaletteOverRow(): void {
+  useSidebarAddressStore.getState().setPaletteOverRow(true);
+}

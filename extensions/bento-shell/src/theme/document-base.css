@@ -143,6 +143,36 @@ body {
       var(--bento-mode-fade-colours) !important;
   }
 
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop .muxui-command-palette__popup[data-bento-grow='running'] {
+    transition:
+      clip-path var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-address-bar__shadow[data-bento-grow='running'] {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      opacity var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__popup[data-bento-grow='running'] :is(.bento-address-bar__listbox, .bento-address-bar__empty) {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-reveal-transition-spring-visual-duration),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-address-bar__engine-chevron {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
   /* extensions/bento-shell/src/components/FolderRow/FolderRow.css */
 
   [data-bento-mode-fade] .bento-folder-row {
@@ -243,6 +273,7 @@ body {
   html[data-bento-mode-fade][data-bento-collapsed='true'] .bento-tab-list__action-highlight[data-visible] {
     transition:
       opacity var(--muxui-semantic-motion-state-transition),
+      top var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
       var(--bento-mode-fade-colours) !important;
   }
 
@@ -252,7 +283,7 @@ body {
       var(--bento-mode-fade-colours) !important;
   }
 
-  [data-bento-mode-fade] .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open]) .bento-tab-list__search-trigger {
+  html[data-bento-mode-fade]:not([data-bento-collapsed='true']) .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open]) .bento-tab-list__search-trigger {
     transition:
       width var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
       visibility var(--muxui-semantic-motion-state-transition),
@@ -315,6 +346,26 @@ body {
   [data-bento-mode-fade] .bento-tab-list-search__result-actions {
     transition:
       opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list__new-actions:has(.bento-tab-list-search:is([data-folding], [data-open])) .bento-tab-list__search-trigger {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) .bento-tab-list-search__field-row {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) :is(.bento-tab-list-search__input, .bento-tab-list-search__clear) {
+    transition:
       var(--bento-mode-fade-colours) !important;
   }
 

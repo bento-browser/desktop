@@ -8,6 +8,8 @@ export type AddressRowKind =
   | 'history'
   | 'bookmark'
   | 'topSite'
+  | 'recentHistory'
+  | 'recentlyClosed'
   | 'clipboard'
   | 'savedPanel'
   | 'synthetic';
@@ -21,10 +23,14 @@ export interface AddressRow extends CommandPaletteCommand {
     | 'Clipboard'
     | 'Saved Panels'
     | 'Top Sites'
+    | 'Recently Closed'
+    | 'Recent History'
     | 'Open Tabs'
     | 'Open Panels'
     | 'History & Bookmarks'
     | 'Search';
+  sessionId?: string;
+  timestamp?: number;
   tabId?: number;
   workspaceId?: string;
   url?: string;
@@ -38,18 +44,45 @@ export function isUrlLike(query: string): boolean {
 }
 
 function resultSubtitle(result: AddrResult): string {
+  if (
+    result.kind === 'recentHistory' ||
+    result.kind === 'recentlyClosed' ||
+    result.kind === 'topSite'
+  ) {
+    try {
+      return new URL(result.url).hostname.replace(/^www\./, '') || result.url;
+    } catch {
+      return result.url;
+    }
+  }
   if (result.kind === 'bookmark') return `Bookmark · ${result.url}`;
-  if (result.kind === 'topSite') return `Top site · ${result.url}`;
   return `History · ${result.url}`;
 }
 
 export function resultToRow(result: AddrResult): AddressRow {
   return {
-    id: `${result.kind}:${result.url}`,
+    id:
+      result.kind === 'recentlyClosed'
+        ? `recentlyClosed:${result.sessionId}`
+        : `${result.kind}:${result.url}`,
     kind: result.kind,
     title: result.title || result.url,
     subtitle: resultSubtitle(result),
-    group: result.kind === 'topSite' ? 'Top Sites' : 'History & Bookmarks',
+    group:
+      result.kind === 'recentlyClosed'
+        ? 'Recently Closed'
+        : result.kind === 'recentHistory'
+          ? 'Recent History'
+          : result.kind === 'topSite'
+            ? 'Top Sites'
+            : 'History & Bookmarks',
+    sessionId: result.kind === 'recentlyClosed' ? result.sessionId : undefined,
+    timestamp:
+      result.kind === 'recentlyClosed'
+        ? result.closedAt
+        : result.kind === 'recentHistory'
+          ? result.lastVisitTime
+          : undefined,
     keywords: [result.url],
     url: result.url,
     favIconUrl: result.favIconUrl,
@@ -140,4 +173,15 @@ export function chooseSearchEngineForAddressRow({
   if (!engineSelectionDirty || !selectedSearchEngineId) return undefined;
   if (selectedSearchEngineId === defaultSearchEngine) return undefined;
   return selectedSearchEngineId;
+}
+
+/** Compact elapsed time, computed when fresh results render; no repainting timer. */
+export function resultAge(timestamp: number | undefined, now = Date.now()): string {
+  if (timestamp === undefined || !Number.isFinite(timestamp)) return '';
+  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
 }

@@ -46,16 +46,23 @@ describe('sidebar address store', () => {
     expect(useSidebarAddressStore.getState().snapshot?.url).toBe('https://other.example');
   });
 
-  it('orders focus requests and initializes new-tab drafts empty', () => {
-    useSidebarAddressStore.getState().applySnapshot(snapshot(1, 'https://example.com'));
-    useSidebarAddressStore.getState().requestFocus('current');
-    const first = useSidebarAddressStore.getState().focusRequest;
-    useSidebarAddressStore.getState().requestFocus('newTab');
-    const second = useSidebarAddressStore.getState().focusRequest;
+  it('orders open requests', () => {
+    useSidebarAddressStore.getState().requestOpen('current', 'r1');
+    const first = useSidebarAddressStore.getState().openRequest;
+    useSidebarAddressStore.getState().requestOpen('current', 'r2');
+    const second = useSidebarAddressStore.getState().openRequest;
 
     expect(first?.id).toBeLessThan(second?.id ?? 0);
-    expect(second?.mode).toBe('newTab');
-    expect(useSidebarAddressStore.getState().draftValue).toBe('');
+    expect(second?.requestId).toBe('r2');
+  });
+
+  it('keeps the palette-over-row flag until it is cleared or the store resets', () => {
+    expect(useSidebarAddressStore.getState().paletteOverRow).toBe(false);
+    useSidebarAddressStore.getState().setPaletteOverRow(true);
+    useSidebarAddressStore.getState().applySnapshot(snapshot(1));
+    expect(useSidebarAddressStore.getState().paletteOverRow).toBe(true);
+    useSidebarAddressStore.getState().reset();
+    expect(useSidebarAddressStore.getState().paletteOverRow).toBe(false);
   });
 
   it('tracks pending bookmark toggles until the next accepted snapshot', () => {

@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { SidebarAddressBar } from './SidebarAddressBar';
 import { seedAddressBarResults } from '../../state/__fixtures__/addressBarResults';
-import { seedSidebarAddressSnapshot } from '../../state/__fixtures__/sidebarAddress';
+import {
+  seedPaletteOverRow,
+  seedSidebarAddressSnapshot,
+} from '../../state/__fixtures__/sidebarAddress';
 import { seedPanelsByWorkspace } from '../../state/__fixtures__/panels';
 import { seedTabsAcrossWorkspaces } from '../../state/__fixtures__/tabs';
 import { seedMany } from '../../state/__fixtures__/workspaces';
@@ -70,3 +73,14 @@ export const PendingLoading = () => {
 };
 
 PendingLoading.storyName = 'Loading non-bookmarkable';
+
+export const PaletteOverRow = () => {
+  useEffect(() => {
+    seedBase();
+    seedSidebarAddressSnapshot();
+    seedPaletteOverRow();
+  }, []);
+  return <SidebarAddressBar />;
+};
+
+PaletteOverRow.storyName = 'Palette over the row (border faded out)';

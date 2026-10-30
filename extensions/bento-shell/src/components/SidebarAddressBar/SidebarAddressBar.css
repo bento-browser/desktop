@@ -27,6 +27,15 @@
     border: 1px solid var(--neutral-18);
     border-radius: var(--bento-sidebar-address-field-radius);
     background: var(--bento-brand-bg);
+    /* Chrome's host fade for the anchored palette, so the two borders cross-fade. */
+    transition: border-color var(--muxui-semantic-motion-modal-transition);
+  }
+
+  /* The anchored palette is over the row and its corner is rounder than the row's, so the
+     row's border would show as a faint second arc outside it. Chrome sets this while the
+     palette is shown and clears it as the palette starts to hide. */
+  .bento-sidebar-address-bar__row[data-palette-over='true'] {
+    border-color: transparent;
   }
 
   .bento-sidebar-address-bar__row > .muxui-button {
@@ -100,6 +109,13 @@
     min-block-size: 0;
     padding-block: 0;
     outline: 0;
+  }
+
+  /* No start padding: the URL starts one grid gap after the lock icon's box, so the space
+     right of the icon equals the space left of it (border to icon box) at any token value.
+     The end padding stays Mux's field padding. */
+  .bento-sidebar-address-bar__input {
+    padding-inline-start: 0;
   }
 
   .bento-sidebar-address-bar__row[data-loading='true'] .bento-sidebar-address-bar__input {

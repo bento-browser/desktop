@@ -3,12 +3,14 @@
 Part of the [technical notes index](../core-functionality-technical.md).
 
 `src/browser/base/content/bento-shell-mount.js` owns address-entry routing.
-`Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, the sidebar `New tab` action,
-content-process BentoKey actor events, and native top-urlbar fallback focus
-open the centered floating overlay hosted at `address-bar.html`. Direct
-activation of the expanded-sidebar URL row opens the same overlay with a
-sidebar anchor so it appears below the row and can extend over the panel strip
-and main content.
+`Cmd/Ctrl+T`, the sidebar `New tab` action, and native top-urlbar fallback
+focus open the centered floating overlay hosted at `address-bar.html`.
+`Cmd/Ctrl+L` and `Cmd/Ctrl+E` (the chrome keybinding and the BentoKey
+`BentoKey:AddrbarOpen` event from web content) and direct activation of the
+expanded-sidebar URL row open the same overlay with a sidebar anchor, so its
+header is the row grown and it extends over the panel strip and main content.
+Those two shortcuts fall back to the centered overlay whenever the expanded
+row is not on screen (see "Open request" below).
 
 The workspace switcher trigger is mounted above the persistent sidebar address
 row, and both are mounted above `TabList`.
@@ -19,7 +21,8 @@ position zero and lets it scroll away so tab content becomes flush with the
 address row edge. Collapsed mode resets that top padding to zero because the
 address row is hidden.
 `extensions/bento-shell/src/state/sidebarAddress.ts` stores the last
-chrome-owned snapshot, edit mode, draft value, and pending bookmark-toggle key.
+chrome-owned snapshot, edit mode, draft value, pending bookmark-toggle key, and
+`paletteOverRow` (see "Row border fade").
 `extensions/bento-shell/src/bridge/useSidebarAddress.ts`
 subscribes to `BroadcastChannel('bento-sidebar-address-bus')`, but applies only
 messages whose chrome-stamped `windowId` and per-frame
@@ -44,14 +47,197 @@ iframe. `SidebarAddressBar` sends `BENTO_OPEN_ADDRBAR` with the row's
 frame-local rect. Chrome converts that rect through the live
 `#bento-shell-frame` and `#browser` geometry, shows `#bento-addrbar-host` as a
 full `#browser` overlay, and passes the computed popup placement to
-`address-bar.html` over the existing `BentoAddrbarOpen` frame script. Anchored
-placements start below the sidebar row, not over it. The overlay owns the
+`address-bar.html` over the existing `BentoAddrbarOpen` frame script.
+`computeAddrbarAnchoredPlacement` puts the popup's top-left corner exactly on
+the row's top-left corner; it moves only when the row itself is outside the
+window, and the 12px margin applies to the right and bottom edges only. The
+placement also carries the row's size (`anchorWidth`, `anchorHeight`) so the
+document can start its grow from the row's box. The overlay owns the
 focused input, result list, and search-engine picker, so the popup can extend
 over the panel strip or main content without asking the sidebar iframe to
 overpaint its chrome bounds. Sidebar-anchored placements use a smaller
 512px-by-378px cap so the row-local picker reads as attached to the sidebar,
-while shortcut, new-tab, and top-urlbar fallback opens omit the anchor and
+while new-tab and top-urlbar fallback opens omit the anchor and
 therefore keep the original centered overlay size and position.
+
+### Anchored popup is the row grown
+
+In an anchored open (`bento-address-bar__toolbar--anchored`,
+`AddressBar.css`) the popup's header is the sidebar row, field for field: the
+popup's top border is the row's top border and the header's bottom border is the
+row's bottom border, so the header is `--bento-sidebar-address-row-height` minus
+one hairline; the inline padding and gap are the row's, a search icon takes the
+lock button's `--bento-sidebar-address-button-size` slot, and the input has no
+field outline, takes the row input's font, and so starts its text at the x where
+the row's URL text starts. Both inputs have `padding-inline-start: 0` (the end
+padding stays Mux's field padding), so the text starts one gap after the icon
+slot and the space right of the icon (icon to text) equals the space left of it
+(inner border edge to icon): each is the icon's half-slack in its slot plus
+`--space-4xs`, at every fluid token value. The popup takes the row's border
+colour; its radius is not the row's `--bento-sidebar-address-field-radius` but Mux's
+`--muxui-semantic-shape-container-radius` (radius-l, 12px), the command palette's,
+because the anchored rule sets no `border-radius` and the elevation sibling uses the same
+token. The row's radius survives only as the grow's start-frame clip radius (see "Grow
+motion"). The Clear button and the engine
+picker are `--bento-sidebar-address-button-size` high so they fit the row, and
+the picker shows no outline until hovered, focused or open. The Ladle stories
+"Anchored over the sidebar row" and "Anchored, start of the grow" render the real
+`SidebarAddressBar` under the popup, which is how the alignment is checked
+(row rect against popup rect, lock slot against search icon, row text start
+against input text start, and the space left and right of the icon, to 0.5px). The
+popup, its elevation sibling, the centered address popup and the command palette popup
+all compute the same `border-radius`.
+
+The popup and the elevation sibling share one CSS size, defined once on the backdrop
+(`--bento-address-bar-fit-width` and `-height` in `AddressBar.css`): the placement's size
+(`--bento-address-bar-popup-width` and `-height`) capped by the room left in the window,
+`min(<placement>, 100vw - <left> - var(--bento-address-bar-anchor-margin))` and the same for
+height with `100vh` and `top`. The anchored popup rule also sets `max-height: none`, so Mux's
+`min(84vh, 45rem)` cap on `.muxui-command-palette__popup` does not apply. The placement does
+not always fit the window. Chrome places the popup once, at open (`computeAddrbarAnchoredPlacement`
+clamps it to the `#browser` edges but gives it a 180px minimum height), and does not place a
+palette that is already open again, so a window shrunk under an open palette, or a row so low
+that 180px does not fit below it, leaves a placement larger than the window. The cap never
+binds while the placement fits: `--bento-address-bar-anchor-margin` (`bento-tokens.css`, 12px)
+is the margin chrome leaves at the right and bottom (`ADDRBAR_ANCHOR_MARGIN_PX`), and
+`scripts/overlay-surfaces.test.mjs` keeps the two equal. With the cap, the popup, its shadow
+and the list's scroll area shrink and grow together as the window changes, and the last
+result stays reachable.
+
+### Grow motion
+
+`useAddressBarGrow` replays the grow on every open. The address bar document is
+prewarmed and the Mux popup stays mounted (`open={true}`, `openVersion` keys the
+content), so `data-entering` and mount animations run once; the hook keys on
+`openVersion` instead. In a layout effect it measures the popup's rendered border box
+(`getBoundingClientRect`, not the placement's size, which the cap above can undercut) and sets the
+popup's inline `clip-path` to the row's box, `inset(0 <popupWidth - rowWidth>px
+<popupHeight - rowHeight>px 0 round <rowRadius>px)`, and `data-bento-grow='start'`; two
+animation frames later it measures again (a document shown after its window was resized still
+has the old viewport for its first frames, about 100 ms, so the first measure can be the stale
+box; the host is still faded out then), rewrites the start values if the box changed and commits them with a layout read, and
+sets `data-bento-grow='running'` and the clip to `inset(0 0 0 0 round <popupRadius>px)`,
+which `AddressBar.css` transitions on the `reveal` spring pair
+(`--muxui-semantic-motion-reveal-transition-spring-duration` with `-easing`, the pair
+the sidebar push and the Search peek use). `afterMotion` then removes the clip,
+the attribute and `will-change`. The clip values are literal pixels computed in
+script, never `var()`, because MotionScore grades a variable inside a compositor
+value as C-tier. The popup does not fade in the document: chrome's host fade
+(`ADDRBAR_HOST_TRANSITION`, `modal`) is the open and the close, there is no
+reverse grow, and the anchored popup forces `opacity: 1 !important` so Mux's
+one-time entry fade cannot hide the start frame of the first open. Reduced
+motion (`prefers-reduced-motion`, `[data-muxui-motion='reduced']`) skips the hook
+and opens at full size. The results list fades in on the `state` pair after the
+spring's visual duration. The row's background (`--bento-brand-bg`, the same
+`--neutral-5` as the popup surface) needs no fade, so there is none; its border does
+(see "Row border fade").
+
+The elevation is not the popup's own `box-shadow`: the clip would cut it, and a
+clip that ends outside the box lets the box reach its edges within the first
+quarter of the spring. `AddressBar.tsx` draws it on a sibling,
+`bento-address-bar__shadow`, at the popup's final box (the same fit size as the popup,
+`transform-origin: 0 0`), and it grows with the clip. The hook finds it in the
+popup's backdrop and, with the popup's own attributes, sets `data-bento-grow='start'`,
+an inline `transform: scale(<rowWidth / popupWidth>, <rowHeight / popupHeight>)`
+(`growShadowTransforms`, from the same measured box as the clip, clamped to 1 like the clip's
+insets, literal numbers) and
+`will-change: transform, opacity`; `AddressBar.css` holds it at `opacity: 0`. In the
+frame the clip goes to full size the hook sets `'running'` and `scale(1, 1)`, and the
+sibling transitions `transform` and `opacity` on the same `reveal` spring pair as the
+clip, with no delay. Clip insets and a scale interpolate linearly on the same easing and
+duration, so the shadow's box is the popup's visible box every frame. `afterMotion`
+clears the sibling's attribute, transform and `will-change` with the popup's. The results
+list is the one part that waits: it fades in on the `state` pair after the spring's
+visual duration.
+
+### Row border fade
+
+The palette is a separate overlay document over the shell, and the row it grows from
+lives in the shell document under it. The palette's top-left corner is rounder (12px,
+Mux's container radius) than the row's (6px, `--bento-sidebar-address-field-radius`), so
+the row's 1px border (`--neutral-18`) would show in the crescent between the two
+curves as a faint second arc outside the palette. While the anchored palette is open
+over the row, the row's border fades out, and it fades back in as the palette closes.
+Both keep their own radius.
+
+Chrome tells the row over the sidebar address channel (`dispatchSidebarAddressMessage`,
+`bento-sidebar-address-bus`, scoped by window id and bridge token like the other kinds):
+`{ kind: 'palette-over-row', windowId, bridgeToken, messageId, open }`. `setAddrbarOverSidebarRow`
+records the wanted state at once (`addrbarOverSidebarRow`) and `syncAddrbarOverSidebarRow`
+delivers it, only when it differs from what the row was last told
+(`addrbarOverSidebarRowSent`, recorded only for a delivered message). A delivery that
+fails (the shell frame's message manager is not there yet) is retried by `sync` itself,
+100 ms apart up to `SIDEBAR_ADDRESS_RETRY_LIMIT` times, and every attempt re-reads the
+wanted state, so only the latest value is ever delivered; `dispatchSidebarAddressMessage`
+is called with `attempt` at that limit, which sends once and queues no retry of its own
+(its retry resends the message it was given, which is how a stale `open: true` could land
+after the hide). The other message kinds keep the helper's retry. The sends are:
+
+- `open: true` from `revealPendingAddrbar`, in the same step that sets the host's opacity
+  to 1 (the start of the host fade-in), when the open has a placement (an anchored open).
+  A pending open that is hidden before it is revealed never sends it.
+- `open: false` from `hideAddrbar`, in the same step that sets the host's opacity to 0
+  (the start of the close fade). Esc, an outside click, the palette's own close and a
+  submitted URL all reach `hideAddrbar`. And from `showAddrbar` when the new open has no
+  placement (Cmd+T, a collapsed or hidden sidebar, the native-urlbar fallback), which
+  replaces an anchored palette at once.
+
+`applySidebarAddressBusMessage` (called by the bridge's listener after
+`shouldAcceptSidebarAddressMessage`) sets `useSidebarAddressStore`'s `paletteOverRow`;
+`reset()` clears it. `SidebarAddressBar` puts `data-palette-over="true"` on
+`.bento-sidebar-address-bar__row` while it is set, and `SidebarAddressBar.css` makes the
+row's `border-color` `transparent` under that attribute. The row transitions
+`border-color` on `var(--muxui-semantic-motion-modal-transition)`, the pair of chrome's
+host fade (`ADDRBAR_HOST_TRANSITION`), so the palette's border fading in and the row's
+border fading out run on the same duration and easing and cross-fade. A sidebar that
+collapses or hides while the palette is open does not close the palette, so the flag stays
+set until `hideAddrbar` clears it; the hidden row has no border to see meanwhile.
+
+A new sidebar document (Alt+Shift+R in a dev build, or a re-created shell frame) starts with
+`paletteOverRow` false while `addrbarOverSidebarRowSent` still holds the old document's last
+delivery, so the next sync would skip a delivery the new document never got. The bridge hook
+(`useSidebarAddressBridge`) therefore writes `BENTO_SIDEBAR_ADDRESS_READY:<ts>` after its
+channel listener exists, and again when the window id resolves (a message for another window id
+is dropped, so the first announcement can precede the first accepted message). Chrome's
+`handleSidebarAddressReadyTitle` (routed from the shell frame's title handler) sets
+`addrbarOverSidebarRowSent = false` and syncs: a palette open over the row sends the new
+document `open: true`, a closed one sends nothing. The overlay `BENTO_OVERLAY_READY` titles
+cover only the overlay frames in `createOverlayManager`'s table, and the page's static
+`<title>` fires when the document loads, before React has subscribed, so the shell announces
+this itself.
+
+### Open request (Cmd+L and Cmd+E)
+
+Chrome cannot read the row's rect synchronously, because the shell is a
+separate frame, so `requestAddrbarOpen` asks the row. For `Cmd/Ctrl+L` and
+`Cmd/Ctrl+E` (current-tab mode) with the sidebar expanded, settled and not hidden
+(`canAnchorAddrbarToSidebarRow`, from `isSidebarCollapsedTarget`,
+`isSidebarHiddenTarget` and `isBentoSidebarPushing`), it sends
+`{ kind: 'open-request', windowId, bridgeToken, requestId, mode }` over the
+sidebar address channel (`dispatchSidebarAddressMessage`, the frame script and
+`bento-sidebar-address-bus` that carry snapshots, scoped by window id and
+`bentoSidebarAddressBridgeToken`). `SidebarAddressBar` answers with the same
+`BENTO_OPEN_ADDRBAR` a click sends (the current URL as `initialQuery`, which
+the palette selects), plus `requestId`: anchored when its row is laid out, and
+with no anchor and an empty query when it is not (collapsed rail), which chrome
+opens as the centered overlay. Chrome keeps one pending request
+(`pendingAddrbarOpenRequest`). `handleAddrbarOpenAnswer` accepts an answer only
+when `takeAddrbarOpenRequest(requestId)` finds it pending, and acts on its anchor
+only while `canAnchorAddrbarToSidebarRow()` still holds: a sidebar that began to
+collapse or hide since the request keeps the row's frame-local rect positive while it
+slides, so an answer that finds it ineligible opens centered with an empty query, the
+same open the unanswered timer makes. If no answer arrives
+within `ADDRBAR_OPEN_RETRY_MS` the timer opens the centered overlay, and the
+answer that comes later finds no pending request and is dropped, so an open is
+neither doubled nor lost. A pending request counts as an open for every dismissal:
+`isAddrbarVisible` is true while it waits, so Esc and an outside click (both ask
+`isOverlayOpen`) reach `hideAddrbar` and cancel the request and its timer. Any
+`showAddrbar`, `hideAddrbar`, newer request, or another overlay's `openOverlay` also
+cancels it (the newest open wins), so neither a late answer nor the timer opens the
+palette afterwards. `Cmd/Ctrl+T`, a collapsed or hidden sidebar, a push in
+progress, a failed dispatch, `New tab` and the native-urlbar fallback never ask
+and open centered at once. The previous `focus` message kind on this channel
+(and `focusRequest` in the store) had no consumer and became `open-request`.
 The persistent row intentionally has no `:focus-within` accent override: focus
 must not replace its neutral border with a workspace `--color-60` outline.
 
@@ -335,9 +521,60 @@ palette only, and `savedPanels/snapshot`, which
 `extensions/bento-shell/src/state/savedPanels.ts` mirrors globally. This path
 does not use `privacy/setDefaultSearchEngine` and never mutates Bento Settings
 or Firefox's default search engine.
-`extensions/bento-tools/src/search/AddressSearch.ts` treats an empty query as a
-new-tab top-sites request using `browser.topSites.get({ newtab: true })`, with
-recent history as a fallback if the top-sites API is unavailable or not ready.
+`extensions/bento-tools/src/search/AddressSearch.ts` independently requests two
+recently closed tabs, two recent history pages (`startTime: 0`, native visit
+order), and two new-tab top sites (`newtab: true`, native order). An unavailable
+source omits only its own group. `search/ClosedSessions.ts` scans at most 25
+sessions, skips window sessions, and requires the original tab window and private
+status to match the trusted action context. Unknown context returns no closed
+tabs. Closed sessions remain distinct even when their URLs match.
+
+`AddressBar` dispatches `addrbar/query` after a 120ms debounce keyed by query,
+`openVersion`, and error refresh. It registers a fresh opaque `requestId` before
+dispatch and invalidates it immediately on input/open changes. The
+`useAddressBarStore` mirror accepts results only for its latest id and normalized
+query, so equal-query replies from earlier opens or other documents cannot replace
+current rows. This path writes no persistent state and does not use title IPC.
+
+Closed rows carry `sessionId` and optional epoch-ms `closedAt`; recent-history
+rows carry optional epoch-ms `lastVisitTime`. Activating a closed row sends
+`addrbar/restoreClosed` with a separate request id. Tools re-queries eligible
+sessions before calling `browser.sessions.restore(sessionId)` for that exact id.
+There is no latest-session or URL fallback. A pending activation blocks another
+row activation and makes the input read-only. A correlated success closes the
+palette; unavailable/failed outcomes keep it open with a status and refresh all
+sources. A newer open ignores the earlier restore outcome.
+
+Native restore resolves before Bento classification completes. The tools handler
+awaits `prepareRestoredTab`: `background.ts` shares the in-flight
+`maybeRestorePanelFromMarker` task with its existing onCreated path. That task asks
+`TabRegistry.hydrateRestoredTab` to validate retained membership before consuming
+the closing mark and re-reading native workspace/folder/custom-title values.
+Only then does it resolve the saved workspace's owning window. If that window
+is different from Firefox's native restore window, it moves only the restored
+tab with `moveWorkspaceTabsToWindow`, preserving its identity, history and panel
+classification. It awaits workspace activation, normal-tab selection or targeted
+panel sync, and window focus before reporting the actual destination window in
+the original correlated reply. A failed move, reveal or changed ownership reports
+failure. Private restores stay in the requesting private window. It must never
+activate a tab early and clear a still-restoring panel marker.
+
+Ordinary single, bulk, main-tab and non-DevTools pinned-panel closes opt into
+`markClosing(id, { preserveSessionMembership: true })`. Live membership and pending
+assignments are cleared immediately; existing regular-tab `bento.workspaceId`
+and `bento.folderId` values remain for Firefox's native closed session. Private
+membership is never retained. Cleanup, workspace deletion, startup sweeps,
+DevTools and panel-layout cascades keep destructive marking.
+
+On restore, the saved workspace must still exist and the saved folder must still
+belong to it. A deleted workspace, including one automatically deleted after its
+last tab closes, falls back to the current window's workspace. Deleted or moved
+folders are dropped. Bento closing marks never authorize import adoption or
+workspace resurrection, including through panel markers. Unmarked genuine
+imports retain their adoption path. Startup marked live tabs are swept rather
+than treated as undo-close requests. Existing beforeunload cancellation rollback
+and the panel marker remain in use; no replacement tab or URL fallback is used.
+
 The address palette uses Mux UI's standard opaque `CommandPalette` popup with
 an explicit `var(--neutral-5)` background. Its `CommandPalette.Backdrop` is a
 non-painting wrapper used only for React Aria modal context, and the chrome
@@ -353,8 +590,9 @@ capture before opening.
 populates it from `tab.url` or `pendingUrl`, emits URL update deltas, and emits
 URL-clearing deltas when Firefox no longer exposes a usable URL for the tab. The
 address helpers do not build open tab/panel rows while `query.trim()` is empty.
-For empty floating new-tab opens, a validated clipboard URL row is prepended
-ahead of saved-panel and top-site rows. Saved-panel rows are built from the
+For empty floating opens, Recently Closed, Recent History and Top Sites come
+first, with two rows each. Empty new-tab opens append a validated clipboard URL
+row and saved-panel rows after those groups. Saved-panel rows are built from the
 global saved-panel mirror and dispatch `panel/openAt` with `position: 'end'`, so
 they append as side panels instead of opening as main tabs. These default rows
 are removed as soon as the user types. After typing,
@@ -378,6 +616,13 @@ blob/chrome/resource icon URLs before handing them to React. The sidebar uses
 that icon in the closed picker and shows full engine names only inside the
 opened menu.
 
+The engine `Select` is a React sibling of `CommandPalette.Content`, inside the
+palette popup/dialog. `createPortal` places it in the toolbar's boxless
+`bento-address-bar__engine-slot`; search input and results remain in Content.
+Content supplies Autocomplete collection and virtual-focus context, which must
+not reach the independent Select list. The portal preserves the popup's React
+event ancestry, including its pointer-capture dismissal guard.
+
 Shared row shaping for tools results, synthetic open/search rows, saved-panel
 defaults, URL-like detection, row text, and one-shot engine payload selection
 lives in `components/AddressBar/addressRows.ts`. Both the sidebar row and
@@ -385,6 +630,20 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 
 ## Address Entry Pitfalls
 
+- Isolated shell packages must include `dist/assets/background.js`, as declared
+  by the shell manifest. Putting the relay at `dist/background.js` leaves the
+  sidebar connecting and the engine picker unhydrated. Check manifest resources
+  and compare the complete tested and staged file trees; extra files in a test
+  app can otherwise hide a missing entry point.
+- Empty Enter must fall through to Mux's focused option. Only typed input uses
+  the synthetic search/open submission override. Keep modifiers and IME unchanged.
+- Keep `requestId` in both query and result payloads: query text alone cannot
+  distinguish repeated empty opens or equal queries from other documents.
+- Keep `openVersion` in the debounced query effect. The address component survives
+  closing, and each empty open clears its result mirror. Depending only on query
+  changes leaves an empty-to-empty reopen blank. Verify repeated empty opens,
+  typing then reopening empty, and reopening before the 120ms debounce fires in
+  an isolated native test profile.
 - Keep native top-urlbar interception in chrome, not in the extension frame; the
   Firefox suggestions popup is created by parent chrome urlbar code before the
   remote Bento UI can react.
@@ -437,9 +696,87 @@ floating fallback use those helpers so autocomplete behavior does not drift.
   host opacity to `0` with transitions disabled before changing host geometry.
   Otherwise the previous centered popup can briefly paint in the full-window
   anchored host at top center.
-- Keep the address `CommandPalette` animation opacity-only. Mux UI's default
-  command-palette transform transition causes visible movement when switching
-  between anchored sidebar opens and centered shortcut/new-tab opens.
+- Keep the centered address `CommandPalette` animation opacity-only. Mux UI's
+  default command-palette transform transition causes visible movement when
+  switching between anchored sidebar opens and centered new-tab opens. The anchored
+  popup has no document fade at all and grows instead (see "Grow motion").
+- A `position: fixed` element always forms a stacking context, so the Mux popup's
+  `z-index: 101` ranks only inside its (fixed) backdrop. In a Ladle story that renders
+  `SidebarAddressBar` under the popup, the row's own `z-index: 2` outranks the popup
+  unless the story wraps the sidebar at `z-index: 0`. In the real window the two live in
+  separate documents, so only the story needs it.
+- Do not put the anchored popup's elevation back on the popup itself (see "Grow
+  motion"), and do not read a `clip-path` end value from a CSS variable.
+- The anchored popup must not be capped by Mux's `max-height: min(84vh, 45rem)`. The
+  shadow and the grow's start insets use the popup's box, so a popup capped below it
+  (84vh of a 445px window is 373.8px against a 378px placement) stands short of the shadow
+  and starts its grow at the wrong row height: the gap and the bright strip come back. Any
+  new Mux sizing rule on the popup (`max-*`, `min-*`) needs the same override on the anchored
+  rule.
+- Do not size the anchored popup from the placement alone. Chrome does not place an open
+  palette again, so a popup left at 378px after the window shrank to a 320px viewport kept an
+  oversized list scroll area, and the last result sat below the window's edge, out of reach.
+  The popup and the shadow both read `--bento-address-bar-fit-width` and `-height` (the
+  placement capped by the room left); keep them on that one size, and keep
+  `--bento-address-bar-anchor-margin` equal to chrome's `ADDRBAR_ANCHOR_MARGIN_PX`.
+- Measure the popup for the grow, never take `placement.width` and `height` for it: where the
+  180px minimum exceeds the room below the row (a short window, a low row) the rendered popup
+  is smaller than the placement, and a clip or a shadow scale built from the placement starts
+  larger than the row's box.
+- Measure the popup again just before the grow runs. The address bar document is hidden
+  between opens, and a hidden frame keeps the window size it had when it was hidden: for its
+  first ~100 ms after being shown the viewport (so `100vh` and the cap) is the old one. The
+  first measure then reads a popup of the wrong height, and clip insets built from it start
+  the grow at the wrong box (a 32px row grew from a 368px box after the window had been
+  enlarged while the palette was closed). The host is still faded out at that point, so the
+  start values can be rewritten before the transition begins.
+- A cached "last delivered" value belongs to the document it was delivered to. A reloaded or
+  re-created shell document comes back with `paletteOverRow` false, so a palette open over the
+  row showed the new row's border under the palette until a close and open cycle, because the
+  next reveal saw the cache already `true` and sent nothing. Reset
+  the cache on the document's `BENTO_SIDEBAR_ADDRESS_READY` announcement and sync again.
+- Only the latest over-row value may be delivered. Record the wanted state before sending
+  and let every retry re-read it; never queue a retry of a message built from an earlier
+  value. A cache set only when a send succeeds, with the helper's own retry, let a failed
+  open's retry land `open: true` after Esc (Esc skipped the `false` because the cache still
+  matched), and the row stayed borderless after the palette closed.
+- The elevation sibling must ride the same spring pair as the clip, not a fade after
+  it. A shadow at full size (or fading in on a delay) while the clip still has the
+  spring's tail left (9 to 11px on the right and bottom of a 512 by 378 popup at
+  the 200 ms visual duration) leaves a gap between the popup's edge and the shadow's
+  box, and the page shows through it as a bright strip that reads as an inner border.
+  Keep its scale on the clip's start box and its `transform`, `opacity` and the clip on
+  one `reveal` spring pair.
+- A missing Cmd+L answer must still open: never wait for the row without the
+  `ADDRBAR_OPEN_RETRY_MS` fallback, and never act on an answer `takeAddrbarOpenRequest`
+  does not know, or one shortcut press can open the palette twice.
+- Focusing `#bento-shell-frame` restores focus to the row's read-only input, whose
+  `onFocus` opens the palette. A runtime probe that needs the chrome window focused
+  (a Cmd+L test) must clear the focus (`Services.focus.clearFocus(window)`) instead of
+  focusing the shell frame, or the palette opens before the key is sent.
+- The address bar document stays hidden between opens, so a colour-mode flip reaches it
+  on its next show: the first anchored open after a flip can paint the start frame
+  mid-fade (the popup background between the old and new mode). Later opens, and every
+  open after a workspace theme change, start on the row's exact colour.
+- The grow's two clip radii are read, not written: `to` from the popup's computed
+  `border-top-left-radius` (the container radius), `from` from
+  `--bento-address-bar-grow-from-radius`, a registered `<length>` the anchored popup rule
+  sets to `--bento-sidebar-address-field-radius` (registered so `getComputedStyle` returns
+  px, where an unregistered custom property returns the `0.375rem` text). The clip rounds
+  the row's box with the row's radius and the corners ease out to the popup's as it grows.
+  The popup's own `border-radius` (12px) still cuts the top-left corner on every frame,
+  because that corner is the row's and the clip's 6px curve lies inside it; the clip radius
+  only shapes the other three corners of the start frame. The row sits in another document
+  under the transparent overlay, so its 6px corner and border would show through the crescent
+  between the two curves, at rest and on the start frame alike: a faint second arc outside
+  the popup's top-left corner (measured in Default: at most 11/255 lighter or darker than
+  the surface on the diagonal, 22/255 along the arc, in light and dark mode). The row's
+  border fades out while the anchored palette is over it ("Row border fade"); the row's
+  background is the sidebar's, so the border is all that shows. Do not give the palette the
+  row's radius to hide the arc (the two radii differ on purpose), and do not drop the
+  `palette-over-row` message or the row's `border-color` transition without restoring the
+  arc. The row's border is transparent only while chrome says the palette is over it, so a
+  centered open or a missed `open: false` would leave the row borderless.
 - The address bar host fades on the Mux `modal` role
   (`ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)'`).
   `hideAddrbar` sets opacity 0 and `hideOverlayHostAfterFade` commits `display: none`
@@ -449,7 +786,25 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep the address popup and search-engine picker popover on `var(--neutral-5)`
   surfaces so the palette reads as a traditional neutral command palette in
   light and dark modes.
-- Keep the nested search-engine `Select.Popover` non-modal. React Aria's
+- Scope engine-picker geometry to `bento-address-bar__engine-*` classes, not
+  Mux Select part names. The local Mux rename from `muxui-select-trigger` to
+  `muxui-select__trigger` left the old overrides unmatched and restored the
+  default 10rem trigger minimum (160px at the 16px root). Keep the compact
+  `width: auto`/`min-width: 0` override, hidden selected name, anchored height,
+  and independent menu sizing. Resting transparency must exclude hover,
+  native `:focus-visible`, `[data-focus-visible]`,
+  `[data-muxui-state-focus-visible]` and `[aria-expanded='true']`; the last also
+  drives the Bento chevron's rotation. Check anchored/centered and light/dark
+  states against both npm and existing local generated Mux output.
+- Keep the engine Select outside `CommandPalette.Content` in React ancestry,
+  even though its toolbar host is inside Content in the DOM. Nesting the Select
+  under Content makes it inherit Autocomplete's collection ref, listbox ID and
+  virtual focus: ArrowDown closes the engine menu without changing selection,
+  and its option becomes the search input's active descendant. A DOM portal
+  from inside Content or an ID-only patch does not isolate that context. Verify
+  native Tab, Enter, ArrowDown and Enter with empty and typed queries, separate
+  listbox references, Escape/Tab focus return and parent result navigation.
+- Keep the nested search-engine `Select.Popup` non-modal. React Aria's
   default select underlay catches clicks meant for the command palette and can
   turn a provider-menu dismissal into a full address-palette dismissal.
 - Search provider icons come from Firefox `SearchService` engines. Native
@@ -472,13 +827,14 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Keep expanded-sidebar address editing in the shared address overlay. A
   sidebar-frame popover cannot reliably paint over the panel strip/main content
   because the sidebar is a chrome-hosted iframe with its own paint bounds.
-- Keep the sidebar-anchored address overlay smaller than the centered shortcut
-  overlay. The anchored cap is 80% of the standard width and 90% of the
-  standard height; shortcut/new-tab/top-urlbar opens keep the standard centered
+- Keep the sidebar-anchored address overlay smaller than the centered overlay. The
+  anchored cap is 80% of the standard width and 90% of the standard height; new-tab,
+  top-urlbar and collapsed or hidden sidebar opens (including `Cmd/Ctrl+L` and
+  `Cmd/Ctrl+E` while the expanded row is not on screen) keep the standard centered
   dimensions.
-- Do not route shortcut, new-tab, or top-urlbar fallback opens through sidebar
-  row focus. Those entry points must keep the centered address/search overlay;
-  only direct activation of the sidebar URL row should pass an anchor.
+- Only the sidebar URL row passes an anchor: a click on it, or its answer to a
+  `Cmd/Ctrl+L` or `Cmd/Ctrl+E` open request. `Cmd/Ctrl+T`, `New tab` and top-urlbar
+  fallback opens must keep the centered address/search overlay and never ask the row.
 - Keep address-palette search-engine state separate from privacy settings. The
   picker is a one-shot override for submitted non-URL searches only.
 - Keep the picker dirty flag tied to `openVersion`. Late search-engine snapshots
