@@ -35,6 +35,7 @@ import { createRailTransition, type RailTransition } from './sidebar/railTransit
 import { createRailTransitionDom } from './sidebar/railLayout';
 import './sidebar/railTransition.css';
 import { observeFooterButtonEdges, type FooterButtonEdges } from './sidebar/footerAnchor';
+import { startSoftcastDemo } from './dev/initSoftcastDemo';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -150,6 +151,19 @@ export function App() {
   const folders = useWorkspaceFolders(activeWorkspaceId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
+  useEffect(() => {
+    if (typeof __BENTO_SOFTCAST_DEMO__ === 'undefined' || !__BENTO_SOFTCAST_DEMO__) return;
+    if (
+      ready &&
+      windowId !== null &&
+      activeWorkspaceId &&
+      workspacesById[activeWorkspaceId] &&
+      useTabsStore.getState().hydrated &&
+      !isPrivate
+    ) {
+      startSoftcastDemo(windowId, activeWorkspaceId);
+    }
+  }, [ready, windowId, activeWorkspaceId, workspacesById, tabsById, isPrivate]);
   const activePanelIds = usePanelsStore((s) => getPanelIdsForWorkspace(s, activeWorkspaceId));
   const activePanelsHydrated = usePanelsStore((s) =>
     activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,

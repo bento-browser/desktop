@@ -10,6 +10,9 @@ import type { TabSnapshot } from '@shared/protocol';
 import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
 import { useUiStore } from '../../state/ui';
+import { useSettingsStore } from '../../state/settings';
+import { softcastPresentation } from '../../dev/softcast';
+import { SoftcastIcon } from '../../dev/SoftcastIcon';
 import { BentoIcon, Row } from '../primitives';
 import './TabRow.css';
 
@@ -70,18 +73,38 @@ function TabRowImpl({
   const [draftTitle, setDraftTitle] = useState('');
   const renameRequest = useUiStore((state) => state.renameRequest);
   const clearRenameRequest = useUiStore((state) => state.clearRenameRequest);
+  const tabStateTintsEnabled = useSettingsStore(
+    (state) => state.current?.tabStateTintsEnabled ?? true,
+  );
+  const customTabStateIconsEnabled = useSettingsStore(
+    (state) => state.current?.customTabStateIconsEnabled ?? true,
+  );
   const convertToPanelDescriptionId = useId();
   const closeTabDescriptionId = useId();
   if (liveTab) lastSeenRef.current = liveTab;
   const tab = liveTab ?? lastSeenRef.current;
+  const displayTitle = tab?.customTitle || tab?.title || 'Untitled';
+
+  useEffect(() => {
+    if (renameRequest?.kind !== 'tab' || renameRequest.id !== id) return;
+    if (!removing && !dragging) {
+      setDraftTitle(displayTitle);
+      setRenaming(true);
+    }
+    clearRenameRequest();
+  }, [clearRenameRequest, displayTitle, dragging, id, removing, renameRequest]);
+
   if (!tab) return null;
 
   const loading = tab.loading ?? false;
   const discarded = tab.discarded ?? false;
+  const softcast =
+    typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
+      ? softcastPresentation(tab, location.href, true)
+      : null;
   const audible = tab.audible;
   const muted = tab.muted ?? false;
   const showAudioControl = audible || muted;
-  const displayTitle = tab.customTitle || tab.title || 'Untitled';
   const convertToPanelLabel = 'Convert to panel';
   const closeTabLabel = 'Close tab';
   const audioLabel = muted ? 'Unmute tab' : 'Mute tab';
@@ -108,19 +131,11 @@ function TabRowImpl({
     setRenaming(false);
   };
 
-  useEffect(() => {
-    if (renameRequest?.kind !== 'tab' || renameRequest.id !== id) return;
-    if (!removing && !dragging) {
-      setDraftTitle(displayTitle);
-      setRenaming(true);
-    }
-    clearRenameRequest();
-  }, [clearRenameRequest, displayTitle, dragging, id, removing, renameRequest]);
-
   return (
     <Row
       gap="xs"
       data-bento-tab-id={id}
+      data-softcast-state={tabStateTintsEnabled ? softcast?.state : undefined}
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
@@ -205,10 +220,10 @@ function TabRowImpl({
           </IconButton>
         </span>
       )}
-      {/* Loading wins the favicon slot — the throbber is the cue Firefox
-       * users expect to mean "fetching". Discarded only dims the favicon
-       * (handled via the row modifier in CSS). */}
-      {loading ? (
+      {/* Demo fixtures affect presentation only; ordinary builds retain the native loading cue. */}
+      {customTabStateIconsEnabled && softcast ? (
+        <SoftcastIcon icon={softcast} loading={loading} />
+      ) : loading ? (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--loading">
           <ProgressCircle.Root size="sm" aria-label="Loading">
             <ProgressCircle.Track />

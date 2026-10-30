@@ -6,8 +6,10 @@
  * rail. A collapse animates to the rail places, an expand from them: each phase names
  * its keyframes in --bento-rail-move / -fade / -rise and the rules are shared.
  *
- * Timing: moves are 0.6 of the reveal spring pair; fades (text, fills, the address
- * bar's fold) are the `state` pair, and trailing controls leave on `dismiss`. Staggers are 1/32 of the spring
+ * Timing: moves are 0.6 of the reveal spring pair, except the Search square's across move
+ * (below), which takes the whole pair so it keeps pace with chrome's host edge; fades (text,
+ * fills, the address bar's fold) are the `state` pair, and trailing controls leave on
+ * `dismiss`. Staggers are 1/32 of the spring
  * duration: the header takes units 0 to 2 here, rows from 3 and the footer buttons
  * (toggle first) are written by script, since a delay may not read a non-Mux variable.
  * 'measure' only turns the row transitions off, for the synchronous reads and the settle.
@@ -72,6 +74,19 @@
       z-index: 4;
       border-top-color: transparent;
     }
+    /* The switcher trigger's ring is Mux's button shadow (an inset 1px edge and a faint drop
+       shadow in a Mux that sets one, none in the npm rc.1). It stays at the expanded box for
+       the whole phase, since the trigger does not move, so it would hang around the avatar's
+       rail place and snap off at the settle. The trigger drops it and the fading fill layer
+       draws it instead: the custom property is inherited, so the layer paints exactly the
+       shadow the trigger would (whatever state it is in) and the ring fades with the fill
+       (the box is the same: the button has no border). Keyboard focus keeps Mux's focus ring. */
+    & .bento-workspace-switcher__trigger:not(:focus-visible) {
+      box-shadow: none;
+    }
+    & .bento-workspace-switcher__trigger::before {
+      box-shadow: var(--muxui-button-shadow);
+    }
     & :is(.bento-tab-list__hover-highlight, .bento-tab-list__action-highlight) {
       visibility: hidden;
     }
@@ -80,17 +95,16 @@
         .bento-tab-row,
         .bento-folder-row,
         .bento-workspace-switcher__trigger,
-        .bento-workspace-switcher__avatar-frame,
         .bento-tab-list__viewport--top-surface
       ) {
       isolation: isolate;
     }
 
-    /* Drawn fills: the switcher's fill fades while the rail square fades in under the
-       moving avatar; the active row is a cap the size of the rail square over a tail
-       that retracts under it (clipped by the row); a folder row's outline and the
-       pinned and folder band cross-fade between the full row and the rail square. */
-    & :is(.bento-workspace-switcher__trigger, .bento-workspace-switcher__avatar-frame)::before,
+    /* Drawn fills: the switcher's fill and ring fade out (the rail avatar has neither); the active
+       row is a cap the size of the rail square over a tail that retracts under it
+       (clipped by the row); a folder row's outline and the pinned and folder band
+       cross-fade between the full row and the rail square. */
+    & .bento-workspace-switcher__trigger::before,
     & .bento-tab-row--active::before,
     & .bento-tab-row--active::after,
     & .bento-folder-row::before,
@@ -103,12 +117,6 @@
       z-index: -1;
       border-radius: inherit;
       background-color: var(--bento-workspace-switcher-fill);
-    }
-    & .bento-workspace-switcher__avatar-frame {
-      border-radius: var(--muxui-semantic-shape-radius-s);
-    }
-    & .bento-workspace-switcher__avatar-frame::before {
-      background-color: var(--bento-workspace-switcher-rail-fill);
     }
     & .bento-tab-row--active::before,
     & .bento-tab-row--active::after {
@@ -207,14 +215,12 @@
         .bento-workspace-switcher__trigger-name,
         .bento-workspace-switcher__chevron,
         .bento-tab-list__new-action-label,
-        .bento-tab-list__search-trigger,
-        .bento-tab-list-search,
         .bento-tab-row__actions,
         .bento-tab-row__audio-control,
         .bento-sidebar-cards
       ),
     & :is(.bento-tab-row, .bento-folder-row) > .muxui-text,
-    & :is(.bento-workspace-switcher__trigger, .bento-workspace-switcher__avatar-frame)::before,
+    & .bento-workspace-switcher__trigger::before,
     & .bento-pinned-panels + .bento-shell-app__main::after,
     & .bento-tab-list__viewport--top-surface::before,
     & .bento-folder-row::before,
@@ -223,7 +229,7 @@
       animation-name: var(--bento-rail-fade);
     }
     /* The rail's own fills enter as the expanded ones leave. */
-    & :is(.bento-workspace-switcher__avatar-frame, .bento-folder-row)::before {
+    & .bento-folder-row::before {
       animation-direction: reverse;
     }
     /* Pinned panels slide out with the main column's shift and fade; the address bar
@@ -265,30 +271,55 @@
     & .bento-tab-list__new-action-button svg {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
     }
+    /* The Search square moves in two animations, across (translate) and down (transform), as
+       does the open search field's row (TabList.css). Its vertical move shares the list
+       region's timing (0.6 of the spring), so the square rises and settles with the list
+       instead of overshooting it. It travels 150 to 250 px across against 15 to 30 for the other
+       items, so its across move takes the whole spring pair from the start, like chrome's
+       slide of the host: it keeps a constant gap to the strip's edge (about 10 px) rather than
+       outrunning it. Both start at 0, which also holds it off the New square (the list's
+       rise leaves New's row long before the square reaches New's column; in an expand the
+       square is clear of the icon's column before the icon moves) and off New's label (faded
+       by then in a collapse, not yet shown in an expand). */
+    & .bento-tab-list__new-actions .bento-tab-list__search-trigger {
+      animation-name: var(--bento-rail-move-x), var(--bento-rail-move-y);
+      animation-duration:
+        var(--muxui-semantic-motion-reveal-transition-spring-duration),
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.6);
+      animation-timing-function: var(--muxui-semantic-motion-reveal-transition-spring-easing);
+      animation-fill-mode: both;
+    }
   }
 
   html[data-bento-rail-transition='collapse'] {
     --bento-rail-move: bento-rail-to;
+    --bento-rail-move-x: bento-rail-to-x;
+    --bento-rail-move-y: bento-rail-to-y;
     --bento-rail-fade: bento-rail-out;
     --bento-rail-rise: bento-rail-from;
+    --bento-rail-fold: bento-rail-fold-in;
+    --bento-rail-fold-fill: bento-rail-fold-fill-to;
+    --bento-rail-fold-ring: bento-rail-fold-ring-to;
 
     & .bento-shell-app {
       animation: bento-rail-hold
         calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 2) both;
     }
-    &
-      :is(
-        .bento-tab-list__new-action-label,
-        .bento-tab-list__search-trigger,
-        .bento-tab-list-search
-      ) {
+    & .bento-tab-list__new-action-label {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 16);
+    }
+    /* The plain trigger has no delay (the field it would wait for does not exist). Behind a
+       folding field (the trigger is hidden) it keeps the field row's timing, so a reversal
+       hands the square from one to the other without a jump (TabList.css): across from the
+       start, down a unit after. */
+    & .bento-tab-list__new-actions .bento-tab-list__search-trigger[data-rail-folding] {
+      animation-delay:
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0),
+        calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) / 32);
     }
     &
       :is(
         .bento-workspace-switcher__chevron,
-        .bento-tab-list__search-trigger,
-        .bento-tab-list-search,
         .bento-tab-row__actions,
         .bento-tab-row__audio-control,
         .bento-sidebar-cards
@@ -300,8 +331,13 @@
 
   html[data-bento-rail-transition='expand'] {
     --bento-rail-move: bento-rail-from;
+    --bento-rail-move-x: bento-rail-from-x;
+    --bento-rail-move-y: bento-rail-from-y;
     --bento-rail-fade: bento-rail-in;
     --bento-rail-rise: bento-rail-to;
+    --bento-rail-fold: bento-rail-fold-out;
+    --bento-rail-fold-fill: bento-rail-fold-fill-from;
+    --bento-rail-fold-ring: bento-rail-fold-ring-from;
 
     & .bento-shell-app {
       animation: bento-rail-hold var(--muxui-semantic-motion-reveal-transition-spring-duration) both;
@@ -309,25 +345,52 @@
     & :is(.bento-workspace-switcher__trigger-name, .bento-tab-list__new-action-label) {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.15);
     }
-    &
-      :is(
-        .bento-workspace-switcher__chevron,
-        .bento-tab-list__search-trigger,
-        .bento-tab-list-search,
-        .bento-sidebar-cards
-      ) {
+    & :is(.bento-workspace-switcher__chevron, .bento-sidebar-cards) {
       animation-delay: calc(var(--muxui-semantic-motion-reveal-transition-spring-duration) * 0.3);
     }
   }
 
+  /* The search square and field row move across and down separately (see the trigger rule above). */
+  @keyframes bento-rail-to-x {
+    from {
+      translate: var(--bento-rail-seed-x, 0px) 0px;
+    }
+    to {
+      translate: var(--bento-rail-x, 0px) 0px;
+    }
+  }
+  @keyframes bento-rail-from-x {
+    from {
+      translate: var(--bento-rail-seed-x, var(--bento-rail-x, 0px)) 0px;
+    }
+  }
+  @keyframes bento-rail-to-y {
+    from {
+      transform: translateY(var(--bento-rail-seed-y, 0px));
+    }
+    to {
+      transform: translateY(var(--bento-rail-y, 0px));
+    }
+  }
+  @keyframes bento-rail-from-y {
+    from {
+      transform: translateY(var(--bento-rail-seed-y, var(--bento-rail-y, 0px)));
+    }
+  }
+  /* The search square and field row can start from where a reversed phase left them
+     (--bento-rail-seed-x/-y, written by railLayout.ts); every other part has no seed. */
   @keyframes bento-rail-to {
+    from {
+      translate: var(--bento-rail-seed-x, 0px) var(--bento-rail-seed-y, 0px);
+    }
     to {
       translate: var(--bento-rail-x, 0px) var(--bento-rail-y, 0px);
     }
   }
   @keyframes bento-rail-from {
     from {
-      translate: var(--bento-rail-x, 0px) var(--bento-rail-y, 0px);
+      translate: var(--bento-rail-seed-x, var(--bento-rail-x, 0px))
+        var(--bento-rail-seed-y, var(--bento-rail-y, 0px));
     }
   }
   @keyframes bento-rail-out {
@@ -338,6 +401,70 @@
   @keyframes bento-rail-in {
     from {
       opacity: 0;
+    }
+  }
+  /* The search field closing onto the Search trigger (collapse) or opening from it (expand):
+     the box narrows (or grows) with its right edge anchored at the trigger's, the way an
+     Esc close does, and its icon settles at the trigger's inset. The square it ends as rides
+     the trigger's own move to the rail slot (TabList.css times both). A reversed phase starts
+     from the geometry the running one left (--bento-rail-seed-*). */
+  @keyframes bento-rail-fold-in {
+    from {
+      margin-inline-start: var(--bento-rail-seed-margin, 0px);
+      padding-inline-start: var(
+        --bento-rail-seed-padding,
+        var(--bento-tab-list-search-field-inset)
+      );
+    }
+    to {
+      margin-inline-start: calc(100% - var(--bento-tab-list-search-trigger-width));
+      padding-inline-start: var(--bento-tab-list-search-trigger-inset);
+    }
+  }
+  @keyframes bento-rail-fold-out {
+    from {
+      margin-inline-start: var(
+        --bento-rail-seed-margin,
+        calc(100% - var(--bento-tab-list-search-trigger-width))
+      );
+      padding-inline-start: var(
+        --bento-rail-seed-padding,
+        var(--bento-tab-list-search-trigger-inset)
+      );
+    }
+    to {
+      margin-inline-start: 0px;
+      padding-inline-start: var(--bento-tab-list-search-field-inset);
+    }
+  }
+  /* The field's text fades out on a collapse from whatever it shows (a reversed expand may
+     not have faded it in yet). */
+  @keyframes bento-rail-fold-text-out {
+    from {
+      opacity: var(--bento-rail-seed-text, 1);
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes bento-rail-fold-fill-to {
+    to {
+      background-color: transparent;
+    }
+  }
+  @keyframes bento-rail-fold-fill-from {
+    from {
+      background-color: transparent;
+    }
+  }
+  @keyframes bento-rail-fold-ring-to {
+    to {
+      box-shadow: inset 0 0 0 var(--bento-border-hairline) transparent;
+    }
+  }
+  @keyframes bento-rail-fold-ring-from {
+    from {
+      box-shadow: inset 0 0 0 var(--bento-border-hairline) transparent;
     }
   }
   /* A timer only: the collapse fallback (twice the spring, for a viewport that never

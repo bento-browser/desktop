@@ -1,6 +1,7 @@
 // Navigation of the Settings palette: a stack of stages, Esc pops one, and the nav row shows
 // the path. Pure so the rules are tested without rendering.
 
+import type { SettingsCategoryId } from './categories';
 import type { EnumKey, NumberSettingKey } from './settingsCatalog';
 
 export type ConfirmAction =
@@ -10,6 +11,7 @@ export type ConfirmAction =
 
 export type Stage =
   | { kind: 'root' }
+  | { kind: 'category'; id: Exclude<SettingsCategoryId, 'shortcuts'> }
   | { kind: 'number'; key: NumberSettingKey }
   | { kind: 'enum'; key: EnumKey }
   | { kind: 'protection' }
@@ -77,6 +79,8 @@ export function isEditorStage(stage: Stage): boolean {
 /** Identity of a stage, used to remount the list when the stage changes. */
 export function stageKey(stage: Stage): string {
   switch (stage.kind) {
+    case 'category':
+      return `category:${stage.id}`;
     case 'number':
     case 'enum':
       return `${stage.kind}:${stage.key}`;

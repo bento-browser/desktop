@@ -104,7 +104,7 @@ native Bookmarks sidebar uses Bento-scaled title styling, matches the Bento
 sidebar address field for bookmark search, and has its own resizable edge
 separate from the main Bento sidebar. The manual "Merge browser session" action
 opens from the command palette's "Merge browser session" command or from the
-"Merge browser session" row in the Backup and data group of the Settings palette
+"Merge browser session" row in the Backup and data category of the Settings palette
 (not shown in private windows); from Settings it opens over the same window. While a merge is running, a progress card floats over the
 bottom of the sidebar's tab list, above the footer: a progress ring (with the
 percentage inside once the tab totals are known), "Importing from" the source
@@ -285,7 +285,7 @@ creating the tab only after the user commits. In collapsed sidebar mode, it
 opens the same centered address/search fallback. `New panel`
 opens a blank panel in the active workspace. A
 search icon beside those controls widens on hover or keyboard focus to show its
-"Search" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
+"Search tabs" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
 so the actions remain available anywhere in a long tab list. Typing filters
 open tabs and side panels across all
@@ -295,6 +295,21 @@ button that empties a typed query and keeps the field open; on an empty field
 the same button closes search, like Esc. While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
 and creation controls are hidden until the query is cleared or search closes.
+In the collapsed rail, Search is a square directly under New, with the same hover
+highlight and no label. The rail's squares (the workspace button, New, Search and the
+first tab) sit one equal gap apart. Pressing it expands the sidebar and opens the search field
+focused. Collapsing the sidebar with the field open folds it into that square: the
+placeholder, query and clear button fade, the results give way to the tab rows,
+the field shrinks toward the Search button at the right end of its row, and that
+square then glides to its slot under New as the rows shift down one slot, never
+passing over New. An empty field is simply closed. A typed query is kept
+("parked"): the square then shows a ring and a small dot, and expanding the sidebar
+again by any means reopens the field with that query and its results: the square
+glides back to the right end of the row and unfolds leftward into the field. Reversing
+either move midway carries on from where the field is. Esc, the
+clear button and choosing a result clear the query as before, and switching
+workspace keeps a parked query. With reduced motion on, none of it moves; the
+rail simply shows or drops the ring and dot.
 Each result shows the page title with the site's domain beneath it in smaller,
 muted text. Pages without a web domain, such as extension pages, show the title
 alone in a standard-height row, and built-in `about:` pages show their address.
@@ -340,8 +355,8 @@ that glides from row to row and fades out when the pointer leaves the list. It
 is hidden while dragging a row and does not slide when the user has asked the
 system to reduce motion. The New and Search buttons above the list share that
 look with their own highlight, which glides between the two buttons and stays
-inside the action bar; moving into the list fades it out as the row highlight
-fades in. It is hidden while Search is open.
+inside the action bar (in the rail, between the New and Search squares); moving into
+the list fades it out as the row highlight fades in. It is hidden while Search is open.
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.
@@ -419,7 +434,7 @@ icon-only clear affordance. While you type, a Settings group lists the settings
 that match by name (not in the empty palette, and without their values);
 choosing one opens the Settings palette at that setting: on its own list for a
 number, choice, search engine, privacy or shortcuts setting, and on the
-first list with its name typed in for a switch. A private window's results leave
+category with its name typed in for a switch. A private window's results leave
 out the backup settings.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
@@ -427,10 +442,17 @@ at the top of the sidebar above the tab list. It mirrors the active main
 tab's URL, loading state, Firefox security identity state, and regular Firefox
 bookmark state, with one-click actions to copy the current URL or toggle the
 regular bookmark state. The copy action shows a `Copied` tooltip after the URL
-has been written to the clipboard. Clicking the row opens Bento's address entry
-below the row. Its suggestions can extend beyond the sidebar over the panel
-strip and main content slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`,
-and any fallback path
+has been written to the clipboard. Clicking the row, or pressing `Cmd/Ctrl+L` or
+`Cmd/Ctrl+E` while the expanded row is on screen, opens Bento's address entry as
+the row growing: the field sits exactly over the row, with the same height, a
+search icon where the lock sits, and the address text starting where the row's
+address starts. The row's right and bottom edges grow into the search field's
+clear button and engine picker and the suggestion list, which extend beyond the
+sidebar over the panel strip and main content slot (with reduced motion on, it
+opens at full size). The row's outline fades out as the field's outline fades in, and
+back when it closes, so only one outline shows. The current address is selected, so typing
+replaces it.
+`Cmd/Ctrl+T`, `New tab`, a collapsed or hidden sidebar, and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface and keeps
@@ -453,7 +475,8 @@ side of that divider when it is visible and track the sidebar edge as the
 sidebar is resized. The expanded sidebar cannot be manually resized narrower
 than the point where those native controls stop moving left, so the divider
 never slides underneath them. In collapsed sidebar
-mode, those same actions open the existing floating address/search fallback.
+mode, those same actions open the existing floating address/search fallback, as do
+`Cmd/Ctrl+L` and `Cmd/Ctrl+E`.
 `Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
 collapses the sidebar to the narrow rail or hides it from layout. Collapsing,
 expanding, hiding and showing slide the sidebar and the page together as one strip,
@@ -466,18 +489,27 @@ stays as it is without side panels. While the
 sidebar's edge moves on a collapse or expand, its contents reorganise in place, one
 after another from the top: the workspace avatar, the New button's plus and each tab's
 favicon move to their rail places, the address bar folds away under the rising tab
-list, names, labels and row buttons fade, the active tab's highlight retracts to its
+list, the Search square travels with the sidebar's edge to its slot under New, names, labels and row buttons fade, the workspace card's fill and outline fade, the active tab's highlight retracts to its
 rail square, and the footer buttons gather into the rail's column, toggle first. An
 expand plays the same in reverse. With reduced motion on, the change is instant. In hidden
 mode, hovering the left edge of the browser window slides the collapsed rail
 over the page without pushing content; pressing the shortcut again restores the
 expanded sidebar.
 
-In new-tab mode, if the clipboard contains a web URL, the first result offers to
-open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
+Opening the address entry with an empty field refreshes Recently Closed, Recent
+History, and Top Sites, in that order, with up to two rows each. Recently Closed
+contains tabs closed in the current window and reopens the selected native
+session, including its back/forward history. History and top-site rows navigate
+to their addresses. Reopening an ordinary closed tab or pinned panel preserves
+its workspace, folder and custom title while they still exist. If its workspace
+was deleted, it joins the current window's workspace; deleted or moved folders
+are dropped. Closed panels return as panels when their workspace still exists.
+Empty or unavailable groups are omitted. A closed tab that
+is no longer available reports that status and refreshes the suggestions.
+In new-tab mode, if the clipboard contains a web URL, a result below these groups
+offers to open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
 suggestion setting (`browser.urlbar.suggest.clipboard`): when that setting is
-off, Bento does not read the clipboard when the address entry opens. Saved panels also appear by default and open
-as side panels. Typing hides these default clipboard and saved-panel rows. After
+off, Bento does not read the clipboard when the address entry opens. Saved panels follow the clipboard suggestion and open as side panels. Typing hides these default clipboard and saved-panel rows. After
 the user types, results include capped matches for open normal tabs and panels
 from the active workspace by title or URL, plus history, bookmarks, and a final
 search/open row. The address entry includes a one-shot search-engine picker
@@ -496,6 +528,8 @@ sidebar-anchored neutral popover that can overhang the sidebar; the collapsed
 fallback uses the same opaque floating command-palette surface as before and
 does not dim the browser content behind it.
 The floating fallback address/search field uses a visible "Clear" button.
+The address palette matches the command palette's hover, keyboard-focus and pressed
+row states, with one moving highlight. Its Clear button is reachable with Tab.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
 History and bookmark rows use generic icons when no favicon source is
@@ -776,10 +810,13 @@ Bento Settings is a quick-pick palette over the window, not a page. The app menu
 "Bento Settings" item, the command palette's Open Settings command, and the
 onboarding dialog's Open Settings button open it; the command palette's
 Privacy command opens it on the protection level list, and a matching setting
-in the command palette's results opens it at that setting. It is a searchable list
-of every setting, grouped by area (Appearance, Performance, Workspaces, Panels,
-Privacy and search, Backup and data, Keyboard shortcuts, Reset), with the
-current value on each row. Enter flips a switch (the row shows the new state at
+in the command palette's results opens it at that setting inside its category. The first
+list contains categories with short descriptions: Appearance, Performance, Workspaces,
+Panels, Privacy and search, Backup and data, Keyboard shortcuts, and Reset Bento.
+Each category opens its controls with their current values; Keyboard shortcuts opens its
+reference directly. Search settings finds individual controls, advanced privacy settings
+and shortcuts across categories; a category's filter searches only its children. Opening
+a search result keeps the category in the path. Enter flips a switch (the row shows the new state at
 once and returns to the old one if the change cannot be saved) or opens a short
 list of choices, which opens on the current choice. A number with a wide range
 (Sleep tabs after, Backup interval, Default new panel width, a custom size) opens a value
@@ -795,17 +832,24 @@ or a click on the track and follows the pointer exactly while dragged), Page key
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 
+Developer builds with the Softcast demo enabled add a Tab appearance category after
+Appearance. Show tab state tints and Use custom tab state icons are independent
+switches, both On by default and saved for the whole profile. Turning tints off
+removes the status backgrounds; turning custom icons off restores Bento's loading
+indicator, website favicon or empty placeholder. Sleeping-tab styling and titles
+keep following the actual tab state. These controls are absent from ordinary builds.
+
 Every list where a value or choice changes (each number, the choices,
 protection level, default search engine, custom panel sizes and their actions, Advanced
 privacy, Backups and a stored backup, and each confirmation) opens with a short plain
 description of what the setting does, between the path and the field. It is static text:
 it does not scroll with the list and takes no focus, and a screen reader reads it with the
-field. The first list and the keyboard shortcuts have none. Where the options of a list
+field. The category root, category control lists and keyboard shortcuts have none. Where the options of a list
 behave differently (the choices, the protection levels, each Advanced privacy row, the
 size actions, the Backups rows and a stored backup's actions) every option carries a
 second, always visible line saying what it does, and the highlighted protection level
 still adds its benefits and caveats in two columns below that. Search engines and number
-presets have no second line. A list of four rows or fewer (the choices, protection level,
+presets have no second line. A list of four rows or fewer (including small categories, choices, protection level,
 a stored backup, size actions, a confirmation) has no search field: Up and Down move
 through it, Enter picks, and Esc and Back work as before. A confirmation puts what it does in that description, above
 its Cancel and confirm rows.
@@ -843,10 +887,11 @@ setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides 
 left-edge hover access. Bento bundles uBlock Origin enabled by default and
 leaves it removable/disableable by the user.
 
-Backup and data lists Export (a file download), Import (choose a file, review
-what it holds, then confirm), stored backups (restore and delete, each with a
-confirmation) and Merge browser session, which opens the merge palette. Reset
-Bento settings asks for confirmation, restores Bento settings, the protection
+Backup and data contains the automatic backup controls, an Export, import and stored
+backups list, and Merge browser session. The backups list offers Export (a file download),
+Import (choose a file, review what it holds, then confirm), stored backups (restore and delete, each with a
+confirmation) and Merge browser session, which opens the merge palette. The Reset Bento
+category contains Reset Bento settings, which asks for confirmation, restores Bento settings, the protection
 level and the search engine to their defaults, and closes the palette so the
 onboarding dialog can open again. Operations that take time keep running if the
 palette is closed, and reopening Settings reports how an operation ended if it

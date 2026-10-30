@@ -10,6 +10,12 @@ import { useSyncExternalStore } from 'react';
  * only narrows the host (the shell's viewport) at the end of a collapse, or at the
  * start of an expand. If the setting drove the visuals, the rail layout would
  * show while the shell is still wide, or the other way round.
+ *
+ * Gecko repaints a resized remote frame once before the frame's next resize-observer
+ * step, so the first paint at a new width still has the old state. When an expand
+ * widens the host, that paint is the rail laid out at the expanded width. The rail's
+ * column is capped at the rail width (app.css), so it is the settled rail rather than
+ * a rail centred outside the host's clip.
  */
 export const RAIL_ATTRIBUTE = 'data-bento-collapsed';
 
@@ -38,11 +44,13 @@ export function measureRailWidth(doc: Document = document): number {
 }
 
 /**
- * Calls `onRail(isRail)` whenever the width of `root` changes. The callback runs in
- * the resize-observer step, after layout and before paint, so what it writes lands
- * in the same frame as the width change and the narrower layout is never painted
- * with the wide visuals. The rail width is measured on the first observation that
- * can read the token (the stylesheet may not be in yet) and then kept.
+ * Calls `onRail(isRail)` whenever the width of `root` changes. `root` must keep the
+ * shell's width in the rail (the app does; only its column is capped). The callback
+ * runs in the resize-observer step, after layout and before that frame's paint, so
+ * what it writes lands in the refresh that lays the new width out. Gecko's resize
+ * repaint can show the new width once before that, with the old state (see above).
+ * The rail width is measured on the first observation that can read the token (the
+ * stylesheet may not be in yet) and then kept.
  */
 export function observeRailViewport(
   root: Element,

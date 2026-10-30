@@ -1166,16 +1166,45 @@ What a flip still does outside the fade, with the reason and the measurement beh
   `bento.tokens`.
 - Rail colours (see "Rail colour" in [workspaces.md](workspaces.md#sidebar-collapse-and-expand)):
   `--bento-toolbar-main-bg` (the toolbar's main surface, neutral-14, shared by chrome's
-  mount sheet and the shell's rail look), `--bento-rail-band-fill` and
-  `--bento-rail-square-base` (neutral-18) are declared once in `bento-tokens.css` from
-  public Mux semantic neutrals, so every theme, mode and contrast follows. A window with
-  no side panels resets them (neutral-5, neutral-12, neutral-5): chrome under
+  mount sheet and the shell's rail look) and `--bento-rail-band-fill` (neutral-18) are
+  declared once in `bento-tokens.css` from public Mux semantic neutrals, so every theme,
+  mode and contrast follows. A window with no side panels resets them (neutral-5,
+  neutral-12): chrome under
   `:root[bento-no-side-panels]` for the main colour, the shell on
   `.bento-shell-app--no-side-panels`. The rail's `--bento-brand-bg` is re-pointed on
   `.bento-shell-app` in the rail look, not at `:root`; the document background keeps the
   brand colour.
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
+
+## Demo tab appearance preferences
+
+`bento-tools` owns `BentoSettings.tabStateTintsEnabled` and
+`customTabStateIconsEnabled`, both defaulting to `true` in `SettingsStore`.
+The existing profile-wide `bento.settings` sparse overrides persist either `false`
+value without a storage version change. The shared export schema and editable
+settings rules accept booleans; reset, backup export/import and Settings snapshots
+use the same store. The existing settings transport and shell mirror deliver updates;
+no chrome bridge or Firefox state is added.
+
+Only `BENTO_SOFTCAST_DEMO=1` developer builds expose the Tab appearance category
+between Appearance and Performance, including command-palette search targets.
+The schema, defaults and catalog remain available in every build. `TabRow` resolves
+`softcastPresentation` under that build capability independently of both preferences.
+`tabStateTintsEnabled` controls only the row's `data-softcast-state` tint attribute;
+`customTabStateIconsEnabled` controls only `SoftcastIcon`. With custom icons off,
+the existing loading indicator, real favicon and placeholder branch is unchanged.
+Actual discarded styling and loading/sleeping titles remain tools-driven.
+
+Quiet status backgrounds retain the existing Mux token mixes (10% light, 14% dark),
+with active and selected fills taking precedence. Default, loading and sleeping
+remain untinted. Simulated failures still require the exact owned fixture URLs;
+real website favicons and native state detection are unchanged.
+
+Verify in an isolated demo app: open Bento Settings, switch each control separately,
+compare all four combinations on the local fixtures and a website with a favicon,
+and relaunch the same profile to confirm persistence. Reset restores both to On.
+Ordinary builds must have neither the section nor its command search entries.
 
 ## Theme pitfalls
 

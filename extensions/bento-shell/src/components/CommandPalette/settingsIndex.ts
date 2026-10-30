@@ -1,6 +1,6 @@
 // Static index of the settings the command palette can open the Settings palette at: ids, labels
 // and search words only, no values (the palette holds no settings state, and the Settings palette
-// shows the current value once it is open). Each id is the id of a root row of the Settings
+// shows the current value once it is open). Each id is the id of a control row of the Settings
 // palette (`SettingsPalette/rows.ts`); `settingsIndex.test.ts` keeps the two lists equal, and
 // `SettingsPalette/targets.ts` says where each one opens.
 //
@@ -23,6 +23,22 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     group: 'Appearance',
     keywords: ['theme', 'dark mode', 'light mode'],
   },
+  ...(typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
+    ? [
+        {
+          id: 'setting:tabStateTintsEnabled',
+          label: 'Show tab state tints',
+          group: 'Tab appearance',
+          keywords: ['status', 'background', 'color', 'quiet'],
+        },
+        {
+          id: 'setting:customTabStateIconsEnabled',
+          label: 'Use custom tab state icons',
+          group: 'Tab appearance',
+          keywords: ['status', 'favicon', 'softcast'],
+        },
+      ]
+    : []),
   {
     id: 'setting:tabSleepEnabled',
     label: 'Sleep idle tabs',

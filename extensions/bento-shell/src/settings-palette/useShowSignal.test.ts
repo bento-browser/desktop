@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { PRIVATE_MODEL, REGULAR_MODEL } from '../state/__fixtures__/settingsPalette';
+import { ROOT_TARGET, targetForModel } from '../components/SettingsPalette/targets';
 import {
   listenForVisibility,
   originForShow,
@@ -17,11 +19,31 @@ describe('targetForShow', () => {
   it('names the stages of a known target and ignores an unknown one', () => {
     expect(targetForShow(JSON.stringify({ target: 'privacy:level' })).stages).toEqual([
       { kind: 'root' },
+      { kind: 'category', id: 'privacy' },
       { kind: 'protection' },
     ]);
     expect(targetForShow(JSON.stringify({ target: 'setting:nope' })).stages).toEqual([
       { kind: 'root' },
     ]);
+  });
+});
+
+describe('show targets awaiting a snapshot', () => {
+  it('preserves a startup deep link until a ready model can accept it', () => {
+    const requested = targetForShow(JSON.stringify({ target: 'privacy:level' }));
+    expect(requested.stages.at(-1)).toEqual({ kind: 'protection' });
+    expect(targetForModel(requested, REGULAR_MODEL)).toBe(requested);
+    expect(targetForModel(requested, { ...REGULAR_MODEL, search: null })).toBe(ROOT_TARGET);
+  });
+
+  it('falls back for unavailable ready targets without changing unknown fallback', () => {
+    const backup = targetForShow(JSON.stringify({ target: 'backup:open' }));
+    expect(targetForModel(backup, PRIVATE_MODEL)).toBe(ROOT_TARGET);
+    const demo = targetForShow(JSON.stringify({ target: 'setting:tabStateTintsEnabled' }));
+    expect(targetForModel(demo, REGULAR_MODEL)).toBe(__BENTO_SOFTCAST_DEMO__ ? demo : ROOT_TARGET);
+    expect(
+      targetForModel(targetForShow(JSON.stringify({ target: 'setting:nope' })), REGULAR_MODEL),
+    ).toBe(ROOT_TARGET);
   });
 });
 
@@ -50,6 +72,6 @@ describe('listenForVisibility', () => {
     source.dispatchEvent(new CustomEvent(SETTINGS_HIDE_EVENT));
     stop();
     source.dispatchEvent(new CustomEvent(SETTINGS_HIDE_EVENT));
-    expect(seen).toEqual(['show:2:palette', 'hide']);
+    expect(seen).toEqual(['show:3:palette', 'hide']);
   });
 });

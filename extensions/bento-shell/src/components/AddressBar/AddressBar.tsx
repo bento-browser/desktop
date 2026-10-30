@@ -8,8 +8,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 import { Button, CommandPalette, Image, Select, useCommandPalette } from '@muxui/react';
 
@@ -19,6 +21,7 @@ import ClockIcon from 'lucide-react/dist/esm/icons/clock';
 import ClipboardIcon from 'lucide-react/dist/esm/icons/clipboard';
 import FileIcon from 'lucide-react/dist/esm/icons/file';
 import PanelRightOpenIcon from 'lucide-react/dist/esm/icons/panel-right-open';
+import RotateCcwIcon from 'lucide-react/dist/esm/icons/rotate-ccw';
 import SearchIcon from 'lucide-react/dist/esm/icons/search';
 
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
@@ -37,16 +40,24 @@ import { applyDefaultEngineIfClean, chooseEngine, resetEngineSelection } from '.
 import { buildOpenRows, type OpenAddressRowKind } from './openRows';
 import { replaceSelectionWithSafePaste } from './unsafeProtocol';
 import { BentoIcon, Row } from '../primitives';
+import { IN_TAB_ORDER } from '../primitives/inTabOrder';
+import {
+  FOCUS_ON_HOVER,
+  ROW_HIGHLIGHT_CLASS,
+  useRowHighlight,
+} from '../primitives/useRowHighlight';
 import {
   buildClipboardRow,
   buildSavedPanelRows,
   buildSyntheticRow,
   chooseSearchEngineForAddressRow,
   resultToRow,
+  resultAge,
   rowTextValue,
   type AddressRow,
   type AddressRowKind,
 } from './addressRows';
+import { useAddressBarGrow } from './useAddressBarGrow';
 import './AddressBar.css';
 
 const ENGINE_PICKER_INTERACTION_SELECTOR =
@@ -75,6 +86,9 @@ function rowIcon(kind: AddressRowKind | OpenAddressRowKind) {
       return FileIcon;
     case 'panel':
       return PanelRightOpenIcon;
+    case 'recentlyClosed':
+      return RotateCcwIcon;
+    case 'recentHistory':
     case 'history':
     case 'topSite':
       return ClockIcon;
@@ -107,7 +121,7 @@ function SearchEngineIcon({
   return <BentoIcon icon={SearchIcon} size="sm" className={className} />;
 }
 
-function ResultRow({ row }: { row: AddressRow }) {
+function ResultRow({ row, pending }: { row: AddressRow; pending: boolean }) {
   return (
     <>
       <CommandPalette.ItemIcon>
@@ -117,6 +131,16 @@ function ResultRow({ row }: { row: AddressRow }) {
         <CommandPalette.ItemTitle>{row.title}</CommandPalette.ItemTitle>
         <CommandPalette.ItemDescription>{row.subtitle}</CommandPalette.ItemDescription>
       </CommandPalette.ItemContent>
+      {row.kind === 'recentlyClosed' ? (
+        <CommandPalette.ItemMeta className="bento-address-bar__reopen">
+          {pending ? 'Reopening…' : 'Reopen'}
+        </CommandPalette.ItemMeta>
+      ) : null}
+      {row.timestamp !== undefined ? (
+        <CommandPalette.ItemMeta className="bento-address-bar__timestamp">
+          {resultAge(row.timestamp)}
+        </CommandPalette.ItemMeta>
+      ) : null}
     </>
   );
 }
@@ -131,6 +155,9 @@ export default function AddressBar({
   placement = null,
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
+  const highlightRef = useRowHighlight();
+  const [dialog, setDialog] = useState<HTMLElement | null>(null);
+  const [enginePickerHost, setEnginePickerHost] = useState<HTMLDivElement | null>(null);
   const [engineSelection, setEngineSelection] = useState(() => resetEngineSelection(null));
   const [enginePickerOpen, setEnginePickerOpen] = useState(false);
   const { selectedSearchEngineId, engineSelectionDirty } = engineSelection;
@@ -141,6 +168,10 @@ export default function AddressBar({
   const savedPanels = useSavedPanelsStore((s) => s.items);
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   const resultQuery = useAddressBarStore((s) => s.query);
+  const pendingRestore = useAddressBarStore((s) => s.pendingRestore);
+  const restored = useAddressBarStore((s) => s.restored);
+  const restoreError = useAddressBarStore((s) => s.error);
+  const refreshVersion = useAddressBarStore((s) => s.refreshVersion);
   const serverResults = useAddressBarStore((s) => s.results);
   const { defaultSearchEngine, availableSearchEngines, searchEnginesHydrated } =
     useSearchEnginesStore(
@@ -174,7 +205,7 @@ export default function AddressBar({
   );
 
   const asyncRows = useMemo<AddressRow[]>(() => {
-    if (resultQuery !== query) return [];
+    if (resultQuery !== query.trim()) return [];
     return serverResults.map(resultToRow);
   }, [query, resultQuery, serverResults]);
 
@@ -192,6 +223,15 @@ export default function AddressBar({
 
   const runRow = useCallback(
     (row: AddressRow) => {
+      const store = useAddressBarStore.getState();
+      if (store.pendingRestore || store.restored) return;
+      if (row.kind === 'recentlyClosed' && row.sessionId) {
+        const requestId = crypto.randomUUID();
+        if (store.beginRestore(requestId, row.sessionId)) {
+          dispatch({ type: 'addrbar/restoreClosed', requestId, sessionId: row.sessionId });
+        }
+        return;
+      }
       if (row.kind === 'tab' && typeof row.tabId === 'number') {
         dispatch({ type: 'tab/activate', id: row.tabId });
         onClose();
@@ -221,21 +261,29 @@ export default function AddressBar({
   );
 
   const rows = useMemo<AddressRow[]>(() => {
+    const defaults = [...(clipboardRow ? [clipboardRow] : []), ...savedPanelRows];
     return [
-      ...(clipboardRow ? [clipboardRow] : []),
-      ...savedPanelRows,
-      ...openRows,
-      ...asyncRows,
+      ...(!query.trim() ? [...asyncRows, ...defaults] : [...defaults, ...openRows, ...asyncRows]),
       ...(syntheticRow ? [syntheticRow] : []),
     ].map((row) => ({
       ...row,
       action: () => runRow(row),
+      disabled: pendingRestore !== null,
     }));
-  }, [asyncRows, clipboardRow, openRows, runRow, savedPanelRows, syntheticRow]);
+  }, [
+    asyncRows,
+    clipboardRow,
+    openRows,
+    pendingRestore,
+    query,
+    runRow,
+    savedPanelRows,
+    syntheticRow,
+  ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setQuery(initialQuery);
-    if (!initialQuery) useAddressBarStore.getState().clear();
+    useAddressBarStore.getState().clear();
   }, [initialQuery, openVersion]);
 
   useEffect(() => {
@@ -247,13 +295,30 @@ export default function AddressBar({
     setEngineSelection((state) => applyDefaultEngineIfClean(state, defaultSearchEngine));
   }, [defaultSearchEngine]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Register before dispatch, including unchanged queries on a fresh open.
     const trimmed = query.trim();
+    const requestId = crypto.randomUUID();
+    useAddressBarStore.getState().beginQuery(requestId, trimmed);
     const timer = window.setTimeout(() => {
-      dispatch({ type: 'addrbar/query', query: trimmed, limit: 8 });
+      dispatch({ type: 'addrbar/query', requestId, query: trimmed, limit: 8 });
     }, 120);
-    return () => window.clearTimeout(timer);
-  }, [query]);
+    return () => {
+      window.clearTimeout(timer);
+      if (useAddressBarStore.getState().requestId === requestId) {
+        useAddressBarStore.setState({ requestId: null });
+      }
+    };
+  }, [query, openVersion, refreshVersion]);
+
+  useEffect(() => {
+    if (restored) onClose();
+  }, [onClose, restored]);
+
+  const changeQuery = useCallback((value: string) => {
+    useAddressBarStore.getState().clear();
+    setQuery(value);
+  }, []);
 
   useEffect(() => {
     if (suppressFocus) return;
@@ -284,10 +349,12 @@ export default function AddressBar({
   const palette = useCommandPalette<AddressRow>({
     commands: rows,
     query,
-    onQueryChange: setQuery,
+    onQueryChange: changeQuery,
     closeOnSelect: false,
     sort: () => 0,
   });
+
+  useAddressBarGrow(dialog, placement, openVersion);
 
   const enginePickerDisabled = !searchEnginesHydrated || availableSearchEngines.length === 0;
   const backdropStyle = useMemo<AddressBarBackdropStyle>(() => {
@@ -331,6 +398,7 @@ export default function AddressBar({
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (
+        !query.trim() ||
         event.key !== 'Enter' ||
         event.altKey ||
         event.ctrlKey ||
@@ -347,7 +415,7 @@ export default function AddressBar({
       event.stopPropagation();
       void palette.runCommand(submitRow);
     },
-    [palette, rows],
+    [palette, query, rows],
   );
 
   const handleInputPaste = useCallback(
@@ -382,7 +450,9 @@ export default function AddressBar({
         dismissable={false}
         style={backdropStyle}
       >
+        {placement ? <div className="bento-address-bar__shadow" aria-hidden="true" /> : null}
         <CommandPalette.Popup
+          ref={setDialog}
           aria-label="Address bar"
           className={`bento-address-bar__dialog bento-address-bar__popup${placement ? ' bento-address-bar__popup--anchored' : ''}`}
           onPointerDownCapture={handlePalettePointerDownCapture}
@@ -391,12 +461,22 @@ export default function AddressBar({
             Address bar
           </CommandPalette.Title>
           <CommandPalette.Content key={openVersion} className="bento-address-bar__content">
-            <Row gap="xs" align="center" className="bento-address-bar__toolbar">
+            <Row
+              gap="xs"
+              align="center"
+              className={`bento-address-bar__toolbar${placement ? ' bento-address-bar__toolbar--anchored' : ''}`}
+            >
               <CommandPalette.SearchField
                 aria-label="Search or enter address"
                 className="bento-address-bar__search-field"
               >
+                {placement ? (
+                  <span className="bento-address-bar__row-icon">
+                    <BentoIcon icon={SearchIcon} size="sm" />
+                  </span>
+                ) : null}
                 <CommandPalette.Input
+                  readOnly={pendingRestore !== null}
                   placeholder="Search or enter address"
                   className="bento-address-bar__input"
                   value={palette.query}
@@ -407,66 +487,26 @@ export default function AddressBar({
                 />
                 {palette.query.length > 0 ? (
                   <Button
+                    disabled={pendingRestore !== null}
                     variant="ghost"
                     size="sm"
                     aria-label="Clear search"
                     className="bento-address-bar__clear-button"
                     onActivate={() => palette.setQuery('')}
+                    {...IN_TAB_ORDER}
                   >
                     Clear
                   </Button>
                 ) : null}
               </CommandPalette.SearchField>
-              <Select.Root
-                size="sm"
-                placeholder="Search"
-                value={selectedSearchEngineId ?? undefined}
-                onChange={handleSearchEngineChange}
-                open={enginePickerOpen}
-                onOpenChange={setEnginePickerOpen}
-                disabled={enginePickerDisabled}
-                className="bento-address-bar__engine-select"
-              >
-                <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
-                <Select.Trigger
-                  className="bento-address-bar__engine-trigger"
-                  onPointerDownCapture={handleEngineTriggerPointerDownCapture}
-                >
-                  <SearchEngineIcon
-                    engine={selectedEngine}
-                    className="bento-address-bar__engine-icon"
-                  />
-                  <Select.Value className="bento-address-bar__sr-only">
-                    {selectedEngine?.name ?? 'Search'}
-                  </Select.Value>
-                  <BentoIcon
-                    icon={ChevronDownIcon}
-                    size="sm"
-                    className="muxui-select-arrow bento-address-bar__engine-chevron"
-                  />
-                </Select.Trigger>
-                <Select.Popup className="bento-address-bar__engine-popover" modal={false}>
-                  <Select.List>
-                    {availableSearchEngines.map((engine) => (
-                      <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>
-                        <span className="bento-address-bar__engine-option">
-                          <SearchEngineIcon
-                            engine={engine}
-                            className="bento-address-bar__engine-option-icon"
-                          />
-                          <span className="bento-address-bar__engine-option-name">
-                            {engine.name}
-                          </span>
-                        </span>
-                      </Select.Item>
-                    ))}
-                  </Select.List>
-                </Select.Popup>
-              </Select.Root>
+              <div ref={setEnginePickerHost} className="bento-address-bar__engine-slot" />
             </Row>
             <CommandPalette.ListBox
+              ref={highlightRef}
               aria-label="Address bar results"
-              className="bento-address-bar__listbox"
+              className={`bento-address-bar__listbox ${ROW_HIGHLIGHT_CLASS}${!query.trim() ? ' bento-address-bar__listbox--recents' : ''}`}
+              aria-busy={pendingRestore !== null}
+              {...FOCUS_ON_HOVER}
             >
               {palette.groupedCommands.map((group) => (
                 <CommandPalette.Section key={group.id}>
@@ -476,17 +516,87 @@ export default function AddressBar({
                       key={row.id}
                       {...palette.getItemProps(row)}
                       textValue={rowTextValue(row)}
+                      data-kind={row.kind}
+                      data-pending={
+                        (row.kind === 'recentlyClosed' &&
+                          pendingRestore?.sessionId === row.sessionId) ||
+                        undefined
+                      }
+                      aria-label={
+                        row.kind === 'recentlyClosed'
+                          ? `Reopen ${row.title}, ${row.subtitle}`
+                          : undefined
+                      }
                     >
-                      <ResultRow row={row} />
+                      <ResultRow row={row} pending={pendingRestore?.sessionId === row.sessionId} />
                     </CommandPalette.Item>
                   ))}
                 </CommandPalette.Section>
               ))}
             </CommandPalette.ListBox>
+            {restoreError ? (
+              <div role="status" className="bento-address-bar__status">
+                {restoreError}
+              </div>
+            ) : null}
             {query.trim().length > 0 && palette.filteredCommands.length === 0 ? (
-              <CommandPalette.Empty>No matching results.</CommandPalette.Empty>
+              <CommandPalette.Empty className="bento-address-bar__empty">
+                No matching results.
+              </CommandPalette.Empty>
             ) : null}
           </CommandPalette.Content>
+          {/* Keep Select outside Content's Autocomplete context; the portal only restores its toolbar position. */}
+          {enginePickerHost
+            ? createPortal(
+                <Select.Root
+                  size="sm"
+                  placeholder="Search"
+                  value={selectedSearchEngineId ?? undefined}
+                  onChange={handleSearchEngineChange}
+                  open={enginePickerOpen}
+                  onOpenChange={setEnginePickerOpen}
+                  disabled={enginePickerDisabled}
+                  className="bento-address-bar__engine-select"
+                >
+                  <Select.Label className="bento-address-bar__sr-only">Search engine</Select.Label>
+                  <Select.Trigger
+                    className="bento-address-bar__engine-trigger"
+                    onPointerDownCapture={handleEngineTriggerPointerDownCapture}
+                  >
+                    <SearchEngineIcon
+                      engine={selectedEngine}
+                      className="bento-address-bar__engine-icon"
+                    />
+                    <Select.Value className="bento-address-bar__sr-only">
+                      {selectedEngine?.name ?? 'Search'}
+                    </Select.Value>
+                    <BentoIcon
+                      icon={ChevronDownIcon}
+                      size="sm"
+                      className="muxui-select-arrow bento-address-bar__engine-chevron"
+                    />
+                  </Select.Trigger>
+                  <Select.Popup className="bento-address-bar__engine-popover" modal={false}>
+                    <Select.List>
+                      {availableSearchEngines.map((engine) => (
+                        <Select.Item key={engine.id} id={engine.id} textValue={engine.name}>
+                          <span className="bento-address-bar__engine-option">
+                            <SearchEngineIcon
+                              engine={engine}
+                              className="bento-address-bar__engine-option-icon"
+                            />
+                            <span className="bento-address-bar__engine-option-name">
+                              {engine.name}
+                            </span>
+                          </span>
+                        </Select.Item>
+                      ))}
+                    </Select.List>
+                  </Select.Popup>
+                </Select.Root>,
+                enginePickerHost,
+              )
+            : null}
         </CommandPalette.Popup>
       </CommandPalette.Backdrop>
     </CommandPalette.Root>

@@ -7,6 +7,7 @@ import {
   chooseSearchEngineForAddressRow,
   isUrlLike,
   resultToRow,
+  resultAge,
 } from './addressRows';
 
 describe('address row helpers', () => {
@@ -95,4 +96,43 @@ describe('address row helpers', () => {
       }),
     ).toBeUndefined();
   });
+});
+
+describe('recent row presentation', () => {
+  it('keeps session identity distinct at the same URL and exposes domain/timestamps', () => {
+    const closed = {
+      kind: 'recentlyClosed' as const,
+      sessionId: 'one',
+      url: 'https://www.example.test/path',
+      title: 'Page',
+      score: 0,
+      closedAt: 123,
+    };
+    expect(resultToRow(closed)).toMatchObject({
+      id: 'recentlyClosed:one',
+      sessionId: 'one',
+      subtitle: 'example.test',
+      timestamp: 123,
+      group: 'Recently Closed',
+    });
+    expect(resultToRow({ ...closed, sessionId: 'two' }).id).not.toBe(resultToRow(closed).id);
+    expect(
+      resultToRow({
+        kind: 'recentHistory',
+        url: closed.url,
+        title: 'Page',
+        score: 0,
+        lastVisitTime: 234,
+      }),
+    ).toMatchObject({ group: 'Recent History', timestamp: 234 });
+  });
+});
+
+it('formats recent timestamps without negative ages or invalid metadata', () => {
+  const now = 100_000_000;
+  expect(
+    [undefined, NaN, now + 60_000, now - 120_000, now - 7_200_000, now - 172_800_000].map((t) =>
+      resultAge(t, now),
+    ),
+  ).toEqual(['', '', 'now', '2m', '2h', '2d']);
 });

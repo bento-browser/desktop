@@ -1,9 +1,65 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { isValidBentoSettingsPatch } from '@shared/export-schema';
+import { validateSettingsChanges } from '@shared/settings-rules';
 import { COLOR_FLIP_LEAD_MS, DEFAULT_SETTINGS, SettingsStore } from './SettingsStore';
 
 describe('SettingsStore durable commits', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('persists independent tab appearance overrides, reloads them, and resets both to On', async () => {
+    let storage: Record<string, unknown> = {};
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => storage),
+          set: vi.fn(async (payload: Record<string, unknown>) => {
+            storage = { ...storage, ...payload };
+          }),
+        },
+      },
+    });
+    const store = new SettingsStore();
+    await store.init();
+    expect(store.snapshot()).toMatchObject({
+      tabStateTintsEnabled: true,
+      customTabStateIconsEnabled: true,
+    });
+    await store.update({ tabStateTintsEnabled: false });
+    expect(store.snapshot().customTabStateIconsEnabled).toBe(true);
+    await store.update({ customTabStateIconsEnabled: false });
+    expect(storage).toEqual({
+      'bento.settings': {
+        version: 2,
+        overrides: { tabStateTintsEnabled: false, customTabStateIconsEnabled: false },
+      },
+    });
+
+    const reloaded = new SettingsStore();
+    await reloaded.init();
+    expect(reloaded.snapshot()).toEqual(store.snapshot());
+    await reloaded.update({ tabStateTintsEnabled: true });
+    expect(reloaded.snapshot().customTabStateIconsEnabled).toBe(false);
+    expect(storage).toEqual({
+      'bento.settings': { version: 2, overrides: { customTabStateIconsEnabled: false } },
+    });
+    await reloaded.reset();
+    expect(reloaded.snapshot()).toEqual(DEFAULT_SETTINGS);
+    expect(storage).toEqual({ 'bento.settings': { version: 2, overrides: {} } });
+  });
+
+  it('accepts only booleans for tab appearance in stored patches and editable requests', () => {
+    for (const key of ['tabStateTintsEnabled', 'customTabStateIconsEnabled']) {
+      for (const value of [true, false]) {
+        expect(isValidBentoSettingsPatch({ [key]: value })).toBe(true);
+        expect(validateSettingsChanges({ [key]: value })).toBe(true);
+      }
+      for (const value of ['false', 0, null, undefined]) {
+        expect(isValidBentoSettingsPatch({ [key]: value })).toBe(false);
+        expect(validateSettingsChanges({ [key]: value })).toBe(false);
+      }
+    }
   });
 
   it('publishes only after storage acknowledges the commit', async () => {
