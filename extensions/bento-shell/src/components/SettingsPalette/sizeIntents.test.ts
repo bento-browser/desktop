@@ -40,6 +40,7 @@ function setup(initial: number[]) {
 
 const actionsAt = (index: number): Stage[] => [
   { kind: 'root' },
+  { kind: 'category', id: 'panels' },
   { kind: 'sizes' },
   { kind: 'sizeActions', index },
 ];
@@ -107,12 +108,17 @@ describe('stackAfterSizeChange', () => {
   it('leaves the actions of a removed entry', () => {
     expect(stackAfterSizeChange(actionsAt(1), { type: 'removeSize', index: 1 })).toEqual([
       { kind: 'root' },
+      { kind: 'category', id: 'panels' },
       { kind: 'sizes' },
     ]);
   });
 
   it('leaves a stack that moved on while the change was saved', () => {
-    const elsewhere: Stage[] = [{ kind: 'root' }, { kind: 'sizes' }];
+    const elsewhere: Stage[] = [
+      { kind: 'root' },
+      { kind: 'category', id: 'panels' },
+      { kind: 'sizes' },
+    ];
     expect(stackAfterSizeChange(elsewhere, { type: 'moveSize', index: 1, delta: 1 })).toEqual(
       elsewhere,
     );

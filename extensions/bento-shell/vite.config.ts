@@ -21,7 +21,9 @@ import { pruneMuxCss } from './mux-css-prune';
 import { muxLocalViteConfig, muxSourcePlugin, resolveMuxLocal } from './muxui-local.mjs';
 import { panelNewtabCss } from './panel-newtab-css';
 import { woff2Fonts } from './woff2-fonts';
+import { softcastDemoEnabled, softcastDemoPlugin } from './src/dev/softcastBuild';
 
+const softcastDemo = softcastDemoEnabled();
 const muxLocal = resolveMuxLocal();
 
 // Strip `crossorigin` from emitted <script> and <link> tags. moz-extension://
@@ -69,6 +71,7 @@ const shellConfig = defineConfig(({ mode }) => ({
     panelNewtabCss(BUILD_TARGET),
     moduleIdentityGuard(),
     muxSourcePlugin(muxLocal, resolve(__dirname, '../../node_modules/@muxui/react/package.json')),
+    ...(softcastDemo ? [softcastDemoPlugin()] : []),
   ],
 
   ...(process.env.BENTO_RELEASE === '1'
@@ -163,6 +166,7 @@ const shellConfig = defineConfig(({ mode }) => ({
   css: { postcss: { plugins: [stripContrastMore] } },
 
   define: {
+    __BENTO_SOFTCAST_DEMO__: JSON.stringify(softcastDemo),
     'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
   },
 
