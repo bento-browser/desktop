@@ -1032,7 +1032,7 @@ function TabListPane({
         onActivate={onOpenSearch}
       >
         <BentoIcon icon={Search} size="sm" />
-        <span className="bento-tab-list__search-label">Search</span>
+        <span className="bento-tab-list__search-label">Search tabs</span>
       </Button>
     </span>
   );

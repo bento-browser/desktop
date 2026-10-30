@@ -260,10 +260,22 @@ Use this shape for new or changed touchpoints:
 - Bento functionality: mounts the Bento chrome shell, coordinates panel browser
   visibility and geometry, renders chrome-side menu overlays for sidebar and
   panel actions, hands focus back to the sidebar frame for chrome-originated
-  shell UI actions such as inline tab/folder rename, routes `Cmd/Ctrl+L`,
-  `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, sidebar `New tab`, and native top-urlbar fallback
-  opens to the centered address/search overlay, routes direct expanded-sidebar
-  URL row activation to the same overlay with a sidebar anchor, routes submitted
+  shell UI actions such as inline tab/folder rename, routes `Cmd/Ctrl+T`,
+  sidebar `New tab`, and native top-urlbar fallback opens to the centered
+  address/search overlay, routes `Cmd/Ctrl+L`, `Cmd/Ctrl+E` and direct
+  expanded-sidebar URL row activation to the same overlay anchored over the row
+  (the palette's top-left corner is the row's, its header is the row grown, and it
+  grows from the row's box on the `reveal` spring pair), asks the row for its rect
+  over the sidebar address frame-script channel (an `open-request` message scoped by
+  window id and bridge token, answered through the existing `BENTO_OPEN_ADDRBAR`
+  title signal; a 120 ms timer, a sidebar that is collapsed, hidden or pushing, and a
+  row that is not laid out all open the centered overlay; Esc, an outside click or
+  another overlay cancels a request still waiting), tells the row over the same channel
+  when the anchored palette is shown over it and when it starts to hide (a
+  `palette-over-row` message with the same scope; the row fades its border out
+  meanwhile; a new sidebar document announces itself with the
+  `BENTO_SIDEBAR_ADDRESS_READY` title, on which chrome forgets what it last sent the row
+  and sends it again), routes submitted
   address/search text through Firefox URI fixup, resolves one-shot
   address-palette non-default search-engine submissions through Firefox
   `SearchService` without changing the default engine, handles `Cmd/Ctrl+S`
@@ -500,10 +512,17 @@ Use this shape for new or changed touchpoints:
   frame during DOM fullscreen,
   verify sidebar context menus still dispatch tab, folder, and
   workspace actions including moving a
-  folder to another workspace, verify `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and
-  `Cmd/Ctrl+T` open the centered address/search overlay with current/new-tab
-  mode, verify clicking the expanded-sidebar URL row opens the address/search
-  overlay anchored below that row,
+  folder to another workspace, verify `Cmd/Ctrl+L` and
+  `Cmd/Ctrl+E` open the address/search overlay anchored over the expanded-sidebar
+  URL row (its top-left corner on the row's, the current address selected) from
+  chrome focus and from web content focus, and open it centered with the sidebar
+  collapsed or hidden, verify `Cmd/Ctrl+T` opens the centered overlay in new-tab
+  mode, verify Esc or an outside click right after `Cmd/Ctrl+L` leaves no palette
+  behind, verify collapsing or hiding the sidebar right after `Cmd/Ctrl+L` opens it
+  centered, verify clicking the expanded-sidebar URL row opens the address/search
+  overlay anchored over that row (no new Firefox internal is read: the row rect comes
+  from the shell, and the placement from `#browser` and `#bento-shell-frame`
+  geometry already listed here),
   verify clicking or programmatic focus into Firefox's hidden native top address
   input opens Bento's centered address entry and does not leave the native urlbar
   suggestions dropdown open, verify the native top URL/search field, stock
@@ -577,7 +596,7 @@ Use this shape for new or changed touchpoints:
   snapshots across windows, verify clicking the sidebar
   security control opens Firefox's native identity popup with native content,
   verify the expanded-sidebar address overlay can extend over the panel
-  strip/main content while editing, stays smaller than the centered shortcut
+  strip/main content while editing, stays smaller than the centered
   overlay, and closes after Escape, submit, and outside
   click,
   verify the native Bookmarks sidebar title uses Mux UI `label-l` typography,

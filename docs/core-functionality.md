@@ -285,7 +285,7 @@ creating the tab only after the user commits. In collapsed sidebar mode, it
 opens the same centered address/search fallback. `New panel`
 opens a blank panel in the active workspace. A
 search icon beside those controls widens on hover or keyboard focus to show its
-"Search" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
+"Search tabs" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
 so the actions remain available anywhere in a long tab list. Typing filters
 open tabs and side panels across all
@@ -442,10 +442,17 @@ at the top of the sidebar above the tab list. It mirrors the active main
 tab's URL, loading state, Firefox security identity state, and regular Firefox
 bookmark state, with one-click actions to copy the current URL or toggle the
 regular bookmark state. The copy action shows a `Copied` tooltip after the URL
-has been written to the clipboard. Clicking the row opens Bento's address entry
-below the row. Its suggestions can extend beyond the sidebar over the panel
-strip and main content slot. `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T`, `New tab`,
-and any fallback path
+has been written to the clipboard. Clicking the row, or pressing `Cmd/Ctrl+L` or
+`Cmd/Ctrl+E` while the expanded row is on screen, opens Bento's address entry as
+the row growing: the field sits exactly over the row, with the same height, a
+search icon where the lock sits, and the address text starting where the row's
+address starts. The row's right and bottom edges grow into the search field's
+clear button and engine picker and the suggestion list, which extend beyond the
+sidebar over the panel strip and main content slot (with reduced motion on, it
+opens at full size). The row's outline fades out as the field's outline fades in, and
+back when it closes, so only one outline shows. The current address is selected, so typing
+replaces it.
+`Cmd/Ctrl+T`, `New tab`, a collapsed or hidden sidebar, and any fallback path
 that reaches Firefox's hidden native top address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
 The field uses the sidebar tab row text size on a neutral-5 surface and keeps
@@ -468,7 +475,8 @@ side of that divider when it is visible and track the sidebar edge as the
 sidebar is resized. The expanded sidebar cannot be manually resized narrower
 than the point where those native controls stop moving left, so the divider
 never slides underneath them. In collapsed sidebar
-mode, those same actions open the existing floating address/search fallback.
+mode, those same actions open the existing floating address/search fallback, as do
+`Cmd/Ctrl+L` and `Cmd/Ctrl+E`.
 `Cmd/Ctrl+S` minimizes the sidebar. Settings controls whether that shortcut
 collapses the sidebar to the narrow rail or hides it from layout. Collapsing,
 expanding, hiding and showing slide the sidebar and the page together as one strip,
@@ -488,11 +496,20 @@ mode, hovering the left edge of the browser window slides the collapsed rail
 over the page without pushing content; pressing the shortcut again restores the
 expanded sidebar.
 
-In new-tab mode, if the clipboard contains a web URL, the first result offers to
-open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
+Opening the address entry with an empty field refreshes Recently Closed, Recent
+History, and Top Sites, in that order, with up to two rows each. Recently Closed
+contains tabs closed in the current window and reopens the selected native
+session, including its back/forward history. History and top-site rows navigate
+to their addresses. Reopening an ordinary closed tab or pinned panel preserves
+its workspace, folder and custom title while they still exist. If its workspace
+was deleted, it joins the current window's workspace; deleted or moved folders
+are dropped. Closed panels return as panels when their workspace still exists.
+Empty or unavailable groups are omitted. A closed tab that
+is no longer available reports that status and refreshes the suggestions.
+In new-tab mode, if the clipboard contains a web URL, a result below these groups
+offers to open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
 suggestion setting (`browser.urlbar.suggest.clipboard`): when that setting is
-off, Bento does not read the clipboard when the address entry opens. Saved panels also appear by default and open
-as side panels. Typing hides these default clipboard and saved-panel rows. After
+off, Bento does not read the clipboard when the address entry opens. Saved panels follow the clipboard suggestion and open as side panels. Typing hides these default clipboard and saved-panel rows. After
 the user types, results include capped matches for open normal tabs and panels
 from the active workspace by title or URL, plus history, bookmarks, and a final
 search/open row. The address entry includes a one-shot search-engine picker
@@ -511,6 +528,8 @@ sidebar-anchored neutral popover that can overhang the sidebar; the collapsed
 fallback uses the same opaque floating command-palette surface as before and
 does not dim the browser content behind it.
 The floating fallback address/search field uses a visible "Clear" button.
+The address palette matches the command palette's hover, keyboard-focus and pressed
+row states, with one moving highlight. Its Clear button is reachable with Tab.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
 History and bookmark rows use generic icons when no favicon source is

@@ -17,16 +17,25 @@ export interface AddrbarAnchorRect {
   height: number;
 }
 
+/**
+ * Where the anchored popup sits, in the address bar document's coordinates (chrome
+ * computes it from the row rect). `anchorWidth` and `anchorHeight` are the row's box,
+ * which the popup's top-left corner shares, so the grow starts from it.
+ */
 export interface AddrbarPlacement {
   left: number;
   top: number;
   width: number;
   height: number;
+  anchorWidth: number;
+  anchorHeight: number;
 }
 
 export interface AddrbarOpenOptions {
   anchorRect?: AddrbarAnchorRect;
   clipboardUrl?: string;
+  /** Answers a chrome open request (useSidebarAddress.ts); chrome drops an answer it no longer waits for. */
+  requestId?: string;
 }
 
 interface OpenMessage {
@@ -81,6 +90,7 @@ export function signalAddrbarOpen(
         initialQuery,
         ...(options.anchorRect ? { anchorRect: options.anchorRect } : {}),
         ...(options.clipboardUrl ? { clipboardUrl: options.clipboardUrl } : {}),
+        ...(options.requestId ? { requestId: options.requestId } : {}),
       }),
     )}`,
   );

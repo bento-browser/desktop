@@ -32,12 +32,11 @@ export interface SidebarAddressSnapshot {
   loading: boolean;
 }
 
-export interface SidebarAddressFocusRequest {
+/** Chrome's request to open the address palette over the row (see useSidebarAddress.ts). */
+export interface SidebarAddressOpenRequest {
   id: number;
+  requestId: string;
   mode: AddrbarMode;
-  initialQuery: string;
-  clipboardUrl: string;
-  selectAll: boolean;
 }
 
 export interface SidebarAddressCopyResult {
@@ -53,16 +52,14 @@ interface SidebarAddressState {
   editMode: AddrbarMode | null;
   draftValue: string;
   pendingBookmarkToggleKey: string | null;
-  focusRequest: SidebarAddressFocusRequest | null;
+  openRequest: SidebarAddressOpenRequest | null;
+  /** The address palette is shown anchored over the row; the row fades its border out. */
+  paletteOverRow: boolean;
   lastCopyResult: SidebarAddressCopyResult | null;
   applySnapshot: (snapshot: SidebarAddressSnapshot) => void;
   applyCopyResult: (result: Omit<SidebarAddressCopyResult, 'id'>) => void;
-  requestFocus: (
-    mode: AddrbarMode,
-    initialQuery?: string,
-    selectAll?: boolean,
-    clipboardUrl?: string,
-  ) => void;
+  requestOpen: (mode: AddrbarMode, requestId: string) => void;
+  setPaletteOverRow: (over: boolean) => void;
   beginEdit: (mode: AddrbarMode, draftValue?: string) => void;
   cancelEdit: () => void;
   setDraft: (value: string) => void;
@@ -70,7 +67,7 @@ interface SidebarAddressState {
   reset: () => void;
 }
 
-let nextFocusRequestId = 1;
+let nextOpenRequestId = 1;
 let nextCopyResultId = 1;
 
 function snapshotDraftValue(snapshot: SidebarAddressSnapshot | null): string {
@@ -91,7 +88,8 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
   editMode: null,
   draftValue: '',
   pendingBookmarkToggleKey: null,
-  focusRequest: null,
+  openRequest: null,
+  paletteOverRow: false,
   lastCopyResult: null,
   applySnapshot: (snapshot) => {
     const current = get().snapshot;
@@ -111,21 +109,11 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
     });
     nextCopyResultId += 1;
   },
-  requestFocus: (mode, initialQuery = '', selectAll = true, clipboardUrl = '') => {
-    set({
-      editMode: mode,
-      draftValue:
-        mode === 'newTab' ? initialQuery : initialQuery || snapshotDraftValue(get().snapshot),
-      focusRequest: {
-        id: nextFocusRequestId,
-        mode,
-        initialQuery,
-        clipboardUrl,
-        selectAll,
-      },
-    });
-    nextFocusRequestId += 1;
+  requestOpen: (mode, requestId) => {
+    set({ openRequest: { id: nextOpenRequestId, requestId, mode } });
+    nextOpenRequestId += 1;
   },
+  setPaletteOverRow: (paletteOverRow) => set({ paletteOverRow }),
   beginEdit: (mode, draftValue) => {
     set({
       editMode: mode,
@@ -146,7 +134,8 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
       editMode: null,
       draftValue: '',
       pendingBookmarkToggleKey: null,
-      focusRequest: null,
+      openRequest: null,
+      paletteOverRow: false,
       lastCopyResult: null,
     }),
 }));
