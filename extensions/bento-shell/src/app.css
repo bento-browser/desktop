@@ -23,6 +23,15 @@
   initial-value: transparent;
 }
 
+/* The private window band's fill in the collapsed rail, registered for the same reason as the
+ * corner fill above: the band's linear-gradient stop cannot interpolate over an unregistered
+ * custom property. Not inherited: only the app element that paints the band declares it. */
+@property --bento-private-band-fill {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 @layer bento.app {
   .bento-shell-app {
     height: 100%;
@@ -99,9 +108,10 @@
      the expanded band shows it in the next frame. Under the band in the settled rail. */
   html[data-bento-collapsed='true']
     .bento-shell-app:has(> .bento-shell-app__main > .bento-shell-app__workspace-switcher--private) {
+    --bento-private-band-fill: var(--muxui-semantic-color-neutral-90);
     background-image: linear-gradient(
-      var(--muxui-semantic-color-neutral-90),
-      var(--muxui-semantic-color-neutral-90)
+      var(--bento-private-band-fill),
+      var(--bento-private-band-fill)
     );
     background-position: 0 var(--bento-panel-top-inset);
     background-repeat: no-repeat;

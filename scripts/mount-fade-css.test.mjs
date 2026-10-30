@@ -94,6 +94,27 @@ test('a placeholder pseudo-element that reads the carrier takes it with an expli
   assert.equal(readers, 2, 'the shell inputs and the chrome panel URL field');
 });
 
+test('no shell rule sets a placeholder colour directly', () => {
+  // A `color` on ::placeholder switches at the prepare, up to the lead before the fade (the anchored
+  // address bar did this). A field with its own placeholder colour sets --bento-placeholder-fg instead.
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(resolve(REPO, dir), { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (path.endsWith('.css') && !path.includes('/theme/presets/')) {
+        for (const { selector, body } of rules(readRepo(path))) {
+          if (selector.includes('::placeholder') && /(?:^|[;{\s])color\s*:(?!\s*var\(--bento-placeholder-fg\))/.test(body)) {
+            offenders.push(`${path}: ${selector}`);
+          }
+        }
+      }
+    }
+  };
+  walk('extensions/bento-shell/src');
+  assert.deepEqual(offenders, []);
+});
+
 test('the native tab strip arrows take their icon fill from the registered carrier', () => {
   // The arrows live in #tabbrowser-arrowscrollbox's shadow tree, which the catch-all does not reach.
   // They read the inherited --toolbarbutton-icon-fill, so the strip must set it from the carrier the

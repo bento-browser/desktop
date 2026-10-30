@@ -1524,6 +1524,7 @@ test('every custom property the fade transitions is a registered <color>', () =>
       ],
       expected: [
         '--bento-corner-fill',
+        '--bento-private-band-fill',
         '--bento-search-result-actions-bg',
         '--bento-switch-hover-tint',
         '--bento-placeholder-fg',
