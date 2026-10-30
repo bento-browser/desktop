@@ -57,7 +57,12 @@ from being offered a non-root drop that tools will later reject.
 Lifecycle cleanup is intentionally idempotent. Removing or demoting a caller
 panel or closing the inspected tab makes `takeOrphanedDevtoolsTabs` return a
 deduplicated `Set` of toolbox tab ids to close. Closing the DevTools panel itself
-drops only its link and does not affect the caller. Session markers use
+drops only its link and does not affect the caller. The header and
+`closeDevtoolsPanelTab` both dispatch `tab/close`: this route captures the
+PanelStore classification (or existing DevTools session marker) before removing
+links, then uses destructive membership marking at both close marks. A toolbox
+reaching main-tab close uses the same policy; it never retains workspace/folder
+session keys or rolls back as a regular user tab. Session markers use
 `bento.isDevtoolsPanel` separately from `bento.isPanel`; marker sync clears the
 normal panel marker from DevTools tabs, and boot sweeps restored
 `about:devtools-toolbox` tabs or tabs carrying the DevTools marker.

@@ -1704,7 +1704,9 @@ workspaces.
   has been changed to support that. The current chrome reconciler resolves panel
   tabs against a single window's `gBrowser`.
 - Do not leave a tab without its workspace when its close is cancelled.
-  `markClosing` deletes `bento.workspaceId` and `bento.folderId` up front, so the
+  `markClosing` clears live membership up front. Ordinary user closes preserve
+  existing regular-session workspace/folder keys through an explicit opt-in;
+  cleanup, workspace deletion and panel-layout cascades delete them. The
   close paths capture the binding first and give it back if the tab survives (a
   beforeunload "Stay"); see "Closing a tab that has a beforeunload prompt" in
   [chrome-panel-rendering.md](chrome-panel-rendering.md). A tab left with the
@@ -1714,6 +1716,12 @@ workspaces.
   the workspace its window shows, as a normal tab. A workspace delete has no
   rollback (its tabs keep the marker if a prompt keeps them), and sub-panels and
   subdivisions come back as root panels.
+- Validate retained user-close membership before consuming `bento.closingTab`.
+  A saved workspace must still exist; a saved folder must still belong to that
+  workspace. Deleted workspaces use the current window's workspace and invalid
+  folders are dropped. Neither the tab nor panel-marker path may adopt imported
+  workspaces from a Bento-marked closed tab. Genuine unmarked imports retain
+  adoption, and marked live startup tabs retain the destructive close sweep.
 - A tab can arrive in a window with another window's workspace (tear-out, drag
   between windows). Do not trust its `workspaceId` until `releaseAdoptedTab` has
   compared it with the workspace the destination window shows, and do not open a

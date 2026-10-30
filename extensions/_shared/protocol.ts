@@ -573,7 +573,8 @@ export type Action =
   | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
   | { type: 'privacy/setDefaultSearchEngine'; id: SearchEngineId }
   | { type: 'searchEngines/requestSnapshot' }
-  | { type: 'addrbar/query'; query: string; limit?: number }
+  | { type: 'addrbar/query'; requestId: string; query: string; limit?: number }
+  | { type: 'addrbar/restoreClosed'; requestId: string; sessionId: string }
   /** Pin a panel binding `(workspaceId, tabId)` to the global Pinned panels
    * rail. Validated against the live panel set — tools no-ops when the
    * tab isn't currently a panel in that workspace, or when the binding is
@@ -679,13 +680,24 @@ export interface PrivacySettings {
   formHistoryEnabled: boolean;
 }
 
-export interface AddrResult {
-  kind: 'history' | 'bookmark' | 'topSite';
+interface AddrResultBase {
   url: string;
   title: string;
   favIconUrl?: string;
   score: number;
 }
+
+export type AddrResult = AddrResultBase &
+  (
+    | { kind: 'history' | 'bookmark' | 'topSite' }
+    | { kind: 'recentHistory'; lastVisitTime?: number }
+    | { kind: 'recentlyClosed'; sessionId: string; closedAt?: number }
+  );
+
+export type AddrbarRestoreOutcome =
+  | { status: 'restored'; tabId: number; windowId: number }
+  | { status: 'unavailable' }
+  | { status: 'failed' };
 
 export interface AddrbarNavigatePayload {
   value: string;
@@ -922,7 +934,13 @@ export type Event =
    * mirrors in other documents stay current. Same shapes as the snapshot events. */
   | { type: 'privacy/changed'; privacy: PrivacySettings }
   | { type: 'searchEngines/changed'; snapshot: SearchEnginesSnapshot }
-  | { type: 'addrbar/results'; query: string; results: AddrResult[] }
+  | { type: 'addrbar/results'; requestId: string; query: string; results: AddrResult[] }
+  | {
+      type: 'addrbar/restoreClosedResult';
+      requestId: string;
+      sessionId: string;
+      outcome: AddrbarRestoreOutcome;
+    }
   | { type: 'panel/focusedChanged'; tabId: number | null; windowId?: number }
   | { type: 'pinnedPanels/snapshot'; entries: PinnedPanelEntry[] }
   | { type: 'pinnedPanels/changed'; deltas: PinnedPanelDelta[] }

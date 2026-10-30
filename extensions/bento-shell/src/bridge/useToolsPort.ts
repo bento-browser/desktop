@@ -474,7 +474,12 @@ function ensureConnection(): void {
         useSearchEnginesStore.getState().apply(event.snapshot);
         return;
       case 'addrbar/results':
-        useAddressBarStore.getState().applyResults(event.query, event.results);
+        useAddressBarStore.getState().applyResults(event.requestId, event.query, event.results);
+        return;
+      case 'addrbar/restoreClosedResult':
+        useAddressBarStore
+          .getState()
+          .applyRestoreResult(event.requestId, event.sessionId, event.outcome);
         return;
       case 'panel/focusedChanged':
         if (
