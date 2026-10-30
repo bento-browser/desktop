@@ -333,6 +333,17 @@ context and event ancestry, so the Select must originate outside Content, while
 still under Popup for dialog focus and dismissal. Do not compensate with manual
 key handlers, focus timers or generated-ID overrides.
 
+The picker's compact geometry uses its own `bento-address-bar__engine-*`
+classes, without Mux part-class prerequisites: npm and local Mux use different
+Select part names. The trigger keeps `width: auto`, `min-width: 0`, compact
+padding/gap and centered contents; the anchored header sets its height. The
+selected name stays in the screen-reader-only `Select.Value`, and the popup
+keeps Mux's menu sizing and Bento's neutral surface. The Bento chevron rotates
+on `aria-expanded='true'` using Mux's `reveal` transition. Anchored resting fill
+and outline are transparent only outside hover, native `:focus-visible`,
+either Mux focus-visible attribute, and the expanded state, preserving Mux's
+interactive feedback across both builds.
+
 Recorded exception to the layering rule: the Settings slider is a native `<input type="range">`
 (`components/SettingsPalette/RangeSlider.tsx`), not the Mux `Slider`. Why: Mux's `Slider` lives in
 the `collections` module that most entries share, and building the page with it cost about 109 KB
