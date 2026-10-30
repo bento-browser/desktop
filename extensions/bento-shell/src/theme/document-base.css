@@ -32,25 +32,449 @@ body {
   min-height: 100vh;
 }
 
+/* How long the mode flip fade's transitions wait before they start. modeFade.ts sets it on <html>
+ * with the fade attribute: the mode goes on when a scheduled flip is heard and the colours hold
+ * until flipAt. Registered so the transition shorthand below is never invalid without it. */
+@property --bento-mode-fade-delay {
+  syntax: '<time>';
+  inherits: true;
+  initial-value: 0s;
+}
+
+/* Placeholder text is a pseudo-element of its field and takes no transition of its own, so a
+ * colour set on ::placeholder changes when the mode is prepared, up to the lead before the fade.
+ * The colour is read from this registered, non-inherited variable on the field instead, which the
+ * fade list below transitions like --bento-corner-fill, and the pseudo-element follows the field's
+ * animated value. Mux fields take Mux's placeholder colour; a Bento field with another one sets
+ * --bento-placeholder-fg on itself (SidebarAddressBar.css, TabList.css). A pseudo-element does not
+ * inherit a non-inherited property from its field on its own (it would read the initial value,
+ * transparent), so the rule below takes it with an explicit `inherit`. */
+@property --bento-placeholder-fg {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@layer bento.tokens {
+  input,
+  textarea {
+    --bento-placeholder-fg: var(--muxui-field-placeholder-color);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    --bento-placeholder-fg: inherit;
+    color: var(--bento-placeholder-fg);
+  }
+}
+
 /* Mode flip fade. modeFade.ts sets data-bento-mode-fade on <html> in the same task as the
  * mode change and removes it once the fade has ended. While it is present every colour
  * property of every element in this document fades on the `state` pair together, whatever
  * timing the element had (non-colour transitions are replaced for that moment). It is
- * !important so no component rule out-ranks it; only the rail choreography's own
- * `transition: none !important` (sidebar/railTransition.css, a layered important) wins.
- * Not reached: web content, Mux/Firefox shadow DOM, and gradients over unregistered custom
- * properties, which cannot interpolate. */
-:root[data-bento-mode-fade],
-:root[data-bento-mode-fade] *,
-:root[data-bento-mode-fade] *::before,
-:root[data-bento-mode-fade] *::after {
-  transition:
-    background-color var(--muxui-semantic-motion-state-transition),
-    color var(--muxui-semantic-motion-state-transition),
-    border-color var(--muxui-semantic-motion-state-transition),
-    fill var(--muxui-semantic-motion-state-transition),
-    stroke var(--muxui-semantic-motion-state-transition),
-    box-shadow var(--muxui-semantic-motion-state-transition),
-    outline-color var(--muxui-semantic-motion-state-transition),
-    text-decoration-color var(--muxui-semantic-motion-state-transition) !important;
+ * !important and in the first bento layer: among important declarations the earliest layer
+ * wins, so no Bento rule out-ranks it, not even a layered `transition: none !important`
+ * (the rail choreography's rows and switcher, sidebar/railTransition.css), and a flip that
+ * lands in the middle of a motion still fades its colours. Mux's own important rules are not
+ * Bento's: the `muxui` layer precedes `bento`, so its `transition: none !important` rules (the
+ * toggle-group motion label and the reduced-motion blocks of styles.css) win over this one. Gradients fade only over registered
+ * <color> properties (--bento-corner-fill, --bento-private-band-fill, the search result actions
+ * backing, the settings switch hover tint, the workspace theme cards' hover tint, the placeholder
+ * colour); the list below names each one. Not reached: web content and Mux/Firefox shadow DOM.
+ *
+ * The catch-all replaces an element's whole transition list, so a rule with a non-colour
+ * transition (a row's transform, an overlay's opacity) has a generated twin below that keeps
+ * those entries and repeats the colour list: scripts/fade-twins.mjs writes it, and
+ * scripts/mount-fade-css.test.mjs fails when it is stale or a rule has none. */
+@layer bento.mode-fade {
+  :root[data-bento-mode-fade],
+  :root[data-bento-mode-fade] *,
+  :root[data-bento-mode-fade] *::before,
+  :root[data-bento-mode-fade] *::after {
+    transition:
+      background-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      border-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      stroke var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      box-shadow var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      outline-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      text-decoration-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      caret-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      stop-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-corner-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-private-band-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-search-result-actions-bg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-switch-hover-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-placeholder-fg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-card-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay) !important;
+  }
+
+  /* fade-twins:begin (generated by scripts/fade-twins.mjs, do not edit) */
+
+  :root[data-bento-mode-fade] {
+    --bento-mode-fade-colours:
+      background-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      border-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      stroke var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      box-shadow var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      outline-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      text-decoration-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      caret-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      stop-color var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-corner-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-private-band-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-search-result-actions-bg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-switch-hover-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-placeholder-fg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
+      --bento-card-tint var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay);
+  }
+
+  /* extensions/bento-shell/src/components/AddressBar/AddressBar.css */
+
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop .muxui-command-palette__popup:has(.bento-address-bar__popup) {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__backdrop.bento-address-bar__backdrop .muxui-command-palette__popup[data-bento-grow='running'] {
+    transition:
+      clip-path var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-address-bar__shadow[data-bento-grow='running'] {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      opacity var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .muxui-command-palette__popup[data-bento-grow='running'] :is(.bento-address-bar__listbox, .bento-address-bar__empty) {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-reveal-transition-spring-visual-duration),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-address-bar__engine-chevron {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/FolderRow/FolderRow.css */
+
+  [data-bento-mode-fade] .bento-folder-row {
+    transition:
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/MergeProgressCard/MergeProgressCard.css */
+
+  [data-bento-mode-fade] .bento-merge-card__go {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/PinnedPanels/PinnedPanels.css */
+
+  [data-bento-mode-fade] .bento-pinned-panels__button.muxui-icon-button {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      transform var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'] {
+    transition:
+      all var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/SettingsPalette/SettingsPalette.css */
+
+  [data-bento-mode-fade] .bento-settings-palette__slider[data-settled]:not([data-dragging]) :is(.bento-settings-palette__slider-fill, .bento-settings-palette__slider-thumb) {
+    transition:
+      transform var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/SidebarCards/SidebarCards.css */
+
+  [data-bento-mode-fade] .bento-sidebar-card {
+    transition:
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-sidebar-card[data-exiting] {
+    transition:
+      opacity var(--muxui-semantic-motion-dismiss-transition),
+      transform var(--muxui-semantic-motion-dismiss-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/TabList/TabList.css */
+
+  [data-bento-mode-fade] .bento-tab-list-pane__scrollbar-thumb {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__viewport--top-surface::before {
+    transition:
+      height var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__row {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__hover-highlight,
+  [data-bento-mode-fade] .bento-tab-list__action-highlight {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__hover-highlight[data-visible] {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      transform var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__action-highlight[data-visible] {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      left var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      width var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade][data-bento-collapsed='true'] .bento-tab-list__action-highlight[data-visible] {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      top var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list__search-trigger {
+    transition:
+      width var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:not([data-bento-collapsed='true']) .bento-tab-list__new-actions:has(.bento-tab-list-search[data-open]) .bento-tab-list__search-trigger {
+    transition:
+      width var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      visibility var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search:not([data-open]) {
+    transition:
+      visibility var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search__field-row {
+    transition:
+      margin-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      padding-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search:not([data-open]) .bento-tab-list-search__field-row {
+    transition:
+      margin-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      padding-inline-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-reveal-transition-spring-visual-duration),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search__input {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search[data-open] .bento-tab-list-search__input {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-state-transition-duration),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search__clear {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      scale var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search[data-open] .bento-tab-list-search__clear {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition) var(--muxui-semantic-motion-state-transition-duration),
+      scale var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing) var(--muxui-semantic-motion-state-transition-duration),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-list-search__result-actions {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list__new-actions:has(.bento-tab-list-search:is([data-folding], [data-open])) .bento-tab-list__search-trigger {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) .bento-tab-list-search__field-row {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade]:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand']) .bento-tab-list-search:is([data-folding], [data-open]) :is(.bento-tab-list-search__input, .bento-tab-list-search__clear) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/TabRow/TabRow.css */
+
+  [data-bento-mode-fade] .bento-tab-row {
+    transition:
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-row--removing {
+    transition:
+      opacity var(--muxui-semantic-motion-dismiss-transition),
+      transform var(--muxui-semantic-motion-dismiss-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-row > .muxui-text {
+    transition:
+      mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) var(--muxui-semantic-motion-state-transition-duration) allow-discrete,
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-row__actions {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-tab-row:hover > .muxui-text,
+  [data-bento-mode-fade] .bento-tab-row--active > .muxui-text {
+    transition:
+      mask-image calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0) allow-discrete,
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.css */
+
+  [data-bento-mode-fade] .bento-workspace-switcher__chevron {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/components/primitives/RowHighlight.css */
+
+  [data-bento-mode-fade] .bento-row-highlight[data-highlight-motion]::before {
+    transition:
+      transform var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      block-size var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      inline-size var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      opacity var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/sidebar/railTransition.css */
+
+  html[data-bento-mode-fade][data-bento-rail-transition] :is(.bento-tab-row, .bento-workspace-switcher__trigger) {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  html[data-bento-mode-fade][data-bento-rail-transition] .bento-shell-app__footer {
+    transition:
+      --bento-footer-fill var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* extensions/bento-shell/src/welcome/welcome.css */
+
+  [data-bento-mode-fade] .bento-welcome__dots > span {
+    transition:
+      inline-size var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-welcome {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      visibility var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-welcome > * {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-welcome--out > * {
+    transition:
+      opacity var(--muxui-semantic-motion-dismiss-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-welcome--hidden,
+  [data-bento-mode-fade] .bento-welcome--restoring {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-welcome--faded > * {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  /* fade-twins:end */
 }

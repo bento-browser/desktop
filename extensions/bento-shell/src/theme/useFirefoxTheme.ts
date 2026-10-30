@@ -59,7 +59,7 @@ function resolveMode(mode: UiColorModePref, options: FirefoxThemeOptions = {}): 
 }
 
 /** Resolves and applies a mode. `flipAt` (a settings change's ColorStamp.flipAt) makes the
- * attribute writes, and `onApplied`, wait for that time; the OS, storage and BroadcastChannel
+ * change show at that time, and `onApplied` run then; the OS, storage and BroadcastChannel
  * paths pass none and apply at once. The mode is resolved when it is applied, not when it was
  * asked for, so an Auto choice that waits shows the OS appearance of that moment, and
  * `onApplied` stores and announces the mode that is on screen. */
@@ -82,9 +82,9 @@ function applyMode(
       // Bento currently exposes only the standard contrast mode.
       html.setAttribute('data-muxui-color-scheme', resolved);
       html.setAttribute('data-muxui-contrast', 'standard');
-      onApplied?.(resolved);
     },
     flipAt,
+    onApplied,
   );
 }
 
@@ -121,7 +121,10 @@ function applyPreference(
 }
 
 export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
-  const uiColorMode = useSettingsStore((s) => s.current?.uiColorMode);
+  // A boolean, not the pref: this hook sits at the root of every document, and a root that
+  // re-renders on every flip re-renders its whole tree (the sidebar's tab rows) just when the
+  // fade is about to start.
+  const isAuto = useSettingsStore((s) => s.current?.uiColorMode === 'system');
   const preferStoredSystemResolution = options.preferStoredSystemResolution === true;
   const appliedPref = useRef<UiColorModePref | null>(null);
 
@@ -150,7 +153,7 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
 
   // The listeners that keep an Auto choice following the OS and the window's other documents.
   useEffect(() => {
-    if (uiColorMode !== 'system') return;
+    if (!isAuto) return;
     const media = matchMedia(DARK_QUERY);
     const onChange = () => {
       applyMode('system', { preferStoredSystemResolution }, undefined, (resolved) => {
@@ -202,5 +205,5 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
       }
       if (preferStoredSystemResolution) window.removeEventListener('storage', onStorage);
     };
-  }, [preferStoredSystemResolution, uiColorMode]);
+  }, [preferStoredSystemResolution, isAuto]);
 }
