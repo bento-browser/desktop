@@ -506,6 +506,7 @@ gradient in the shell and chrome sheets that reads a custom property found no ot
 | `--bento-switch-hover-tint` | `SettingsPalette.css` | Mux's hovered, unchecked switch gradient over `--muxui-semantic-surface-strong`, re-declared over a carrier (Mux is not edited) |
 | `--bento-card-tint` | `WorkspaceThemePicker.css` | the theme picker card's hover (3%) and pressed (8%) tint over the card fill (Mux's outlined `Card.Button` rules reproduced; see below) |
 | `--bento-corner-fill` | `app.css` | stop of the pinned panels' corner radial gradient (`.bento-pinned-panels + .bento-shell-app__main::after`) |
+| `--bento-private-band-fill` | `app.css` | the private window band's fill gradient in the collapsed rail (`.bento-shell-app:has(... --private)`, painted across the band's row right of the capped column) |
 | `--bento-placeholder-fg` | `document-base.css`, `bento-shell-mount.css` | placeholder text (shell fields; the chrome panel URL field) |
 | `--bento-toolbar-left-bg`, `--bento-toolbar-right-bg` | `bento-shell-mount.css` | the two gradient stops of the toolbars and of the window, body, `#browser` surfaces in sidebar address bar mode; the inline gradient the mount script writes reads the same two properties |
 | `--bento-splitter-accent` | `bento-shell-mount.css` | the splitter hover indicator gradient (declared from `--color-60` in each splitter rule that paints it, and in its `::after`) |
@@ -514,7 +515,8 @@ gradient in the shell and chrome sheets that reads a custom property found no ot
 - Placeholder text is a pseudo-element of its field and takes no transition, so its colour is held in
   `--bento-placeholder-fg` (`document-base.css`: set on `input` and `textarea` from Mux's
   `--muxui-field-placeholder-color` in `bento.tokens`; a Bento field with its own placeholder colour sets
-  the variable on itself, `SidebarAddressBar.css`, `TabList.css`). A pseudo-element does not inherit a
+  the variable on itself, `SidebarAddressBar.css`, `AddressBar.css`, `TabList.css`; a `color` on `::placeholder`
+  itself would switch at the prepare, and a test rejects it). A pseudo-element does not inherit a
   non-inherited registered property from its originating element: it reads the registered initial value,
   `transparent`. The `::placeholder` rule therefore sets `--bento-placeholder-fg: inherit` itself
   (`document-base.css`, and `bento-shell-mount.css` for the chrome's panel URL field, "Enter URL")
