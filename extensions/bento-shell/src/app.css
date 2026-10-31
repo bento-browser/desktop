@@ -163,15 +163,35 @@
   }
 
   .bento-shell-app__footer {
+    position: relative;
     padding-block: var(--space-2xs);
     padding-inline: var(--space-2xs);
-    border-top: 1px solid var(--bento-sidebar-divider-color);
+    border-top: 1px solid transparent;
     /* The fill is a registered property (below) so the collapse choreography's backdrop
        (railTransition.css) can take the colour this element fades through. */
     --bento-footer-fill: var(--bento-brand-bg);
     background-color: var(--bento-footer-fill);
     justify-content: flex-end;
     gap: var(--space-4xs) !important;
+  }
+
+  /* Keep the border's layout space, but paint the separator as a background: the native
+     footer border held and jumped during mode fades in window capture while this fill
+     followed adjacent fills. Keep it separate from the rail's rising ::before backdrop
+     so a mode fade never transitions one pseudo-element between those colour roles. */
+  .bento-shell-app__footer::after {
+    content: '';
+    position: absolute;
+    inset-block-start: -1px;
+    inset-inline: 0;
+    height: 1px;
+    background-color: var(--bento-sidebar-divider-color);
+    pointer-events: none;
+  }
+
+  html:is([data-bento-rail-transition='collapse'], [data-bento-rail-transition='expand'])
+    .bento-shell-app__footer::after {
+    visibility: hidden;
   }
 
   /* The tab list and the floating sidebar cards laid over its end (SidebarCards). */
