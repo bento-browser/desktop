@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 import { splitTopLevelBlocks } from '../extensions/bento-shell/css-blocks.mjs';
+import { splitTop, TARGETS } from './fade-twins.mjs';
 
 const source = readFileSync(
   resolve(
@@ -474,900 +475,23 @@ test('a frame queued by a replaced switch does not lift the curtain of the newer
   assert.equal(fade.classes.has(STABILIZING), true);
 });
 
-// ─── The light/dark flip fade (applyChromeColorMode and the direct signal) ──────────────────────
-
+// Native mode transactions are exercised end to end in mode-presentation.test.mjs.
 const COLOR_FADE = 'data-bento-mode-fade';
 
-function mountLet(name) {
-  const match = new RegExp(`^ {2}let ${name} = [^;]*;`, 'm').exec(source);
-  assert.ok(match, `let ${name} is missing`);
-  return match[0];
-}
-
-const EPOCH = 1_700_000_000_000;
-
-/** The mount's colour mode functions, run against a root that records its attribute writes. */
-function makeColorWorld({ isPrivate = false } = {}) {
-  let clock = 0;
-  let nextTimer = 1;
-  const timers = new Map();
-  const frames = new Map();
-  let nextFrame = 1;
-  const attributes = new Map([['data-color-mode', 'light']]);
-  const writes = [];
-  const notifications = [];
-  // clockStep: how far the system clock (Date.now) has been stepped from the monotonic one.
-  const env = { hidden: false, reducedMotion: false, osDark: false, clockStep: 0, stall: false };
-  const documentListeners = new Map();
-  const root = new FakeElement({
-    transitionProperty: 'background-color, color',
-    transitionDuration: '0.12s',
-  });
-  const styleProperties = new Map();
-  // The computed style reads the delay the catch-all takes from the root's inline custom property.
-  Object.defineProperty(root.style, 'transitionDelay', {
-    get: () => `${Number.parseFloat(styleProperties.get('--bento-mode-fade-delay') ?? '0') / 1000}s`,
-  });
-  Object.assign(root, {
-    style: {
-      setProperty: (name, value) => {
-        writes.push([name, value, attributes.get(COLOR_FADE) ?? null]);
-        styleProperties.set(name, value);
-      },
-      removeProperty: (name) => styleProperties.delete(name),
-    },
-    getAttribute: (name) => attributes.get(name) ?? null,
-    hasAttribute: (name) => attributes.has(name),
-    setAttribute(name, value) {
-      writes.push([name, value, attributes.get(COLOR_FADE) ?? null]);
-      attributes.set(name, value);
-    },
-    removeAttribute(name) {
-      writes.push([name, null, null]);
-      attributes.delete(name);
-    },
-  });
-  const windowListeners = new Map();
+test('the native final writer settles carriers before publishing its granted mode', () => {
+  const writes = [], attributes = new Map();
+  const root = { style: { removeProperty() {} }, setAttribute(name, value) { attributes.set(name, value); writes.push(name); }, removeAttribute(name) { attributes.delete(name); writes.push('remove:' + name); } };
   const sandbox = {
-    setTimeout: (callback, ms = 0) => {
-      timers.set(nextTimer, { callback, due: clock + ms });
-      return nextTimer++;
-    },
-    clearTimeout: (id) => timers.delete(id),
-    // The system clock tools' epoch time is read from: one fixed epoch plus the fake timers'
-    // time, plus any step. The window's own monotonic clock (performance.now, which frame times
-    // use) has no step. Frame callbacks run every 4 ms of it (a 240 Hz display), and not while
-    // the window is hidden.
-    Date: { now: () => EPOCH + clock + env.clockStep },
-    document: {
-      documentElement: root,
-      get hidden() {
-        return env.hidden;
-      },
-      addEventListener: (type, handler) =>
-        documentListeners.set(type, new Set([...(documentListeners.get(type) ?? []), handler])),
-      removeEventListener: (type, handler) => documentListeners.get(type)?.delete(handler),
-    },
-    window: {
-      matchMedia: (query) => ({
-        matches: query.includes('reduced-motion') ? env.reducedMotion : env.osDark,
-      }),
-      addEventListener: (type, handler) => windowListeners.set(type, handler),
-      performance: { now: () => clock },
-      requestAnimationFrame: (callback) => {
-        frames.set(nextFrame, callback);
-        return nextFrame++;
-      },
-      cancelAnimationFrame: (id) => frames.delete(id),
-    },
-    Services: { obs: { notifyObservers: (...args) => notifications.push(args) } },
-    BentoPrivateBrowsingUtils: { isWindowPrivate: () => isPrivate },
+    document: { documentElement: root, getElementById: () => ({}) },
+    window: { getComputedStyle() { assert.equal(attributes.get(COLOR_FADE), 'settle'); writes.push('flush'); return {}; } },
+    chromeColorModePref: null, chromeColorStamp: null,
+    announceChromeColorMode: () => writes.push('publish'),
   };
-  const names = [
-    'resolveChromeColorMode',
-    'writeChromeColorMode',
-    'acceptChromeColorStamp',
-    'commitChromeColorMode',
-    'announceChromeColorMode',
-    'removeChromeModeFade',
-    'unwatchChromeFadeVisibility',
-    'endChromeModeFade',
-    'prepareChromeColorFlip',
-    'runAtChromeFlip',
-    'setChromeColorMode',
-    'applyChromeColorMode',
-    'handleChromeDarkQueryChange',
-    'handleUiColorModeSet',
-  ];
-  const api = vm.runInNewContext(
-    `"use strict";
-    ${['CHROME_DARK_QUERY', 'BENTO_UI_COLOR_MODE_TOPIC', 'BENTO_MODE_FADE_ATTR', 'BENTO_MODE_FADE_DELAY_PROPERTY', 'BENTO_FLIP_CATCH_UP_MAX_MS', 'BENTO_UI_COLOR_MODE_SET_EVENT', 'BENTO_FLIP_FRAME_WATCH_MS', ...CONSTANTS].map(mountConst).join('\n')}
-    ${mountLet('chromeColorModePref')}
-    ${mountLet('chromeColorModeApplied')}
-    ${mountLet('chromeColorStamp')}
-    ${mountLet('cancelChromeColorFlip')}
-    ${mountLet('chromeColorFlip')}
-    ${mountLet('chromeFadeHideListener')}
-
-    ${[...FUNCTIONS, ...names].map(mountFunction).join('\n')}
-    ({ ${names.join(', ')}, BENTO_UI_COLOR_MODE_SET_EVENT });`,
-    sandbox,
-    { filename: 'bento-shell-mount.js#colormode' },
-  );
-  return {
-    ...api,
-    attributes,
-    styleProperties,
-    writes,
-    notifications,
-    env,
-    /** The epoch time `ms` from now, as a stamp's flipAt. */
-    at: (ms) => EPOCH + clock + env.clockStep + ms,
-    timerCount: () => timers.size,
-    frameCount: () => frames.size,
-    visibilityListeners: () => documentListeners.get('visibilitychange')?.size ?? 0,
-    /** The window hides: frames stop and the listeners hear it. */
-    hide() {
-      env.hidden = true;
-      for (const handler of [...(documentListeners.get('visibilitychange') ?? [])]) handler({});
-    },
-    // The window event bento-tools fires; the world registers the mount's handler for it.
-    signal: (mode, stamp) => api.handleUiColorModeSet({ detail: { mode, stamp } }),
-    fadeWrites: () => writes.filter(([name, value]) => name === COLOR_FADE && value === ''),
-    advance(ms) {
-      const target = clock + ms;
-      for (;;) {
-        // The next thing due: a timer, or the next frame tick (every 4 ms).
-        const nextTick = (Math.floor(clock / 4) + 1) * 4;
-        const due = [...timers].filter(([, timer]) => timer.due <= target);
-        due.sort((a, b) => a[1].due - b[1].due || a[0] - b[0]);
-        const timerDue = due.length > 0 ? due[0][1].due : Infinity;
-        if (Math.min(timerDue, nextTick) > target) break;
-        if (timerDue <= nextTick) {
-          const [id, timer] = due[0];
-          timers.delete(id);
-          clock = Math.max(clock, timer.due);
-          timer.callback();
-        } else {
-          clock = nextTick;
-          if (env.hidden || env.stall) continue;
-          const queued = [...frames.values()];
-          frames.clear();
-          for (const callback of queued) callback(clock);
-        }
-      }
-      clock = target;
-    },
-  };
-}
-
-test('the first colour mode application never fades; a later flip fades and clears after the motion', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('dark');
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.fadeWrites().length, 0, 'the startup application writes without a fade');
-
-  world.applyChromeColorMode('light');
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  // The attribute went on before the mode did, in the same task.
-  const order = world.writes.map(([name]) => name);
-  assert.ok(order.lastIndexOf(COLOR_FADE) < order.lastIndexOf('data-color-mode'));
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  world.advance(100);
-  assert.equal(world.attributes.has(COLOR_FADE), true, 'it stays until the fade has ended');
-  world.advance(100);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-});
-
-test('hidden windows and reduced motion switch the mode without a fade', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light');
-  world.env.hidden = true;
-  world.applyChromeColorMode('dark');
-  world.env.hidden = false;
-  world.env.reducedMotion = true;
-  world.applyChromeColorMode('light');
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.fadeWrites().length, 0);
-});
-
-test('the direct signal applies the pref, resolving Auto in chrome, and ignores a bad value', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light');
-  world.signal('system');
-  assert.equal(world.attributes.get('data-color-mode'), 'light', 'Auto resolves against the OS');
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'system');
-  world.env.osDark = true;
-  world.signal('system');
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  world.signal('purple');
-  world.signal(undefined);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-test('a private window ignores the direct signal', () => {
-  const world = makeColorWorld({ isPrivate: true });
-  world.applyChromeColorMode('light');
-  world.signal('dark');
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.fadeWrites().length, 0);
-});
-
-test('the late BENTO_PANELS payload after the direct signal neither restarts nor doubles the fade', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light');
-  world.signal('dark');
-  assert.equal(world.fadeWrites().length, 1);
-  assert.equal(world.notifications.length, 1, 'about:preferences is told once');
-  world.advance(60);
-
-  // The payload carries the same pref and takes the unchanged-mode path.
-  world.applyChromeColorMode('dark');
-  assert.equal(world.fadeWrites().length, 1, 'the attribute is not set again');
-  assert.equal(world.notifications.length, 1);
-  world.advance(120);
-  assert.equal(world.attributes.has(COLOR_FADE), false, 'the first wait still ends the fade');
-});
-
-test('a second flip during the fade keeps the attribute and waits again', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light');
-  world.signal('dark');
-  world.advance(100);
-  world.signal('light');
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  assert.equal(
-    world.writes.filter(([name, value]) => name === COLOR_FADE && value === null).length,
-    0,
-    'no removal between the flips',
-  );
-  world.advance(100);
-  assert.equal(world.attributes.has(COLOR_FADE), true, 'the first flip’s wait no longer ends it');
-  world.advance(100);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-});
-
-test('the mount listens for the event name the bentoPrivacy experiment dispatches', () => {
-  const world = makeColorWorld();
-  const api = readFileSync(
-    resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      '../extensions/bento-tools/experiments/bento-privacy/api.js',
-    ),
-    'utf8',
-  );
-  assert.ok(api.includes(`UI_COLOR_MODE_EVENT = '${world.BENTO_UI_COLOR_MODE_SET_EVENT}'`));
-  assert.ok(
-    source.includes(
-      'window.addEventListener(BENTO_UI_COLOR_MODE_SET_EVENT, handleUiColorModeSet);',
-    ),
-    'the mount registers its handler',
-  );
-});
-
-test('a change that does not fade ends a running fade, and an unchanged value leaves it alone', () => {
-  for (const noFade of ['hidden', 'reducedMotion']) {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light');
-    world.signal('dark');
-    assert.equal(world.attributes.has(COLOR_FADE), true);
-
-    // The same mode arriving again (the payload backstop) must not touch the running fade.
-    world.env[noFade] = true;
-    world.applyChromeColorMode('dark');
-    assert.equal(world.attributes.has(COLOR_FADE), true, noFade + ': unchanged value');
-
-    // A real change with no fade drops the attribute now and the wait with it.
-    world.applyChromeColorMode('light');
-    assert.equal(world.attributes.get('data-color-mode'), 'light');
-    assert.equal(world.attributes.has(COLOR_FADE), false, noFade + ': changed value');
-    assert.equal(world.styleProperties.has('--bento-mode-fade-delay'), false, noFade + ': delay');
-    const removals = () =>
-      world.writes.filter(([name, value]) => name === COLOR_FADE && value === null).length;
-    const before = removals();
-    world.advance(500);
-    assert.equal(removals(), before, 'the cancelled wait does not fire');
-  }
-});
-
-// A stamp of tools run 'a' (or another run), as SettingsStore.colorStamp() makes them.
-const stamp = (seq, run = 'a') => ({ run, seq });
-
-test('a stale payload after the direct signal is dropped, with one fade and no reversal', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', stamp(2));
-  // A payload serialised before the flip: the old mode, the old stamp.
-  world.applyChromeColorMode('light', stamp(1));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'dark');
-  assert.equal(world.fadeWrites().length, 1);
-  assert.equal(world.notifications.length, 1);
-
-  // The current payload agrees and neither restarts nor cancels the fade.
-  world.applyChromeColorMode('dark', stamp(2));
-  assert.equal(world.fadeWrites().length, 1);
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  world.advance(200);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-});
-
-test('the same holds the other way round: the payload first, then an older direct signal', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.applyChromeColorMode('dark', stamp(2));
-  world.signal('light', stamp(1));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.fadeWrites().length, 1);
-});
-
-test('the first flip of a run: an initial payload queued before it cannot undo the direct signal', () => {
-  // Tools stamps the state it starts with (seq 1), so the initial payload is ordered too. It was
-  // serialised with the old mode, and is delivered after the direct event for the first flip.
-  for (const initial of [stamp(1), undefined]) {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light', stamp(1));
-    world.signal('dark', stamp(2));
-    world.applyChromeColorMode('light', initial);
-    assert.equal(world.attributes.get('data-color-mode'), 'dark', String(initial));
-    // The payload built after the flip is the backstop and changes nothing.
-    world.applyChromeColorMode('dark', stamp(2));
-    assert.equal(world.fadeWrites().length, 1, 'one fade, not dark, light, dark');
-    assert.equal(world.notifications.length, 1);
-  }
-});
-
-test('with nothing recorded yet any message applies; after a stamp an unstamped one is dropped', () => {
-  const world = makeColorWorld();
-  // First boot, an older payload source, the legacy title: no stamp anywhere yet.
-  world.applyChromeColorMode('dark');
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  world.applyChromeColorMode('light', undefined);
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-
-  world.applyChromeColorMode('dark', stamp(3));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  // A sidebar's pre-hydration boot hint, or the legacy title, after a stamped mode.
-  world.applyChromeColorMode('light');
-  world.applyChromeColorMode('light', { run: 7, seq: 'x' });
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  // The same run: lower is stale, equal and higher apply.
-  world.applyChromeColorMode('light', stamp(2));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  world.applyChromeColorMode('light', stamp(3));
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  world.applyChromeColorMode('dark', stamp(4));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-test('a restart never leaves chrome rejecting: a new run applies whatever its sequence or clock', () => {
-  const world = makeColorWorld();
-  // The old run got far, with chrome applying its stamps.
-  world.applyChromeColorMode('light', stamp(1, 'old'));
-  world.signal('dark', stamp(40, 'old'));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-
-  // Tools restarted (the clock may have stepped back too): a new run id, sequence from 1.
-  // The saved mode is light, and the new run's first stamped message says so.
-  world.applyChromeColorMode('light', stamp(1, 'new'));
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  world.signal('dark', stamp(2, 'new'));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  // Inside the new run the order holds again.
-  world.applyChromeColorMode('light', stamp(1, 'new'));
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  world.signal('light', stamp(3, 'new'));
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-});
-
-test('a mode that follows the OS under Auto still follows it after a stamped message', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('system', stamp(5));
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  world.env.osDark = true;
-  world.handleChromeDarkQueryChange();
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  // With another pref the OS appearance changes nothing.
-  world.applyChromeColorMode('light', stamp(6));
-  world.handleChromeDarkQueryChange();
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-});
-
-test('a malformed direct event is ignored, and a bad stamp is no stamp', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light');
-  world.handleUiColorModeSet({});
-  world.handleUiColorModeSet({ detail: 'dark' });
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  // A valid mode with a junk stamp applies like an unstamped one: nothing is recorded yet.
-  world.handleUiColorModeSet({ detail: { mode: 'dark', stamp: 'x' } });
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-// ─── The scheduled flip (ColorStamp.flipAt) ─────────────────────────────────────────────────────
-
-const DELAY = '--bento-mode-fade-delay';
-
-test('a scheduled flip is prepared in the first frame and shown at flipAt; the late payload agrees', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-color-mode'), 'light', 'nothing before the first frame');
-  world.advance(4);
-
-  // Prepared: the mode and the fade are on, the transitions wait the rest of the lead.
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  assert.equal(world.styleProperties.get(DELAY), '116ms', 'the delay ends at flipAt');
-  assert.equal(world.notifications.length, 0, 'about:preferences is told at flipAt');
-  const order = world.writes.map(([name]) => name);
-  assert.ok(order.lastIndexOf(DELAY) < order.lastIndexOf(COLOR_FADE), 'delay before the attribute');
-  assert.ok(order.lastIndexOf(COLOR_FADE) < order.lastIndexOf('data-color-mode'));
-
-  // The BENTO_PANELS backstop arrives inside the lead with the same change.
-  world.applyChromeColorMode('dark', { ...stamp(2), flipAt: world.at(60) });
-  world.advance(60);
-  assert.equal(world.fadeWrites().length, 1, 'one fade, not two');
-  assert.equal(world.notifications.length, 0, 'the backstop does not announce early or cancel it');
-  world.advance(56);
-  assert.equal(world.notifications.length, 1, 'about:preferences is told once, at flipAt');
-  world.advance(300);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.styleProperties.has(DELAY), false, 'the delay goes with the attribute');
-});
-
-test('a flipAt that has passed, or is absent, applies at once without a delay', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(0) });
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.styleProperties.get(DELAY), '0ms');
-  world.signal('light', { ...stamp(3), flipAt: world.at(-40) });
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  world.signal('dark', { ...stamp(4), flipAt: 'soon' });
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-test('a newer change replaces one that is prepared or waiting, and a stale stamp schedules nothing', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(50);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark', 'prepared');
-
-  // Back to light before the first flip showed: its announcement never goes out.
-  world.signal('light', { ...stamp(3), flipAt: world.at(120) });
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.notifications.length, 1, 'only the flip back is announced');
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-
-  // A change for the other mode replaces one that has not been prepared yet: the replaced dark
-  // flip is never shown or announced (light is on screen, so there is nothing to announce).
-  world.signal('dark', { ...stamp(4), flipAt: world.at(100) });
-  world.signal('light', { ...stamp(5), flipAt: world.at(150) });
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.notifications.length, 1);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.timerCount(), 0);
-
-  // The same mode again joins one that has not been prepared yet: its time stays.
-  world.env.stall = true;
-  world.signal('dark', { ...stamp(6), flipAt: world.at(100) });
-  world.advance(12);
-  world.signal('dark', { ...stamp(7), flipAt: world.at(150) });
-  world.env.stall = false;
-  world.advance(4);
-  const delay = Number.parseFloat(world.styleProperties.get(DELAY));
-  assert.ok(delay >= 80 && delay <= 88, `delay ${delay}`);
-  world.advance(100);
-  assert.equal(world.notifications.length, 2, "announced once, at the first request's time");
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-
-  // A lower seq is dropped before it can schedule or cancel anything.
-  world.signal('light', { ...stamp(2), flipAt: world.at(100) });
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-test('the first application, a hidden window and an unchanged mode do not wait', () => {
-  const world = makeColorWorld();
-  // First application in the window: the startup veil is up, so it shows now.
-  world.signal('dark', { ...stamp(1), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.timerCount(), 0);
-
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  assert.equal(world.timerCount(), 0, 'an unchanged mode has nothing to schedule');
-
-  world.env.hidden = true;
-  world.signal('light', { ...stamp(3), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.timerCount(), 0);
-});
-
-test('reduced motion still waits, then switches without a fade', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.env.reducedMotion = true;
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(100);
-  assert.equal(world.attributes.get('data-color-mode'), 'light', 'a snap waits for its time too');
-  world.advance(20);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.fadeWrites().length, 0);
-});
-
-test('an OS appearance change under Auto applies at once and replaces a waiting flip', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('system', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  // Auto is the pref again (as a later change would set it); the OS flips before flipAt.
-  world.signal('system', { ...stamp(3), flipAt: world.at(100) });
-  world.env.osDark = true;
-  world.handleChromeDarkQueryChange();
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-});
-
-// flipAt is wall-clock time and frame times are monotonic: a step of the system clock after the
-// window opened must neither delay nor advance the flip (the deadline is fixed on receipt).
-for (const [when, step] of [
-  ['before', 60_000],
-  ['before', -60_000],
-  ['after', 60_000],
-  ['after', -60_000],
-]) {
-  test(`the system clock stepping ${step} ms ${when} the change arrives does not move the flip`, () => {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light', stamp(1));
-    if (when === 'before') world.env.clockStep += step;
-    world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-    world.advance(20);
-    if (when === 'after') world.env.clockStep += step;
-
-    assert.equal(world.attributes.get('data-color-mode'), 'dark', 'prepared in the first frame');
-    assert.equal(world.styleProperties.get(DELAY), '116ms', 'the delay was measured on receipt');
-    world.advance(99);
-    assert.equal(world.notifications.length, 0, 'not announced before 120 ms');
-    world.advance(5);
-    assert.equal(world.notifications.length, 1, 'announced in the first frame after it');
-    assert.equal(world.fadeWrites().length, 1);
-  });
-}
-
-test('a window that hides before the first frame applies at once without a fade', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  assert.equal(world.visibilityListeners(), 1);
-
-  // A hidden window gets no frames, so the flip would otherwise wait for the next show.
-  world.hide();
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.fadeWrites().length, 0);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.visibilityListeners(), 0);
-  assert.equal(world.timerCount(), 0, 'no timer left to run it again');
-  assert.equal(world.notifications.length, 1, 'about:preferences is told once');
-});
-
-test('a window that hides while a prepared flip waits announces it at once and drops its listener', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(20);
-  assert.equal(world.visibilityListeners(), 2, 'the flip waiting and the fade running');
-  assert.equal(world.notifications.length, 0);
-  world.hide();
-  assert.equal(world.notifications.length, 1);
-  assert.equal(world.visibilityListeners(), 0);
-  world.advance(300);
-  assert.equal(world.notifications.length, 1, 'announced once');
-});
-
-test('the visibility listeners go when the flip is shown, the fade ends, and when a newer call replaces the flip', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  assert.equal(world.visibilityListeners(), 1, 'the flip waits for its first frame');
-  world.advance(120);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.visibilityListeners(), 1, 'shown: only the running fade is watched');
-  world.advance(400);
-  assert.equal(world.visibilityListeners(), 0, 'the fade ended');
-
-  world.signal('light', { ...stamp(3), flipAt: world.at(120) });
-  assert.equal(world.visibilityListeners(), 1);
-  world.signal('dark', { ...stamp(4), flipAt: world.at(120) });
-  assert.equal(world.visibilityListeners(), 0, 'dark is already showing: nothing waits');
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-});
-
-test('Auto prepared for its flip follows an OS change that arrives first, and ends on the live value', () => {
-  const world = makeColorWorld();
-  // Explicit light, the OS dark; the user picks Auto, which resolves to dark and is prepared.
-  world.env.osDark = true;
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('system', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(8);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.notifications.length, 0);
-
-  // The OS turns light during the wait. The listener registered at load replaces the prepared
-  // flip: Auto now resolves to light, which is announced, and the dark one never is.
-  world.env.osDark = false;
-  world.handleChromeDarkQueryChange();
-  assert.equal(world.visibilityListeners(), 1, 'only the fade that is running is watched');
-  world.advance(300);
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'system');
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.deepEqual(
-    world.notifications.map(([, , resolved]) => resolved),
-    ['light'],
-  );
-});
-
-test('a prepared flip is announced only at flipAt, and its fade outlives the delay plus the duration', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  for (let at = 4; at < 116; at += 4) {
-    world.advance(4);
-    assert.equal(world.notifications.length, 0, `announced early at ${at} ms`);
-  }
-  world.advance(12);
-  assert.equal(world.notifications.length, 1);
-  // 116 ms of delay from the first frame plus the 120 ms duration, measured on the first frame.
-  world.advance(100);
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  world.advance(60);
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  world.advance(110);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.styleProperties.has(DELAY), false);
-});
-
-test('the delay stays on the root until the fade ends', () => {
-  // Resetting it at flipAt restyles every element in the frame the fade starts (see
-  // prepareChromeColorFlip); a hover that starts during the fade waits as long as the flip did.
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(60);
-  assert.equal(world.styleProperties.get(DELAY), '116ms');
-  world.advance(64);
-  assert.equal(world.styleProperties.get(DELAY), '116ms');
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  world.advance(300);
-  assert.equal(world.styleProperties.has(DELAY), false);
-});
-
-for (const [late, delay] of [
-  [0, '0ms'],
-  [1, '-1ms'],
-  [30, '-30ms'],
-  [60, '-60ms'],
-  [61, '0ms'],
-]) {
-  test(`a stamp that arrives ${late} ms after flipAt joins the fade with a delay of ${delay}`, () => {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light', stamp(1));
-    world.signal('dark', { ...stamp(2), flipAt: world.at(-late) });
-    assert.equal(world.attributes.get('data-color-mode'), 'dark');
-    assert.equal(world.styleProperties.get(DELAY), delay);
-    assert.equal(world.notifications.length, 1);
-    world.advance(40);
-    assert.equal(world.attributes.has(COLOR_FADE), true);
-    world.advance(200);
-    assert.equal(world.attributes.has(COLOR_FADE), false);
-    assert.equal(world.styleProperties.has(DELAY), false);
-  });
-}
-
-for (const [stall, delay] of [
-  [145, '-28ms'],
-  [177, '-60ms'],
-  [181, '0ms'],
-]) {
-  test(`a first frame ${stall + 3} ms after receipt (120 ms lead) gets a delay of ${delay}`, () => {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light', stamp(1));
-    world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-    world.env.stall = true;
-    world.advance(stall);
-    world.env.stall = false;
-    world.advance(4);
-    assert.equal(world.attributes.get('data-color-mode'), 'dark');
-    assert.equal(world.styleProperties.get(DELAY), delay);
-    assert.equal(world.notifications.length, 1);
-  });
-}
-
-test('a window that hides after preparation drops the fade, the delay and the announcement wait', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(8);
-  assert.equal(world.attributes.has(COLOR_FADE), true);
-  assert.equal(world.styleProperties.get(DELAY), '116ms');
-
-  world.hide();
-  assert.equal(world.attributes.has(COLOR_FADE), false, 'no frame will come to end it');
-  assert.equal(world.styleProperties.has(DELAY), false);
-  assert.equal(world.notifications.length, 1, 'announced once, at once');
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.timerCount(), 0);
-  assert.equal(world.visibilityListeners(), 0);
-
-  // Shown again: nothing comes back.
-  world.env.hidden = false;
-  world.advance(400);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.notifications.length, 1);
-});
-
-test('a newer stamp for the mode a prepared flip already shows joins it: its time stays, announced once', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(40);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-
-  // Auto, resolving to dark as well, 40 ms later with a later time of its own.
-  world.env.osDark = true;
-  world.signal('system', { ...stamp(3), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'system');
-  world.advance(70);
-  assert.equal(world.notifications.length, 0, 'not published before the flip is on screen');
-  world.advance(14);
-  assert.equal(world.notifications.length, 1, 'published at the original time');
-  world.advance(400);
-  assert.equal(world.notifications.length, 1);
-  assert.equal(world.fadeWrites().length, 1, 'one fade');
-
-  // A genuine duplicate of the same stamp changes nothing either.
-  world.signal('light', { ...stamp(4), flipAt: world.at(120) });
-  world.advance(8);
-  world.signal('light', { ...stamp(4), flipAt: world.at(120) });
-  world.advance(300);
-  assert.equal(world.notifications.length, 2);
-});
-
-test('a newer stamp for the same mode joins a flip that is not prepared yet and keeps its time', () => {
-  const world = makeColorWorld();
-  world.env.osDark = true;
-  world.applyChromeColorMode('light', stamp(1));
-  // No frame reaches the window before the second request: it is not prepared, like a document
-  // whose renderer is busy, while another document has prepared for the first deadline.
-  world.env.stall = true;
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(40);
-  world.signal('system', { ...stamp(3), flipAt: world.at(120) });
-  assert.equal(world.attributes.get('data-color-mode'), 'light');
-  world.env.stall = false;
-  world.advance(4);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'system');
-  assert.equal(world.styleProperties.get(DELAY), '76ms', 'the first request\'s deadline, 120 ms from it');
-  world.advance(72);
-  assert.equal(world.notifications.length, 0);
-  world.advance(8);
-  assert.equal(world.notifications.length, 1, 'announced at the first deadline, once');
-  world.advance(400);
-  assert.equal(world.notifications.length, 1);
-  assert.equal(world.fadeWrites().length, 1);
-});
-
-test('a duplicate of the stamp keeps the deadline when the clock steps before the first frame', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.env.stall = true;
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.advance(20);
-  world.env.clockStep += 60_000;
-  // The BENTO_PANELS payload carries the same stamp. Its flipAt is 60 s behind the stepped clock.
-  world.applyChromeColorMode('dark', { ...stamp(2), flipAt: world.at(-60_000 + 120 - 20) });
-  world.env.stall = false;
-  world.advance(4);
-  assert.equal(world.attributes.get('data-color-mode'), 'dark');
-  assert.equal(world.styleProperties.get(DELAY), '96ms');
-  assert.equal(world.notifications.length, 0, 'not applied early, not announced early');
-  world.advance(96);
-  assert.equal(world.notifications.length, 1);
-  assert.equal(world.fadeWrites().length, 1);
-});
-
-test('an OS change heard during the wait that makes the waiting mode wrong replaces it, prepared or not', () => {
-  for (const prepared of [false, true]) {
-    const world = makeColorWorld();
-    world.env.osDark = true;
-    world.applyChromeColorMode('light', stamp(1));
-    if (!prepared) world.env.stall = true;
-    world.signal('system', { ...stamp(2), flipAt: world.at(120) });
-    world.advance(20);
-    world.env.stall = false;
-    world.env.osDark = false;
-    world.handleChromeDarkQueryChange();
-    world.advance(400);
-    assert.equal(world.attributes.get('data-color-mode'), 'light', `prepared: ${prepared}`);
-    assert.deepEqual(
-      world.notifications.map(([, , resolved]) => resolved),
-      prepared ? ['light'] : [],
-      `the stale dark is never announced (prepared: ${prepared})`,
-    );
-    assert.equal(world.attributes.has(COLOR_FADE), false);
-    assert.equal(world.timerCount(), 0);
-  }
-});
-
-test('a stale stamp is dropped before any join decision, so it cannot change a waiting flip', () => {
-  const world = makeColorWorld();
-  world.env.osDark = true;
-  world.applyChromeColorMode('light', stamp(4));
-  world.signal('dark', { ...stamp(6), flipAt: world.at(120) });
-  world.advance(8);
-  // An older Auto message that would resolve to the same mode and so join: it is dropped first.
-  world.applyChromeColorMode('system', stamp(5));
-  world.applyChromeColorMode('system');
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'dark');
-  world.advance(400);
-  assert.equal(world.attributes.get('data-bento-color-mode-pref'), 'dark');
-  assert.equal(world.notifications.length, 1);
-});
-
-// A stamp that arrives late, or a first frame that does, installs a negative delay and announces at
-// once; the fade's visibility watch still ends it when the window hides before it is measured.
-for (const late of [1, 30, 60]) {
-  test(`a window that hides after a stamp ${late} ms late drops the fade, the delay and the timer`, () => {
-    const world = makeColorWorld();
-    world.applyChromeColorMode('light', stamp(1));
-    world.signal('dark', { ...stamp(2), flipAt: world.at(-late) });
-    assert.equal(world.styleProperties.get(DELAY), `-${late}ms`);
-    assert.equal(world.attributes.has(COLOR_FADE), true);
-    assert.equal(world.notifications.length, 1);
-
-    world.hide();
-    assert.equal(world.attributes.has(COLOR_FADE), false);
-    assert.equal(world.styleProperties.has(DELAY), false);
-    assert.equal(world.timerCount(), 0, 'the motion wait is cancelled with it');
-    assert.equal(world.visibilityListeners(), 0);
-
-    world.env.hidden = false;
-    world.advance(400);
-    assert.equal(world.attributes.has(COLOR_FADE), false);
-    assert.equal(world.styleProperties.has(DELAY), false);
-    assert.equal(world.notifications.length, 1, 'announced once');
-  });
-}
-
-test('a window that hides after a late first frame drops the fade and the negative delay', () => {
-  const world = makeColorWorld();
-  world.applyChromeColorMode('light', stamp(1));
-  world.signal('dark', { ...stamp(2), flipAt: world.at(120) });
-  world.env.stall = true;
-  world.advance(177);
-  world.env.stall = false;
-  world.advance(4);
-  assert.equal(world.styleProperties.get(DELAY), '-60ms');
-  assert.equal(world.notifications.length, 1);
-
-  world.hide();
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.styleProperties.has(DELAY), false);
-  assert.equal(world.timerCount(), 0);
-  assert.equal(world.visibilityListeners(), 0);
-  world.env.hidden = false;
-  world.advance(400);
-  assert.equal(world.attributes.has(COLOR_FADE), false);
-  assert.equal(world.notifications.length, 1);
+  vm.runInNewContext(`${mountFunction('writeGrantedChromeMode')}\nwriteGrantedChromeMode({pref:'system', resolved:'dark',stamp:{run:'owner',seq:2}})`, sandbox);
+  assert.ok(writes.indexOf(COLOR_FADE) < writes.indexOf('data-color-mode'));
+  assert.ok(writes.lastIndexOf('flush') < writes.indexOf('remove:' + COLOR_FADE));
+  assert.equal(writes.at(-1), 'publish');
+  assert.equal(attributes.get('data-bento-color-mode-pref'), 'system');
 });
 
 // ─── The light/dark flip fade in CSS: the layer it lives in and what it leaves out ──────────────
@@ -1402,6 +526,77 @@ function registeredColorProperties(paths) {
 const CHROME_THEME = 'src/browser/base/content/bento-chrome-theme.css';
 const FADE_LAYER = '@layer bento.chrome-theme.fade';
 const EXCLUSION_LAYER = '@layer bento.chrome-theme.fade-exclusion';
+
+/** Resolve these generated CSS lists against a nominal Mux state pair, then let the
+ * real motion helper apply CSS's last-matching-property timing rules. */
+function generatedMotion(target, settle, selector, ownTransition) {
+  const css = readRepo(target.sheet).replace(/\/\*[\s\S]*?\*\//g, '');
+  const layer = splitTopLevelBlocks(css).find(({ prelude }) => prelude.split(';').pop().trim() === target.layer);
+  const blocks = splitTopLevelBlocks(layer.body);
+  const rootSelector = settle ? ":root[data-bento-mode-fade='settle']" : ':root[data-bento-mode-fade]';
+  const root = blocks.find(({ prelude }) => prelude.trim() === rootSelector);
+  const variables = {
+    '--muxui-semantic-motion-state-transition': '250ms linear',
+    '--muxui-semantic-motion-state-transition-duration': '250ms',
+    '--muxui-semantic-motion-state-transition-easing': 'linear',
+    '--muxui-semantic-motion-reveal-transition-spring-duration': '400ms',
+    '--muxui-semantic-motion-reveal-transition-spring-easing': 'linear',
+    '--muxui-semantic-motion-modal-transition': '300ms linear',
+    '--bento-mode-fade-delay': '180ms',
+  };
+  for (const [, name, value] of root.body.matchAll(/(--bento-mode-fade-colours(?:-inherited)?):\s*([^;]+);/g)) variables[name] = value;
+  const rule = selector && blocks.find(({ prelude }) => prelude.replace(/\s+/g, ' ').includes(selector));
+  let transition = ownTransition ?? /transition:\s*([^;]+);/.exec(rule.body)[1];
+  while (transition.includes('var(')) {
+    transition = transition.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_match, name) => {
+      assert.ok(name in variables, `missing fixture value for ${name}`);
+      return variables[name];
+    });
+  }
+  transition = transition.replace(/calc\(\s*([\d.]+)(ms|s)\s*([*/])\s*([\d.]+)\s*\)/g,
+    (_match, value, unit, operator, factor) => `${operator === '*' ? Number(value) * Number(factor) : Number(value) / Number(factor)}${unit}`);
+  assert.ok(!transition.includes('calc('), 'the fixture resolves every generated time');
+  const entries = splitTop(transition.replace(/!important/g, ''), /,/).map((entry) => splitTop(entry, /\s/));
+  const times = entries.map((entry) => entry.filter((token) => /^[\d.]+(?:ms|s)$/.test(token)));
+  return new FakeElement({
+    transitionProperty: entries.map(([property]) => property).join(', '),
+    transitionDuration: times.map(([duration]) => duration).join(', '),
+    transitionDelay: times.map(([, delay]) => delay ?? '0ms').join(', '),
+  });
+}
+
+test('settle keeps RowHighlight geometry at 125ms and opacity at 250ms while its colours end immediately', () => {
+  const { measureMotion } = makeWorld();
+  for (const settle of [false, true]) {
+    const row = generatedMotion(TARGETS[1], settle, '[data-bento-mode-fade] .bento-row-highlight[data-highlight-motion]::before');
+    for (const property of ['transform', 'block-size', 'inline-size']) {
+      assert.equal(measureMotion(row, { properties: [property] }).ms, 125);
+    }
+    assert.equal(measureMotion(row, { properties: ['opacity'] }).ms, 250);
+    assert.equal(measureMotion(row, { properties: ['background-color'] }).ms, settle ? 0 : 430);
+  }
+});
+
+test('settle preserves rail and overlay motion and overrides a retained all only for colours', () => {
+  const { measureMotion } = makeWorld();
+  for (const settle of [false, true]) {
+    const footer = generatedMotion(TARGETS[1], settle, 'html[data-bento-mode-fade][data-bento-rail-transition] .bento-shell-app__footer');
+    assert.equal(measureMotion(footer, { properties: ['--bento-footer-fill'] }).ms, settle ? 0 : 400);
+    const grow = generatedMotion(TARGETS[1], settle, '[data-bento-mode-fade] .bento-address-bar__shadow[data-bento-grow=');
+    assert.equal(measureMotion(grow, { properties: ['transform'] }).ms, 400);
+    assert.equal(measureMotion(grow, { properties: ['opacity'] }).ms, 400);
+    const chromeRail = generatedMotion(TARGETS[0], settle, '#bento-shell-host.bento-sidebar-hidden');
+    assert.equal(measureMotion(chromeRail, { properties: ['transform'] }).ms, 400);
+    const overlay = generatedMotion(TARGETS[0], settle, '[data-bento-mode-fade] #bento-palette-host');
+    assert.equal(measureMotion(overlay, { properties: ['opacity'] }).ms, 300);
+    for (const target of TARGETS) {
+      const all = generatedMotion(target, settle, null, 'all 125ms linear 75ms, var(--bento-mode-fade-colours)');
+      assert.equal(measureMotion(all, { properties: ['transform'] }).ms, 200);
+      assert.equal(measureMotion(all, { properties: ['opacity'] }).ms, 200);
+      assert.equal(measureMotion(all, { properties: ['background-color'] }).ms, settle ? 0 : 430);
+    }
+  }
+});
 
 test('the chrome fade rule is layered, so no unlayered transition: none !important beats it', () => {
   // Among important declarations an unlayered one is the weakest: bento-shell-mount.css

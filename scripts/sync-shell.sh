@@ -15,6 +15,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+node "$REPO/scripts/bento-build.mjs" preflight
 
 # The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
 # another name). Before it exists, a single old engine/obj-* build is used and the

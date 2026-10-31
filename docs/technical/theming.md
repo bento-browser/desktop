@@ -150,567 +150,186 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
 
 ## Mode flip fade
 
-A light/dark flip fades every colour of every Bento-owned document together on the `state` motion
-pair (`--muxui-semantic-motion-state-transition`, a 250 ms spring in RC4). The pair is forced on every
-element whatever timing it had (Mux components on `interaction`, Bento surfaces on `state`, and
-the many that had no colour transition and used to snap), and every document starts it at one
-scheduled instant (`flipAt`), whenever it received the mode. A workspace theme id change is not a
-flip and still switches at once. What cannot fade, and why, is listed under "What does not fade"
-and "Residuals of the fade" below.
-
-How it fits together, in the order a flip travels:
-
-1. `bento-tools` stamps every change of the saved `uiColorMode` with `{ run, seq, flipAt }` and
-   sends it to chrome (a window event) and to the shell documents (the settings events).
-2. Each document turns `flipAt` into a monotonic deadline once, on receipt, and prepares the flip
-   in its next animation frame: the mode and a transient root attribute go on, and a registered
-   delay holds every transition at its old colour until the deadline ("Scheduled flip").
-3. At the deadline the transitions start in every document in the same frame, and the document
-   announces the mode to whoever follows it ("Requests").
-4. The CSS that makes the colours transition is one layered `!important` rule per document, its
-   generated twins, and a set of registered colour carriers ("The CSS").
+Hosted Bento UI uses one presentation per native browser window. Native chrome,
+the sidebar and presented overlays commit their final colours under an opaque
+old-root image, then that image fades on the computed Mux `state` duration and
+easing. The live new root remains opaque underneath. Webpage pixels are excluded
+from the old image's clip and keep rendering and accepting input. This source
+implementation still requires the integrated dev, dev:mux and genuine production
+pixel/input checks; the earlier capture-kernel proof is not product validation.
 
 ### Mechanism
 
-- A transient root attribute `data-bento-mode-fade`, present only while a flip fades. It is set in
-  the same task as `data-color-mode`, so one style recalculation starts every transition, and it
-  is removed by `afterMotion` once the motion has ended (delay plus duration, measured from the
-  computed style in the next frame). Removing it earlier drops the rule and cancels the running
-  transitions, so nothing else clears it, apart from the hide and no-fade cases below. A second
-  flip during a fade keeps the attribute and waits again (the fade restarts from the current
-  colours).
-- No fade for the first mode application in a document (boot, settings hydration and the startup
-  veil are still up), an unchanged resolved mode, `prefers-reduced-motion: reduce` (the document
-  waits for `flipAt` and then snaps) and a hidden document. These just write the attributes. A
-  change that does not fade ends a fade that is running (the shell in `modeFade.ts`, chrome in
-  `writeChromeColorMode`), because the rule would otherwise keep every transition forced on until
-  the document resumes; an unchanged value, such as a backstop delivery that agrees, leaves a
-  running fade alone.
-- Hide-time cleanup. Every active fade is watched for visibility, however the document joined it:
-  prepared early, prepared by a late first frame (negative delay), or joined at receipt by a late
-  stamp (negative delay) or with no stamp (delay 0). A document that hides during the fade drops
-  the attribute, the delay and the pending measurement frame or motion wait at once, because it
-  gets no more frames and the measurement would otherwise stay queued with a stale delay on the
-  root for the next show. Nothing resumes when it is shown again. An announcement that was already
-  sent is never repeated; a prepared flip that has not been announced is announced at once, once.
-  The shell registers the listener per fade (`applyNow`), chrome keeps one while a fade runs
-  (`chromeFadeHideListener`).
-- Shell documents: `theme/modeFade.ts` (`applyModeWithFade`, `MODE_FADE_ATTRIBUTE`) wraps the
-  attribute writes in `useFirefoxTheme`'s `applyMode`. That one function serves the settings
-  change, an OS change in Auto, and the `BroadcastChannel` and `storage` paths of overlays, and
-  every entry with a mode (all `main.tsx` entries, the sidebar included) already calls
-  `useFirefoxTheme`, so no entry has its own path. The hook applies a pref from
-  `useSettingsStore.subscribe`, which runs inside the store's own `set()` when the port message
-  lands (the store keeps the event's `flipAt` in the same `set()` as `colorFlipAt`), not from a
-  `useEffect` keyed on the pref: that effect ran only after React had rendered the whole document
-  and flushed its passive effects (a frame or more, longer in a heavy document). The first effect
-  run applies the initial pref (boot hydration is unchanged), the subscription skips a pref the hook
-  has already applied, so a later render neither applies, announces nor fades it again, and the
-  Auto listeners (OS change, `BroadcastChannel`, `storage`) follow the pref through their own store
-  subscription. The style read that waits for the end of the motion is deferred to the next
-  animation frame: read
-  inside the message handler it made every document wait for the style flush of the documents
-  handled before it in the same process. `panel-newtab` runs no script and always shows the
-  Default light look. The rule is in `theme/document-base.css`, which every entry imports.
-- Chrome window: `applyChromeColorMode` in `bento-shell-mount.js` does the same with the mount
-  script's own `afterMotion` (`BENTO_MODE_FADE_ATTR`), and `bento-chrome-theme.css` holds the
-  rule. Chrome has two legs into it. The direct leg: when the saved `uiColorMode` changes,
-  `bento-tools` calls `browser.bentoPrivacy.notifyUiColorMode(pref, stamp)` first thing in its
-  `settings.onChange` handler (`settings/ChromeColorModeSignal.ts`, once per change), the
-  experiment fires a `bento-ui-color-mode-set` window event (`detail` is `{ mode, stamp }`) at
-  every browser window, and the mount script's `handleUiColorModeSet` calls
-  `applyChromeColorMode(mode, stamp)` (Auto is resolved in chrome). The backstop: the
-  `BENTO_PANELS` payload still carries `uiColorMode` (with `uiColorModeStamp`) and calls the same
-  function; it arrives 45 to 100 ms later, inside the lead, finds the mode already applied or its
-  flip waiting and joins it, so a payload that agrees neither restarts nor doubles the fade. A
-  private window ignores the event (`isWindowPrivate`): it keeps its own in-memory mode, which
-  reaches it through its own sidebar and `BENTO_PANELS`, never through tools' saved value, and its
-  flips are not scheduled with the other windows'. A window whose mount script has not run when
-  the event fires misses it and takes the mode from the payload. The embedded import host
-  (`bento-migration-host.js`) reads its mode once from its URL and has no live flip path, so a flip
-  while it is open shows on its next open.
-- `about:preferences` (patch 12) follows the mode through the `bento-ui-color-mode` observer topic,
-  announced at `flipAt`, and fades its own page colours (its root carries `data-bento-mode-fade`
-  while they change), except under reduced motion or in a hidden page, where a change ends a
-  running fade like the window's. The patch's gate has no runtime check in this tree (no engine
-  to build): it is verified as a patch and as syntax, and the first build after the merge must
-  check it. `moz-*` shadow DOM does not fade.
+`BentoModePresentation.sys.mjs` owns the transaction. The mount registers one
+presenter with `BentoShellBusHub` per actual native window. Hosted shell documents
+have `bentoNativeMode=1` in their existing hash; the local bridge installs its
+writer before React hooks run. Settings, media, storage, broadcast, direct native
+notifications, same-mode notices and the panels backstop request the parent before
+mutating colour attributes or publishing caches. Standalone previews retain
+`modeFade.ts`'s local fallback.
+
+The parent reads authoritative state through `requestModeState(actualWindow)`.
+The hub supplies privacy, window/session identity and a nonce, and binds the read
+to that actual window and the current background registration. Replacement,
+disconnect and close reject pending reads; capture-critical reads never enter the
+ordinary bus backlog. Regular windows use a correlated `snapshot/get` of the
+settings service, which samples `uiColorMode` and its full `ColorStamp` without
+an intervening await. Private windows read `PrivateWindowSettings` directly:
+its ephemeral run/sequence belongs to the background/window owner, advances only
+for an actual private mode preference change, survives document reload, and is
+forgotten on native-window close. Global settings copies do not overwrite it.
+The parent resolves Auto using the native window's current media query.
+
+The renderer captures only `root`, with every non-root element unnamed. It sets
+`data-bento-mode-presentation="theme"`, validates a safe clip before starting,
+and calls `startViewTransition()` without an update callback. The old pseudo is
+hidden until the ready reaction synchronously owns a finite paused opacity
+animation and validates its clip, blend and pointer behaviour. The parent then
+reveals it, submits `updateLayerTree()` and fences with `syncFlushCompositor()`
+before announcing `ready` or issuing any native/remote colour commit. Setting
+the visibility attribute alone does not establish the opaque cover. The
+new-root pseudo stays live, opaque and below the old;
+all view-transition pseudos have `pointer-events:none`.
+
+Current, presented WindowGlobals with installed writers form the participant
+set. A commit applies the granted preference AND resolved mode, never an old
+closure. The child synchronously updates nested theme subscriptions inside
+ReactDOM `flushSync`, flushes style while settle is installed, and calls
+`windowUtils.updateLayerTree()` before ACK. That native method waits for the
+transaction's receipt (`WaitOnTransactionProcessed`). After all current-document
+ACKs, the parent submits its own layer tree and calls `syncFlushCompositor()`
+once more before opacity playback. These are two one-shot boundary fences:
+cover before commits, then final colours before play. There is no per-frame
+polling, flush or timing compensation. Reduced motion
+uses the same hold/barrier and then releases immediately.
 
 ### Scheduled flip
 
-Every change of the saved `uiColorMode` carries a time, `flipAt` on the `ColorStamp`
-(`Date.now()` of tools plus `COLOR_FLIP_LEAD_MS`, `settings/SettingsStore.ts`), and each document
-shows the flip at that time, so the documents, which receive the change 10 to 150 ms apart, fade
-from one instant. Every Bento process reads the same system clock, so the epoch time compares
-across them. The lead is the price of this: the flip starts that long after the click, plus the 10
-to 30 ms tools needs to persist the change and stamp it (120 ms; a lead sweep with idle palette
-flips put the fade start more than one frame plus 8 ms apart in 1 of 8 flips at 80 ms, 1 of 12 at
-100 and 120 ms, and 2 of 16 at 160 ms, so a longer lead buys nothing). A document that hears of the
-change at or after `flipAt` applies at once, and a stamp without `flipAt` (the state a run starts
-with, so every snapshot, an older build) applies at once, which is why a document that loads late
-is not affected.
-
-- Prepare, then show. A document that hears of a flip before `flipAt` prepares it in the next
-  animation frame: the mode and `data-bento-mode-fade` go on at once, and the registered `<time>`
-  property `--bento-mode-fade-delay` (on `<html>`, read by every fade transition as its delay) is
-  the deadline minus that frame's time, so the transitions are created in the lead window and hold
-  their old colours until the deadline. The delay is measured from the frame's time because a
-  transition starts from it. The first version waited for `flipAt` and then set the attribute and
-  the mode, so a heavy document did its whole style recalculation and created its transitions
-  after the deadline: with 208 tabs the sidebar's first fade frame came 70 to 120 ms later. The
-  delay and the attribute come off together when `afterMotion` has waited for delay plus duration.
-  The announcement (the resolved mode for the window's overlays, `bento-ui-color-mode` for
-  `about:preferences`) runs at the deadline, not at preparation: an overlay in Auto applies a
-  published mode at once.
-- Late documents. A document that is late by up to 60 ms (`CATCH_UP_MAX_MS`) gets a negative delay
-  and joins part-way, so it ends with the others; one that is later fades from the start. That
-  holds for both ways of being late: a stamp that arrives after `flipAt` (delay `flipAt -
-  Date.now()`), and a preparation frame that comes after the deadline (delay `deadline - frame
-  time`). A change without a stamp has delay 0. Headless, chrome got delays of -1, -30, -60 and 0
-  ms for stamps 1, 30, 60 and 61 ms late; a shell document hears of the event later by the bus
-  transport time, so its boundary falls a few milliseconds earlier.
-- Frames, not timers. The first version woke on a timer and left the documents 20 to 45 ms apart
-  even with a 200 ms lead: the shell's documents share one process thread, and the rendering update
-  of the first document that applied has priority over the second document's timer. Frame times
-  come from one vsync for every document of a tick, and a transition starts from its frame's time,
-  so preparation takes the first `requestAnimationFrame` after the flip is heard and the
-  announcement the first frame at or after the deadline (`prepareFlip` and `runAtFlip` in
-  `theme/modeFade.ts`; `prepareChromeColorFlip` and `runAtChromeFlip` in the mount script). A Gecko
-  transition becomes ready on the tick after its creation, so every document starts one frame after
-  `flipAt`, the same frame for all.
-- One clock after receipt. `flipAt` is wall-clock but frame times are on the document's monotonic
-  clock, and the system clock can be stepped (NTP, a manual change) after the document opened.
-  Comparing them waited by the size of the step (a +60 s step delayed the flip by about 60 s). The
-  request therefore turns `flipAt` into a deadline once, on receipt (`flipAt - Date.now()` read from
-  the system clock at that moment, deadline `performance.now() + wait`), and the timer and the
-  frame comparison both use it, so the two clocks are never mixed and a step during the wait changes
-  nothing. Documents that hear of the change on either side of a step still agree only as far as
-  their receipt times do.
-- Auto resolves when the flip is prepared. In the shell the mode to show is a `resolve` callback
-  (`applyModeWithFade(resolve, write, flipAt, announce)`), asked on receipt to decide whether to
-  prepare and again when the flip is prepared; `write` and `announce` get the mode it applied, and
-  the resolved mode that is stored (`resolved-color-mode`) and published to the window's overlays is
-  that one. Auto listeners attach and detach inside the settings store subscription, without a root
-  React render. Re-reading at preparation also covers a changed OS value whose media-query event
-  has not been delivered. Chrome registers its `matchMedia` listener at load and a heard OS change
-  replaces or joins the waiting flip (below).
+Hosted documents no longer schedule local colour transitions from `flipAt`.
+The stamp remains owner ordering metadata; it does not establish presentation
+readiness. Independent style, paint and compositor paths cannot be synchronized
+by matching clocks alone. The standalone preview fallback retains its existing
+local scheduler where the native bridge is absent.
 
 ### Requests: identity, deadline and supersession
 
-Both runtimes (`applyModeWithFade` in `theme/modeFade.ts`, `setChromeColorMode` in the mount script)
-keep one waiting flip per document, a record with the mode it shows, its deadline, the newest
-`resolve`/`write`/announcement and whether it is prepared. Every call is a request:
+Coordinator generation, actor document id, local request sequence, document nonce
+and overlay host generation are separate identities. The parent derives routing
+from the actual actor context, never supplied window ids. Navigation and stale
+ACKs cannot submit or reveal replacement documents. Hidden/startup hosts settle
+instantly; their readiness waits for a grant and reveal re-reads the owner before
+unhiding. No hidden host waits for an animation frame.
 
-- Order first. Chrome drops a stale or unstamped message (`acceptChromeColorStamp`, below) before
-  any join decision, so a dropped message can neither join, replace nor change a waiting flip. The
-  shell follows the same rule in `bridge/colorStamp.ts` before it applies the settings.
-- The deadline of a flip is fixed on receipt of the request that scheduled it, on the monotonic
-  clock, and the system clock is never read for it again.
-- A request that resolves (asked again when it arrives, so Auto reads the live OS value) to the mode
-  the waiting flip already shows joins it, whether the flip is prepared or still waits for its first
-  frame, and whether the request has a `flipAt` or not. The flip keeps its earlier deadline, takes
-  over the newer request's `resolve`, `write` and announcement, and announces once, at that
-  deadline. This covers a duplicate (the `BENTO_PANELS` payload behind the direct event: after a
-  wall-clock step its `flipAt` would otherwise be turned into a different wait) and a newer request
-  for the same mode (Dark chosen, then Auto resolving to dark 40 ms later).
-- By design the later request's own `flipAt` is not used for a same-mode request: a prepared
-  document cannot be re-timed without a full restyle (its transitions were created with the old
-  delay, and changing `--bento-mode-fade-delay` does not touch running transitions; reverting the
-  mode and preparing again costs two full restyles of 80 to 150 ms each in a 400-tab sidebar), so no
-  document is, and every document that received both requests shows the mode at the first deadline.
-  Before this rule a prepared document kept the old deadline and an unprepared one took the new
-  one (a scratch replay: one document announced, another did not at t124).
-- A request for the other mode replaces the flip with its own `flipAt` (a flip back before `flipAt`
-  leaves the document as it was), and so does an OS change under Auto that no longer resolves to the
-  waiting mode: the stale mode is never announced. An OS appearance change has no `flipAt`, so it is
-  never scheduled and every document applies it when it hears it (14 to 45 ms apart, measured
-  across chrome, sidebar and a palette). Reduced motion follows the same rules (the snap is the
-  flip), but each document snaps in its own rendering update, so the root writes of the three
-  documents are up to a frame apart (12 ms for dark and 2 ms for light measured), not one instant.
-- Before this, a prepared flip was tracked apart from the attribute (an already-`dark` attribute made
-  a newer request look unchanged and published the mode before it was on screen). The record
-  replaces that guard in both runtimes.
+A reversal reuses the same old image and opacity effect at its current progress.
+At the old-opaque endpoint the finished reaction pauses synchronously before
+awaiting the old target's underlying commit. Same-resolved preference changes
+update metadata without another capture. Ordinary activity may settle the
+presentation immediately; footer and Settings mode controls carry an owned
+`data-bento-mode-control` marker so continuous reversal remains possible.
+Transaction listeners/observers are removed on completion, cancellation or close.
+Resize, host hide/reveal/navigation, panel membership/focus/geometry and workspace
+theme changes retire an unsafe image. Capture waits for known host/panel motion,
+native-popup dismissal and drag completion; unrelated icon/progress animations
+do not gate it. Unknown geometry fails explicitly to an instant final commit,
+without ever exposing a full stale webpage image.
 
 ### Stamp order
 
-The two legs into chrome can deliver out of order: a `BENTO_PANELS` payload is serialised when the
-sidebar forwards it, so one built before a flip can reach chrome after the direct event and would
-reverse the fade. Every message that carries a mode therefore carries a stamp, a pair made by
-`SettingsStore`: `run` is an id minted when the store is constructed (one per tools run), `seq`
-starts at 1 and rises by one with every change of the saved `uiColorMode`, before the listeners run.
-The store makes the stamp from construction, so even the initial snapshot is ordered (seq 1). No
-clock is involved and nothing is persisted. Tools puts the current stamp on the direct event and on
-every `settings/snapshot` and `settings/changed` event (`colorStamp`); the sidebar keeps the newest
-(`followColorStamp`: the same run keeps the higher `seq`; another run replaces it, because a new run
-is by definition the producer's present) and writes it into every payload it builds
-(`uiColorModeStamp`; a private window's drops `flipAt`).
-
-- The rule chrome applies (`acceptChromeColorStamp`, record `chromeColorStamp`): with nothing
-  recorded, any message applies. A valid stamp of another run than the recorded one applies and
-  becomes the record, whatever its `seq`; in the same run it applies unless its `seq` is lower than
-  the record. An equal `seq` passes and the join (or the equal-mode check) makes it a no-op. A message
-  with no valid stamp (the legacy title, a build that predates the stamp) applies only while nothing
-  is recorded, and once a stamp is recorded it is dropped: it cannot be ordered, and a queued initial
-  payload with the old mode must not undo a newer direct event. The OS appearance listener under Auto
-  (`handleChromeDarkQueryChange`) is not a stamped message: it re-resolves the recorded preference and
-  so always applies. A new window starts with nothing recorded.
-- Restart: in one tools run the order holds. Across a restart of tools with chrome windows open, the
-  first message of the new run applies and replaces the record; a message of the previous run that
-  still arrives after it is not ordered against the new run and is applied, which can show the old
-  mode until the next message of the new run corrects it. That window is the cost of choosing a run
-  id over persisting the sequence, which would order restarts too but costs a storage write per flip
-  and a read before the first message.
+The authoritative owner supplies `{run, seq}` and optional `flipAt`. Native
+notices are hints to re-read that owner, including a duplicate or same-mode
+notice. A background replacement rejects its older pending reads; an older
+coordinator read cannot overwrite a newer grant. Private stamps are per-window
+and per-background-instance, rather than a copied global settings stamp.
 
 ### The CSS
 
-- The catch-all is one layered `!important` `transition` list on `:root[data-bento-mode-fade]`, its
-  descendants and their `::before` and `::after` (`:is()` cannot take pseudo-elements, so they are
-  listed separately): `background-color`, `color`, `border-color`, `fill`, `stroke`, `box-shadow`,
-  `outline-color`, `text-decoration-color`, `caret-color`, `stop-color`, plus the registered `<color>`
-  properties that paint, each on the `state` pair with `var(--bento-mode-fade-delay)` as the delay. The
-  entries live once in `--bento-mode-fade-colours` (a custom property of the same rule), which the
-  generated twins read. A property that is not in the list changes when the flip is prepared, not when it
-  is shown: `accent-color` and `scrollbar-color` (native controls and native scrollbars), `text-shadow`,
-  `column-rule-color`, `text-emphasis-color` and `-webkit-text-stroke-color`. They are left out on
-  purpose: an inherited property that the root sets makes every element start a transition for it.
-  Listing `accent-color` (chrome sets it on the root) doubled the chrome's transitions from 290 to 594
-  and put the titlebar's 50% point 8 to 11 ms after the sidebar's in the plain and Andrew rows, against
-  0 to 3 ms before.
-- Why it is layered. Among important declarations the cascade inverts: an earlier layer beats a later one
-  and every layered declaration beats an unlayered one, whatever the specificity. An unlayered fade rule
-  loses to any unlayered `transition: none !important` of higher specificity, which the chrome's
-  `bento-shell-mount.css` has for the bookmarks toolbar (seen at runtime: its colours stepped), the
-  import handoff, a live resize and a workspace switch, so those surfaces would step to the new colours.
-  The chrome rule is in `@layer bento.chrome-theme.fade` (`bento-chrome-theme.css`), with the
-  invisible-subtree exclusion in `bento.chrome-theme.fade-exclusion`, declared before it (an order
-  statement at the top of the file): a nested layer ranks before the rules of the layer that contains it,
-  and among important declarations the earlier layer wins, so the exclusion beats the catch-all, which
-  beats every `transition ... !important` that `bento.chrome-theme` declares itself whatever its
-  specificity (the Customize Toolbar buttons, an ID selector against the catch-all's `(0,2,0)` in one
-  layer, started their fills at preparation, up to the lead before the rest). A census of the
-  `transition ... !important` declarations of the two chrome sheets (`scripts/mount-motion.test.mjs`
-  repeats it) found that one in the same layer; the others are unlayered, which any layer out-ranks. The
-  shell rule is in `@layer bento.mode-fade` (`theme/document-base.css`), the first of the bento
-  sub-layers in `theme/muxui.css`, because the rail choreography's rows and workspace switcher declare a
-  layered `transition: none !important` (`sidebar/railTransition.css`) and a later layer would lose to
-  it. A new `bento.*` layer must not go before `bento.mode-fade`. No Bento rule out-ranks the catch-all,
-  not a layered `transition: none !important` either. Mux's own rules do: they are in the `muxui` layer,
-  which precedes `bento`, and among important declarations the earlier layer wins. The ones that apply in
-  a normal-motion session are `.muxui-toggle-button-group-motion-label` (`transition: none !important`,
-  Welcome only; its visible content is a descendant that gets the catch-all). The reduced-motion blocks and
-  the tooltip, alert-dialog and command-palette backdrop `[data-muxui-motion-reduced]` and
-  `[data-muxui-dialog-reduced]` rules do not apply there.
-- Twins keep non-colour motion. The catch-all sets the `transition` shorthand, which replaces an
-  element's whole list: a running `opacity` or `transform` transition was cancelled (the element jumped
-  to its end value) and one that would start during the fade did not run. The reproduction: a workspace
-  switch fades `#tabbrowser-tabpanels`, `#bento-strip-container` and `#bento-panel-nav` with an opacity
-  transition, and a flip submitted 0, 30 or 60 ms into it cancelled all three about 1.3 to 1.5 ms after
-  the prepare. Every Bento rule that declares a non-colour transition now has a generated twin in the
-  fade layer: the same selectors under the fade attribute, the rule's own non-colour entries first (their
-  own duration, easing and delay, no preparation delay), then `var(--bento-mode-fade-colours)`. The
-  twin's selectors carry one attribute more than the source's, so a twin out-ranks the catch-all, and the
-  twins keep the order of their sources. A `transition: none` rule gets a twin that lists the colours
-  alone, so a state that suppresses a motion (live resize, a workspace switch's icons) still does, and
-  colours fade there. Rules inside `prefers-reduced-motion: reduce` are skipped.
-  - `node scripts/fade-twins.mjs` rewrites the two generated regions (between `fade-twins:begin` and
-    `fade-twins:end`, in `bento-chrome-theme.css` and `theme/document-base.css`), idempotently. Run it
-    after adding or changing a rule with a non-colour `transition` in `bento-shell-mount.css` (chrome) or
-    in any shell stylesheet; never edit the regions by hand. `scripts/mount-fade-css.test.mjs` fails when a
-    region is stale, which is also the census: a stylesheet that gains a non-colour transition without
-    regenerating fails CI. `lint:motion` accepts `var(--bento-mode-fade-colours)` as a whole `transition`
-    item and nowhere else.
-  - Measured (120 ms lead, switch Workspace 7 to Design, fade-out and fade-in are two opacity
-    transitions, `run, end, run, end`): without twins every flip delay gave `run, cancel` on all three
-    elements at the prepare; with twins every delay (0, 30, 60, 100 ms; 150 ms in lane C's run) gave
-    `run, end, run, end` as the no-flip control does, and no cancel in any document (below). Sidebar
-    collapse and expand and the hide slide are not CSS transitions on the host (a pushed width and `left`
-    animation) and are not affected.
-  - Not twinned, and why: Mux components' non-colour transitions (popover, menu, select and command palette
-    popups: opacity and transform; tooltip: opacity and translate; dialog and alert backdrops: opacity;
-    switch thumb and select arrow: transform; progress fills: width; disclosure: margin; grid-list hover and
-    ripple: opacity; preview trigger: opacity) are replaced while the attribute is present, so a popup that
-    is entering or leaving at the moment of a flip jumps to its end state. A twin would copy Mux's rules
-    into Bento, and their durations are Mux-internal tokens (`--muxui-popup-transition-*`,
-    `--muxui-semantic-motion-modal-enter-duration`) that `lint:motion` and the Mux upgrade path do not
-    allow Bento CSS to name. The Bento-owned wrappers that look like Mux (the address bar popup's
-    opacity, the palette hosts) have twins. Inline `style.transition` writes in `bento-shell-mount.js`
-    (the panel width and transform choreography, the sidebar hide's `host.style.transition`) are normal
-    importance, which the `!important` catch-all out-ranks, so while the attribute is present they are
-    replaced like any other list: a panel resize or a drag release inside the 240 ms window ends at once. A
-    CSS twin cannot keep them (an inline value is not a rule).
-- Inherited text colour. A `.browserSidebarContainer` and a `.bento-panel-header` have no `color` of their
-  own, so the catch-all's per-element `color` transition on them was redundant (the inherited colour
-  follows the parent's transition). Firefox's native `showSplitViewPanels` rewrites the panels' classes
-  inside the panel reconcile and that cancelled the transition about 42 to 47 ms after the direct event; at
-  400 tabs a restart followed (up to 343 ms, the container's colour changing 14 times). Their twins list
-  the colours without `color` (`--bento-mode-fade-colours-inherited`, `TARGETS[].inheritColour` in the
-  generator). Their painted text follows the parent unchanged (the container's colour reaches the end
-  colour in 6 to 8 steps by about 250 ms from the direct event, as before); the later restarts are gone
-  (8, 208 and 400 tabs: 0 runs, 0 cancels, 0 late runs on the elements; the containers' `::after` keeps its
-  own transition).
-- Cost, and what the rule leaves out. Every element that gets a transition costs style and event work in
-  each frame of the fade, and `color` is inherited, so every element starts its own `color` transition even
-  when it only inherits it (a sidebar of 200 tabs measured 930 animated elements and 931 `color`
-  transitions, 58 of them `background-color`). In the chrome the cost grew with the tab count: the
-  collapsed native tab strip (`#tabbrowser-tabs`, a dozen elements per tab) and the panel container of
-  every background tab (`#tabbrowser-tabpanels > .browserSidebarContainer`) held about 2900 of 3125
-  transitions at 200 tabs, none of them painted, and each frame of the fade took 25 to 60 ms, so the
-  titlebar showed two or three frames and read as a step that lands after the sidebar. Those subtrees now
-  take `transition: none !important` in `bento.chrome-theme.fade-exclusion` (114 transitions with 362
-  tabs); the selected tab's container and split view panels keep theirs. The exclusion is
-  `:not(.split-view-panel, .split-view-panel-active, .deck-selected)`: `.split-view-panel-active` also
-  keeps the fade on a panel that `forceSubPanelBrowserPaint` made visible with only that class (a visible
-  container otherwise always has `split-view-panel` or `deck-selected`). The shell's own cost has the same
-  shape (about 1000 transitions in a 200 tab sidebar, 308 of them in rows scrolled out of view). It is not
-  reduced, only moved ahead of the visible start ("Scheduled flip"; per-frame cost during the fade
-  remains). A new Firefox surface that is hidden but large and re-styled by the fade belongs in the
-  exclusion list.
-- Scoped colour schemes follow the root in the same task. Elements that carry their own
-  `data-muxui-color-scheme` (pinned rail buttons, avatars, workspace theme pickers, the switcher;
-  `getThemeScopeAttributes`) must change in the same style recalculation as the root, or their colours
-  start fading a render later. `useResolvedColorScheme` (`theme/themeScope.ts`) was `useState` set from a
-  `MutationObserver` in an effect, which rendered those elements 21 to 90 ms after the root attribute and
-  left them behind the rest of the sidebar; it is now a `useSyncExternalStore` over one shared observer
-  (`subscribeColorScheme`), whose updates React renders synchronously, so the scoped attributes change in
-  the same rendering update as the root's. The store notifies only when the resolved scheme changes:
-  `applyRootTheme` rewrites the same attribute on every apply, and a listener that wrote an observed
-  attribute would otherwise call itself through the observer (that loop hung the shell once).
-- Nothing high in the tree may hold the mode in React state. A root component that reads `uiColorMode`
-  from the settings store re-renders the whole sidebar at every flip, in the very frame the fade starts,
-  and the cost grows with the tab rows. The three places that did are isolated: `useWorkspaceTheme`
-  re-applies the root theme from a `subscribeColorScheme` listener, not from state; `useFirefoxTheme`
-  manages Auto listeners from a settings-store subscription, without a React selector; and the footer's
-  colour mode button is its own component (`FooterColorModeCycle` in `App.tsx`) that holds the pref.
-  A boolean `isAuto` selector still re-rendered the root when the footer entered or left Auto. In a
-  synthetic 408-tab native profile with Forest and Settings visible, Auto-to-Light delayed the
-  Settings fill's painted midpoint by 85 to 96 ms relative to the sidebar. Removing that selector
-  reduced the difference to less than 1 ms; restoring the original shell after restart brought back
-  delays of 30 and 95 ms. These are window-only uncompressed compositor samples, not CSS-clock
-  equality. This isolates the root-render cost; it does not establish the cause of every reported
-  whole-window border/background difference. Thin Settings edge pixels still differed by about
-  22 to 26 ms after the change, and no timing compensation was added.
-- The delay is not reset at `flipAt`. It stays on `<html>` until the fade ends, so a hover or focus
-  change that starts during the fade (from prepare to the end, about 120 + 120 ms) waits as long as the
-  flip did. Resetting it at `flipAt` was built and rejected: the property is inherited, so every element
-  is restyled in the frame the fade starts. The sidebar's frame at `flipAt` (headless, 8 flips each, 16.7
-  ms frames): 400 tabs 29 to 92 ms without the reset (median 42), 129 to 158 ms with it in 7 of 8 flips;
-  208 tabs 25 to 29 ms without (one first flip 58), 75 to 108 ms with it. A narrower carrier (only
-  interactive elements) was considered and not built: it needs a second attribute and a selector set per
-  runtime for a residual that lasts a few hundred milliseconds after a colour mode change. The residual is
-  in "Residuals of the fade".
+The normal local fade and distinct `data-bento-mode-fade="settle"` rules share
+`scripts/fade-twins.mjs`. Settle installs BEFORE any mode write. Every explicit
+colour/carrier duration AND delay is `calc(Mux state duration * 0)`; the caller
+flushes styles before removing it. Explicit colour entries follow any retained
+`all`, preserving CSS's last-matching-entry semantics. Generated twins retain
+geometry, opacity and other non-colour entries, including the palette highlight's
+125 ms geometry, 250 ms opacity, rail spring and overlay motion. The footer's
+`--bento-footer-fill` settles here while its normal rail choreography retains its
+own spring outside the commit.
+
+The native root's view-transition CSS is outside the generated twin block. Its
+finite paused unit hold keeps the capture alive even at zero visual duration;
+visible playback receives only the computed Mux state duration/easing. There is
+no new motion token, per-element scan, duration compensation or colour rewrite.
 
 ### Registered colour carriers
 
-Gradients, pseudo-elements and `var()` chains over unregistered custom properties cannot interpolate, so
-a colour that paints through one is registered as `<color>` (not inherited), set on the element in the
-same rule that reads it, and listed in the fade list. A test per document checks that every custom
-property in the rule is a registered `<color>` (`scripts/mount-motion.test.mjs`); a scan of every
-gradient in the shell and chrome sheets that reads a custom property found no other mode-dependent stop
-(the rest are lengths and radii or alpha masks).
+Existing registered colour carriers for native gradients, shadows, borders and
+shell footer fill remain. Native inline toolbar token writers are flushed while
+settle is active, before parent submission. An asynchronous workspace theme-sheet
+completion reads the fresh hosted root scheme so a previously captured argument
+cannot restore an old mode after ACK. Existing theme-sheet ownership and
+supersession remain unchanged.
 
-| Carrier | File | What it carries |
-| --- | --- | --- |
-| `--bento-search-result-actions-bg` | `TabList.css` | stop of the search result actions' backing gradient (copies the hover fill) |
-| `--bento-switch-hover-tint` | `SettingsPalette.css` | Mux's hovered, unchecked switch gradient over `--muxui-semantic-surface-strong`, re-declared over a carrier (Mux is not edited) |
-| `--bento-card-tint` | `WorkspaceThemePicker.css` | the theme picker card's hover (3%) and pressed (8%) tint over the card fill (Mux's outlined `Card.Button` rules reproduced; see below) |
-| `--bento-corner-fill` | `app.css` | stop of the pinned panels' corner radial gradient (`.bento-pinned-panels + .bento-shell-app__main::after`) |
-| `--bento-private-band-fill` | `app.css` | the private window band's fill gradient in the collapsed rail (`.bento-shell-app:has(... --private)`, painted across the band's row right of the capped column) |
-| `--bento-placeholder-fg` | `document-base.css`, `bento-shell-mount.css` | placeholder text (shell fields; the chrome panel URL field) |
-| `--bento-toolbar-left-bg`, `--bento-toolbar-right-bg` | `bento-shell-mount.css` | the two gradient stops of the toolbars and of the window, body, `#browser` surfaces in sidebar address bar mode; the inline gradient the mount script writes reads the same two properties |
-| `--bento-splitter-accent` | `bento-shell-mount.css` | the splitter hover indicator gradient (declared from `--color-60` in each splitter rule that paints it, and in its `::after`) |
-| `--bento-arrow-fill` | `bento-chrome-theme.css`, registered in `bento-shell-mount.css` | the icon fill of the native tab strip's overflow arrows (see below) |
+### Hosted overlay presentation
 
-- Placeholder text is a pseudo-element of its field and takes no transition, so its colour is held in
-  `--bento-placeholder-fg` (`document-base.css`: set on `input` and `textarea` from Mux's
-  `--muxui-field-placeholder-color` in `bento.tokens`; a Bento field with its own placeholder colour sets
-  the variable on itself, `SidebarAddressBar.css`, `AddressBar.css`, `TabList.css`; a `color` on `::placeholder`
-  itself would switch at the prepare, and a test rejects it). A pseudo-element does not inherit a
-  non-inherited registered property from its originating element: it reads the registered initial value,
-  `transparent`. The `::placeholder` rule therefore sets `--bento-placeholder-fg: inherit` itself
-  (`document-base.css`, and `bento-shell-mount.css` for the chrome's panel URL field, "Enter URL")
-  before reading it as `color`. Without that line every shell placeholder is invisible at rest, in either
-  mode, focused or disabled (a round-5 version shipped that way; `tools/placeholder_probe.py` found 34
-  rows with a placeholder text at `rgba(0, 0, 0, 0)`). The native sidebar documents' placeholders
-  (`bento-chrome-theme.css`, the `:host #input` rule of the sidebar custom elements and
-  `#bookmarksPanel`'s search field) are separate documents that never get the fade attribute and are not
-  part of the fade.
-- Theme cards. Mux paints a hovered or pressed `Card.Button` with `linear-gradient(color-mix(in srgb,
-  var(--muxui-semantic-surface-strong) N%, transparent), ...)`, over an unregistered custom property.
-  The workspace theme picker (default, outlined variant) reproduces Mux's outlined hover and pressed
-  rules over `--bento-card-tint`, so the tint fades with the card's fill. `scripts/mount-fade-css.test.mjs`
-  compares the percentages with the installed Mux stylesheet and scans it for gradient rules over
-  unregistered custom properties on components the shell imports: a new one fails until it has a carrier
-  or an entry in the residual list. Rendered, not carried: a selected standalone `ToggleButton` hovered
-  (Welcome only); the icon picker's `Tabs` overflow edge buttons (`.muxui-tabs__motion-edge`, hovered or
-  pressed); `ColorSwatch` two-tone gradients are fixed theme metadata colours and do not depend on the
-  mode. Mux components Bento does not render (Checkbox, Radio, Tag, GridList, date pickers, text editor)
-  have the same pattern and are not reached.
-- Native tab strip overflow arrows. With the native tab strip shown (`bento.chrome.hideNativeTabs` false)
-  its arrows are toolbarbuttons inside `#tabbrowser-arrowscrollbox`'s shadow tree, which the catch-all does
-  not reach, and their icon fill is the inherited `--toolbarbutton-icon-fill`, which changed at prepare.
-  The strip takes the fill from `--bento-arrow-fill` (`#tabbrowser-arrowscrollbox { --bento-arrow-fill:
-  var(--neutral-80); --toolbarbutton-icon-fill: var(--bento-arrow-fill) }`). The strip is in the light DOM,
-  so the catch-all transitions the carrier there, and the shadow tree inherits the animated value.
-  Measured at 400 tabs with the strip shown (`tools/arrows_scan.py`): without the carrier two early
-  clusters at (230, 10) and (1110, 10) (the arrows' `fill`, 5 cells); with it none.
-- The sidebar footer's `--bento-footer-fill` (`app.css`, registered for the rail choreography's backdrop)
-  is deliberately not transitioned by the flip: a recording showed the footer starting 25 to 30 ms after
-  the rest of the sidebar when the registered property transitioned (its transitions started in the same
-  frame, but `background-color`, which reads it, painted one rendering update later), and with
-  `background-color` fading through the catch-all like everything else the footer and the sidebar start
-  together. A flip that lands inside the rail choreography, whose backdrop reads the fill, snaps that
-  backdrop.
-- The settled sidebar footer separator paints `--bento-sidebar-divider-color` as a 1 px
-  `::after` background over a transparent 1 px layout border (`app.css`). An isolated
-  ScreenCaptureKit recording with a real footer click showed the native border holding and
-  jumping while a same-token background over its right half updated with the adjacent fill;
-  the replacement preserved both settled endpoints, and restoring the native border restored
-  the holds. This implicates that local paint representation in the captured result, not all
-  native borders or a separate CSS clock. The background uses the existing shared mode-fade
-  transition. During collapse/expand the separator is hidden while `railTransition.css`
-  owns the separate `::before` rising backdrop and border. Keeping each pseudo-element's
-  colour role stable avoids transitioning divider colour into a full backdrop during an
-  overlapping mode fade; the backdrop's geometry and registered fill remain unchanged.
-  This local remedy does not establish a whole-window fix or distinguish app paint from
-  selective capture staleness.
-- The Settings row that holds the preference being changed. The value of a non-switch row
-  (`.bento-settings-palette__item[data-pending]:not([data-switch]) .bento-settings-palette__value`) dims
-  to neutral-50 while a write is in flight. Choosing the colour mode is such a write and it settles inside the lead or the fade, so the value
-  colour changed into pending, then out of it, and the second change restarted against the fade's
-  transition (a second `color` transition of 4.9 to 87.9 ms, and a dip in the colour). The dim now applies
-  only while the fade attribute is absent (`:root:not([data-bento-mode-fade])` in the rule); under the fade
-  the value takes its settled colour and the flip is one transition on the shared timing, the ellipsis
-  still marks the write. A write that is still pending when the fade ends dims at that moment (one step,
-  rare). In a theme where one mode's dim colour equals the other's settled colour (monochrome-teal and
-  standard-fern: neutral-50 dark = neutral-60 light) the colour is steady through the flip; a theme
-  without that symmetry shows one transition from the dim colour to the settled colour.
+Native overlays retain their explicit host presentation contract: initial hidden,
+ready, current-mode grant, acknowledged `presented=true`, then reveal/focus. The
+hash hints preserve other URL/hash data and browsing-context-group behaviour.
+False is committed only after exit opacity completes or an immediate hide. The
+workspace switcher disables input at hide-start and preserves owned focus return;
+menu and null-tooltip hides are immediate. Reload-before-reveal replaces the
+address bar's pending reveal id and timers and resends its intended open payload.
+Sidebar visibility and docshell activity/priority remain unchanged.
+
+Presented shell documents report only the small public opaque Mux surface union
+(command palette, dialog, alert dialog, menu BODY, popover and tooltip). Transparent
+wrappers, scrims and shadows remain live. The parent maps fractional quads and
+corner radii through the native host. Page holes come from actual rendered native
+browser content quads, their rounded clipping owners and shared scrollport; a
+visible docked DevTools frame is also live. Negative holes are disjoint and
+deduplicated; positive corners and opaque native focus-ring footprints restore UI
+using nonzero winding. Rounded-edge antialiasing fidelity is a required physical
+runtime check, not established by geometry unit tests.
+
+Page-to-footer focus can leave a native panel's `::after` ring in a partial-alpha
+border-colour transition during preparation. Before clip collection, the
+presenter finishes only that owned pseudo's running four border-colour
+`CSSTransition` longhands to their intended endpoints and resolves its style.
+Gecko's explicit `getAnimations({pseudoElement:'::after'})` query avoids a
+descendant scan or another full state-duration wait. Other colour, geometry and
+opacity animations are untouched. A steady unsupported translucent ring still
+rejects capture; the live-page mask guard is unchanged.
+
+### Native browser background paint policy
+
+The earlier patch 17 background-compositor eligibility restriction has been
+removed. Instant colour commits under one old-opacity image no longer require
+changing background promotion. Global compositor preferences and ordinary page
+eligibility remain upstream defaults. Patches 18 and 19 supply the scoped native
+no-scroll root capture and theme-only capture-stage input preservation; both
+require the own system-principal `navigator:browser` document. Rendering
+suppression remains unchanged. Patch 19 opts in only for a same-document,
+no-callback, explicitly marked, root-only capture and revalidates new membership.
 
 ### What does not fade, and why
 
-Checked in a test app unless marked otherwise. The properties the colour list leaves out are in "The CSS".
-
-- Web content. A page's colours come from the page; Bento switches the content colour scheme and the
-  page's own CSS decides what to do with it (it fades only if the page declares a transition). No Bento
-  code runs inside it.
-- Native macOS menus, the traffic lights and window frame, OS tooltips and the overlay scrollbars Firefox
-  draws natively (patch 08 makes their tracks transparent) follow the system appearance on their own
-  schedule. They have no CSS to transition. Bento's own menus, context menus, tooltips and palettes are
-  Bento documents and fade with the rest.
-- Native form controls (`appearance: auto`) and native scrollbars paint with the widget theme and the used
-  `color-scheme`, which switch when the flip is prepared (at most the lead, 120 ms, before the fade) and
-  cannot fade. Holding it until `flipAt` costs more than it buys (see "Residuals of the fade"). Bento's
-  controls are Mux components, which fade. The find bar's text field border (`input.findbar-textbox`) does
-  fade: its colour is `color-mix(in srgb, currentColor 15%, gray-60)` (toolkit `tokens-platform.css`,
-  `--border-color-interactive`), so its computed value does not change and no border transition exists, but
-  the used colour follows the field's animated `color` (57% at t40, 83% at t80, 100% at t120, the text's
-  own curve). An audit that looks for a running `border-*-color` transition reports it as missing; it is
-  not.
-- Shadow DOM of Firefox custom elements. A selector does not cross a shadow root, so the catch-all reaches
-  a shadow tree only through inheritance (a `color` that the host animates is inherited by its shadow
-  content and fades with it). In the chrome window the census found 23 elements in shadow trees. Nine had
-  a colour of their own that changed (the `fill` of scroll buttons), all in the three `arrowscrollbox`
-  elements of the native tab strip. While the strip is hidden (the default) they paint nothing. With the
-  strip shown, the arrows of `#tabbrowser-arrowscrollbox` fade through the `--bento-arrow-fill` carrier
-  ("Registered colour carriers"); the strip's other arrowscrollbox elements were measured only while it
-  is hidden. The rest is the user-agent content of `<input>`, which cannot be styled; the shell has two
-  such inputs and they inherit. A new Firefox custom element with visible colours of its own would need a
-  sheet adopted into its root (`adoptedStyleSheets`, reading the inherited `--bento-mode-fade-delay`).
-- Mux components' non-colour motion: popups, menus, selects, tooltips, dialog backdrops, the switch thumb,
-  the select arrow and progress fills are replaced by the colour list while the attribute is present
-  ("Twins keep non-colour motion"). Inline `style.transition` writes of the mount script (panel
-  geometry choreography, sidebar hide) likewise end at once if their motion is inside the 240 ms window.
-- Native sidebar documents' placeholders (history, bookmarks, synced tabs; `bento-chrome-theme.css`):
-  separate documents that never get the fade attribute; they change with their own mode attribute.
-- `about:preferences` (patch 12) follows the mode through the `bento-ui-color-mode` observer topic,
-  announced at the deadline, and fades its own page colours (see "Mechanism"). `about:logins` and the
-  passwords sidebar (patches 13 and 14) are written with `data-color-mode="light"` and no sync: after a
-  flip to dark `about:logins` still reports `light` and nothing in it changed, so those two stay light.
-  Following the mode needs a hook in the pages' own scripts (as in patch 12), which the patches carry no
-  context for, and for `about:logins`, a content-process page, a source of the window's mode there. Not
-  done.
-- A workspace theme id change (switching workspace) is not a mode flip and still switches at once. The tab
-  strip, panels and navigator have their own workspace switch fade, which a flip no longer cancels.
-- The first mode application in a document, a hidden document, and `prefers-reduced-motion` do not fade.
-  The embedded import host (`bento-migration-host.js`) reads its mode once from its URL and has no live
-  flip path, so a flip while it is open shows on its next open; its card gradients
-  (`bento-migration-host.css`) therefore never change mid-view.
-- The `::selection` highlight of the chrome (`background-color: var(--color-60)`) is a highlight
-  pseudo-element, which does not support transitions; a selection that is on screen during the flip
-  changes at once.
-
-Transient surfaces that out-ranked the old unlayered rule (the import handoff, a live sidebar or window
-resize, a workspace switch, the bookmarks toolbar in sidebar address bar mode, and the rail choreography
-in the shell) now fade, because the rule is layered ("Why it is layered"). The bookmarks toolbar was
-audited at runtime (0 elements without a transition); the others are covered by the cascade argument and
-were not driven in the test app, except a flip in the middle of a sidebar collapse or expand, where every
-colour faded (the only element that differed was the rail's transparent look, which is not a colour of
-the flip), and a flip during a workspace switch ("Results").
+Web pages, including their videos, animation and input, stay live through page
+holes. Native OS menus/window controls remain system-owned. Invariant transparent
+scrims and shadows remain live rather than being replaced with opaque masks.
+Workspace theme/layout changes are separate activity and may settle an active
+mode presentation. Standalone previews use their local fade; they are not proof
+of native-window synchronization.
 
 ### Pitfalls
 
-- Re-inserting or rebuilding a node cancels its transitions. Never remove and insert again, or rebuild,
-  a node that carries a colour transition during the flip window (the lead plus the fade; the
-  `BENTO_PANELS` payload, scroll and layout refreshes all arrive inside it). A node without a previous
-  style has nothing to transition from and shows the prepared colours at once; a node that is removed
-  drops its running transitions. Reconcile in place: keep matching nodes, update geometry and content,
-  remove only what is obsolete, move only what is out of place (`placeInOrder(list, nodes)` in the mount
-  script, which skips nodes it does not manage when it looks for the next one). The `BENTO_PANELS`
-  payload reaches chrome about 45 ms after the direct event, and the favicon navigator's reconcile
-  (`refreshPanelNav`) used to `appendChild` every button on each reconcile (which removes and
-  re-inserts an existing child): the main button (background and the `::after` divider) and the
-  placeholder dot (`::before`) changed 60 to 90 ms before the rest, in one step (the headless grid's
-  early and snap cells at x 350 to 410, y 20 in the Andrew layout, 15 and 6 cells). The flat layout's
-  splitters and choosers were removed and rebuilt on every payload, scroll and layout refresh; they are
-  reconciled by `splitter:<axis>:<groupId>` and `chooser:<id>` now (a chooser is rebuilt only when its
-  owner, close button or saved-panel list changes; with a visible subdivision the committed code
-  replaced both overlays on each of 3 flips, and now the same nodes keep 23 transitions that start
-  together and end, no cancel). How to see the defect: a `transitioncancel` before the deadline.
-  `scripts/mount-motion.test.mjs` pins the identity of the navigator buttons and the overlays for an
-  unchanged payload. Sites checked: the navigator strip, flat layout splitters and choosers, panel
-  containers and headers (every class and style write in the payload is value-identical), the
-  inter-panel splitters, trailer and extent, the header audio button (its SVG is replaced but draws with
-  `currentColor` of the retained button), the toolbar gradients (read registered properties), the
-  loading overlay and restore handle (reused by selector) and the sidebar's React rows (keys do not
-  depend on the mode). Not changed: audio particles (a 540 ms emitter; a note created inside the
-  window has no previous style and appears in the prepared palette) and the navigator context menu
-  (`refreshPanelNav` closes an open menu on a payload; existing behaviour).
-- A stale delay. The delay stays on `<html>` until the fade ends, so for up to about 240 ms from the
-  prepare a hover or focus change starts with the positive delay and waits as long as the flip did, and
-  a transition that is retargeted during the lead starts again with the full delay, not the time that is
-  left. A document that joined late (negative delay) fast-forwards such a change by the same amount.
-  Resetting the delay at the deadline restyles every element in the frame the fade starts (numbers in
-  "The CSS").
-- A transition that is still waiting or running when the fade ends is dropped with the attribute (the
-  catch-all goes), so such an interaction snaps to its end colour at cleanup.
-- A pseudo-element does not inherit a non-inherited registered property: `::placeholder` reads
-  `transparent` unless it sets `--bento-placeholder-fg: inherit` itself. The same applies to any new
-  carrier read from `::before`, `::after` or `::placeholder` (see the table in "Registered colour
-  carriers").
-- An unregistered custom property inside a gradient or a colour chain changes when the flip is prepared,
-  not when it is shown, and cannot interpolate: register it as a `<color>` carrier.
-- A transition list that is replaced loses what it was doing: any new Bento `transition` that is not a
-  colour needs its twin (`node scripts/fade-twins.mjs`; CI fails on a stale region).
-- Do not mix the two clocks. `flipAt` is wall-clock; frame times are monotonic. The deadline is computed
-  once on receipt.
-- A same-mode request keeps the earlier deadline by design (a prepared document cannot be re-timed
-  without a full restyle). Do not "fix" a duplicate to re-time the flip.
-- Verification recipe. The attribute timestamps (`data-color-mode`, `data-bento-mode-fade`,
-  `--bento-mode-fade-delay`) are written at PREPARE, up to the lead (120 ms) before the deadline, so a
-  correct run reports them spread over a lead interval and they say nothing about when the fade is
-  visible. Compare `animation.startTime + effect.getTiming().delay` of every `CSSTransition` across
-  documents (they agree within about a millisecond of their own clocks), or the painted progress of a
-  pixel grid scrubbed to `flipAt + t`. Do not force a style flush (`getComputedStyle`,
-  `getBoundingClientRect`) in a document that is still waiting when the question is when its transitions
-  start: a flush creates them earlier than the document's own first frame would, and creates the
-  transitions of scoped elements before React has updated their scheme attributes. A `transitioncancel`
-  before the deadline is the symptom of a node that was removed and inserted again; a cancel alone does
-  not prove a visible jump, and the click's own press transition of the footer button is interrupted by
-  the flip's by design.
-  To watch a fade by eye in a real window, flip the mode, set `updatePlaybackRate(0.05)` on the transitions
-  as they start and keep the attribute (re-add it when it is removed) while taking a screenshot. Every
-  `CSSTransition` in `document.getAnimations()` should report 120 ms `ease`.
+Do not restore per-document hosted deadlines, a global compositor preference,
+a full-window webpage crossfade fallback, docshell inactivity, a named-control
+transition, callback capture waits, or per-frame flushes. Do not ACK before known
+nested theme-scope updates or let a late stylesheet continuation rewrite the old
+scheme. Do not remove the opaque hold before a reversal's underlying commit.
+Keep actual-window ownership and current-WindowGlobal checks at every actor await.
 
 ### Measurements
+
+The following records describe the superseded per-document fade, not acceptance
+of the shared presenter above. Retained as diagnostic history.
 
 Two kinds of evidence sit behind the design. The screen recordings below (2026-10-25, a test app with
 a visible window) are from earlier rounds; they are the only on-screen evidence and were not repeated
@@ -1034,6 +653,9 @@ The release and dev stylesheets are the same source files; the bundles differ by
 the `console` calls dropped from the JS.
 
 ### Residuals of the fade
+
+Historical limitations of the earlier local-transition implementation follow.
+They do not describe or validate the shared native presenter.
 
 What a flip still does outside the fade, with the reason and the measurement behind each decision
 (headless test app, Andrew's layout; the frame numbers are the sidebar document's

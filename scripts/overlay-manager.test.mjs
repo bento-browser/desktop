@@ -68,6 +68,8 @@ function makeWorld(specs) {
       prewarm: spec.prewarm === true,
       handshake: spec.handshake,
       onReady: spec.onReady,
+      setPresented: spec.setPresented,
+      suspend: spec.suspend,
       frame: () => frames.get(frameId) ?? null,
       create: spec.created
         ? () => {
@@ -587,6 +589,56 @@ test('the table lists the strategies the docs promise', () => {
     ['addrbar', 'palette', 'menu'],
   );
   assert.ok(rows.every((row) => !(row.eager && row.prewarm)));
+});
+
+test('presentation acknowledgement gates reveal and cancellation invalidates a stale show', async () => {
+  const queries = [];
+  const world = makeWorld([{ id: 'palette', setPresented: (presented, generation) =>
+    new Promise((resolve) => queries.push({ presented, generation, resolve })) }]);
+  let revealed = 0;
+  world.manager.open('palette', 'show', () => revealed++);
+  assert.equal(queries.length, 0, 'readiness comes before presentation');
+  world.ready('palette');
+  assert.equal(queries.length, 1);
+  assert.equal(world.manager.hasPendingOpen('palette'), true);
+  assert.equal(revealed, 0);
+  world.manager.cancel('palette');
+  world.manager.setPresented('palette', false);
+  queries[0].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 0);
+  world.manager.open('palette', 'show', () => revealed++);
+  assert.ok(queries[2].generation > queries[1].generation);
+  queries[2].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 1);
+  queries[1].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 1, 'an old hide acknowledgement cannot reveal or hide the new open');
+});
+
+test('navigation invalidates old acknowledgements and replays the current open after readiness', async () => {
+  const queries = [];
+  let suspended = 0;
+  let revealed = 0;
+  const world = makeWorld([{ id: 'palette', suspend: () => suspended++,
+    setPresented: (presented, generation) => new Promise((resolve) => queries.push({ presented, generation, resolve })) }]);
+  world.manager.open('palette', 'show', () => revealed++);
+  world.ready('palette');
+  world.manager.reset('palette');
+  queries[0].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 0);
+  world.ready('palette');
+  queries[1].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 1);
+  world.manager.reset('palette');
+  assert.equal(suspended, 2);
+  world.ready('palette');
+  queries[2].resolve(true);
+  await Promise.resolve();
+  assert.equal(revealed, 2, 'a shown overlay is presented again only after its new document acks');
 });
 
 test('window startup loads the shell and the eager overlays, not the others', () => {

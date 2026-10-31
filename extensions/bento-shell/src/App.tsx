@@ -72,6 +72,7 @@ function FooterColorModeCycle() {
       }
       modes={UI_COLOR_MODE_ORDER}
       surfaceLabel="Bento UI"
+      presentationControl
     />
   );
 }

@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { splitTopLevelBlocks } from '../extensions/bento-shell/css-blocks.mjs';
-import { generatedRegion, TARGETS, withRegion } from './fade-twins.mjs';
+import { generatedRegion, splitTop, TARGETS, twinRules, twinText, withRegion } from './fade-twins.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readRepo = (path) => readFileSync(resolve(REPO, path), 'utf8');
@@ -33,6 +33,53 @@ test('the fade twins in both stylesheets are current', () => {
       `${target.sheet}: run node scripts/fade-twins.mjs`,
     );
   }
+});
+
+test('settle zeros explicit colour/carrier duration and delay without replacing retained motion', () => {
+  const zero = 'calc(var(--muxui-semantic-motion-state-transition-duration) * 0)';
+  for (const target of TARGETS) {
+    const css = readRepo(target.sheet);
+    const blocks = [...rules(css)];
+    const normal = blocks.find(({ selector }) => selector === ':root[data-bento-mode-fade]');
+    const settled = blocks.find(({ selector }) => selector === ":root[data-bento-mode-fade='settle']");
+    const list = (block) => splitTop(/--bento-mode-fade-colours:\s*([^;]+);/.exec(block.body)[1], /,/);
+    const ordinary = list(normal);
+    const instant = list(settled);
+    const property = (entry) => splitTop(entry, /\s/)[0];
+    assert.deepEqual(instant.map(property), [...ordinary.map(property), ...(target.settleCarriers ?? [])]);
+    for (const entry of ordinary) assert.ok(entry.includes('var(--bento-mode-fade-delay)'));
+    for (const entry of instant) {
+      const [, duration, easing, delay] = splitTop(entry, /\s/);
+      assert.equal(duration, zero);
+      assert.equal(delay, zero);
+      assert.equal(easing, 'var(--muxui-semantic-motion-state-transition-easing)');
+    }
+    if (target.inheritColour?.length) {
+      assert.match(settled.body, /--bento-mode-fade-colours-inherited:\s*(?:[^;]*,\s*)?color calc\(var\(--muxui-semantic-motion-state-transition-duration\) \* 0\)/);
+    }
+    assert.ok(!instant.some((entry) => /^(all|opacity|transform|clip-path|block-size|inline-size)\s/.test(entry)));
+    const catchAll = blocks.findIndex(({ selector, body }) =>
+      selector.includes(":root[data-bento-mode-fade='settle'] *::after") && body.includes('transition:'));
+    const firstTwin = blocks.findIndex(({ selector }) => selector.startsWith('[data-bento-mode-fade] '));
+    assert.ok(catchAll >= 0 && catchAll < firstTwin, 'settle catch-all precedes equally specific retained-motion twins');
+    assert.match(blocks[catchAll].body, /transition:\s*var\(--bento-mode-fade-colours\) !important/);
+    assert.ok(!/transition-(?:duration|delay):/.test(settled.body), 'no global longhand reset can zero geometry');
+  }
+});
+
+test('explicit colours remain after a retained all and footer fill is instant only in settle', () => {
+  const target = TARGETS[1];
+  const css = readRepo(target.sheet);
+  const properties = new Set(['color', 'background-color']);
+  const generated = twinText(twinRules('.fixture { transition: all var(--muxui-semantic-motion-state-transition); }', properties));
+  assert.match(generated, /transition:\s*all var\(--muxui-semantic-motion-state-transition\),\s*var\(--bento-mode-fade-colours\) !important;/);
+  const blocks = [...rules(css)];
+  const normal = blocks.find(({ selector }) => selector === ':root[data-bento-mode-fade]');
+  const settle = blocks.find(({ selector }) => selector === ":root[data-bento-mode-fade='settle']");
+  assert.ok(!normal.body.includes('--bento-footer-fill'));
+  assert.match(settle.body, /--bento-footer-fill calc\(var\(--muxui-semantic-motion-state-transition-duration\) \* 0\)/);
+  const footer = blocks.find(({ selector }) => selector.includes('html[data-bento-mode-fade][data-bento-rail-transition] .bento-shell-app__footer'));
+  assert.match(footer.body, /transition:\s*--bento-footer-fill var\(--muxui-semantic-motion-reveal-transition-spring-duration\) var\(--muxui-semantic-motion-reveal-transition-spring-easing\),\s*var\(--bento-mode-fade-colours\) !important;/);
 });
 
 test('the generator finds the transitions that matter and leaves the delay on colours only', () => {

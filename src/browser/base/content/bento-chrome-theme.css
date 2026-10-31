@@ -1320,6 +1320,9 @@
  * keeps those entries and repeats the colour list: scripts/fade-twins.mjs writes it, and
  * scripts/mount-fade-css.test.mjs fails when it is stale or a rule has none.
  */
+/* data-bento-mode-fade='settle' zeros colour/carrier duration and delay while the
+ * generated twins retain non-colour motion. Install before the final mode write
+ * and flush styles before removing the marker. */
 @layer bento.chrome-theme.fade {
   :root[data-bento-mode-fade],
   :root[data-bento-mode-fade] *,
@@ -1377,6 +1380,48 @@
       --bento-splitter-accent var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-placeholder-fg var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay),
       --bento-arrow-fill var(--muxui-semantic-motion-state-transition) var(--bento-mode-fade-delay);
+  }
+
+  :root[data-bento-mode-fade='settle'] {
+    --bento-mode-fade-colours:
+      background-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      border-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      fill calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      stroke calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      box-shadow calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      outline-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      text-decoration-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      caret-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      stop-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-toolbar-left-bg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-toolbar-right-bg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-splitter-accent calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-placeholder-fg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-arrow-fill calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0);
+    --bento-mode-fade-colours-inherited:
+      background-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      border-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      fill calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      stroke calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      box-shadow calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      outline-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      text-decoration-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      caret-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      stop-color calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-toolbar-left-bg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-toolbar-right-bg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-splitter-accent calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-placeholder-fg calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0),
+      --bento-arrow-fill calc(var(--muxui-semantic-motion-state-transition-duration) * 0) var(--muxui-semantic-motion-state-transition-easing) calc(var(--muxui-semantic-motion-state-transition-duration) * 0);
+  }
+
+  :root[data-bento-mode-fade='settle'],
+  :root[data-bento-mode-fade='settle'] *,
+  :root[data-bento-mode-fade='settle'] *::before,
+  :root[data-bento-mode-fade='settle'] *::after {
+    transition: var(--bento-mode-fade-colours) !important;
   }
 
   /* src/browser/base/content/bento-shell-mount.css */
@@ -1550,4 +1595,49 @@
   :root[data-bento-mode-fade] :is(#navigator-toolbox[tabs-hidden] #tabbrowser-tabs, #tabbrowser-tabpanels > .browserSidebarContainer:not(.split-view-panel, .split-view-panel-active, .deck-selected)) *::after {
     transition: none !important;
   }
+}
+
+/* One native-root UI image. The mask is validated before old becomes visible;
+ * the new image and remote-page holes remain live. The paused unit effect keeps
+ * the capture alive even at reduced motion; JS uses the Mux pair for playback. */
+:root[data-bento-mode-presentation='theme'] {
+  view-transition-name: root !important;
+}
+:root[data-bento-mode-presentation='theme'] :not(:root) {
+  view-transition-name: none !important;
+}
+:root[data-bento-mode-presentation='theme']::view-transition,
+:root[data-bento-mode-presentation='theme']::view-transition-group(*),
+:root[data-bento-mode-presentation='theme']::view-transition-image-pair(*),
+:root[data-bento-mode-presentation='theme']::view-transition-old(*),
+:root[data-bento-mode-presentation='theme']::view-transition-new(*) {
+  pointer-events: none !important;
+}
+:root[data-bento-mode-presentation='theme']::view-transition-group(*),
+:root[data-bento-mode-presentation='theme']::view-transition-image-pair(*) {
+  animation: none !important;
+  opacity: 1 !important;
+}
+:root[data-bento-mode-presentation='theme']::view-transition-image-pair(*) {
+  isolation: isolate !important;
+}
+:root[data-bento-mode-presentation='theme']::view-transition-new(root) {
+  animation: none !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+  z-index: 0 !important;
+}
+:root[data-bento-mode-presentation='theme']::view-transition-old(root) {
+  visibility: hidden !important;
+  clip-path: var(--bento-mode-presentation-clip, inset(100%)) !important;
+  mix-blend-mode: normal !important;
+  z-index: 1 !important;
+  animation: bento-mode-presentation-old calc(var(--muxui-semantic-motion-state-transition-duration) * 0 + 1ms) linear both paused !important;
+}
+:root[data-bento-mode-presentation='theme'][data-bento-mode-presentation-ready='true']::view-transition-old(root) {
+  visibility: visible !important;
+}
+@keyframes bento-mode-presentation-old {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }

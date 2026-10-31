@@ -73,8 +73,8 @@ page with no handshake (`embedded-import`).
 
 - **An open is revealed, and its messages are sent, only on the real
   announcement.** `overlays.open(id, reason, run)` creates the frame if needed,
-  starts the navigation once, and runs `run` as soon as the overlay is ready: at
-  once for a ready one, else on the announcement. `run` does the reveal (dim, host
+  starts the navigation once, and runs `run` after readiness and an acknowledged
+  host-presentation update. `run` does the reveal (dim, host
   fade, focus) and the chrome-to-overlay sends that belong to the open (the menu
   payload, the merge palette nonce, the address bar open message), so both land on
   a document that can render and receive them. Chrome's sends are frame-script
@@ -156,10 +156,45 @@ Not-yet-created frames, by code path:
   `showAddrbar`.
 - Dev add-on reload (`reloadFrames`) skips overlays that were never opened and
   marks started ones not ready until the reloaded document announces again.
+
 - Window teardown: `overlays.dispose()` runs on `unload`; pending idle and stall
   callbacks and the queue die with the window.
 - The welcome resume step (`BENTO_WELCOME_STEP_ENV`) is read and cleared at
   window startup, not when the welcome frame is created, as before.
+
+### Parent-owned presentation for colour fades
+
+Every hosted shell overlay starts with `bentoHostedOverlay=1` in its URL hash and
+defaults to unpresented. Chrome owns the per-frame open/navigation generation.
+Readiness permits a `BentoShellBus:HostPresentation` actor query; its synchronous
+root update and document event must be acknowledged before reveal, focus, or open
+payload delivery. Pending opens remain cancellable while the acknowledgement
+waits. Older generations are ignored on both sides, and an actor uses its bound
+document rather than a possibly retargeted `contentWindow` proxy.
+
+The state stays presented throughout a native opacity exit. The completed hide
+commits false together with `hidden`/`display:none`; reduced motion commits at
+once. The workspace switcher keeps `display:flex` for coordinates, disables input
+at hide-start, and commits hidden/false at opacity completion. A focused switcher
+returns focus to the sidebar at hide-start (selected browser if the sidebar is
+unavailable or fully hidden); outside-click focus is retained. Deferred overlay
+focus checks the current generation. Menu hide and a
+null tooltip payload are immediate. Tooltip shows and replays use the same ready
+and presentation gate. An open that reloads is concealed until its replacement
+document is ready and acknowledged; the address bar recreates its pending reveal
+and resends its current open payload with a fresh id, rejecting an old document's
+reveal message.
+
+Every native-owned shell document also carries `bentoNativeMode=1`. Its installed
+mode writer requests the shared per-window presenter before any local mutation.
+Hidden documents settle their latest owner grant without animation-frame waits;
+readiness waits for that first grant, and the shared reveal helper obtains current
+mode before acknowledging host presentation. Presented documents participate in
+the root capture/commit/submission barrier. Hide, reveal and navigation settle an
+active cover safely. These states remain separate from `document.hidden`, which
+can report visible under a hidden native host. Sidebar visibility and docshell
+activity are unchanged. See [Hosted overlay presentation](theming.md#hosted-overlay-presentation)
+for the shared presenter and remaining physical validation.
 
 ## Onboarding import handoff
 

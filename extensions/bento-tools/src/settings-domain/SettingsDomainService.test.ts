@@ -240,6 +240,15 @@ describe('SettingsDomainService', () => {
     vi.clearAllMocks();
   });
 
+  it('samples settings mode and its full owner stamp in one snapshot', async () => {
+    const h = await createHarness();
+    const caller = await overlay(h);
+    await run(h, 'settings/update', { changes: { uiColorMode: 'dark' } }, caller);
+    await expect(run(h, 'snapshot/get', { domains: ['settings'] }, caller)).resolves.toMatchObject({
+      settings: { uiColorMode: 'dark' }, colorStamp: h.settings.colorStamp(),
+    });
+  });
+
   describe('payload validation', () => {
     const invalid: Array<[SettingsOperation, unknown]> = [
       ['snapshot/get', {}],
@@ -416,6 +425,7 @@ describe('SettingsDomainService', () => {
         caller,
       )) as Record<string, unknown>;
       expect(Object.keys(snapshot).sort()).toEqual([
+        'colorStamp',
         'pendingOperations',
         'privacy',
         'revision',

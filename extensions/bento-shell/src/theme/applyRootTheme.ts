@@ -3,7 +3,7 @@
 // React or the tools port.
 
 import { DEFAULT_THEME_ID, resolveThemeId } from './presets';
-import { getThemeScopeAttributes, type ThemeColorScheme } from './themeScope';
+import { getThemeScopeAttributes, readDocumentColorScheme, type ThemeColorScheme } from './themeScope';
 import {
   BOOT_THEME_OWNER,
   releaseThemeSheets,
@@ -36,8 +36,12 @@ export async function applyRootTheme(
 
   const appliedThemeId = result === 'loaded' ? resolvedThemeId : DEFAULT_THEME_ID;
   const html = document.documentElement;
+  // A sheet may finish after a native grant. Its old closure must never write
+  // the earlier scheme back after the commit/submission acknowledgement.
+  const currentScheme = html.hasAttribute('data-bento-mode-writer')
+    ? readDocumentColorScheme() : colorScheme;
   for (const [name, value] of Object.entries(
-    getThemeScopeAttributes(appliedThemeId, colorScheme),
+    getThemeScopeAttributes(appliedThemeId, currentScheme),
   )) {
     html.setAttribute(name, value);
   }

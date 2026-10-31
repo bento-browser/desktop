@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { assertLocalBuildPaths } from './bento-build.mjs';
 import { scanProductIdentity } from './check-product-identity.mjs';
 import { copyFileIfChanged, pruneTree } from './write-if-changed.mjs';
 
@@ -102,6 +103,7 @@ export function installBranding(options = {}) {
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
   );
+  assertLocalBuildPaths(repoRoot);
   const configPath = path.join(repoRoot, 'bento.json');
   if (!fs.existsSync(configPath)) throw new Error('install-branding: missing bento.json');
   const config = readJson(configPath);

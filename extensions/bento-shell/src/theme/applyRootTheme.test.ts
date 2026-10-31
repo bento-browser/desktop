@@ -74,6 +74,17 @@ describe('applyRootTheme', () => {
     expect(head.links.size).toBe(1);
   });
 
+  it('a hosted sheet completion cannot restore a mode captured before the native grant', async () => {
+    root.setAttribute('data-bento-mode-writer', '1');
+    root.setAttribute('data-color-mode', 'light');
+    const pending = apply('standard-harbour', 'light', true);
+    root.setAttribute('data-color-mode', 'dark');
+    root.setAttribute('data-muxui-color-scheme', 'dark');
+    linkFor('standard-harbour').fire('load');
+    await pending;
+    expect(root.getAttribute('data-muxui-color-scheme')).toBe('dark');
+  });
+
   it('prunes the boot sheet when the workspace has another theme, and records that theme after it loads', async () => {
     const boot = insertBootLink(head, 'standard-harbour', 'loaded');
     storage.values.set(sheets.THEME_HINT_KEY, 'standard-harbour');

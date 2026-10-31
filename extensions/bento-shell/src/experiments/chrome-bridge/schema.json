@@ -10,6 +10,15 @@
     ],
     "functions": [
       {
+        "name": "replyModeState",
+        "type": "function",
+        "async": true,
+        "parameters": [
+          { "name": "requestId", "type": "string" },
+          { "name": "response", "type": "object", "additionalProperties": true }
+        ]
+      },
+      {
         "name": "postToDocument",
         "type": "function",
         "async": true,

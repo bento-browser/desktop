@@ -102,6 +102,25 @@ function writeManifest(root, { version = '1.0', tree, contentTree, entries, form
   );
 }
 
+test('patch checks reject borrowed engine or state before changing refs or cache files', async () => {
+  for (const name of ['engine', '.bento']) {
+    const { root, engine, tree } = await fixture();
+    writeManifest(root, { tree, entries: [] });
+    const foreign = await tempRoot('bento-foreign-patch-output-');
+    const borrowed = path.join(root, name);
+    const target = path.join(foreign, name);
+    fs.renameSync(borrowed, target);
+    fs.symlinkSync(target, borrowed, 'dir');
+    const refs = git(engine, ['show-ref']);
+    const result = runFixture(root, ['check']);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /build outputs must stay inside checkout/);
+    assert.equal(git(engine, ['show-ref']), refs);
+    assert.equal(fs.existsSync(path.join(root, '.bento', 'patch-check.json')), false);
+    assert.equal(fs.readlinkSync(borrowed), target);
+  }
+});
+
 test('canonical content validation accepts platform-specific executable modes', async () => {
   const { root, engine, tree, contentTree } = await fixture();
   git(engine, ['update-index', '--chmod=+x', 'file.txt']);

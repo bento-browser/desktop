@@ -119,7 +119,7 @@ function splitTopLevel(text, separator) {
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
-/** `{ property, value, line }` of each declaration in `css` (a stylesheet or a style string). */
+/** `{ property, value, line, offset }` of each declaration in a stylesheet or style string. */
 export function declarations(css) {
   const text = maskText(css);
   const lineAt = lineIndex(text);
@@ -132,6 +132,7 @@ export function declarations(css) {
       property: match[2].toLowerCase(),
       value: match[3].replace(/\s*!\s*important\s*$/i, '').trim(),
       line: lineAt(from + match[1].length),
+      offset: from + match[1].length,
     });
   };
   let depth = 0;
@@ -195,11 +196,27 @@ export function motionValueProblem(property, value) {
   return null;
 }
 
+// This finite paused unit is an internal capture lifetime, never visible motion.
+// The presenter replaces its timing with the computed Mux pair before play.
+const NATIVE_HOLD = 'bento-mode-presentation-old calc(var(--muxui-semantic-motion-state-transition-duration) * 0 + 1ms) linear both paused';
+function nativeHoldOffset(css, file) {
+  if (file !== 'src/browser/base/content/bento-chrome-theme.css' ||
+      !/@keyframes bento-mode-presentation-old\s*\{\s*from\s*\{\s*opacity:\s*1;\s*\}\s*to\s*\{\s*opacity:\s*0;\s*\}\s*\}/.test(css)) return -1;
+  const blocks = [...css.matchAll(/^:root\[data-bento-mode-presentation='theme'\]::view-transition-old\(root\)\s*\{([^{}]*)\}/gm)];
+  if (blocks.length !== 1) return -1;
+  const block = blocks[0];
+  const animation = /\banimation:\s*([^;]+);/.exec(block[0]);
+  if (!animation || animation[1].replace(/\s*!important$/, '').trim() !== NATIVE_HOLD) return -1;
+  return block.index + animation.index;
+}
+
 /** `{ line, property, value, problem }` for each motion declaration in `css` that breaks the rule. */
-export function cssViolations(css) {
+export function cssViolations(css, file = '') {
+  const holdOffset = nativeHoldOffset(css, file);
   return declarations(css)
     .filter(({ property }) => VALUE_PROPERTIES.has(property))
-    .flatMap(({ property, value, line }) => {
+    .flatMap(({ property, value, line, offset }) => {
+      if (property === 'animation' && offset === holdOffset && value === NATIVE_HOLD) return [];
       const problem = motionValueProblem(property, value);
       return problem ? [{ line, property, value, problem }] : [];
     });
@@ -472,7 +489,7 @@ export function findViolations(root = REPO_ROOT) {
       throw error;
     }
     return kind === 'css'
-      ? cssViolations(source).map(({ line, property, value, problem }) => ({
+      ? cssViolations(source, file).map(({ line, property, value, problem }) => ({
           file,
           line,
           detail: `${property}: ${shorten(value)}`,
