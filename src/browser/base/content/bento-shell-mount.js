@@ -25,6 +25,7 @@
   window.__bentoShellMountInitialized = true;
 
   const ADDON_ID = 'bento-shell@bento.app';
+  let bentoModePresenter = null;
   const { PrivateBrowsingUtils: BentoPrivateBrowsingUtils } = ChromeUtils.importESModule(
     'resource://gre/modules/PrivateBrowsingUtils.sys.mjs',
   );
@@ -1040,6 +1041,10 @@
   }
 
   function hideStartupVeil() {
+    if (bentoModePresenter && !bentoModePresenter.hasCommitted()) {
+      void bentoModePresenter.request({ reason: 'startup' }).then(hideStartupVeil).catch(() => {});
+      return;
+    }
     document.documentElement.removeAttribute('bento-startup-loading');
     if (__startupVeilHideTimer) {
       clearTimeout(__startupVeilHideTimer);
@@ -1142,6 +1147,9 @@
         opens: 0,
         firstOpenWaitMs: null,
         maxOpenWaitMs: 0,
+        generation: 0,
+        presented: false,
+        openRun: null,
       });
     }
     const createdOrder = [];
@@ -1229,9 +1237,9 @@
       return frame;
     }
 
-    // Runs `run` once the overlay's document has announced itself: at once for a
-    // ready one, else on the announcement. Returns false when the overlay's
-    // frame cannot be created.
+    // After readiness, apply presentation in the document and await its ack before
+    // running the reveal. The pending open remains cancellable across that query.
+    // Returns false when the frame cannot be created.
     function open(id, reason, run) {
       const rec = records.get(id);
       if (!rec) {
@@ -1239,13 +1247,32 @@
         return true;
       }
       if (!ensure(id, reason)) return false;
+      const generation = ++rec.generation;
+      rec.openRun = run;
       const requestedAt = now();
+      let presenting = false;
       const reveal = () => {
-        const waited = now() - requestedAt;
-        rec.opens += 1;
-        if (rec.firstOpenWaitMs === null) rec.firstOpenWaitMs = waited;
-        rec.maxOpenWaitMs = Math.max(rec.maxOpenWaitMs, waited);
-        run();
+        if (disposed || generation !== rec.generation || presenting) return;
+        presenting = true;
+        rec.reveals.set('show', reveal);
+        const finish = (applied) => {
+          if (!applied || disposed || generation !== rec.generation) return;
+          rec.reveals.delete('show');
+          rec.presented = true;
+          const waited = now() - requestedAt;
+          rec.opens += 1;
+          if (rec.firstOpenWaitMs === null) rec.firstOpenWaitMs = waited;
+          rec.maxOpenWaitMs = Math.max(rec.maxOpenWaitMs, waited);
+          guarded(id, run);
+        };
+        if (rec.entry.setPresented) {
+          const applied = rec.entry.setPresented(true, generation);
+          if (applied && typeof applied.then === 'function') {
+            applied.then(finish).catch((err) => {
+              warn('[bento-shell-mount] overlay ' + id + ' presentation failed:', err);
+            });
+          } else finish(applied === true);
+        } else finish(true);
       };
       if (rec.state === 'ready') {
         reveal();
@@ -1265,6 +1292,8 @@
     function cancel(id) {
       const rec = records.get(id);
       if (!rec) return;
+      rec.generation += 1;
+      rec.openRun = null;
       rec.reveals.clear();
       clearStallTimer(rec);
     }
@@ -1272,10 +1301,29 @@
     // A reloaded document announces itself again; hold opens until it does.
     function reset(id) {
       const rec = records.get(id);
-      if (!rec || rec.state !== 'ready') return;
+      if (!rec || rec.state === 'absent') return;
+      const run = rec.openRun;
+      rec.generation += 1;
       rec.state = 'loading';
       rec.readyAt = null;
       rec.readyBy = null;
+      rec.reveals.clear();
+      if (rec.presented || run) rec.entry.suspend?.();
+      if (run) open(id, 'reload', run);
+      else if (rec.presented) setPresented(id, false);
+    }
+
+    // Called only after the native host has stopped painting, never at hide-start.
+    function setPresented(id, presented) {
+      const rec = records.get(id);
+      if (!rec || disposed) return;
+      rec.presented = presented;
+      const generation = ++rec.generation;
+      if (rec.entry.setPresented) {
+        Promise.resolve(rec.entry.setPresented(presented, generation)).catch((err) => {
+          warn('[bento-shell-mount] overlay ' + id + ' presentation failed:', err);
+        });
+      }
     }
 
     function idForFrame(frameId) {
@@ -1398,6 +1446,8 @@
       hasPendingOpen,
       cancel,
       reset,
+      setPresented,
+      generation: (id) => records.get(id)?.generation,
       idForFrame,
       markFrameReady,
       startEager,
@@ -1439,6 +1489,17 @@
       navigate,
       handshake,
       onReady,
+      setPresented: handshake === false ? undefined : (presented, generation) =>
+        setOverlayPresentation(frameId, presented, generation),
+      suspend: () => {
+        // Reveal ids and timers belong to the old page; the open callback keeps its payload.
+        if (id === 'addrbar') clearPendingAddrbarReveal();
+        const host = document.getElementById('bento-' + id + '-host');
+        if (host) {
+          host.style.opacity = '0';
+          host.setAttribute('hidden', 'true');
+        }
+      },
       frame: () => document.getElementById(frameId),
       create: created
         ? () => createOverlayFrame('bento-' + id + '-host', frameId, remote)
@@ -1519,6 +1580,19 @@
     const policy = WebExtensionPolicy.getByID(ADDON_ID);
     if (!policy) return null;
     return 'moz-extension://' + policy.mozExtensionHostname + path;
+  }
+
+  async function setOverlayPresentation(frameId, presented, generation) {
+    const frame = document.getElementById(frameId);
+    const windowGlobal = frame?.browsingContext?.currentWindowGlobal;
+    if (!windowGlobal || windowGlobal.documentURI?.scheme !== 'moz-extension') return false;
+    if (presented && bentoModePresenter) await bentoModePresenter.prepareReveal(frame);
+    if (frame.browsingContext?.currentWindowGlobal !== windowGlobal) return false;
+    const reply = await windowGlobal.getActor('BentoShellBus').sendQuery(
+      'BentoShellBus:HostPresentation', { presented, generation },
+    );
+    return frame.browsingContext?.currentWindowGlobal === windowGlobal &&
+      reply?.generation === generation && reply.presented === presented;
   }
 
   // Resolve THIS chrome window's WebExtension windowId. We pass it
@@ -1607,6 +1681,7 @@
   }
 
   function navigateChromeFrame(frame, finalUrl) {
+    bentoModePresenter?.activity({ reason: 'host-navigation' });
     const principal = getBentoSystemPrincipal();
     if (typeof frame.loadURI === 'function' && principal) {
       try {
@@ -1674,7 +1749,9 @@
     // documents — symptom: shells stuck on "connecting…" with skeleton
     // rendering, because the channel can't cross BCG boundaries even
     // within the same origin. The hash form sidesteps that entirely.
-    const hashParams = new URLSearchParams();
+    const targetUrl = new URL(url);
+    const hashParams = new URLSearchParams(targetUrl.hash.slice(1));
+    hashParams.set('bentoNativeMode', '1');
     if (windowId !== null) hashParams.set('bentoWindowId', String(windowId));
     // Documents in a private window talk to the shell background through the
     // BentoShellBus actor; BroadcastChannel is partitioned away from it. The
@@ -1685,8 +1762,14 @@
         hashParams.set(key, String(value));
       }
     }
+    const overlayId = overlays.idForFrame(frameId);
+    if (overlayId !== null) {
+      hashParams.set('bentoHostedOverlay', '1');
+      overlays.reset(overlayId);
+    }
     const hash = hashParams.toString();
-    const finalUrl = hash ? url + '#' + hash : url;
+    targetUrl.hash = hash;
+    const finalUrl = targetUrl.href;
     if (windowId === null) {
       console.warn(
         '[bento-shell-mount] setFrameSrc(' +
@@ -1894,13 +1977,22 @@
 
   function replayPanelNavigatorTooltipPayload(frame) {
     if (!panelNavigatorTooltipPayload) return;
+    if (overlays.hasPendingOpen('panel-navigator-tooltip')) return;
     const messageManager = frame?.messageManager;
     if (!messageManager || typeof messageManager.sendAsyncMessage !== 'function') return;
-    try {
-      messageManager.sendAsyncMessage('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
-    } catch {
-      // The remote frame can disappear during a browser-window teardown.
-    }
+    overlays.open('panel-navigator-tooltip', 'show', () => {
+      if (!panelNavigatorTooltipPayload) return;
+      const host = document.getElementById('bento-panel-navigator-tooltip-host');
+      if (host) {
+        host.removeAttribute('hidden');
+        host.style.opacity = '1';
+      }
+      try {
+        frame.messageManager.sendAsyncMessage('BentoPanelNavigatorTooltip', panelNavigatorTooltipPayload);
+      } catch {
+        // The remote frame can disappear during a browser-window teardown.
+      }
+    });
   }
 
   function ensurePanelNavigatorTooltipFrameScript() {
@@ -2184,13 +2276,21 @@
   // hidden: a re-show during the fade cancels the wait (every reveal calls
   // cancelMotion(host, 'hide')), and the opacity check covers a show that
   // raced it. Call right after setting opacity to 0.
-  function hideOverlayHostAfterFade(host, afterHide) {
-    afterMotion(host, 'hide', { properties: ['opacity'] }, () => {
-      if (host.style.opacity !== '0') return;
-      host.style.display = 'none';
+  function hideOverlayHostAfterFade(host, afterHide, keepLayout = false) {
+    bentoModePresenter?.activity({ reason: 'host-hide' });
+    const id = overlays.idForFrame(host.id.replace(/-host$/, '-frame'));
+    const generation = overlays.generation(id);
+    const finish = () => {
+      if (host.style.opacity !== '0' || overlays.generation(id) !== generation) return;
+      if (!keepLayout) host.style.display = 'none';
       host.setAttribute('hidden', 'true');
+      overlays.setPresented(id, false);
       afterHide?.();
-    });
+    };
+    if (host.hasAttribute('hidden') || host.style.display === 'none') {
+      cancelMotion(host, 'hide');
+      finish();
+    } else afterMotion(host, 'hide', { properties: ['opacity'] }, finish);
   }
 
   // Every show* function reveals its host through this, and sends the messages
@@ -2206,6 +2306,17 @@
     if (!overlays.open(id, 'show', reveal)) {
       console.warn('[bento-shell-mount] overlay frame unavailable:', id);
     }
+  }
+
+  function focusOverlayFrame(frame) {
+    if (!frame) return;
+    const id = overlays.idForFrame(frame.id);
+    const generation = overlays.generation(id);
+    setTimeout(() => {
+      if (overlays.generation(id) === generation && document.getElementById(frame.id) === frame) {
+        frame.focus();
+      }
+    }, 0);
   }
 
   // An overlay is open while its host is shown and also while its open waits for
@@ -2264,7 +2375,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-palette-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -2313,7 +2424,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-workspace-palette-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -2359,7 +2470,7 @@
       // The show goes out with the reveal, to a document that is listening.
       dispatchSettingsPaletteShow(target, origin);
       const frame = document.getElementById('bento-settings-palette-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -2434,7 +2545,7 @@
       const frame = document.getElementById('bento-merge-palette-frame');
       // The nonce goes out with the reveal, to a document that is listening.
       dispatchMergePaletteLifecycle('open', nonce);
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -2809,7 +2920,7 @@
   function showAddrbar(mode, initialQuery = '', options = {}) {
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
     cancelAddrbarOpenRequest();
-    const openId = nextAddrbarOpenId();
+    let openId = nextAddrbarOpenId();
     const placement = computeAddrbarAnchoredPlacement(options.anchorRect);
     // A centred open replaces an anchored palette at once, so the row's border returns.
     if (!placement) setAddrbarOverSidebarRow(false);
@@ -2827,16 +2938,19 @@
     }
 
     const focusPreservingFrame = getAddrbarFocusPreservingFrame();
-    clearPendingAddrbarReveal();
-    prepareAddrbarHostForOpen(host, placement);
-    pendingAddrbarReveal = {
-      openId,
+    const openState = {
       mode: currentAddrbarMode,
       initialQuery,
       suppressFocus: !!focusPreservingFrame,
       clipboardUrl,
       placement,
       focusPreservingFrameId: focusPreservingFrame?.id || '',
+    };
+    clearPendingAddrbarReveal();
+    prepareAddrbarHostForOpen(host, placement);
+    pendingAddrbarReveal = {
+      ...openState,
+      openId,
       retryCount: 0,
       retryTimer: null,
       fallbackTimer: null,
@@ -2847,22 +2961,30 @@
     // before it, and the safety reveal and the resend budget start when it goes
     // out: a timer that started at the request could reveal, and drop, an open
     // whose message was never sent. A prewarmed document is ready, so this runs
-    // synchronously; a first open before the prewarm finished waits for the load.
+    // after its presentation acknowledgement; a first open also waits for load.
     const sendOpen = () => {
+      // Reload suspension clears the old page's reveal wait, even before it was
+      // consumed. Prepare the replacement with a fresh id and the retained payload.
+      if (!pendingAddrbarReveal) {
+        openId = nextAddrbarOpenId();
+        pendingAddrbarReveal = { ...openState, openId, retryTimer: null, fallbackTimer: null, retryCount: 0 };
+        prepareAddrbarHostForOpen(host, openState.placement);
+      }
       const pending = pendingAddrbarReveal;
       if (!pending || pending.openId !== openId) return;
+      const deliveredOpenId = pending.openId;
       dispatchAddrbarOpen(pending.mode, pending.initialQuery, {
-        openId,
+        openId: deliveredOpenId,
         suppressFocus: pending.suppressFocus,
         clipboardUrl: pending.clipboardUrl,
         placement: pending.placement,
       });
       pending.fallbackTimer = setTimeout(
-        () => revealPendingAddrbar(openId),
+        () => revealPendingAddrbar(deliveredOpenId),
         ADDRBAR_OPEN_FALLBACK_REVEAL_MS,
       );
       pending.retryTimer = setTimeout(
-        () => retryPendingAddrbarOpen(openId),
+        () => retryPendingAddrbarOpen(deliveredOpenId),
         ADDRBAR_OPEN_RETRY_MS,
       );
     };
@@ -2996,7 +3118,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-confirm-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -3034,7 +3156,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-edit-workspace-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -3077,6 +3199,7 @@
       return;
     }
     openOverlay('workspace-switcher', () => {
+      cancelMotion(host, 'hide');
       // Display stays 'flex' from the init prewarm — only opacity +
       // pointer-events toggle here. Restoring display:flex would defeat
       // the prewarm's purpose (the frame has to stay laid out so its
@@ -3086,7 +3209,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-workspace-switcher-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
@@ -3096,7 +3219,18 @@
     if (!host) return;
     host.style.opacity = '0';
     host.style.pointerEvents = 'none';
-    host.setAttribute('hidden', 'true');
+    const frame = document.getElementById('bento-workspace-switcher-frame');
+    if (frame && document.activeElement === frame) {
+      const sidebar = document.getElementById('bento-shell-frame');
+      const sidebarHost = document.getElementById('bento-shell-host');
+      const fullyHidden = !sidebarHost || sidebarHost.hasAttribute('hidden') ||
+        sidebarHost.style.display === 'none' ||
+        (sidebarHost.classList.contains('bento-sidebar-hidden') &&
+         !sidebarHost.classList.contains('bento-sidebar-hidden-revealed'));
+      if (sidebar && !fullyHidden) sidebar.focus();
+      else focusSelectedMainAfterPanelRemoval();
+    }
+    hideOverlayHostAfterFade(host, null, true);
     // No display:none after the transition — see prewarm comment.
   }
 
@@ -3257,7 +3391,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '1';
       const frame = document.getElementById('bento-welcome-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
       // The page is subscribed (this runs on its ready signal): start looking for the browsers
       // the Import step offers, so the report is usually there by the time it is reached.
       void sendImportSourcesToWelcome();
@@ -3736,7 +3870,7 @@
       void host.getBoundingClientRect();
       host.style.opacity = '0';
       startImportHandoffTimer(handoff, abandonImportHandoff);
-      setTimeout(() => frame.focus(), 0);
+      focusOverlayFrame(frame);
       return;
     }
 
@@ -3745,7 +3879,7 @@
     host.removeAttribute('hidden');
     void host.getBoundingClientRect();
     host.style.opacity = '1';
-    setTimeout(() => frame.focus(), 0);
+    focusOverlayFrame(frame);
     // Reduced motion: the dialog crossfades with the host instead of staying under it.
     if (request && prefersReducedMotion() && postWelcomeHandoff('fade-out', request.token)) {
       importHandoff = {
@@ -3867,6 +4001,7 @@
     openOverlay('menu', () => {
       pendingMenuContextId = null;
       host.style.display = 'flex';
+      host.style.opacity = '1';
       host.removeAttribute('hidden');
       // Translate the trigger's chrome-document coords into menu-overlay
       // coords. The overlay frame fills #bento-menu-host (which lives
@@ -3891,11 +4026,12 @@
         placement,
       });
       const frame = document.getElementById('bento-menu-frame');
-      setTimeout(() => frame?.focus(), 0);
+      focusOverlayFrame(frame);
     });
   }
 
   function hideChromeMenu() {
+    bentoModePresenter?.activity({ reason: 'host-hide' });
     overlays.cancel('menu');
     // An open that never reached the document has no SELECT or CLOSE to come.
     if (pendingMenuContextId !== null) {
@@ -3906,6 +4042,7 @@
     if (!host) return;
     host.style.display = 'none';
     host.setAttribute('hidden', 'true');
+    overlays.setPresented('menu', false);
   }
 
   // Cross-process IPC via document.title + 'pagetitlechanged'. Content in a
@@ -4066,295 +4203,75 @@
     if (mode === 'light' || mode === 'dark') return mode;
     return null;
   }
-  // A light/dark flip fades every colour of the window together: this attribute turns on the
-  // catch-all rule in bento-chrome-theme.css while the flip runs. It goes on in the same task
-  // as the mode and comes off only after the fade has ended (dropping the rule mid-fade cancels
-  // the running transitions). A flip that was heard before its time goes on at once with
-  // BENTO_MODE_FADE_DELAY_PROPERTY holding the transitions until then (prepareChromeColorFlip).
-  // The shell's twin is theme/modeFade.ts; keep them in step.
-  const BENTO_MODE_FADE_ATTR = 'data-bento-mode-fade';
-  const BENTO_MODE_FADE_DELAY_PROPERTY = '--bento-mode-fade-delay';
-  // A window that hears of a flip up to this long after its time joins the fade part-way (a
-  // negative delay); one that hears of it later fades from the start.
-  const BENTO_FLIP_CATCH_UP_MAX_MS = 60;
-  let chromeColorModeApplied = false;
-  function removeChromeModeFade(root) {
-    root.removeAttribute(BENTO_MODE_FADE_ATTR);
-    root.style.removeProperty(BENTO_MODE_FADE_DELAY_PROPERTY);
-  }
-  // A hidden window gets no frames to measure or end a fade by, so one that hides during a fade,
-  // however it joined it (prepared early, or late), drops the fade and its delay at once.
-  let chromeFadeHideListener = null;
-  function unwatchChromeFadeVisibility() {
-    if (chromeFadeHideListener) {
-      document.removeEventListener('visibilitychange', chromeFadeHideListener);
-      chromeFadeHideListener = null;
-    }
-  }
-  function endChromeModeFade(root) {
-    unwatchChromeFadeVisibility();
-    cancelMotion(root, BENTO_MODE_FADE_ATTR);
-    removeChromeModeFade(root);
-  }
-  function writeChromeColorMode(root, resolved, fade, delayMs = 0) {
-    if (
-      !fade ||
-      document.hidden ||
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    ) {
-      // A change that does not fade ends a fade that is running: its rule would otherwise keep
-      // every transition forced on. (Called only when the mode really changes, so a delivery
-      // that agrees with the running fade never gets here.)
-      endChromeModeFade(root);
-      root.setAttribute('data-color-mode', resolved);
-      return;
-    }
-    // A flip during a fade keeps the attribute; afterMotion drops the earlier wait for this key.
-    root.style.setProperty(BENTO_MODE_FADE_DELAY_PROPERTY, delayMs + 'ms');
-    root.setAttribute(BENTO_MODE_FADE_ATTR, '');
-    root.setAttribute('data-color-mode', resolved);
-    afterMotion(root, BENTO_MODE_FADE_ATTR, {}, () => {
-      unwatchChromeFadeVisibility();
-      removeChromeModeFade(root);
-    });
-    unwatchChromeFadeVisibility();
-    chromeFadeHideListener = () => {
-      if (document.hidden) endChromeModeFade(root);
-    };
-    document.addEventListener('visibilitychange', chromeFadeHideListener);
-  }
-  // Order of the two routes a mode reaches chrome by, the direct event and the BENTO_PANELS
-  // payload. A payload serialised before a flip can be delivered after the direct event, so
-  // each carries bento-tools' stamp ({ run, seq }, SettingsStore.colorStamp) and chrome keeps the
-  // newest it applied. The rule, kept in step with bridge/colorStamp.ts in the shell:
-  //   - nothing recorded yet: any message applies (first boot, an older payload source);
-  //   - a stamped message of another run applies and replaces the record (tools restarted;
-  //     sequences and clocks of different runs are never compared);
-  //   - a stamped message of the recorded run applies unless its seq is lower;
-  //   - an unstamped message after a stamp has been recorded is dropped: it is older than
-  //     anything stamped (a sidebar's boot hint, the legacy title).
-  // A payload built by the previous run and delivered after the new run's first message gets
-  // through (the runs cannot be ordered); the next payload carries the new run and corrects it.
+  // Hosted writers never mutate independently. The parent owns one old-root
+  // opacity image; all underlying colours settle from an authenticated owner read.
   let chromeColorStamp = null;
   function acceptChromeColorStamp(stamp) {
-    const valid = stamp && typeof stamp.run === 'string' && Number.isFinite(stamp.seq);
+    const valid = stamp && typeof stamp.run === 'string' && Number.isSafeInteger(stamp.seq);
     if (!valid) return chromeColorStamp === null;
-    const sameRun = chromeColorStamp !== null && stamp.run === chromeColorStamp.run;
-    if (sameRun && stamp.seq < chromeColorStamp.seq) return false;
-    chromeColorStamp = { run: stamp.run, seq: stamp.seq };
+    if (chromeColorStamp?.run === stamp.run && stamp.seq < chromeColorStamp.seq) return false;
     return true;
   }
-  // Shows a resolved mode: the fade and the mode attribute together. Returns whether the mode
-  // changed, which is when the observers are told (announceChromeColorMode).
-  function commitChromeColorMode(mode, resolved, delayMs = 0) {
-    const root = document.documentElement;
-    // The first application (the startup veil is still up) never fades.
-    const fade = chromeColorModeApplied;
-    chromeColorModeApplied = true;
-    const changed = root.getAttribute('data-color-mode') !== resolved;
-    if (changed) writeChromeColorMode(root, resolved, fade, delayMs);
-    root.setAttribute('data-bento-color-mode-pref', mode);
-    return changed;
-  }
-  // about:preferences follows this mode too (preferences.js, patch 12). On this topic it
-  // re-reads the window that hosts it, so a Settings tab moved to another window keeps
-  // following without holding on to the window it first loaded in.
   function announceChromeColorMode(resolved) {
     Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
   }
-  // Runs `run` in the first animation frame at or after `deadline` (a window.performance.now()
-  // time). The documents of the shell's process share a thread and a timer alone lets one
-  // document's rendering update (which has priority over timers) run between two documents'
-  // timers, so the later one would start its fade a frame or more late. Frame times come from the
-  // same vsync for every document, so documents that take the first frame at or after the deadline
-  // start their transitions from the same time. The timer only wakes the window shortly before.
-  // The shell's twin is runAtFlip in theme/modeFade.ts. `flipAt` is wall-clock time and frame
-  // times are on this window's monotonic clock; the system clock can be stepped after the window
-  // opened, so the two are never compared: setChromeColorMode turns `flipAt` into the deadline
-  // once, on receipt.
-  const BENTO_FLIP_FRAME_WATCH_MS = 40;
-  let cancelChromeColorFlip = null;
-  // The flip that waits for its time, from receipt until it is announced: { mode, resolved,
-  // deadline, prepared }. A later request for the same mode joins it (keeps the deadline, takes
-  // over `mode`); one for the other mode replaces it (see setChromeColorMode).
-  let chromeColorFlip = null;
-  function runAtChromeFlip(deadline, run) {
-    let frame = 0;
-    const onFrame = (timestamp) => {
-      if (timestamp >= deadline) {
-        cancelChromeColorFlip?.();
-        cancelChromeColorFlip = null;
-        run();
-        return;
-      }
-      frame = window.requestAnimationFrame(onFrame);
-    };
-    const timer = setTimeout(
-      () => {
-        frame = window.requestAnimationFrame(onFrame);
-      },
-      deadline - window.performance.now() - BENTO_FLIP_FRAME_WATCH_MS,
-    );
-    // A hidden window gets no frames, so one that hides while it waits applies when it hides
-    // (without a fade, as commitChromeColorMode does for a hidden window), not at its next show.
-    const onVisibility = () => {
-      if (!document.hidden) return;
-      cancelChromeColorFlip?.();
-      cancelChromeColorFlip = null;
-      run();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    cancelChromeColorFlip = () => {
-      clearTimeout(timer);
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }
-  // Prepares the flip `current`, due at current.deadline. In the first frame after it is heard the
-  // mode and the fade attribute go on, with a transition delay that ends at the deadline: the style
-  // recalculation and the creation of every transition happen while the lead runs out, and the
-  // fade is shown from the deadline. The delay is measured from this frame's time, which the
-  // transitions start from; a frame after the deadline (up to BENTO_FLIP_CATCH_UP_MAX_MS) gives
-  // a negative delay and joins the fade part-way. The observers are told at the deadline, and a
-  // window that hides while the flip waits drops the fade (writeChromeColorMode) and tells them
-  // at once. The delay stays on the root until the fade ends: resetting it at the deadline
-  // restyles every element in the frame the fade starts (see prepareFlip in theme/modeFade.ts for
-  // the numbers). Twin: prepareFlip in theme/modeFade.ts.
-  function prepareChromeColorFlip(current) {
-    let frame = 0;
-    const start = (timestamp) => {
-      cancelChromeColorFlip?.();
-      cancelChromeColorFlip = null;
-      // A joined request may have replaced the mode since the flip was scheduled.
-      const mode = current.mode;
-      const resolved = resolveChromeColorMode(mode);
-      if (!resolved) {
-        chromeColorFlip = null;
-        return;
-      }
-      current.resolved = resolved;
-      // A hidden window gets no frames and applies without a fade.
-      const delay = timestamp === null ? 0 : current.deadline - timestamp;
-      const changed = commitChromeColorMode(
-        mode,
-        resolved,
-        delay < -BENTO_FLIP_CATCH_UP_MAX_MS ? 0 : Math.round(delay * 10) / 10,
-      );
-      if (!changed) {
-        chromeColorFlip = null;
-        return;
-      }
-      const remaining = current.deadline - window.performance.now();
-      const root = document.documentElement;
-      if (remaining > 0 && timestamp !== null && root.hasAttribute(BENTO_MODE_FADE_ATTR)) {
-        current.prepared = true;
-        runAtChromeFlip(current.deadline, () => {
-          chromeColorFlip = null;
-          announceChromeColorMode(current.resolved);
-        });
-      } else {
-        chromeColorFlip = null;
-        announceChromeColorMode(resolved);
-      }
-    };
-    frame = window.requestAnimationFrame(start);
-    const onVisibility = () => {
-      if (document.hidden) start(null);
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    cancelChromeColorFlip = () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }
-  // Applies a mode pref that has passed the order check (or needs none: the OS appearance
-  // changing under Auto re-resolves the pref already applied). `flipAt` is the stamp's flip time
-  // (epoch ms, tools' clock, which is the system clock this window reads too): while it is
-  // ahead the change is prepared at once and shown at that time (prepareChromeColorFlip), so the
-  // window flips with the shell documents, which receive the same change at other moments. Past
-  // it, or without one, the change applies at once; so does the first application, an unchanged
-  // mode, and a hidden window (it gets no animation frames). Reduced motion waits for the time
-  // and then snaps.
-  //
-  // Every call is a request that replaces the flip that waits, with one exception, the rule the
-  // shell's applyModeWithFade follows too: a request for the mode that flip already shows joins it,
-  // prepared or not. The flip keeps the deadline of the request that scheduled it (fixed on
-  // receipt), and the newer pref is the one it applies and announces, once, at that deadline. So a
-  // duplicate (the BENTO_PANELS payload behind the direct event, whose flipAt would be turned into
-  // a wait again after a clock step) and a newer request for the same mode agree across windows
-  // and documents: a prepared document cannot be re-timed without a full restyle, so none is. A
-  // request for the other mode, and an OS change under Auto that no longer resolves to the mode
-  // the flip shows, replace it with their own time, and the stale mode is never announced. The
-  // order rules (acceptChromeColorStamp) have already run by the time a request gets here.
-  function setChromeColorMode(mode, flipAt) {
+  function writeGrantedChromeMode(target) {
     const root = document.documentElement;
-    if (!root) return;
-    const resolved = resolveChromeColorMode(mode);
-    if (!resolved) return;
-    chromeColorModePref = mode;
-    if (chromeColorFlip && chromeColorFlip.resolved === resolved && !document.hidden) {
-      chromeColorFlip.mode = mode;
-      if (chromeColorFlip.prepared) root.setAttribute('data-bento-color-mode-pref', mode);
-      return;
+    root.style.removeProperty('--bento-mode-fade-delay');
+    root.setAttribute('data-bento-mode-fade', 'settle');
+    root.setAttribute('data-color-mode', target.resolved);
+    root.setAttribute('data-theme', target.resolved);
+    root.setAttribute('data-bento-color-mode-pref', target.pref);
+    chromeColorModePref = target.pref;
+    chromeColorStamp = target.stamp;
+    // Native inline gradient carriers still reference the shared token cascade.
+    // Resolve them while settle is installed, before the parent's submission.
+    for (const id of ['navigator-toolbox', 'TabsToolbar', 'nav-bar']) {
+      const toolbar = document.getElementById(id);
+      if (toolbar) void window.getComputedStyle(toolbar).backgroundImage;
     }
-    cancelChromeColorFlip?.();
-    cancelChromeColorFlip = null;
-    chromeColorFlip = null;
-    const wait = typeof flipAt === 'number' ? flipAt - Date.now() : 0;
-    if (
-      wait > 0 &&
-      chromeColorModeApplied &&
-      !document.hidden &&
-      root.getAttribute('data-color-mode') !== resolved
-    ) {
-      const scheduled = {
-        mode,
-        resolved,
-        deadline: window.performance.now() + wait,
-        prepared: false,
-      };
-      chromeColorFlip = scheduled;
-      if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-        runAtChromeFlip(scheduled.deadline, () => {
-          chromeColorFlip = null;
-          if (commitChromeColorMode(scheduled.mode, scheduled.resolved)) {
-            announceChromeColorMode(scheduled.resolved);
-          }
-        });
-      } else {
-        prepareChromeColorFlip(scheduled);
-      }
-      return;
-    }
-    // Already due: a stamp that arrives up to BENTO_FLIP_CATCH_UP_MAX_MS late joins the fade
-    // part-way, as a prepared flip whose frame is late does; anything later, or no stamp, fades
-    // from the start.
-    const late =
-      typeof flipAt === 'number' && wait <= 0 && wait >= -BENTO_FLIP_CATCH_UP_MAX_MS;
-    if (commitChromeColorMode(mode, resolved, late ? Math.round(wait * 10) / 10 : 0)) {
-      announceChromeColorMode(resolved);
-    }
+    void window.getComputedStyle(root).color;
+    root.removeAttribute('data-bento-mode-fade');
+    announceChromeColorMode(target.resolved);
+  }
+  function modePageFrames() {
+    const deck = document.getElementById('tabbrowser-tabpanels');
+    const slots = Array.from(deck?.children || []).filter((node) =>
+      node.classList?.contains('split-view-panel-active'));
+    const pages = slots.length ? slots.map(getPanelTargetBrowser) : [window.gBrowser?.selectedBrowser];
+    // Firefox's native docked toolbox is another live remote surface. Bento's
+    // DevTools panels already arrive through the selected/rendered slot list.
+    return [...new Set([...pages, ...document.querySelectorAll('iframe.devtools-toolbox-iframe')].filter(Boolean))];
+  }
+  try {
+    const { BentoShellBusHub } = ChromeUtils.importESModule('resource:///actors/BentoShellBusParent.sys.mjs');
+    const { createModePresenter } = ChromeUtils.importESModule('resource:///actors/BentoModePresentation.sys.mjs');
+    bentoModePresenter = createModePresenter({
+      win: window, hub: BentoShellBusHub, getPageFrames: modePageFrames,
+      writeNative: writeGrantedChromeMode,
+      onPhase: (state) => window.dispatchEvent(new window.CustomEvent('bento-mode-presentation-phase', {
+        detail: JSON.stringify(state),
+      })),
+    });
+    const unregister = BentoShellBusHub.registerModePresenter(window, bentoModePresenter);
+    window.addEventListener('unload', () => { unregister(); bentoModePresenter.dispose(); }, { once: true });
+  } catch (error) {
+    console.error('[bento-mode] native presenter unavailable', error);
   }
   function applyChromeColorMode(mode, stamp) {
-    if (!document.documentElement || !resolveChromeColorMode(mode)) return;
-    if (acceptChromeColorStamp(stamp)) {
-      setChromeColorMode(mode, Number.isFinite(stamp?.flipAt) ? stamp.flipAt : undefined);
-    }
+    if (!document.documentElement || !resolveChromeColorMode(mode) || !acceptChromeColorStamp(stamp)) return;
+    void bentoModePresenter?.request({ pref: mode, stamp, reason: 'native' }).catch((error) => {
+      console.warn('[bento-mode] owner read pending', error);
+    });
   }
   function handleChromeDarkQueryChange() {
-    if (chromeColorModePref === 'system') setChromeColorMode('system');
+    if (chromeColorModePref === 'system') {
+      void bentoModePresenter?.request({ reason: 'media' }).catch(() => {});
+    }
   }
   if (typeof window.matchMedia === 'function') {
     window.matchMedia(CHROME_DARK_QUERY).addEventListener('change', handleChromeDarkQueryChange);
   }
-  // The direct leg of a colour flip: bento-tools fires this window event the moment the saved
-  // mode changes (bentoPrivacy.notifyUiColorMode), so the chrome fade starts with the shell's
-  // documents instead of after the BENTO_PANELS payload, which carries the same value and is
-  // the backstop (applyChromeColorMode returns early when the mode already matches, so a late
-  // payload that agrees neither restarts nor doubles the fade, and one built before the flip
-  // is dropped by its older order stamp). A private window keeps its own in-memory
-  // mode and ignores it. A window whose mount script has not run yet misses the event and takes
-  // the mode from BENTO_PANELS.
   const BENTO_UI_COLOR_MODE_SET_EVENT = 'bento-ui-color-mode-set';
   function handleUiColorModeSet(event) {
     if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
@@ -9377,11 +9294,13 @@
 
   let panelNavigatorTooltipTimer = null;
   function hidePanelNavigatorTooltip() {
+    bentoModePresenter?.activity({ reason: 'host-hide' });
     if (panelNavigatorTooltipTimer) {
       clearTimeout(panelNavigatorTooltipTimer);
       panelNavigatorTooltipTimer = null;
     }
     panelNavigatorTooltipPayload = null;
+    overlays.cancel('panel-navigator-tooltip');
     // The frame does not exist until the first hover, and a document that is
     // still loading may not take a message yet.
     const frame = document.getElementById('bento-panel-navigator-tooltip-frame');
@@ -9390,6 +9309,8 @@
     } catch {
       // Nothing to hide in a document that has not loaded.
     }
+    // A null payload unmounts the tooltip immediately; there is no native exit fade.
+    overlays.setPresented('panel-navigator-tooltip', false);
   }
 
   function showPanelNavigatorTooltip(btn) {
@@ -19125,7 +19046,10 @@
         parent: { esModuleURI: 'resource:///actors/BentoShellBusParent.sys.mjs' },
         child: {
           esModuleURI: 'resource:///actors/BentoShellBusChild.sys.mjs',
-          events: { 'bento-bus-up': { capture: true, wantUntrusted: true } },
+          events: {
+            'bento-bus-up': { capture: true, wantUntrusted: true },
+            'bento-mode-up': { capture: true, wantUntrusted: true },
+          },
         },
         allFrames: true,
         matches: ['moz-extension://*/*'],

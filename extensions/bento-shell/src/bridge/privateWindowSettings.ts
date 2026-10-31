@@ -10,14 +10,25 @@
 // values replaced by the window's own (`view`), which is also what the sidebar
 // document hands to chrome in the BENTO_PANELS payload.
 
-import type { BentoSettings } from '@shared/protocol';
+import type { BentoSettings, ColorStamp, UiColorModePref } from '@shared/protocol';
 import { pickWindowLocalSettings, type WindowLocalSettings } from '@shared/windowLocalSettings';
 
 export class PrivateWindowSettings {
+  readonly #run: string;
+  #opened = 0;
+  #modeStamps = new Map<number, ColorStamp>();
   #saved: BentoSettings | null = null;
   #byWindow = new Map<number, WindowLocalSettings>();
   /** Windows that opened before the first saved settings arrived. */
   #unseeded = new Set<number>();
+
+  constructor(run: string = crypto.randomUUID()) {
+    this.#run = run;
+  }
+
+  #seed(windowId: number): void {
+    this.#modeStamps.set(windowId, { run: `${this.#run}:${++this.#opened}`, seq: 1 });
+  }
 
   /** Records the latest saved settings. Open windows keep their own values; a window
    * that opened before any settings were known starts from these. */
@@ -25,6 +36,7 @@ export class PrivateWindowSettings {
     this.#saved = settings;
     for (const windowId of this.#unseeded) {
       this.#byWindow.set(windowId, pickWindowLocalSettings(settings));
+      this.#seed(windowId);
     }
     this.#unseeded.clear();
   }
@@ -32,13 +44,17 @@ export class PrivateWindowSettings {
   /** A private window opened: it starts from the saved values as they are now. */
   open(windowId: number): void {
     if (this.#byWindow.has(windowId) || this.#unseeded.has(windowId)) return;
-    if (this.#saved) this.#byWindow.set(windowId, pickWindowLocalSettings(this.#saved));
+    if (this.#saved) {
+      this.#byWindow.set(windowId, pickWindowLocalSettings(this.#saved));
+      this.#seed(windowId);
+    }
     else this.#unseeded.add(windowId);
   }
 
   close(windowId: number): void {
     this.#byWindow.delete(windowId);
     this.#unseeded.delete(windowId);
+    this.#modeStamps.delete(windowId);
   }
 
   /** Applies a window's own change. Returns the settings that window now sees, or
@@ -46,6 +62,10 @@ export class PrivateWindowSettings {
   update(windowId: number, changes: Partial<WindowLocalSettings>): BentoSettings | null {
     const own = this.#byWindow.get(windowId);
     if (!own) return null;
+    if (changes.uiColorMode !== undefined && changes.uiColorMode !== own.uiColorMode) {
+      const stamp = this.#modeStamps.get(windowId);
+      if (stamp) this.#modeStamps.set(windowId, { run: stamp.run, seq: stamp.seq + 1 });
+    }
     this.#byWindow.set(windowId, { ...own, ...changes });
     return this.view(windowId, this.#saved);
   }
@@ -53,6 +73,13 @@ export class PrivateWindowSettings {
   /** The window's own values, or undefined while it is not known yet. */
   own(windowId: number): WindowLocalSettings | undefined {
     return this.#byWindow.get(windowId);
+  }
+
+  /** The private owner itself, never a projection of a global settings notice. */
+  modeState(windowId: number): { pref: UiColorModePref; stamp: ColorStamp } | null {
+    const own = this.#byWindow.get(windowId);
+    const stamp = this.#modeStamps.get(windowId);
+    return own && stamp ? { pref: own.uiColorMode, stamp: { ...stamp } } : null;
   }
 
   /** `settings` as the window sees them: its own values over the saved ones. */

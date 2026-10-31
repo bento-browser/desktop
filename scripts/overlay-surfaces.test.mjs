@@ -69,7 +69,8 @@ function skipBalanced(source, open) {
 }
 
 function extractFunction(name) {
-  const header = `\n  function ${name}(`;
+  const header = MOUNT.includes(`\n  async function ${name}(`)
+    ? `\n  async function ${name}(` : `\n  function ${name}(`;
   const start = MOUNT.indexOf(header);
   assert.ok(start !== -1, `bento-shell-mount.js has no function ${name}`);
   assert.equal(MOUNT.indexOf(header, start + 1), -1, `function ${name} is declared twice`);
@@ -108,6 +109,7 @@ const FUNCTIONS = [
   'overlayEntry',
   'createOverlayFrame',
   'openOverlay',
+  'focusOverlayFrame',
   'isOverlayOpen',
   'dismissPalette',
   'dismissMergePalette',
@@ -227,6 +229,7 @@ const EXPORTED = [
   'hideConfirm',
   'showEditWorkspace',
   'showWorkspaceSwitcher',
+  'hideWorkspaceSwitcher',
   'showWelcome',
   'showChromeMenu',
   'hideChromeMenu',
@@ -325,7 +328,7 @@ const HOSTS = {
  * `fadeMs` is the opacity transition the stylesheet gives every overlay host (the Mux modal
  * role); 0 stands for reduced motion. An inline `transition: none` wins, as in CSS.
  */
-function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
+function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presentationQuery } = {}) {
   let rowAnchorable = true;
   let clock = 1000;
   let nextTimer = 1;
@@ -356,6 +359,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     scrim: new Set(),
     scrimShown: [],
     errors: [],
+    presentation: [],
+    focusFallback: 0,
   };
   const listeners = [];
 
@@ -383,6 +388,11 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
   const shellFrame = new FakeElement(registry, 'browser', sent);
   shellFrame.id = 'bento-shell-frame';
   registry.set(shellFrame.id, shellFrame);
+  const sidebarHost = new FakeElement(registry, 'vbox', sent);
+  sidebarHost.id = 'bento-shell-host';
+  sidebarHost.style.display = 'flex';
+  sidebarHost.classList = { contains: () => false };
+  registry.set(sidebarHost.id, sidebarHost);
   const shellMessageManager = shellFrame.messageManager;
 
   const document = {
@@ -420,6 +430,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     Map,
     Set,
     Object,
+    bentoModePresenter: null,
     // What the overlay surfaces call that is not under test here.
     setBentoPaletteSrc: navigate('palette'),
     setBentoWorkspacePaletteSrc: navigate('workspace-palette'),
@@ -433,6 +444,11 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     setBentoMenuSrc: navigate('menu'),
     setBentoPanelNavigatorTooltipSrc: navigate('panel-navigator-tooltip'),
     replayPanelNavigatorTooltipPayload: () => {},
+    setOverlayPresentation: (frameId, presented, generation) => {
+      events.presentation.push({ frameId, presented, generation });
+      return presentationQuery ? presentationQuery(frameId, presented, generation) : true;
+    },
+    focusSelectedMainAfterPanelRemoval: () => { events.focusFallback += 1; },
     // showMergePalette hides the rail merge card's tooltip; the tooltip is not under test here.
     hidePanelNavigatorTooltip: () => {},
     showOverlayToolbarScrim: (owner) => {
@@ -498,6 +514,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false } = {}) {
     events,
     sent,
     registry,
+    setNativeFocus: (frame) => { document.activeElement = frame; },
+    timerCallback: (id) => timers.get(id)?.callback,
     /** What chrome sent the sidebar row over the address channel. */
     get sidebarMessages() {
       return messages('BentoSidebarAddress').map((message) => message.data);
@@ -1735,6 +1753,8 @@ test("setFrameSrc marks a private window's frames with #bentoPrivate=1, and only
       console: { warn: () => {} },
       setTimeout: () => {},
       URLSearchParams,
+      URL,
+      overlays: { idForFrame: () => 'palette', reset: () => {} },
       Object,
       String,
       moz: (path) => `moz-extension://host${path}`,
@@ -1758,9 +1778,110 @@ test("setFrameSrc marks a private window's frames with #bentoPrivate=1, and only
   run(false);
 
   assert.deepEqual(navigations, [
-    'moz-extension://host/dist/palette.html#bentoWindowId=7&bentoPrivate=1',
-    'moz-extension://host/dist/palette.html#bentoWindowId=7',
+    'moz-extension://host/dist/palette.html#bentoNativeMode=1&bentoWindowId=7&bentoPrivate=1&bentoHostedOverlay=1',
+    'moz-extension://host/dist/palette.html#bentoNativeMode=1&bentoWindowId=7&bentoHostedOverlay=1',
   ]);
+});
+
+test('hosted hints preserve URL/hash data and never opt the sidebar into overlay presentation', () => {
+  const navigations = [];
+  const resets = [];
+  const sandbox = {
+    document: { getElementById: (id) => ({ id }) }, console: { warn() {} }, window: {},
+    URL, URLSearchParams, Object, String,
+    moz: (path) => `moz-extension://host${path}`,
+    getChromeWindowId: () => 7,
+    BentoPrivateBrowsingUtils: { isWindowPrivate: () => false },
+    overlays: { idForFrame: (id) => id === 'bento-palette-frame' ? 'palette' : null,
+      reset: (id) => resets.push(id) },
+    navigateChromeFrame: (frame, url) => navigations.push({ id: frame.id, url: new URL(url) }),
+    SET_FRAME_SRC_MAX_RETRIES: 20,
+  };
+  vm.runInNewContext(`${extractFunction('setFrameSrc')}
+    setFrameSrc('bento-palette-frame', '/dist/palette.html?keep=query#old=value', 0, { extra: 'retained' });
+    setFrameSrc('bento-shell-frame', '/dist/index.html#old=value');`, sandbox);
+  assert.equal(navigations[0].url.search, '?keep=query');
+  const overlayHash = new URLSearchParams(navigations[0].url.hash.slice(1));
+  assert.equal(overlayHash.get('old'), 'value');
+  assert.equal(overlayHash.get('extra'), 'retained');
+  assert.equal(overlayHash.get('bentoHostedOverlay'), '1');
+  assert.equal(new URLSearchParams(navigations[1].url.hash.slice(1)).has('bentoHostedOverlay'), false);
+  assert.deepEqual(resets, ['palette']);
+});
+
+test('the native actor query validates its acknowledgement and cannot reveal a replacement document', async () => {
+  let resolveQuery;
+  const queried = [];
+  const windowGlobal = { documentURI: { scheme: 'moz-extension' }, getActor: (name) => {
+    assert.equal(name, 'BentoShellBus');
+    return { sendQuery: (query, data) => {
+      queried.push([query, data.presented, data.generation]);
+      return new Promise((resolve) => { resolveQuery = resolve; });
+    } };
+  } };
+  const frame = { browsingContext: { currentWindowGlobal: windowGlobal } };
+  const sandbox = { document: { getElementById: () => frame }, bentoModePresenter: null };
+  const apply = vm.runInNewContext(`${extractFunction('setOverlayPresentation')}\nsetOverlayPresentation`, sandbox);
+  const pending = apply('frame', true, 7);
+  frame.browsingContext.currentWindowGlobal = {};
+  resolveQuery({ presented: true, generation: 7 });
+  assert.equal(await pending, false);
+  frame.browsingContext.currentWindowGlobal = windowGlobal;
+  const current = apply('frame', true, 8);
+  resolveQuery({ presented: true, generation: 8 });
+  assert.equal(await current, true);
+  assert.deepEqual(queried, [
+    ['BentoShellBus:HostPresentation', true, 7], ['BentoShellBus:HostPresentation', true, 8],
+  ]);
+});
+
+test('shared mode settlement precedes host-presentation ACK and navigation during that wait cannot reveal', async () => {
+  let grant;
+  const queries = [];
+  const current = { documentURI: { scheme: 'moz-extension' }, getActor: () => ({
+    sendQuery: async (_name, data) => { queries.push(data); return data; },
+  }) };
+  const frame = { browsingContext: { currentWindowGlobal: current } };
+  const sandbox = {
+    document: { getElementById: () => frame },
+    bentoModePresenter: { prepareReveal: () => new Promise((resolve) => { grant = resolve; }) },
+  };
+  const apply = vm.runInNewContext(`${extractFunction('setOverlayPresentation')}\nsetOverlayPresentation`, sandbox);
+  const stale = apply('frame', true, 1);
+  assert.equal(queries.length, 0, 'mode writer has not submitted yet');
+  frame.browsingContext.currentWindowGlobal = {};
+  grant();
+  assert.equal(await stale, false);
+  assert.equal(queries.length, 0);
+  frame.browsingContext.currentWindowGlobal = current;
+  const shown = apply('frame', true, 2);
+  grant();
+  assert.equal(await shown, true);
+  assert.equal(queries.length, 1);
+  assert.equal(queries[0].generation, 2);
+});
+
+test('tooltip payload waits for the shared presentation gate and null commits an immediate hide', () => {
+  const sent = [];
+  let reveal;
+  const frame = { messageManager: { sendAsyncMessage: (...args) => sent.push(args) } };
+  const host = { style: {}, removeAttribute() {} };
+  const sandbox = {
+    bentoModePresenter: null,
+    panelNavigatorTooltipPayload: { label: 'latest' }, panelNavigatorTooltipTimer: null,
+    document: { getElementById: (id) => id.endsWith('-host') ? host : frame },
+    overlays: { hasPendingOpen: () => false,
+      open: (_id, _reason, run) => { reveal = run; }, cancel() {},
+      setPresented: (_id, value) => sent.push(['presentation', value]) },
+  };
+  vm.runInNewContext(`${extractFunction('replayPanelNavigatorTooltipPayload')}
+    ${extractFunction('hidePanelNavigatorTooltip')}
+    replayPanelNavigatorTooltipPayload(document.getElementById('frame'));`, sandbox);
+  assert.deepEqual(sent, []);
+  reveal();
+  assert.equal(sent[0][0], 'BentoPanelNavigatorTooltip');
+  vm.runInNewContext('hidePanelNavigatorTooltip();', sandbox);
+  assert.deepEqual(sent.slice(1), [['BentoPanelNavigatorTooltip', null], ['presentation', false]]);
 });
 
 test("a private window's sidebar frame carries chrome's root font size; others do not", () => {
@@ -1884,6 +2005,143 @@ test('the end of the opacity transition hides at once, ahead of the timer', () =
   assert.equal(isHidden(world, 'palette'), true);
   assert.equal(host.listenerCount(), 0);
   world.advance(10_000);
+});
+
+test('native presentation stays true through exit opacity and commits false only after completion', () => {
+  const world = warmWorld();
+  world.showPalette();
+  assert.equal(world.events.presentation.at(-1).presented, true);
+  world.hidePalette();
+  assert.equal(world.events.presentation.at(-1).presented, true);
+  world.host('palette').dispatch('transitionend', { propertyName: 'opacity' });
+  assert.equal(world.events.presentation.at(-1).presented, false);
+  assert.equal(world.isShown('palette'), false);
+});
+
+test('an acknowledgement and stale exit cannot overtake a newer open', async () => {
+  const queries = [];
+  const world = makeWorld({ presentationQuery: (frameId, presented) =>
+    new Promise((resolve) => queries.push({ frameId, presented, resolve })) });
+  world.showPalette();
+  world.ready('palette');
+  assert.equal(world.isShown('palette'), false);
+  queries[0].resolve(true);
+  await Promise.resolve();
+  assert.equal(world.isShown('palette'), true);
+  world.hidePalette();
+  world.showPalette();
+  world.host('palette').dispatch('transitionend', { propertyName: 'opacity' });
+  assert.equal(queries.some((query) => !query.presented), false);
+  queries[1].resolve(true);
+  await Promise.resolve();
+  assert.equal(world.isShown('palette'), true);
+});
+
+test('a never-revealed host commits false immediately when dismissed during its presentation query', async () => {
+  const queries = [];
+  const world = makeWorld({ presentationQuery: (_frameId, presented) =>
+    new Promise((resolve) => queries.push({ presented, resolve })) });
+  world.showPalette();
+  world.ready('palette');
+  world.hidePalette();
+  assert.deepEqual(queries.map((query) => query.presented), [true, false]);
+  queries[0].resolve(true);
+  await Promise.resolve();
+  assert.equal(world.isShown('palette'), false);
+});
+
+test('the workspace switcher keeps layout and blocks input during exit, then commits hidden', () => {
+  const world = warmWorld();
+  world.showWorkspaceSwitcher();
+  world.hideWorkspaceSwitcher();
+  const host = world.host('workspace-switcher');
+  assert.equal(host.style.pointerEvents, 'none');
+  assert.equal(host.hasAttribute('hidden'), false);
+  assert.equal(world.events.presentation.at(-1).presented, true);
+  host.dispatch('transitionend', { propertyName: 'opacity' });
+  assert.equal(host.style.display, 'flex');
+  assert.equal(host.hasAttribute('hidden'), true);
+  assert.equal(world.events.presentation.at(-1).presented, false);
+});
+
+test('workspace close returns owned focus immediately, ignores outside focus, and cancels old queued focus on reopen', () => {
+  const world = warmWorld();
+  world.showWorkspaceSwitcher();
+  const frame = world.frame('workspace-switcher');
+  world.setNativeFocus(frame);
+  world.hideWorkspaceSwitcher();
+  assert.equal(world.frame('shell').focusCount, 1);
+  world.advance(0);
+  assert.equal(frame.focusCount, 0, 'the queued focus from the closed open is stale');
+  world.showWorkspaceSwitcher();
+  world.advance(0);
+  assert.equal(frame.focusCount, 1, 'the new open owns its focus callback');
+  world.setNativeFocus({ id: 'outside-click-target' });
+  world.hideWorkspaceSwitcher();
+  assert.equal(world.frame('shell').focusCount, 1, 'an outside click retains its focus');
+
+  const hiddenSidebar = warmWorld();
+  hiddenSidebar.showWorkspaceSwitcher();
+  hiddenSidebar.setNativeFocus(hiddenSidebar.frame('workspace-switcher'));
+  hiddenSidebar.host('shell').classList.contains = (name) => name === 'bento-sidebar-hidden';
+  hiddenSidebar.hideWorkspaceSwitcher();
+  assert.equal(hiddenSidebar.events.focusFallback, 1);
+  assert.equal(hiddenSidebar.frame('shell').focusCount, 0);
+});
+
+test('a shown address bar replays its pending reveal and open payload after navigation', () => {
+  const world = warmWorld();
+  world.showAddrbar('newTab', 'kept query');
+  const oldOpenId = world.getPendingAddrbarReveal().openId;
+  world.revealPendingAddrbar(oldOpenId);
+  assert.equal(world.getPendingAddrbarReveal(), null);
+  world.overlays.reset('addrbar');
+  assert.equal(world.isShown('addrbar'), false);
+  world.ready('addrbar');
+  const pending = world.getPendingAddrbarReveal();
+  assert.ok(pending);
+  assert.notEqual(pending.openId, oldOpenId);
+  assert.equal(world.addrbarOpens().at(-1).initialQuery, 'kept query');
+  world.revealPendingAddrbar(oldOpenId);
+  assert.equal(world.host('addrbar').style.opacity, '0', 'the old document cannot reveal the prepared host');
+  assert.equal(world.getPendingAddrbarReveal().openId, pending.openId);
+  world.revealPendingAddrbar(pending.openId);
+  assert.equal(world.isShown('addrbar'), true);
+});
+
+test('address-bar reload before reveal replaces its old wait, id, and timers before preparing the new document', () => {
+  const world = warmWorld();
+  world.showAddrbar('newTab', 'still waiting');
+  const oldPending = world.getPendingAddrbarReveal();
+  const oldRetry = world.timerCallback(oldPending.retryTimer);
+  const oldFallback = world.timerCallback(oldPending.fallbackTimer);
+  assert.equal(typeof oldRetry, 'function');
+  assert.equal(typeof oldFallback, 'function');
+
+  world.overlays.reset('addrbar');
+  assert.equal(world.getPendingAddrbarReveal(), null);
+  assert.equal(world.timerCallback(oldPending.retryTimer), undefined);
+  assert.equal(world.timerCallback(oldPending.fallbackTimer), undefined);
+  assert.equal(world.host('addrbar').hasAttribute('hidden'), true);
+
+  world.ready('addrbar');
+  const pending = world.getPendingAddrbarReveal();
+  assert.ok(pending);
+  assert.notEqual(pending.openId, oldPending.openId);
+  assert.equal(world.host('addrbar').hasAttribute('hidden'), false);
+  assert.equal(world.host('addrbar').style.opacity, '0');
+  const openCount = world.addrbarOpens().length;
+  world.revealPendingAddrbar(oldPending.openId);
+  oldRetry();
+  oldFallback();
+  assert.equal(world.addrbarOpens().length, openCount, 'old retries cannot target the new page');
+  assert.equal(world.host('addrbar').style.opacity, '0', 'old reveal messages and timers are stale');
+  assert.equal(world.getPendingAddrbarReveal().openId, pending.openId);
+  assert.equal(world.addrbarOpens().at(-1).initialQuery, 'still waiting');
+
+  world.revealPendingAddrbar(pending.openId);
+  assert.equal(world.isShown('addrbar'), true);
+  assert.equal(world.host('addrbar').style.opacity, '1');
 });
 
 test('with no fade (reduced motion) every hide completes at once', () => {

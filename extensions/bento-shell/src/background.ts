@@ -20,6 +20,8 @@ import { SHELL_TOOLS_PORT } from '@shared/protocol';
 import { isAudienceEvent, type AudienceEvent } from '@shared/audience-event';
 import { splitWindowLocalSettings, type WindowLocalSettings } from '@shared/windowLocalSettings';
 import { PrivateWindowSettings } from './bridge/privateWindowSettings';
+import { NativeModeStateOwner } from './bridge/nativeModeState';
+import type { NativeModeStateReply } from '@shared/settings-client-protocol';
 import { SettingsRelay } from './bridge/settingsRelay';
 import type { BusDown } from './bridge/shellBus';
 import { isDocumentLocalAction } from './bridge/shellBus';
@@ -49,6 +51,7 @@ interface BentoChromeBusMessage {
 interface BentoChromeAPI {
   onBusMessage: BentoChromeEvent<BentoChromeBusMessage>;
   postToDocument(documentId: string, message: BusDown): Promise<boolean>;
+  replyModeState(requestId: string, response: NativeModeStateReply): Promise<boolean>;
 }
 
 const bentoChrome = (browser as unknown as { bentoChrome: BentoChromeAPI }).bentoChrome;
@@ -117,7 +120,19 @@ const relayDocuments = new Map<string, { windowId: number }>();
 /** Private windows whose shell/hello already went to the current tools port. */
 const toolsHelloSent = new Set<number>();
 /** Each private window's own sidebar collapse, hidden state and colour mode. */
-const privateSettings = new PrivateWindowSettings();
+const privateSettings = new PrivateWindowSettings(backgroundInstanceId);
+const modeStateOwner = new NativeModeStateOwner({
+  instanceId: backgroundInstanceId, privateSettings,
+  send: (message) => {
+    if (!toolsPort) return false;
+    try { toolsPort.postMessage(message); return true; } catch { return false; }
+  },
+  reply: (requestId, response) => { void bentoChrome.replyModeState(requestId, response).catch(() => {}); },
+});
+browser.windows.onRemoved.addListener((windowId) => {
+  privateSettings.close(windowId);
+  modeStateOwner.dropPending(windowId);
+});
 /** The Settings overlay document of every window, regular or private. */
 const settingsRelay = new SettingsRelay({
   instanceId: backgroundInstanceId,
@@ -152,7 +167,7 @@ function forgetRelayDocument(documentId: string): void {
   relayDocuments.delete(documentId);
   if (privateWindowIds().has(document.windowId)) return;
   toolsHelloSent.delete(document.windowId);
-  privateSettings.close(document.windowId);
+  // A document reload is not a private-window close. The native window owns it.
 }
 
 function postToRelayDocument(documentId: string, message: BusDown): void {
@@ -271,6 +286,7 @@ function handleBusMessage({
   message,
 }: BentoChromeBusMessage): void {
   if (!message || typeof message !== 'object') return;
+  if (modeStateOwner.request({ documentId, windowId, isPrivate, sessionId, message })) return;
   const data = message as {
     kind?: unknown;
     helloId?: unknown;
@@ -287,10 +303,7 @@ function handleBusMessage({
     return;
   }
   if (documentId && data.kind === 'document-closed') {
-    const settingsDocument = settingsRelay.forget(documentId);
-    if (settingsDocument?.isPrivate && !privateWindowIds().has(settingsDocument.windowId)) {
-      privateSettings.close(settingsDocument.windowId);
-    }
+    settingsRelay.forget(documentId);
   }
   // Apart from the Settings overlay, only private windows use the relay for the bus;
   // regular windows keep the BroadcastChannel path.
@@ -336,12 +349,13 @@ function connectTools(): void {
   firstMessageReceived = false;
 
   port.onMessage.addListener((message: object) => {
+    if (toolsPort !== port) return;
     if (!firstMessageReceived) {
       firstMessageReceived = true;
       reconnectDelay = RECONNECT_BASE_MS; // reset backoff on healthy port
     }
     // A Settings answer belongs to the one document that asked, never to the fan-out.
-    if (settingsRelay.result(message)) return;
+    if (modeStateOwner.result(message) || settingsRelay.result(message)) return;
     if (isAudienceEvent(message)) fanOutEvent(message.event, message.audience);
     else fanOutEvent(message as Event, 'all');
   });
@@ -353,6 +367,7 @@ function connectTools(): void {
 
   port.onDisconnect.addListener(() => {
     if (toolsPort === port) toolsPort = null;
+    modeStateOwner.dropPending();
     settingsRelay.dropPending();
     // Always retry. On fresh profiles tools may not be listening yet; on
     // long-running sessions it may have been reloaded via dev-reload.

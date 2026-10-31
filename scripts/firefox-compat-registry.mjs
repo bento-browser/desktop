@@ -2038,6 +2038,93 @@ export const MEMBERS = [
     at: [FF.browserJs, 'BrowserWindowTracker\\.openWindow\\(options\\)', 1759],
   },
 
+  // ── Native browser root identity ──
+  {
+    id: 'browser.xhtml navigator:browser windowtype',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['patches/core-ui/18-native-root-view-transition-capture.patch#navigator:browser', 'patches/core-ui/19-native-mode-transition-input.patch#navigator:browser'],
+    use: 'The native no-scroll capture and theme-input policies check the document\'s own root windowtype together with its system principal; ancestor browser identity never opts a document in.',
+    at: ['browser/base/content/browser.xhtml', 'windowtype="navigator:browser"', 13],
+  },
+
+  // ── Native no-scroll root view-transition capture ──
+  {
+    id: 'ViewportFrame.BuildDisplayList',
+    kind: 'source',
+    how: 'overrides',
+    probe: 'E',
+    sites: ['patches/core-ui/18-native-root-view-transition-capture.patch#ViewportFrame'],
+    use: 'Supplies the missing root capture producer only for a painted system-principal main browser document without a root scroll container, while its actual root style frame is captured.',
+    at: ['layout/generic/ViewportFrame.cpp', '^void ViewportFrame::BuildDisplayList\\(', 69],
+  },
+  {
+    id: 'nsCSSFrameConstructor.GetRootElementStyleFrame',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['patches/core-ui/18-native-root-view-transition-capture.patch#GetRootElementStyleFrame', 'patches/core-ui/19-native-mode-transition-input.patch#GetRootElementStyleFrame'],
+    use: 'Uses the actual document root style frame to test capture state; the existing root capture wrapper resolves its image key through the same frame.',
+    at: ['layout/base/nsCSSFrameConstructor.h', 'nsIFrame\\* GetRootElementStyleFrame\\(', 333],
+  },
+  {
+    id: 'NS_FRAME_CAPTURED_IN_VIEW_TRANSITION',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['patches/core-ui/18-native-root-view-transition-capture.patch#NS_FRAME_CAPTURED_IN_VIEW_TRANSITION'],
+    use: 'Restricts the no-scroll native root fallback to the actual root frame captured by the active view transition.',
+    at: ['layout/generic/nsFrameStateBits.h', '^FRAME_STATE_BIT\\(Generic, [0-9]+, NS_FRAME_CAPTURED_IN_VIEW_TRANSITION\\)', 80],
+  },
+  {
+    id: 'nsDisplayViewTransitionCapture.CreateWebRenderCommands',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['patches/core-ui/18-native-root-view-transition-capture.patch#nsDisplayViewTransitionCapture'],
+    use: 'Reuses the root snapshot image-key and snapshot-containing-block coordinate path with aIsRoot=true; ViewTransition/NAC top-layer items remain outside its children.',
+    at: ['layout/painting/nsDisplayList.cpp', '^WebRenderCommandsResult nsDisplayViewTransitionCapture::CreateWebRenderCommands\\(', 5661],
+  },
+
+  // ── Native theme-only transition input during rendering suppression ──
+  {
+    id: 'ViewTransition.CaptureOldState', kind: 'source', how: 'overrides', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#CaptureOldState'],
+    use: 'Latches the explicit native theme-input contract only after successful old capture collection: same document, no callback, own system browser root and exactly its actual root style frame.',
+    at: ['dom/view-transitions/ViewTransition.cpp', '^Maybe<SkipTransitionReason> ViewTransition::CaptureOldState\\(', 1352],
+  },
+  {
+    id: 'ViewTransition.CaptureNewState', kind: 'source', how: 'overrides', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#CaptureNewState'],
+    use: 'Rejects an opted-in transaction before animation if new capture membership is missing, renamed or includes a non-root frame; ordinary transitions retain upstream membership behavior.',
+    at: ['dom/view-transitions/ViewTransition.cpp', '^Maybe<SkipTransitionReason> ViewTransition::CaptureNewState\\(', 1450],
+  },
+  {
+    id: 'ViewTransition.CreateCrossDocument', kind: 'source', how: 'overrides', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#CreateCrossDocument'],
+    use: 'Marks cross-document transitions explicitly so the null update callback used by that factory cannot satisfy the same-document native input contract.',
+    at: ['dom/view-transitions/ViewTransition.cpp', '^already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument\\(', 281],
+  },
+  {
+    id: 'Document.GetActiveViewTransition', kind: 'source', how: 'calls', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#GetActiveViewTransition'],
+    use: 'Uses the existing active transition to scope the internal input latch to its capture/update phase, without adding a Document or WebIDL API.',
+    at: ['dom/base/Document.h', 'ViewTransition\\* GetActiveViewTransition\\(', 4255],
+  },
+  {
+    id: 'PresShell.EventHandler.GetFrameToHandleNonTouchEvent', kind: 'source', how: 'overrides', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#GetFrameToHandleNonTouchEvent'],
+    use: 'Consults the active native theme latch only inside rendering-suppressed input retargeting; eligible native input continues through existing hit testing.',
+    at: ['layout/base/PresShell.cpp', '^nsIFrame\\* PresShell::EventHandler::GetFrameToHandleNonTouchEvent\\(', 8077],
+  },
+  {
+    id: 'TouchManager.SetupTarget', kind: 'source', how: 'overrides', probe: 'E',
+    sites: ['patches/core-ui/19-native-mode-transition-input.patch#TouchManager::SetupTarget'],
+    use: 'Applies the same native theme latch only to the existing suppressed touchstart retarget check; captured touch sessions and normal targeting remain upstream.',
+    at: ['layout/base/TouchManager.cpp', '^nsIFrame\\* TouchManager::SetupTarget\\(', 110],
+  },
+
   // ── First-run import and the embedded migration wizard ──
   {
     id: 'FirefoxProfileMigrator._getFileObject',
@@ -2397,7 +2484,78 @@ export const MEMBERS = [
     at: [FF.actorsMozBuild, '^FINAL_TARGET_FILES\\.actors \\+= \\[', 92],
   },
 
+  // ── Shared native mode presentation: privileged geometry and submission ──
+  {
+    id: 'Animatable.getAnimations pseudoElement option', kind: 'source', how: 'calls', probe: 'E',
+    sites: ['src/browser/actors/BentoModePresentation.sys.mjs#settleNativeFocusRings'],
+    use: 'Selects only the owned native panel ::after animations so preparation can finish its running border-color CSSTransitions before mask collection, without scanning descendants or finishing other motion.',
+    at: ['dom/webidl/Animatable.webidl', 'DOMString\\? pseudoElement = null;', 27],
+  },
+  {
+    id: 'Window.windowUtils', kind: 'source', how: 'reads', probe: 'E',
+    sites: ['src/browser/actors/BentoModePresentation.sys.mjs#windowUtils', 'src/browser/actors/BentoShellBusChild.sys.mjs#windowUtils'],
+    use: 'Submits current native/child style state through privileged window utilities before releasing the shared opaque UI hold.',
+    at: ['dom/webidl/Window.webidl', 'readonly attribute nsIDOMWindowUtils windowUtils;', 602],
+  },
+  {
+    id: 'nsIDOMWindowUtils.updateLayerTree', kind: 'source', how: 'calls', probe: 'E',
+    sites: ['src/browser/actors/BentoModePresentation.sys.mjs#updateLayerTree', 'src/browser/actors/BentoShellBusChild.sys.mjs#updateLayerTree'],
+    use: 'Each child submits once before its actor ACK; the parent submits after those ACKs. Upgrades must preserve synchronous display-list receipt fencing.',
+    at: ['dom/interfaces/base/nsIDOMWindowUtils.idl', 'void updateLayerTree\\(', 116],
+  },
+  {
+    id: 'nsDOMWindowUtils.UpdateLayerTree receipt fence', kind: 'source', how: 'reads', probe: 'E',
+    sites: ['src/browser/actors/BentoShellBusChild.sys.mjs#submitModeDocument'],
+    use: 'The child ACK follows WaitOnTransactionProcessed; the final parent compositor flush can therefore fence the shared scene-builder after all child display lists arrive.',
+    at: ['dom/base/nsDOMWindowUtils.cpp', 'renderer->WaitOnTransactionProcessed\\(', 430],
+  },
+  {
+    id: 'nsIDOMWindowUtils.syncFlushCompositor', kind: 'source', how: 'calls', probe: 'E',
+    sites: ['src/browser/actors/BentoModePresentation.sys.mjs#syncFlushCompositor'],
+    use: 'One parent compositor fence follows current child submissions before old-root opacity playback. No per-frame flush.',
+    at: ['dom/interfaces/base/nsIDOMWindowUtils.idl', 'void syncFlushCompositor\\(', 2150],
+  },
+  {
+    id: 'GeometryUtils BoxQuadOptions.ignoreTransforms', kind: 'source', how: 'reads', probe: 'E',
+    sites: ['src/browser/actors/BentoModePresentation.sys.mjs#ignoreTransforms', 'src/browser/actors/BentoShellBusChild.sys.mjs#ignoreTransforms'],
+    use: 'ChromeOnly untransformed quads preserve exact local radii when fractional page clips and public opaque shell surfaces map through native hosts.',
+    at: ['dom/webidl/GeometryUtils.webidl', 'boolean ignoreTransforms = false;', 25],
+  },
+  {
+    id: 'BrowsingContext.currentWindowGlobal', kind: 'source', how: 'reads', probe: 'E',
+    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#currentWindowGlobal', 'src/browser/base/content/bento-shell-mount.js#setOverlayPresentation'],
+    use: 'Mode participant queries and overlay reveals bind to the actual current WindowGlobal and reject navigation-stale replies.',
+    at: [FF.browsingContextIdl, 'readonly attribute WindowGlobalParent\\? currentWindowGlobal;', 339],
+  },
+
   // ── Shell bus actor and the centered Firefox preferences page ──
+  {
+    id: 'WindowGlobalParent.getActor',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['src/browser/base/content/bento-shell-mount.js#setOverlayPresentation'],
+    use: 'Gets the current overlay document actor for an acknowledged native-host presentation update before reveal.',
+    at: [FF.windowGlobalActorsIdl, '^\\s+JSWindowActorParent getActor\\(', 209],
+  },
+  {
+    id: 'JSActor.sendQuery',
+    kind: 'source',
+    how: 'calls',
+    probe: 'E',
+    sites: ['src/browser/base/content/bento-shell-mount.js#setOverlayPresentation', 'src/browser/actors/BentoShellBusParent.sys.mjs#sendQuery', 'src/browser/actors/BentoShellBusChild.sys.mjs#sendQuery'],
+    use: 'Waits for the overlay actor to apply parent-owned presentation state synchronously before native reveal or focus.',
+    at: ['dom/chrome-webidl/JSActor.webidl', '^\\s+Promise<any> sendQuery\\(', 16],
+  },
+  {
+    id: 'JSWindowActorChild.document',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['src/browser/actors/BentoShellBusChild.sys.mjs#this.document'],
+    use: 'Binds presentation updates to the actor document; a WindowProxy may already refer to a replacement page during navigation.',
+    at: [FF.jsWindowActorIdl, '^\\s+readonly attribute Document\\? document;', 60],
+  },
   {
     id: 'CanonicalBrowsingContext.topChromeWindow',
     kind: 'source',
@@ -2424,7 +2582,7 @@ export const MEMBERS = [
     kind: 'source',
     how: 'reads',
     probe: 'E',
-    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#documentURI'],
+    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#documentURI', 'src/browser/base/content/bento-shell-mount.js#setOverlayPresentation'],
     use: 'The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window.',
     at: [FF.windowGlobalActorsIdl, '^\\s+readonly attribute URI\\? documentURI;', 159],
   },
@@ -2433,7 +2591,7 @@ export const MEMBERS = [
     kind: 'source',
     how: 'calls',
     probe: 'E',
-    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#getByID'],
+    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#getByID', 'src/browser/actors/BentoShellBusChild.sys.mjs#getByID'],
     use: 'The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have.',
     at: [FF.webExtensionPolicyIdl, '^\\s+static WebExtensionPolicy\\? getByID\\(DOMString id\\);', 294],
   },
@@ -2442,7 +2600,7 @@ export const MEMBERS = [
     kind: 'source',
     how: 'reads',
     probe: 'E',
-    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname'],
+    sites: ['src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname', 'src/browser/actors/BentoShellBusChild.sys.mjs#mozExtensionHostname'],
     use: 'The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped.',
     at: [FF.webExtensionPolicyIdl, '^\\s+readonly attribute ByteString mozExtensionHostname;', 31],
   },

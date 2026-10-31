@@ -1,15 +1,9 @@
-// One shared colour fade for a light/dark flip. While the attribute below is on
-// <html>, theme/document-base.css forces the `state` motion pair on every colour
-// property of every element, overriding per-element timings, so all surfaces of the
-// document change together. A flip that tools scheduled (ColorStamp.flipAt) is prepared in the
-// first frame after it is heard and shown at that time: the mode and the attribute go on at once,
-// so the expensive style work of a heavy document happens while the lead runs out, and
-// --bento-mode-fade-delay holds every transition at its old colour until flipAt, so the
-// documents, which receive the flip at different moments, start the fade at one instant.
-// bento-shell-mount.js (setChromeColorMode) carries the same sequence for the chrome document;
-// keep the two in step.
+// Standalone previews retain the local colour fade. Hosted documents request
+// the parent presenter before any local write; its single old-root image owns
+// the visible fade while this document settles its granted colours instantly.
 
 import { afterMotion } from '../motion/afterMotion';
+import { requestModePresentation } from './modePresentation';
 
 /** Transient root attribute that switches the fade on. document-base.css names it too. */
 export const MODE_FADE_ATTRIBUTE = 'data-bento-mode-fade';
@@ -20,6 +14,16 @@ const COLOR_MODE_ATTRIBUTE = 'data-color-mode';
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 /** Registered `<time>` in theme/document-base.css: how long the fade's transitions wait. */
 const FADE_DELAY_PROPERTY = '--bento-mode-fade-delay';
+const HOST_PRESENTED_ATTRIBUTE = 'data-bento-host-presented';
+const hostedOverlay =
+  new URLSearchParams(globalThis.location?.hash.slice(1) ?? '').get('bentoHostedOverlay') === '1';
+
+function isHidden(): boolean {
+  return (
+    document.hidden ||
+    (hostedOverlay && document.documentElement.getAttribute(HOST_PRESENTED_ATTRIBUTE) !== 'true')
+  );
+}
 
 // Per document: each entry is its own page, so this module is evaluated once per document.
 let applied = false;
@@ -85,7 +89,7 @@ function applyNow(resolved: Mode, write: (resolved: Mode) => void, delayMs = 0):
   const first = !applied;
   applied = true;
   const changed = root.getAttribute(COLOR_MODE_ATTRIBUTE) !== resolved;
-  const fade = !first && changed && !document.hidden && !matchMedia(REDUCED_MOTION_QUERY).matches;
+  const fade = !first && changed && !isHidden() && !matchMedia(REDUCED_MOTION_QUERY).matches;
   if (!fade) {
     // A change that does not fade ends a fade that is running (its rule would keep every
     // transition forced on until the document resumes); an unchanged value, such as a copy
@@ -114,7 +118,7 @@ function applyNow(resolved: Mode, write: (resolved: Mode) => void, delayMs = 0):
   // A hidden document gets no frames to measure or end the fade by, whatever way it joined it
   // (prepared early, or late), so one that hides during it drops the fade and its delay.
   const onHide = () => {
-    if (document.hidden) endFade(root);
+    if (isHidden()) endFade(root);
   };
   document.addEventListener('visibilitychange', onHide);
   cancelFade = () => {
@@ -158,7 +162,7 @@ function runAtFlip(deadline: number, run: () => void): void {
   // A hidden document gets no frames, so one that hides while it waits applies when it hides
   // (without a fade), not at its next show.
   const onVisibility = () => {
-    if (!document.hidden) return;
+    if (!isHidden()) return;
     cancelFlip?.();
     cancelFlip = null;
     run();
@@ -217,7 +221,7 @@ function prepareFlip(current: Flip): void {
   };
   frame = requestAnimationFrame(start);
   const onVisibility = () => {
-    if (document.hidden) start(null);
+    if (isHidden()) start(null);
   };
   document.addEventListener('visibilitychange', onVisibility);
   cancelFlip = () => {
@@ -256,9 +260,10 @@ export function applyModeWithFade(
   flipAt?: number,
   announce?: (resolved: Mode) => void,
 ): void {
+  if (requestModePresentation(undefined, 'legacy-mode-writer')) return;
   const resolved = resolve();
   const root = document.documentElement;
-  if (flip?.resolved === resolved && !document.hidden) {
+  if (flip?.resolved === resolved && !isHidden()) {
     flip.resolve = resolve;
     flip.write = write;
     flip.announce = announce;
@@ -268,7 +273,7 @@ export function applyModeWithFade(
   cancelPending();
   const wait = flipAt === undefined ? 0 : flipAt - Date.now();
   const changed = root.getAttribute(COLOR_MODE_ATTRIBUTE) !== resolved;
-  if (wait > 0 && applied && changed && !document.hidden) {
+  if (wait > 0 && applied && changed && !isHidden()) {
     const scheduled: Flip = {
       resolved,
       deadline: performance.now() + wait,
@@ -295,4 +300,20 @@ export function applyModeWithFade(
   const late = flipAt !== undefined && wait <= 0 && wait >= -CATCH_UP_MAX_MS;
   applyNow(resolved, write, late ? Math.round(wait * 10) / 10 : 0);
   announce?.(resolved);
+}
+
+// Chrome can hide a hosted <browser> while Gecko still reports its document visible.
+// The actor writes the root state before this synchronous event (including before init).
+if (hostedOverlay) {
+  document.addEventListener('bento-host-presentation', () => {
+    if (!isHidden()) return;
+    const pending = flip;
+    cancelPending();
+    endFade(document.documentElement);
+    if (pending) {
+      const resolved = pending.resolve();
+      applyNow(resolved, pending.write);
+      pending.announce?.(resolved);
+    }
+  });
 }

@@ -6,6 +6,7 @@ set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
+node "$REPO_ROOT/scripts/bento-build.mjs" preflight || exit 1
 
 MUTATION_STARTED=0
 

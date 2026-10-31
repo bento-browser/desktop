@@ -739,7 +739,29 @@ document`), then in a built app open the command palette, address bar, a sidebar
 ### Lazy Overlay Documents
 
 - Status: Active
-- Last updated: 2026-10-17
+- Last updated: 2026-10-31
+- Host presentation gate (2026-10-31): `setFrameSrc` merges a hosted-overlay hint
+  into the existing hash; hidden shell overlays default to unpresented before
+  module initialization. After readiness, the manager queries the current
+  `BentoShellBusChild` through `WindowGlobalParent.getActor` / `JSActor.sendQuery`
+  and waits for its synchronous root-state update/event acknowledgement before
+  revealing or focusing. The child validates the own-shell policy and hint and
+  uses `JSWindowActorChild.document`, rejecting destroyed or navigation-mismatched
+  actors. Parent and child generations reject stale opens, hides, and replies;
+  reloads replay the current open before reveal. False follows completed native
+  exit opacity, or immediate menu/tooltip hide. Workspace-switcher layout remains
+  retained while its final hidden commit now waits for opacity completion.
+  This gates shell colour preparation without changing docshell activity,
+  rendering priority, motion timing, or native compositor policy. Ordinary pages,
+  sidebar, and panel trailers retain existing behavior. Live hidden-document
+  suppression and whole-window timing remain pending. Regression checks:
+  initial/prewarmed closed overlays process
+  mode flips without catch-all transitions; opens wait for actor acknowledgement;
+  hide-start keeps exits visible; completed/reduced-motion hides settle the latest
+  mode; rapid reopen and reload cannot apply stale state. Check palette, Settings,
+  workspace switcher, address bar, menu, and tooltip on regular/private windows.
+  Rollback removes the presentation query, hash hint, and controller gate together;
+  do not substitute `docShellIsActive` or a global compositor preference.
 - Motion tokens change (2026-10-17): the palette, merge palette and confirm hosts
   declared in `browser-box.inc.xhtml` no longer carry the inline
   `transition: opacity 0.18s ease` (patch `chrome-layout/01-bento-shell-mount.patch`;
@@ -1192,7 +1214,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
-- Last updated: 2026-10-22
+- Last updated: 2026-10-31
+- Native no-scroll root capture (2026-10-31): patch 18 adds the scoped
+  ViewTransition producer documented below. Patch 19 adds the explicit native
+  theme-only capture-stage input contract; 26 patches are in the series.
+- Shared mode presenter (2026-11-01): patch 20 packages its native module;
+  redundant background-compositor patch 17 is removed. The series has 26 patches.
 - Patch removal (2026-10-22): `core-ui/15-bento-native-preferences.patch` is gone
   (see Native Bento Preferences (removed)); 23 patches remain. Its only shared
   file with a later patch was `browser/actors/moz.build`, which
@@ -1258,6 +1285,147 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Rollback or migration notes: keep each patch small and independently skippable;
   if a Firefox update makes a patch unnecessary, remove the patch and record the
   removal here.
+
+### Shared Native Mode Presentation
+
+- Status: Source implemented; integrated dev/dev:mux/release validation pending
+- Files: `src/browser/actors/BentoModePresentation.sys.mjs`, both shell-bus actors,
+  mount/theme overlays, and `patches/core-ui/20-native-mode-presenter-resource.patch`.
+- Purpose: one root-only old UI image presents exact colour commits across native
+  chrome and hosted shell documents. Actual native browser quads and rounded
+  clip owners exclude live webpages and docked DevTools; public opaque shell
+  surfaces and native focus rings restore UI over those holes. Unknown geometry
+  settles instantly, with no full stale-page image fallback.
+- Native dependencies: current WindowGlobal/actor identity, ChromeOnly box quads
+  with `ignoreTransforms`, and `windowUtils.updateLayerTree`/`syncFlushCompositor`.
+  Child submission waits for transaction receipt before ACK; one parent flush
+  follows all current child ACKs. No per-frame fence or page DOM read.
+- Ownership: native reads bind actual window/privacy/session and the current
+  background registration; regular state is an atomic settings/stamp snapshot,
+  private state comes from its per-window in-memory owner. Hosted writers request
+  before any mutation, including same-mode and fallback notices.
+- Upgrade checks: run focused actor/presenter/geometry/theme tests; verify the
+  current native submission fence semantics and ChromeOnly geometry options;
+  compile and prove actual displayed old pixels, fully live page holes/input,
+  nested theme scopes, rounded-edge fidelity, reversal and dismissal in dev,
+  dev:mux and a genuine production build. Node mocks are not pixel/input proof.
+- Rollback: remove the product coordinator/resource patch together, restore a
+  separately validated presentation strategy and rebuild. The former patch 17
+  background-colour compositor opt-out is removed, not retained as extra policy;
+  patches 18/19 remain narrowly scoped native capabilities. Global preferences,
+  docShell activity and ordinary webpage eligibility are unchanged.
+
+
+### Native No-Scroll Root ViewTransition Capture
+
+- Status: Source-ready; native compilation and displayed-pixel validation pending
+- Last updated: 2026-10-31
+- Files or patches:
+  - `patches/core-ui/18-native-root-view-transition-capture.patch`
+  - `layout/generic/ViewportFrame.cpp`
+- Bento functionality: supplies the missing WebRender root snapshot producer
+  for the main browser document when its viewport has no root scroll container.
+  This is capture plumbing; no product coordinator or transition is started by
+  the patch.
+- Vanilla Firefox surface touched or depended on: only the existing no-scroll
+  branch of `ViewportFrame::BuildDisplayList`. The fallback requires a painting
+  list (excluding printing), the document's own system principal and root
+  `windowtype="navigator:browser"`, and
+  `NS_FRAME_CAPTURED_IN_VIEW_TRANSITION` on the actual root style frame returned
+  by `nsCSSFrameConstructor::GetRootElementStyleFrame`. Root scroll-container
+  documents retain their existing producer. Other privileged documents and
+  ordinary webpages do not enter the fallback; event-delivery lists retain the
+  original path.
+- Why this cannot stay extension-only: the browser root is HTML with
+  `scrolling="false"`, so frame construction omits its root scroll container.
+  Firefox's existing root producer lives in `ScrollContainerFrame`; the generic
+  frame producer deliberately excludes root style. The viewport previously
+  emitted ordinary content and ViewTransition pseudo-elements without a root
+  capture item, leaving no root image keys for the pseudo-image to display.
+  An API `ready` result and running pseudo-element animation therefore did not
+  establish a visible captured old image. CSS or an extension cannot supply the
+  missing display-list producer.
+- Paint/list ownership: ordinary viewport content and the content-accessible
+  top layer are built within `AutoEnterViewTransitionCapture`, with a null ASR
+  and cleared clip matching the existing scroller capture convention. The six
+  collection lists are consumed once through `SerializeWithCorrectZOrder`,
+  using the actual document root for content order, then wrapped once in
+  `nsDisplayViewTransitionCapture` with `aIsRoot=true`. The existing wrapper
+  resolves the actual root style image key and snapshot-containing-block
+  coordinates. Builder ASR/clip/capture state is restored before the separate
+  ViewTransition/anonymous-content top layer is appended above and outside the
+  captured children. The existing opaque content-top-layer culling remains.
+- Firefox update risk: changes to viewport/root-frame construction, root
+  capture state, list serialization, image-key ownership, capture coordinates,
+  or top-layer ordering can invalidate this fallback. Check whether upstream
+  gained its own no-scroll producer before rebasing, to avoid double capture.
+- Regression checks for future updates: replay the stack and compile. In the
+  rebuilt native browser, hold an opaque old magenta probe while its live DOM
+  becomes blue; require actual displayed old magenta pixels, then a new-only
+  phase showing blue. Check live webpage holes and input through the existing
+  event path, content top-layer ordering without recursive ViewTransition
+  capture, and a normal HTML scroll-root control. Confirm scope with ordinary
+  web and other privileged documents. Current build configuration disables
+  native tests; the existing ViewTransition browser test checks lifecycle only.
+  Source/compat checks and `drawSnapshot` are not displayed-old-image proof.
+- Rollback or migration notes: remove patch 18 and its manifest/registry entries,
+  then re-import and rebuild. Keep policy 17 independent. Do not flip the browser
+  root's `scrolling` attribute or introduce a preference/input exception. Product
+  masking and the fully live webpage contract remain separate coordinator work.
+
+### Native Theme-Only Capture-Stage Input
+
+- Status: Source-ready; native compilation and trusted/physical input validation pending
+- Last updated: 2026-10-31
+- Files or patches:
+  - `patches/core-ui/19-native-mode-transition-input.patch`
+  - `dom/view-transitions/ViewTransition.{h,cpp}`
+  - `layout/base/PresShell.cpp`, `layout/base/TouchManager.cpp`
+- Bento functionality: preserves normal native hit testing during the rendering
+  suppression stage of an explicitly owned, root-only theme presentation. The
+  future controller must call `startViewTransition()` without an update callback,
+  keep all non-root elements unnamed, defer colour commits until `ready`, and
+  preserve geometry or abort. This patch does not implement that controller.
+- Vanilla Firefox surface: a false-by-default internal transition latch is set
+  only after successful old capture collection for a same-document transition
+  with no update callback, its own system-principal `navigator:browser` root,
+  `data-bento-mode-presentation="theme"`, and exactly one captured frame matching
+  the actual document root style frame. The cross-document factory is explicitly
+  marked; its null callback cannot opt in. Marker removal does not revoke a valid
+  latched transaction.
+- Input and phase scope: only the existing rendering-suppressed retarget checks
+  in `PresShell::EventHandler::GetFrameToHandleNonTouchEvent` and
+  `TouchManager::SetupTarget` consult the existing document's active transition.
+  Its accessor is limited to capture/update phases and current ownership. Skip,
+  replacement, cleanup and activation cannot leave an effective exemption.
+  Rendering suppression, event display lists, named-element targeting, existing
+  touch capture and APZ are unchanged. No new WebIDL, Document API or preference
+  is added. New capture membership is revalidated before animation; missing,
+  renamed or non-root membership in an opted-in transition causes an
+  `InvalidStateError` skip through existing cleanup.
+- Why this cannot stay extension-only: Firefox retargets suppressed input to the
+  document root before normal hit testing. Disabling pseudo-element pointer
+  events cannot change that early branch. The bounded native latch allows the
+  existing input path only for this owned theme transaction; ordinary webpages
+  and other privileged documents retain the upstream suppression behavior.
+- Regression source: the patch adds a browser-chrome test under
+  `dom/view-transitions/test/browser`. It advances the refresh synchronously,
+  then calls ChromeOnly `synthesizeMouseEvent` with `toWindow:true` and synchronous
+  dispatch before yielding to the queued update task. The mandatory missing-marker
+  control targets `documentElement`; an eligible transaction must hit the owned
+  native probe. Tests also cover wrong marker/identity, update callback,
+  additional old/new capture, missing new root, marker removal, skip/replacement
+  and an ordinary page spoofing the attributes. Every path skips its transition
+  and restores normal refresh in `finally`.
+- Validation limits and upgrade checks: current native tests are disabled, so
+  parser/source checks do not claim trusted engine targeting was executed. Run
+  the browser-chrome test in a test-enabled rebuild, then the equivalent compiled
+  app diagnostic. That establishes trusted PresShell targeting separately from
+  physical OS/APZ input. Recheck cross-document construction, capture arrays,
+  phase changes, skip cleanup and both retarget branches on Firefox upgrades.
+- Rollback: remove patch 19 and its manifest/registry entries, then import and
+  rebuild. Patches 17/18 stay independent. No broad rendering/input preference or
+  webpage-transition fallback should replace this contract.
 
 ### Chrome Theme Sheets
 
@@ -2864,6 +3032,17 @@ below is generated; edit the registry, then run
 | `gBrowser._endRemoveTab` | method (runtime) | Finishes closing the source tab after a window-to-window browser swap (patch window-sync/02). | `patches/window-sync/02-tabbrowser-bento-sync.patch#_endRemoveTab` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:6765` |
 | `tab._endRemoveArgs` | source (engine only) | Reads the [closeWindow, newTab] arguments _beginRemoveTab stored on the tab when a browser swap closes the source tab (patch window-sync/02). | `patches/window-sync/02-tabbrowser-bento-sync.patch#_endRemoveArgs` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:6613` |
 | `OpenBrowserWindow options` | source (engine only) | OpenBrowserWindow forwards its whole options object to BrowserWindowTracker.openWindow, which carries Bento's bentoSyncedWindow flag (patch window-sync/01). | `bentoSyncedWindow` | `browser/base/content/browser.js:1759` |
+| `browser.xhtml navigator:browser windowtype` | source (engine only) | The native no-scroll capture and theme-input policies check the document's own root windowtype together with its system principal; ancestor browser identity never opts a document in. | `patches/core-ui/18-native-root-view-transition-capture.patch#navigator:browser`, `patches/core-ui/19-native-mode-transition-input.patch#navigator:browser` | `browser/base/content/browser.xhtml:13` |
+| `ViewportFrame.BuildDisplayList` | source (engine only) | Supplies the missing root capture producer only for a painted system-principal main browser document without a root scroll container, while its actual root style frame is captured. | `patches/core-ui/18-native-root-view-transition-capture.patch#ViewportFrame` | `layout/generic/ViewportFrame.cpp:69` |
+| `nsCSSFrameConstructor.GetRootElementStyleFrame` | source (engine only) | Uses the actual document root style frame to test capture state; the existing root capture wrapper resolves its image key through the same frame. | `patches/core-ui/18-native-root-view-transition-capture.patch#GetRootElementStyleFrame`, `patches/core-ui/19-native-mode-transition-input.patch#GetRootElementStyleFrame` | `layout/base/nsCSSFrameConstructor.h:333` |
+| `NS_FRAME_CAPTURED_IN_VIEW_TRANSITION` | source (engine only) | Restricts the no-scroll native root fallback to the actual root frame captured by the active view transition. | `patches/core-ui/18-native-root-view-transition-capture.patch#NS_FRAME_CAPTURED_IN_VIEW_TRANSITION` | `layout/generic/nsFrameStateBits.h:80` |
+| `nsDisplayViewTransitionCapture.CreateWebRenderCommands` | source (engine only) | Reuses the root snapshot image-key and snapshot-containing-block coordinate path with aIsRoot=true; ViewTransition/NAC top-layer items remain outside its children. | `patches/core-ui/18-native-root-view-transition-capture.patch#nsDisplayViewTransitionCapture` | `layout/painting/nsDisplayList.cpp:5661` |
+| `ViewTransition.CaptureOldState` | source (engine only) | Latches the explicit native theme-input contract only after successful old capture collection: same document, no callback, own system browser root and exactly its actual root style frame. | `patches/core-ui/19-native-mode-transition-input.patch#CaptureOldState` | `dom/view-transitions/ViewTransition.cpp:1352` |
+| `ViewTransition.CaptureNewState` | source (engine only) | Rejects an opted-in transaction before animation if new capture membership is missing, renamed or includes a non-root frame; ordinary transitions retain upstream membership behavior. | `patches/core-ui/19-native-mode-transition-input.patch#CaptureNewState` | `dom/view-transitions/ViewTransition.cpp:1450` |
+| `ViewTransition.CreateCrossDocument` | source (engine only) | Marks cross-document transitions explicitly so the null update callback used by that factory cannot satisfy the same-document native input contract. | `patches/core-ui/19-native-mode-transition-input.patch#CreateCrossDocument` | `dom/view-transitions/ViewTransition.cpp:281` |
+| `Document.GetActiveViewTransition` | source (engine only) | Uses the existing active transition to scope the internal input latch to its capture/update phase, without adding a Document or WebIDL API. | `patches/core-ui/19-native-mode-transition-input.patch#GetActiveViewTransition` | `dom/base/Document.h:4255` |
+| `PresShell.EventHandler.GetFrameToHandleNonTouchEvent` | source (engine only) | Consults the active native theme latch only inside rendering-suppressed input retargeting; eligible native input continues through existing hit testing. | `patches/core-ui/19-native-mode-transition-input.patch#GetFrameToHandleNonTouchEvent` | `layout/base/PresShell.cpp:8077` |
+| `TouchManager.SetupTarget` | source (engine only) | Applies the same native theme latch only to the existing suppressed touchstart retarget check; captured touch sessions and normal targeting remain upstream. | `patches/core-ui/19-native-mode-transition-input.patch#TouchManager::SetupTarget` | `layout/base/TouchManager.cpp:110` |
 | `FirefoxProfileMigrator._getFileObject` | source (engine only) | Locates the external browser session files inside a profile directory (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#_getFileObject` | `browser/components/migration/FirefoxProfileMigrator.sys.mjs:102` |
 | `FirefoxProfileMigrator.startupOnlyMigrator` | source (engine only) | Decides whether the Firefox profile migrator is offered only at startup (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#startupOnlyMigrator` | `browser/components/migration/FirefoxProfileMigrator.sys.mjs:498` |
 | `MigrationUtils.isStartupMigration` | source (engine only) | Tells the first-run import apart from a later import (patch core-ui/09). | `patches/core-ui/09-bento-firefox-profile-first-run-import.patch#isStartupMigration` | `browser/components/migration/MigrationUtils.sys.mjs:548` |
@@ -2902,11 +3081,21 @@ below is generated; edit the registry, then run
 | `migration-wizard .resource-progress` | source (engine only) | Progress list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress` | `browser/components/migration/content/migration-wizard.mjs:129` |
 | `migration-wizard .resource-progress-group` | source (engine only) | Progress rows the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress-group` | `browser/components/migration/content/migration-wizard.mjs:130` |
 | `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
+| `Animatable.getAnimations pseudoElement option` | source (engine only) | Selects only the owned native panel ::after animations so preparation can finish its running border-color CSSTransitions before mask collection, without scanning descendants or finishing other motion. | `src/browser/actors/BentoModePresentation.sys.mjs#settleNativeFocusRings` | `dom/webidl/Animatable.webidl:27` |
+| `Window.windowUtils` | source (engine only) | Submits current native/child style state through privileged window utilities before releasing the shared opaque UI hold. | `src/browser/actors/BentoModePresentation.sys.mjs#windowUtils`, `src/browser/actors/BentoShellBusChild.sys.mjs#windowUtils` | `dom/webidl/Window.webidl:602` |
+| `nsIDOMWindowUtils.updateLayerTree` | source (engine only) | Each child submits once before its actor ACK; the parent submits after those ACKs. Upgrades must preserve synchronous display-list receipt fencing. | `src/browser/actors/BentoModePresentation.sys.mjs#updateLayerTree`, `src/browser/actors/BentoShellBusChild.sys.mjs#updateLayerTree` | `dom/interfaces/base/nsIDOMWindowUtils.idl:116` |
+| `nsDOMWindowUtils.UpdateLayerTree receipt fence` | source (engine only) | The child ACK follows WaitOnTransactionProcessed; the final parent compositor flush can therefore fence the shared scene-builder after all child display lists arrive. | `src/browser/actors/BentoShellBusChild.sys.mjs#submitModeDocument` | `dom/base/nsDOMWindowUtils.cpp:430` |
+| `nsIDOMWindowUtils.syncFlushCompositor` | source (engine only) | One parent compositor fence follows current child submissions before old-root opacity playback. No per-frame flush. | `src/browser/actors/BentoModePresentation.sys.mjs#syncFlushCompositor` | `dom/interfaces/base/nsIDOMWindowUtils.idl:2150` |
+| `GeometryUtils BoxQuadOptions.ignoreTransforms` | source (engine only) | ChromeOnly untransformed quads preserve exact local radii when fractional page clips and public opaque shell surfaces map through native hosts. | `src/browser/actors/BentoModePresentation.sys.mjs#ignoreTransforms`, `src/browser/actors/BentoShellBusChild.sys.mjs#ignoreTransforms` | `dom/webidl/GeometryUtils.webidl:25` |
+| `BrowsingContext.currentWindowGlobal` | source (engine only) | Mode participant queries and overlay reveals bind to the actual current WindowGlobal and reject navigation-stale replies. | `src/browser/actors/BentoShellBusParent.sys.mjs#currentWindowGlobal`, `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation` | `dom/chrome-webidl/BrowsingContext.webidl:339` |
+| `WindowGlobalParent.getActor` | source (engine only) | Gets the current overlay document actor for an acknowledged native-host presentation update before reveal. | `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation` | `dom/chrome-webidl/WindowGlobalActors.webidl:209` |
+| `JSActor.sendQuery` | source (engine only) | Waits for the overlay actor to apply parent-owned presentation state synchronously before native reveal or focus. | `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation`, `src/browser/actors/BentoShellBusParent.sys.mjs#sendQuery`, `src/browser/actors/BentoShellBusChild.sys.mjs#sendQuery` | `dom/chrome-webidl/JSActor.webidl:16` |
+| `JSWindowActorChild.document` | source (engine only) | Binds presentation updates to the actor document; a WindowProxy may already refer to a replacement page during navigation. | `src/browser/actors/BentoShellBusChild.sys.mjs#this.document` | `dom/chrome-webidl/JSWindowActor.webidl:60` |
 | `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:341` |
 | `JSWindowActorParent.manager` | source (engine only) | The BentoShellBus parent actor reads its WindowGlobalParent to check which document a relayed message comes from. | `src/browser/actors/BentoShellBusParent.sys.mjs#manager` | `dom/chrome-webidl/JSWindowActor.webidl:26` |
-| `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
-| `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |
-| `WebExtensionPolicy.mozExtensionHostname` | source (engine only) | The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped. | `src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname` | `dom/chrome-webidl/WebExtensionPolicy.webidl:31` |
+| `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI`, `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
+| `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID`, `src/browser/actors/BentoShellBusChild.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |
+| `WebExtensionPolicy.mozExtensionHostname` | source (engine only) | The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped. | `src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname`, `src/browser/actors/BentoShellBusChild.sys.mjs#mozExtensionHostname` | `dom/chrome-webidl/WebExtensionPolicy.webidl:31` |
 
 <!-- firefox-compat:end -->
 <!-- prettier-ignore-end -->

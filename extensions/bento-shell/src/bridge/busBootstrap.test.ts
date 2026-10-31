@@ -386,6 +386,7 @@ function snapshotDeliveriesToDocuments(): number {
 
 describe('shell bus bootstrap', () => {
   let tools: ReturnType<typeof createFakeTools>;
+  let windowRemoved: (id: number) => void;
 
   beforeEach(async () => {
     bus.reset();
@@ -395,6 +396,7 @@ describe('shell bus bootstrap', () => {
     // The extension build defines this flag; here the dev build's value.
     vi.stubGlobal('__BENTO_DEV_RELOAD__', true);
     vi.stubGlobal('browser', {
+      windows: { onRemoved: { addListener: (listener: (id: number) => void) => { windowRemoved = listener; } } },
       runtime: { connect: () => tools.port },
       commands: { onCommand: { addListener: () => {} } },
       bentoChrome: {
@@ -910,7 +912,7 @@ describe('shell bus bootstrap', () => {
       expect(settingsUpdates()).toEqual([]);
     });
 
-    it("forgets a window's own values when its last document closes", async () => {
+    it("preserves a private owner across document reload and forgets it only when its native window closes", async () => {
       const first = await joinPrivateDocument({ windowId: 9 });
       first.dispatch({ type: 'settings/update', changes: { sidebarCollapsed: true } });
       tools.emit({ type: 'settings/changed', settings: { ...SAVED, uiColorMode: 'dark' } });
@@ -924,7 +926,11 @@ describe('shell bus bootstrap', () => {
       });
       const reopened = await joinPrivateDocument({ windowId: 9 });
 
-      expect(localView(reopened)).toEqual(view('dark', false, false));
+      expect(localView(reopened)).toEqual(view('light', true, false));
+      windowRemoved(9);
+      const nextWindow = await joinPrivateDocument({ windowId: 9 });
+      // The fake tools snapshot on rejoin is SAVED (light), a new owner.
+      expect(localView(nextWindow)).toEqual(view('light', false, false));
     });
 
     describe('in the chrome payload', () => {

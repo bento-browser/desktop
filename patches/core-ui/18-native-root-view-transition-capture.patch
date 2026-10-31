@@ -1,0 +1,90 @@
+From 769939d17c6d94e2df0e2f80f571ba5de04beabb Mon Sep 17 00:00:00 2001
+From: BentoPatchStack <patch-stack@bento.invalid>
+Date: Sat, 31 Oct 2026 22:48:45 +1100
+Subject: [PATCH] Capture native no-scroll browser roots for view transitions
+
+---
+ layout/generic/ViewportFrame.cpp | 49 ++++++++++++++++++++++++++++----
+ 1 file changed, 43 insertions(+), 6 deletions(-)
+
+diff --git a/layout/generic/ViewportFrame.cpp b/layout/generic/ViewportFrame.cpp
+index fb7cba077bc0dd6851663f8621c38aa0b9de63ab..9ca042030cf3893c11347b22eab487f68a6270ac 100644
+--- a/layout/generic/ViewportFrame.cpp
++++ b/layout/generic/ViewportFrame.cpp
+@@ -19,7 +19,9 @@
+ #include "mozilla/RestyleManager.h"
+ #include "mozilla/ScrollContainerFrame.h"
+ #include "mozilla/ServoStyleSet.h"
++#include "mozilla/dom/DocumentInlines.h"
+ #include "mozilla/dom/ViewTransition.h"
++#include "nsCSSFrameConstructor.h"
+ #include "nsCanvasFrame.h"
+ #include "nsGkAtoms.h"
+ #include "nsLayoutUtils.h"
+@@ -77,22 +79,57 @@ void ViewportFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
+   }
+ 
+   nsDisplayListCollection set(aBuilder);
+-  BuildDisplayListForChild(aBuilder, kid, set);
+ 
+   // If we have a scrollframe then it takes care of creating the display list
+   // for the top layer, but otherwise we need to do it here.
+   if (!kid->IsScrollContainerFrame()) {
+-    bool isOpaque = false;
+-    if (auto* list = BuildDisplayListForContentTopLayer(aBuilder, &isOpaque)) {
+-      if (isOpaque) {
+-        set.DeleteAll(aBuilder);
++    auto* doc = PresContext()->Document();
++    auto* root = doc->GetRootElement();
++    nsIFrame* rootStyleFrame =
++        PresContext()->FrameConstructor()->GetRootElementStyleFrame();
++    const bool captureRoot =
++        aBuilder->IsForPainting() && !aBuilder->IsForPrinting() &&
++        rootStyleFrame &&
++        rootStyleFrame->HasAnyStateBits(NS_FRAME_CAPTURED_IN_VIEW_TRANSITION) &&
++        doc->NodePrincipal()->IsSystemPrincipal() && root &&
++        root->AttrValueIs(kNameSpaceID_None, nsGkAtoms::windowtype,
++                          u"navigator:browser"_ns, eCaseMatters);
++    auto buildContent = [&] {
++      BuildDisplayListForChild(aBuilder, kid, set);
++      bool isOpaque = false;
++      if (auto* list =
++              BuildDisplayListForContentTopLayer(aBuilder, &isOpaque)) {
++        if (isOpaque) {
++          set.DeleteAll(aBuilder);
++        }
++        set.PositionedDescendants()->AppendToTop(list);
+       }
+-      set.PositionedDescendants()->AppendToTop(list);
++    };
++    if (captureRoot) {
++      // The browser's scrolling=false root has no scrollframe to capture its
++      // content. Match that path's capture state, leaving VT/NAC outside it.
++      nsDisplayListBuilder::AutoEnterViewTransitionCapture inCapture(aBuilder,
++                                                                     true);
++      nsDisplayListBuilder::AutoCurrentActiveScrolledRootSetter asrSetter(
++          aBuilder);
++      DisplayListClipState::AutoSaveRestore clipState(aBuilder);
++      asrSetter.SetCurrentActiveScrolledRoot(nullptr);
++      clipState.Clear();
++      buildContent();
++      nsDisplayList capturedList(aBuilder);
++      set.SerializeWithCorrectZOrder(&capturedList, root);
++      capturedList.AppendNewToTop<nsDisplayViewTransitionCapture>(
++          aBuilder, this, &capturedList, nullptr, /* aIsRoot = */ true);
++      set.Content()->AppendToTop(&capturedList);
++    } else {
++      buildContent();
+     }
+     if (auto* list =
+             BuildDisplayListForViewTransitionsAndNACTopLayer(aBuilder)) {
+       set.PositionedDescendants()->AppendToTop(list);
+     }
++  } else {
++    BuildDisplayListForChild(aBuilder, kid, set);
+   }
+ 
+   set.MoveTo(aLists);
+-- 
+2.54.0 (Apple Git-157)
+

@@ -75,6 +75,10 @@ export class FakeRoot {
     },
   };
 
+  hasAttribute(name: string) { return this.attributes.has(name); }
+
+  getAttribute(name: string) { return this.attributes.get(name) ?? null; }
+
   setAttribute(name: string, value: string) {
     this.attributes.set(name, value);
   }

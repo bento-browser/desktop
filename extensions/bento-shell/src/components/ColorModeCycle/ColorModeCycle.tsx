@@ -35,6 +35,7 @@ export interface ColorModeCycleProps<TMode extends UiColorModePref = ColorModePr
   modes?: readonly TMode[];
   /** Surface name included in the aria-label tooltip, e.g. "Bento UI". */
   surfaceLabel: string;
+  presentationControl?: boolean;
 }
 
 export function ColorModeCycle<TMode extends UiColorModePref = ColorModePref>({
@@ -42,6 +43,7 @@ export function ColorModeCycle<TMode extends UiColorModePref = ColorModePref>({
   onChange,
   modes,
   surfaceLabel,
+  presentationControl = false,
 }: ColorModeCycleProps<TMode>) {
   const order = modes ?? (DEFAULT_ORDER as readonly TMode[]);
   const current = value && order.includes(value) ? value : (order[0] ?? ('light' as TMode));
@@ -50,7 +52,7 @@ export function ColorModeCycle<TMode extends UiColorModePref = ColorModePref>({
   const IconComponent = ICON_BY_MODE[current];
   const ariaLabel = `${surfaceLabel} color mode: ${ARIA_LABEL_BY_MODE[current]} (click to toggle)`;
   return (
-    <IconButton variant="ghost" size="sm" aria-label={ariaLabel} onActivate={() => onChange(next)}>
+    <IconButton variant="ghost" size="sm" aria-label={ariaLabel} onActivate={() => onChange(next)} data-bento-mode-control={presentationControl ? '' : undefined}>
       <BentoIcon icon={IconComponent} />
     </IconButton>
   );

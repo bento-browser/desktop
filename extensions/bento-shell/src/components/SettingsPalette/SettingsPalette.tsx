@@ -644,6 +644,7 @@ export default function SettingsPalette({
       textValue={[row.label, row.note, row.value].filter(Boolean).join(' ')}
       aria-label={rowAriaLabel(row)}
       disabled={row.info}
+      data-bento-mode-control={row.intent.type === 'change' && row.intent.changes.uiColorMode !== undefined ? '' : undefined}
       onActivate={() => run(row.intent, row.id)}
       className="bento-settings-palette__item"
       data-tone={row.tone}

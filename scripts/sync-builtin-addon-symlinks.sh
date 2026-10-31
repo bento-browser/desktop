@@ -24,6 +24,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+node "$REPO_ROOT/scripts/bento-build.mjs" preflight
 
 ENGINE_EXT_ROOT="engine/browser/extensions"
 
@@ -210,6 +211,7 @@ else
   # link out of the app bundle into src/browser/actors. One line per file in src/browser/actors.
   copy_content_actor BentoKeyChild.sys.mjs
   copy_content_actor BentoKeyParent.sys.mjs
+  copy_content_actor BentoModePresentation.sys.mjs
   copy_content_actor BentoShellBusChild.sys.mjs
   copy_content_actor BentoShellBusParent.sys.mjs
 fi

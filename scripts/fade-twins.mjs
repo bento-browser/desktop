@@ -9,6 +9,9 @@
 // rule's own non-colour entries and the shared colour list (`--bento-mode-fade-colours`, one custom
 // property per stylesheet that holds the catch-all's entries), so colours fade on the shared pair with the
 // shared delay and everything else keeps its own duration and easing, undelayed.
+// The distinct `settle` value zeros only the shared colour entries (duration and delay),
+// leaving the same twins/non-colour entries in force. Callers install it before the final
+// mode write and flush styles before removing it.
 //
 // The twins are generated: `node scripts/fade-twins.mjs` rewrites the marked regions of the two
 // stylesheets that hold a catch-all, and `scripts/mount-fade-css.test.mjs` fails when they are stale,
@@ -52,6 +55,8 @@ export const TARGETS = [
   {
     sheet: 'extensions/bento-shell/src/theme/document-base.css',
     layer: '@layer bento.mode-fade',
+    // Footer fill keeps its rail spring during an ordinary fade, but settles with colours.
+    settleCarriers: ['--bento-footer-fill'],
     sources: () =>
       walk(
         'extensions/bento-shell/src',
@@ -200,6 +205,18 @@ export function generatedRegion(target) {
   const colours = `:root[${ATTR}] {\n  ${COLOURS_PROPERTY}:\n    ${entries.join(',\n    ')};${
     inheritColour.length ? `\n  ${INHERITED_PROPERTY}:\n    ${inherited.join(',\n    ')};` : ''
   }\n}`;
+  const zeroTime = 'calc(var(--muxui-semantic-motion-state-transition-duration) * 0)';
+  const settled = [...new Set([...entries.map(entryProperty), ...(target.settleCarriers ?? [])])]
+    .map((property) => `${property} ${zeroTime} var(--muxui-semantic-motion-state-transition-easing) ${zeroTime}`);
+  const settleSelector = `:root[${ATTR}='settle']`;
+  const settleColours = `${settleSelector} {\n  ${COLOURS_PROPERTY}:\n    ${settled.join(',\n    ')};${
+    // Zero-time color creates no redundant fade, and must override any retained `all`.
+    inheritColour.length ? `\n  ${INHERITED_PROPERTY}:\n    ${settled.join(',\n    ')};` : ''
+  }\n}`;
+  // This has the same specificity as the normal catch-all and precedes the twins:
+  // an own `all` stays first, then explicit instant colours win by list order.
+  const settleCatchAll = [settleSelector, `${settleSelector} *`, `${settleSelector} *::before`, `${settleSelector} *::after`]
+    .join(',\n') + ` {\n  transition: var(${COLOURS_PROPERTY}) !important;\n}`;
   let previous = null;
   const sections = [];
   const twinned = new Set();
@@ -215,7 +232,7 @@ export function generatedRegion(target) {
     sections.push('/* elements whose text colour follows their parent (see INHERITED_PROPERTY) */');
     for (const selector of extra) sections.push(twinText([{ context: [], selectors: [selector], own: [] }], inheritColour));
   }
-  return [BEGIN, colours, ...sections, END].join('\n\n');
+  return [BEGIN, colours, settleColours, settleCatchAll, ...sections, END].join('\n\n');
 }
 
 /** The sheet text with its generated region (re)written inside the layer, after the catch-all. */
