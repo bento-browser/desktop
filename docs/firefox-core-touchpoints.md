@@ -1244,6 +1244,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     (and `sendToRestartRequiredPage`) and removed by `SessionStore.reviveCrashedTab`, the tab's
     progress listener when a load starts, and `updateBrowserRemoteness`; a `MutationObserver` on
     `gBrowser.tabContainer` (subtree, attribute filter `crashed`) per window.
+  - The lazy tab contract: a tab without `linkedPanel` (discarded by `discardBrowser`, or restored
+    lazily) holds a stand-in browser whose `documentURI` getter inserts the real browser and wakes
+    the tab (`#browserBindingProperties`, `#createLazyBrowser`). The experiment reads
+    `documentURI` only when `linkedPanel` is set.
   - `EveryWindow.registerCallback` / `readyWindows`, `gBrowser.getTabForBrowser` / `isTab`, and
     `extension.tabManager.getWrapper(nativeTab).id` for the WebExtension tab id.
   - The WebExtension tabs API has no page-error field. The `crashed` attribute fires no tab event
@@ -1255,7 +1259,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Why this cannot stay extension-only: the document and the attribute live on chrome objects
   that only parent-process code can read. It needs no Firefox patch: an experiment in the
   existing `bento-tools` experiment surface is the reader.
-- Firefox update risk: `documentURI` renamed or no longer set before the listeners run, or an
+- Firefox update risk: a lazy browser stand-in that no longer inserts on `documentURI`, or a
+  lazy tab that keeps a `linkedPanel`, changes what the guard protects; a `documentURI` that stops
+  being lazy-safe is the dangerous direction to miss, because the experiment would wake every
+  discarded tab. `documentURI` renamed or no longer set before the listeners run, or an
   error page renamed or moved to another about: name, makes the state stay empty (a quiet
   failure, not an error); `addTabsProgressListener` removed or its argument order changed stops
   the clears; `tab.setAttribute("crashed", ...)` replaced by a tab event misses the moment the
@@ -1286,6 +1293,12 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `<meta name="rating" content="adult">` in a browsing context with OS parental controls on
     (`Document::ProcessMETATag` then `nsDocShell::DisplayRestrictedContentError`), which keeps the
     website URL on the tab; it is not reproducible without those controls.
+  - Lazy tabs: with a restored session and a discarded tab in the sidebar (sleeping), restart and
+    confirm every sleeping row stays sleeping; run `await browser.bentoTabState.getPageErrors()`,
+    move another tab to a new window (which triggers `onAttached`), and confirm the sleeping rows
+    and `await browser.tabs.query({ discarded: true })` are unchanged.
+  - Private window: leave an error page for a normal site, and for a site with no favicon, and
+    confirm the tint and the info favicon both clear.
   - In the bento-tools background console run `await browser.bentoTabState.getPageErrors()` and
     confirm it lists exactly the tabs showing such a page.
 - Rollback or migration notes: removing the experiment makes `TabRegistry` log
@@ -2942,7 +2955,7 @@ below is generated; edit the registry, then run
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3116` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:241` |
 | `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. bento-tab-state observes its subtree for the crashed attribute. | `attachTabSelectListener`, `extensions/bento-tools/experiments/bento-tab-state/api.js#tabContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:237` |
-| `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `toolkit/content/widgets/tabbox.js:831` |
+| `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM. It is empty on a lazy (discarded or not yet restored) tab, which bento-tab-state tests before it reads the tab browser, as Firefox's tabs API does for `discarded`. | `reconcilePanelsSplitView`, `getLivePanelBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#linkedPanel` | `toolkit/content/widgets/tabbox.js:831` |
 | `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
 | `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:428` |
 | `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
@@ -3086,6 +3099,8 @@ below is generated; edit the registry, then run
 | `tab[crashed] set` | source (engine only) | TabCrashHandler.sendToTabCrashedPage sets the crashed attribute on a tab element while its crashed-tab page shows (no tab event fires), before the page document exists; bento-tab-state reports it as pageError crashed. The attribute is not copied to the tab element an adopted tab gets, so the document counts first. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/modules/ContentCrashHandlers.sys.mjs:554` |
 | `tab[crashed] cleared by a new load` | source (engine only) | TabProgressListener removes the crashed attribute when the tab starts a load; updateBrowserRemoteness removes it when the tab gets a new content process. bento-tab-state re-reads the tab on the attribute change. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:10501` |
 | `tab[crashed] cleared by a revive` | source (engine only) | SessionStore.reviveCrashedTab (the crashed page buttons, Restore All, a background crash) removes the crashed attribute; bento-tab-state re-reads the tab on the attribute change. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/sessionstore/SessionStore.sys.mjs:5331` |
+| `lazy browser documentURI inserts the browser` | source (engine only) | A lazy tab's stand-in browser lists documentURI among the properties whose getter inserts the real browser (Tabbrowser #browserBindingProperties, #createLazyBrowser default branch), which gives the tab a panel and wakes it. bento-tab-state therefore reads documentURI only when the tab has a linkedPanel. | `extensions/bento-tools/experiments/bento-tab-state/api.js#documentURI` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:396` |
+| `discarded tab drops its linkedpanel` | source (engine only) | discardBrowser removes the linkedpanel attribute and installs a lazy browser; a tab restored by the session store starts lazy the same way. No linkedPanel is how bento-tab-state recognises a tab whose document it must not read. | `extensions/bento-tools/experiments/bento-tab-state/api.js#linkedPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3466` |
 | `MozBrowser.documentURI` | source (engine only) | The URI of the document a tab's browser shows: the about: page of an error or of the crashed-tab page, where the tab URL stays the failed address. A remote browser holds it from its last location change; a non-remote one reads it live. bento-tab-state derives pageError from it. | `extensions/bento-tools/experiments/bento-tab-state/api.js#documentURI` | `toolkit/content/widgets/browser-custom-element.mjs:475` |
 | `gBrowser.addTabsProgressListener` | source (engine only) | Registers a plain-object listener that hears every tab, selected or not, so bento-tab-state notices a tab show or leave an error page. | `extensions/bento-tools/experiments/bento-tab-state/api.js#addTabsProgressListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7594` |
 | `gBrowser.removeTabsProgressListener` | source (engine only) | Removes that listener when its window closes or the experiment shuts down. | `extensions/bento-tools/experiments/bento-tab-state/api.js#removeTabsProgressListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7604` |

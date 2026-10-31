@@ -10,6 +10,8 @@ interface FakeTab {
   id: number;
   isTab: boolean;
   attributes: Set<string>;
+  /** Firefox's panel id; empty on a lazy tab, whose browser is a stand-in (see lazyTab). */
+  linkedPanel: string;
   linkedBrowser: { documentURI: ReturnType<typeof uri> | null };
   hasAttribute(name: string): boolean;
 }
@@ -26,9 +28,26 @@ function tab(id: number, spec: string | null, attributes: string[] = []): FakeTa
     id,
     isTab: true,
     attributes: set,
+    linkedPanel: `panel${id}`,
     linkedBrowser: { documentURI: spec === null ? null : uri(spec) },
     hasAttribute: (name) => set.has(name),
   };
+}
+
+/**
+ * A discarded or not-yet-restored tab. Tabbrowser gives its browser a `documentURI` getter that
+ * inserts the real browser, which wakes the tab; here reading it is counted and throws.
+ */
+function lazyTab(id: number, attributes: string[] = []) {
+  const fake = { ...tab(id, null, attributes), linkedPanel: '', reads: 0 };
+  Object.defineProperty(fake.linkedBrowser, 'documentURI', {
+    get() {
+      fake.reads++;
+      throw new Error('reading documentURI of a lazy tab inserts its browser');
+    },
+    set() {},
+  });
+  return fake;
 }
 
 class FakeObserver {
@@ -189,6 +208,68 @@ describe('bentoTabState document mapping', () => {
       { tabId: 3, pageError: 'crashed' },
       { tabId: 4, pageError: 'unavailable' },
     ]);
+  });
+});
+
+describe('bentoTabState and lazy tabs', () => {
+  it('never reads the document of a tab without a panel, so reading state cannot wake it', async () => {
+    const { bentoTabState, startWindow } = setup();
+    const lazy = lazyTab(1);
+    startWindow([lazy, tab(2, 'about:tabcrashed?e=tabcrashed')]);
+
+    expect(await bentoTabState.getPageErrors()).toEqual([{ tabId: 2, pageError: 'crashed' }]);
+    expect(lazy.reads).toBe(0);
+  });
+
+  it('does not read it when a window starts being watched, or when its attributes change', () => {
+    const t = setup();
+    const lazy = lazyTab(1);
+    t.startWindow([lazy]);
+    FakeObserver.all[0]!.callback([{ target: lazy }]);
+
+    expect(t.fired).toEqual([]);
+    expect(lazy.reads).toBe(0);
+  });
+
+  it('clears a crashed tab that is discarded, without reading its document', () => {
+    const t = setup();
+    const crashed = tab(1, 'about:tabcrashed?e=tabcrashed', ['crashed']);
+    t.startWindow([crashed]);
+    expect(t.fired).toEqual([[1, 'crashed']]);
+
+    // Discarding removes the attribute and the panel, then puts a lazy browser in place.
+    const lazy = Object.assign(lazyTab(1), { id: 1 });
+    crashed.attributes.delete('crashed');
+    crashed.linkedPanel = '';
+    Object.defineProperty(crashed, 'linkedBrowser', { value: lazy.linkedBrowser });
+    FakeObserver.all[0]!.callback([{ target: crashed }]);
+
+    expect(t.fired).toEqual([
+      [1, 'crashed'],
+      [1, null],
+    ]);
+    expect(lazy.reads).toBe(0);
+  });
+
+  it('still reports the crashed attribute of a tab without a panel', async () => {
+    const { bentoTabState, startWindow } = setup();
+    const lazy = lazyTab(1, ['crashed']);
+    startWindow([lazy]);
+
+    expect(await bentoTabState.getPageErrors()).toEqual([{ tabId: 1, pageError: 'crashed' }]);
+    expect(lazy.reads).toBe(0);
+  });
+
+  it('reads the document again once the tab has a panel', async () => {
+    const { bentoTabState, startWindow } = setup();
+    const woken = tab(1, 'about:neterror?e=dnsNotFound');
+    woken.linkedPanel = '';
+    startWindow([woken]);
+    expect(await bentoTabState.getPageErrors()).toEqual([]);
+
+    woken.linkedPanel = 'panel1';
+
+    expect(await bentoTabState.getPageErrors()).toEqual([{ tabId: 1, pageError: 'unavailable' }]);
   });
 });
 

@@ -450,7 +450,7 @@ describe('TabRegistry URL snapshots', () => {
       kind: 'updated',
       id: 1,
       changes: expect.objectContaining({
-        customTitle: undefined,
+        customTitle: null,
         title: 'New title',
         url: 'https://new.example/',
       }),
@@ -480,13 +480,13 @@ describe('TabRegistry URL snapshots', () => {
     expect(emitted).toContainEqual({
       kind: 'updated',
       id: 1,
-      changes: expect.not.objectContaining({ customTitle: undefined }),
+      changes: expect.not.objectContaining({ customTitle: null }),
     });
     expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
     expect(tabs.snapshot()[0]?.customTitle).toBe('Pinned workflow');
   });
 
-  it('emits undefined and clears the stored URL when update has no URL', async () => {
+  it('emits null and clears the stored URL when update has no URL', async () => {
     const listeners = stubTabsBrowser([makeTab({ id: 1, url: 'https://old.example/' })]);
     const emitted: unknown[] = [];
     const tabs = new TabRegistry();
@@ -502,9 +502,55 @@ describe('TabRegistry URL snapshots', () => {
     expect(emitted).toContainEqual({
       kind: 'updated',
       id: 1,
-      changes: expect.objectContaining({ url: undefined }),
+      changes: expect.objectContaining({ url: null }),
     });
     expect(tabs.snapshot()[0]?.url).toBeUndefined();
+  });
+
+  it('clears favicon, URL and custom title with null so a relayed delta keeps the clear', async () => {
+    const listeners = stubTabsBrowser([
+      makeTab({
+        id: 1,
+        title: 'Page',
+        url: 'https://old.example/',
+        favIconUrl: 'chrome://global/skin/icons/info.svg',
+      }),
+    ]);
+    const emitted: TabDelta[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Mine');
+    await tabs.rename(1, '');
+    emitted.length = 0;
+
+    listeners.updated?.(
+      1,
+      {} as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({ id: 1, title: 'Page', url: undefined, favIconUrl: undefined }),
+    );
+
+    expect(emitted).toEqual([{ kind: 'updated', id: 1, changes: { favIconUrl: null, url: null } }]);
+    // The private-window relay JSON-serialises deltas: `undefined` would vanish here.
+    expect(JSON.parse(JSON.stringify(emitted))).toEqual(emitted);
+    expect(tabs.snapshot()[0]).not.toHaveProperty('favIconUrl');
+    expect(tabs.snapshot()[0]).not.toHaveProperty('url');
+  });
+
+  it('sends a cleared custom title as null, and keeps the snapshot field absent', async () => {
+    stubTabsBrowser([makeTab({ id: 1 })]);
+    const emitted: TabDelta[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Mine');
+    emitted.length = 0;
+
+    await tabs.rename(1, '');
+
+    expect(emitted).toEqual([{ kind: 'updated', id: 1, changes: { customTitle: null } }]);
+    expect(JSON.parse(JSON.stringify(emitted))).toEqual(emitted);
+    expect(tabs.snapshot()[0]).not.toHaveProperty('customTitle');
   });
 
   it('keeps URL available for closing-window snapshots', async () => {

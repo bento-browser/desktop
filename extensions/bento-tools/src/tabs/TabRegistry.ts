@@ -6,7 +6,7 @@
 // Per-tab workspace assignment is persisted via browser.sessions.setTabValue
 // (rides Firefox session restore, see §4.3) and hydrated on init.
 
-import type { TabDelta, TabSnapshot } from '@shared/protocol';
+import type { TabChanges, TabDelta, TabSnapshot } from '@shared/protocol';
 import { isEphemeralWorkspaceId } from '../workspaces/ephemeral';
 
 type Listener = (deltas: TabDelta[]) => void;
@@ -124,6 +124,14 @@ async function readSessionMetadataWithRetries(
     latest = await readSessionMetadata(tabId);
   }
   return latest;
+}
+
+/** The wire form of an update: a cleared field is `null`, because a private window's relay
+ * JSON-serialises deltas and drops `undefined` (see `TabChanges`). */
+function clearedAsNull(changes: Partial<TabSnapshot>): TabChanges {
+  return Object.fromEntries(
+    Object.entries(changes).map(([key, value]) => [key, value === undefined ? null : value]),
+  );
 }
 
 export class TabRegistry {
@@ -431,8 +439,9 @@ export class TabRegistry {
     }
     const next = customTitle.length > 0 ? customTitle : undefined;
     if (tab.customTitle === next) return;
-    tab.customTitle = next;
-    this.#enqueue({ kind: 'updated', id, changes: { customTitle: next } });
+    if (next) tab.customTitle = next;
+    else delete tab.customTitle;
+    this.#enqueue({ kind: 'updated', id, changes: { customTitle: next ?? null } });
   }
 
   /** In-memory-only workspace assignment for boot-time backfill. Does NOT
@@ -802,7 +811,10 @@ export class TabRegistry {
     if ('customTitle' in changes && changes.customTitle === undefined) {
       delete existing.customTitle;
     }
-    this.#enqueue({ kind: 'updated', id, changes });
+    if ('favIconUrl' in changes && changes.favIconUrl === undefined) {
+      delete existing.favIconUrl;
+    }
+    this.#enqueue({ kind: 'updated', id, changes: clearedAsNull(changes) });
   };
 
   #onRemoved = (id: number, removeInfo?: browser.tabs._OnRemovedRemoveInfo) => {

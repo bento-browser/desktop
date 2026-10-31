@@ -23,8 +23,7 @@ const INTERNAL_SETTINGS_PAGES = new Set(['config', 'preferences']);
  * `pageError` comes from the document the browser shows, read by bento-tools. Neither the favicon
  * nor the URL can stand in for it: a website can declare any `chrome://global/skin/` favicon, and
  * an error page keeps the failed address as its URL. A loading tab is null so the native loading
- * cue stays; a crash outranks it because the tab is no longer loading anything. A null `pageError`
- * (a cleared delta) counts as none.
+ * cue stays; a crash outranks it because the tab is no longer loading anything.
  */
 export function tabStateOf(
   tab: Pick<TabSnapshot, 'url' | 'loading' | 'discarded' | 'favIconUrl' | 'pageError'>,

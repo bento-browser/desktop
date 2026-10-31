@@ -38,6 +38,56 @@ describe('tabs store page errors', () => {
     expect(useTabsStore.getState().byId[1]).not.toHaveProperty('pageError');
   });
 
+  it('deletes a favicon, URL and custom title that arrive as null, and keeps other fields', () => {
+    useTabsStore.getState().applySnapshot([
+      tab(1, {
+        favIconUrl: 'chrome://global/skin/icons/info.svg',
+        url: 'https://nope.invalid/',
+        customTitle: 'Mine',
+      }),
+    ]);
+
+    useTabsStore.getState().applyDeltas(
+      relay([
+        {
+          kind: 'updated',
+          id: 1,
+          changes: { favIconUrl: null, url: null, customTitle: null, title: 'New' },
+        },
+      ]),
+    );
+
+    const updated = useTabsStore.getState().byId[1]!;
+    expect(updated).not.toHaveProperty('favIconUrl');
+    expect(updated).not.toHaveProperty('url');
+    expect(updated).not.toHaveProperty('customTitle');
+    expect(updated).toMatchObject({ id: 1, title: 'New', index: 1 });
+    // A field absent from the change is not touched.
+    expect(tabStateOf(updated)).toBe('default');
+  });
+
+  it('shows the site favicon again after an error page was left, in a private window', () => {
+    const { applyDeltas } = useTabsStore.getState();
+    useTabsStore
+      .getState()
+      .applySnapshot([
+        tab(1, { favIconUrl: 'chrome://global/skin/icons/info.svg', pageError: 'unavailable' }),
+      ]);
+
+    applyDeltas(
+      relay([
+        {
+          kind: 'updated',
+          id: 1,
+          changes: { pageError: null, favIconUrl: 'https://example.org/favicon.svg' },
+        },
+      ]),
+    );
+
+    expect(useTabsStore.getState().byId[1]?.favIconUrl).toBe('https://example.org/favicon.svg');
+    expect(stateOfTab1()).toBeNull();
+  });
+
   it('changes from one page error to another, and leaves other tabs alone', () => {
     const { applyDeltas } = useTabsStore.getState();
 

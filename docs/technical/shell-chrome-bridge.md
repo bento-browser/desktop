@@ -668,11 +668,30 @@ Pitfalls:
 - `onLocationChange` is delivered for every top-level navigation of every tab. The "last told" check
   is what keeps the experiment silent for the ones that change nothing; `getPageErrors()` must keep
   updating it, or a state read on attach would never be cleared by the next navigation.
-- A cleared state is `pageError: null` in the delta, never `undefined`. A private window's relay
-  (`BentoShellBusParent.sys.mjs`) JSON-serialises messages, which drops an `undefined` property, so the
-  shell would merge an empty change and keep the old icon and tint. Snapshots omit the field, and the
-  shell's tabs store deletes it when a `null` arrives. Any code reading `pageError` must treat `null`
-  like absent.
+- Never read a lazy tab's browser. A tab without a `linkedPanel` (discarded, or restored by the
+  session store and not yet selected) holds a stand-in browser whose `documentURI` is one of the
+  `#browserBindingProperties` getters that insert the real browser (`Tabbrowser.sys.mjs`
+  `#createLazyBrowser`). Reading it gives the tab a panel, the tabs API then reports
+  `discarded: false` and the sleeping row turns `default`. `getPageErrors()` runs at
+  `TabRegistry.init` and after every `onAttached`, so an unguarded read would wake every restored
+  tab at startup. `pageErrorOf` in `api.js` is the only place that touches `linkedBrowser` and reads
+  `documentURI` only when `linkedPanel` is set (the test Firefox's own tabs API uses for
+  `discarded`); a lazy tab can still report `crashed` from the attribute. Discarding a crashed tab
+  removes the attribute and the panel, which the observer reports as cleared without reading the
+  document. Any new read of a tab's browser must keep this guard.
+- A cleared field in an `updated` delta is `null`, never `undefined`: `TabChanges` (protocol.ts)
+  allows `null` for `pageError`, `favIconUrl`, `url` and `customTitle`, and `TabRegistry` sends the
+  wire form (`clearedAsNull`). A private window's relay (`BentoShellBusParent.sys.mjs` `sendDown`)
+  JSON-serialises messages, which drops an `undefined` property, so the shell kept the old value:
+  the error tint stayed after leaving an error page, and so did the error page's stand-in favicon,
+  which the new page had not replaced. Snapshots never hold `null`: the shell's tabs store
+  (`applyChanges` in `state/tabs.ts`) deletes a field that arrives as `null`, so every reader sees
+  absent, as in a snapshot. `workspaceId` and `folderId` still clear with `undefined` (their clears
+  come from explicit mutations, not from Firefox events); a private window would miss one, which
+  has not been observed. The consumers of `updated` deltas are `useTabsStore.applyDeltas` and, in
+  `bento-tools/src/background.ts`, two listeners that test `'key' in changes` or `changes.folderId`
+  (never the values), one that ignores them, and the relay that forwards them; the mount script
+  reads none.
 - `getPageErrors` and `onPageErrorChanged` use the same tab ids as the tabs API and `TabSnapshot.id`.
 
 Verify (built app, tools background console or the sidebar): see the checks in

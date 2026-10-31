@@ -16,12 +16,6 @@ describe('tabStateOf precedence', () => {
     expect(tabStateOf({ url: SITE, favIconUrl: SITE_ICON })).toBeNull();
   });
 
-  it('treats a null pageError, as a cleared delta leaves it, like none', () => {
-    expect(tabStateOf({ url: SITE, favIconUrl: SITE_ICON, pageError: null })).toBeNull();
-    expect(tabStateOf({ url: SITE, pageError: null })).toBe('default');
-    expect(tabStateOf({ url: SITE, discarded: true, pageError: null })).toBe('sleeping');
-  });
-
   it('leaves a loading tab to the native loading cue', () => {
     for (const tab of [
       { url: SITE },

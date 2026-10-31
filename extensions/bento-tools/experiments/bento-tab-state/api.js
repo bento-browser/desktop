@@ -65,8 +65,12 @@
       const tabIdOf = (nativeTab) => tabManager.getWrapper(nativeTab)?.id ?? null;
 
       // The pageError of a tab right now, or null when it shows a website or an ordinary page.
+      // A lazy tab (discarded, or restored and not yet selected) has no panel and shows no
+      // document. Its browser is a stand-in whose `documentURI` getter inserts the real browser,
+      // which would wake the tab (Tabbrowser #createLazyBrowser), so the document of a tab without
+      // a `linkedPanel` is never read. Every `linkedBrowser` access in this file goes through here.
       const pageErrorOf = (nativeTab) => {
-        const documentURI = nativeTab.linkedBrowser?.documentURI;
+        const documentURI = nativeTab.linkedPanel ? nativeTab.linkedBrowser?.documentURI : null;
         const fromDocument = documentURI ? aboutPageError(documentURI) : null;
         if (fromDocument) return fromDocument;
         return nativeTab.hasAttribute(CRASHED_ATTRIBUTE) ? 'crashed' : null;
