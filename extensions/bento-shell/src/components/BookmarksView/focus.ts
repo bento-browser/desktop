@@ -11,9 +11,9 @@ export const groupSelector = (id: string) => `[data-bm-group-id=${quote(id)}]`;
 /** What scrolls into view for a new or restored id: a row or a column. */
 export const revealSelector = (id: string) => `${itemSelector(id)}, ${groupSelector(id)}`;
 
-/** The "Move" trigger of a row and the "..." trigger of a column header; the focus returns to them
- * after a keyboard move or rename. */
-export const itemMenuSelector = (id: string) => `${itemSelector(id)} [data-bm-move-trigger]`;
+/** The "More actions" trigger of a row and the "..." trigger of a column header; the focus returns
+ * to them after a keyboard move or rename. */
+export const itemMenuSelector = (id: string) => `${itemSelector(id)} [data-bm-item-menu]`;
 export const groupMenuSelector = (id: string) =>
   `${groupSelector(id)} > header [data-bm-menu-trigger]`;
 

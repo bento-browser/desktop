@@ -695,8 +695,9 @@ The view has three parts:
   colour, or deletes it with its groups. Below about 1200 px wide the column folds to
   the colour dots.
 - **Groups and rows.** The selected space's groups are columns that scroll sideways. Each
-  column holds links (favicon, title, host), notes and to-dos (with a checkbox). Hovering
-  a row shows actions to open the link in a new panel or in a new tab, edit and delete.
+  column holds links (favicon, title, host), notes and to-dos (with a checkbox). Clicking a
+  link opens it in a new panel. Hovering a row shows a "More actions" button with Open in new
+  tab (links), Edit, Move and Delete; it leaves the row's text readable.
   Rows edit in place; Enter saves and Esc cancels, and the focus goes back to the row (or to
   the button that began the edit). The "+ Link, note or to-do" row at
   the foot of a column adds one by typing: a web address or bare domain becomes a link, text
@@ -714,9 +715,10 @@ The header shows the space's name and "N groups, M links", with a search field t
 links, notes and to-dos in every space, listed by space and group. Rows and columns reorder
 by dragging: a line shows where the item will land, nothing shifts while dragging, and the
 dropped item glides into place; Esc cancels, and letting go afterwards does not open the link
-that was grabbed. Everything dragging does also has a menu for the keyboard: a row's Move
-menu (Move to group, Move up, Move down), a column's Move left and Move right, and an open
-tab's Save to group; each is reached by Tab and keeps the focus on what moved. Deleting an
+that was grabbed. Everything dragging does also has a menu for the keyboard: a row's
+"More actions" menu (Move to group, Move up, Move down under Move), a column's Move left and
+Move right, and an open tab's Save to group; each is reached by Tab and keeps the focus on what
+moved. Deleting an
 item removes it at once and offers Undo for a few seconds (the countdown waits while the
 pointer is over the toast or the focus is on it); deleting a group or space asks first. A space with no groups says
 "Drop tabs here" and offers a new group or saving the open tabs; until it has been used or

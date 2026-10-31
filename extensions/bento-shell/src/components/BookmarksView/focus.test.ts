@@ -17,8 +17,8 @@ describe('selectors', () => {
 
   it('name the row, the column and the triggers inside them', () => {
     expect(revealSelector('x')).toBe('[data-bm-item-id="x"], [data-bm-group-id="x"]');
-    expect(itemMenuSelector('i')).toBe('[data-bm-item-id="i"] [data-bm-move-trigger]');
-    // The header's trigger, not the Move trigger of a row inside the column.
+    expect(itemMenuSelector('i')).toBe('[data-bm-item-id="i"] [data-bm-item-menu]');
+    // The header's trigger, not the menu trigger of a row inside the column.
     expect(groupMenuSelector('g')).toBe('[data-bm-group-id="g"] > header [data-bm-menu-trigger]');
     expect(groupAddItemSelector('g')).toBe('[data-bm-group-id="g"] [data-bm-add-item]');
   });

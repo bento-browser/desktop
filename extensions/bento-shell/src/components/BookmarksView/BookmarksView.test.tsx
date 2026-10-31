@@ -87,13 +87,15 @@ describe('the first group of an empty space', () => {
 });
 
 describe('keyboard alternatives to dragging', () => {
-  it('give every row a Move menu and say how many actions it has', () => {
+  it('give every row one More actions menu and no other action buttons', () => {
     const markup = render();
-    // 18 links (five actions each), notes and to-dos (three).
-    expect(markup.match(/data-bm-actions="5"/g)).toHaveLength(18);
-    expect(markup.match(/data-bm-actions="3"/g)).toHaveLength(4);
-    expect(markup.match(/data-bm-move-trigger/g)).toHaveLength(22);
-    expect(markup).toContain('aria-label="Move"');
+    // 18 links, 2 notes and 2 to-dos each have one hover action: the menu trigger.
+    expect(markup.match(/data-bm-actions="1"/g)).toHaveLength(22);
+    expect(markup.match(/data-bm-item-menu/g)).toHaveLength(22);
+    expect(markup.match(/aria-label="More actions"/g)).toHaveLength(22);
+    for (const direct of ['Open in panel', 'Open in tab', 'Edit', 'Delete', 'Move']) {
+      expect(markup).not.toContain(`aria-label="${direct}"`);
+    }
   });
 
   it('give every column header a menu that can hold Move left and Move right', () => {
@@ -104,7 +106,7 @@ describe('keyboard alternatives to dragging', () => {
 
   it('give each open tab in the drawer a focusable Save to group menu', () => {
     const markup = render({ initialDrawerOpen: true });
-    expect(markup.match(/data-bm-actions="1"/g)).toHaveLength(SAMPLE_TABS.length);
+    expect(markup.match(/data-bm-actions="1"/g)).toHaveLength(22 + SAMPLE_TABS.length);
     expect(markup).toContain('aria-label="Save Moon Board"');
   });
 

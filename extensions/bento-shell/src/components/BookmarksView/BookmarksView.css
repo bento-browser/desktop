@@ -376,7 +376,11 @@ html[data-bento-document='bookmarks'] #root {
     max-width: 100%;
   }
 
+  /* The text box fills the row, so the mask (a percentage of this box) fades only the row's end
+     and a short note is not masked from its own right edge. */
   .bento-bookmarks__note-text {
+    min-width: 0;
+    flex: 1 1 auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     text-align: start;
@@ -410,31 +414,26 @@ html[data-bento-document='bookmarks'] #root {
     color: var(--muxui-semantic-content-muted);
   }
 
-  /* Hover actions sit over the row's right end and paint no background: the text under them is
-     masked out (below) so a long title does not run behind the buttons, and the row's hover
-     surface shows through. A row says how many actions it has in data-bm-actions (a link five, a
-     note or a to-do three, an open tab one); a row without actions (a search result) has no
+  /* The hover action (one "More actions" trigger) sits over the row's right end and paints no
+     background: the text under it is masked out (below) so a long title does not run behind it,
+     and the row's hover surface shows through. Only the end of the row is masked, so the leading
+     text stays readable even for a short note whose menu is focused. A row with an action says
+     so in data-bm-actions (an item, an open tab); a row without one (a search result) has no
      attribute and no mask. */
   .bento-bookmarks__row {
-    --bento-bookmarks-action-count: 5;
     --bento-bookmarks-actions-fade: var(--muxui-semantic-layout-inset-medium);
+    /* The trigger ends this far from the row's edge, so its focus ring (ring plus offset) is not
+       clipped by the column. */
+    --bento-bookmarks-actions-inset: calc(var(--bento-focus-ring-width) * 2);
     --bento-bookmarks-actions-offset: calc(
-      var(--bento-bookmarks-action-count) * var(--bento-control-size-sm)
+      var(--bento-control-size-sm) + var(--bento-bookmarks-actions-inset)
     );
     --bento-bookmarks-actions-width: calc(
       var(--bento-bookmarks-actions-offset) + var(--bento-bookmarks-actions-fade)
     );
   }
 
-  .bento-bookmarks__row[data-bm-actions='3'] {
-    --bento-bookmarks-action-count: 3;
-  }
-
-  .bento-bookmarks__row[data-bm-actions='1'] {
-    --bento-bookmarks-action-count: 1;
-  }
-
-  /* Three layers, from the right: nothing over the buttons, a ramp of the fade's width, and the
+  /* Three layers, from the right: nothing over the trigger, a ramp of the fade's width, and the
      rest opaque. The sizes and places carry the lengths so the gradients hold no custom property
      (the fade check reads every gradient stop). Only the alpha matters; 'canvas' is an opaque
      system colour keyword. The actions show on hover, on focus inside the row and while one of
@@ -458,7 +457,7 @@ html[data-bento-document='bookmarks'] #root {
   .bento-bookmarks__row-actions {
     position: absolute;
     inset-block: 0;
-    inset-inline-end: 0;
+    inset-inline-end: var(--bento-bookmarks-actions-inset);
     display: flex;
     align-items: center;
     padding-inline-start: var(--muxui-semantic-layout-inset-medium);
@@ -475,7 +474,7 @@ html[data-bento-document='bookmarks'] #root {
     pointer-events: auto;
   }
 
-  /* A menu trigger among the actions is as big as the buttons and shows with them. */
+  /* The menu trigger in the actions shows with the row's actions. */
   .bento-bookmarks__row-actions .bento-bookmarks__more {
     width: var(--bento-control-size-sm);
     height: var(--bento-control-size-sm);
@@ -971,13 +970,4 @@ html[data-bento-document='bookmarks'] #root {
 
 .bento-bookmarks__row[data-kind='note'] .bento-bookmarks__row-main.muxui-button {
   padding-inline-start: var(--muxui-semantic-layout-inset-small);
-}
-
-/* The hover actions are compact: four of them must leave most of the row to grab. */
-.bento-bookmarks__row-actions .muxui-icon-button {
-  width: var(--bento-control-size-sm);
-  height: var(--bento-control-size-sm);
-  min-width: var(--bento-control-size-sm);
-  min-height: var(--bento-control-size-sm);
-  padding: 0;
 }

@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { Input, TextArea } from '@muxui/react';
 
+import { useFocusWhenReady } from './focusWhenReady';
+
 export interface InlineEditorProps {
   label: string;
   initial?: string;
@@ -39,6 +41,7 @@ export function InlineEditor({
 }: InlineEditorProps) {
   const [draft, setDraft] = useState(initial);
   const fieldRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  useFocusWhenReady(fieldRef);
   // Set once the editor has been answered, so the blur that follows an unmount or a key is not a second answer.
   const doneRef = useRef(false);
 
@@ -79,7 +82,6 @@ export function InlineEditor({
     value: draft,
     placeholder,
     maxLength,
-    autoFocus: true,
     onFocus: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       if (selectAll) event.currentTarget.select();
       else event.currentTarget.setSelectionRange(draft.length, draft.length);

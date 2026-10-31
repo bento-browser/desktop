@@ -11,7 +11,7 @@
 // Every create carries a client id (actions.ts), and what follows a change (select the new space,
 // scroll to the new row, put the focus back after a keyboard move) waits for that id in a snapshot
 // (followups.ts). Everything a drag does has a menu on the keyboard: Save to group on an open tab,
-// Move on a row, Move left and right on a column.
+// Move in a row's More actions menu, Move left and right on a column.
 
 import {
   useCallback,

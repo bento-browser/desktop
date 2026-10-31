@@ -123,12 +123,13 @@ in `state/__fixtures__/bookmarks.ts` (`applyFakeAction`, `useFakeBookmarks`).
 | `actions.ts` | Builders for the actions that create: client ids (`crypto.randomUUID()`), `tabsSave` (ids and a placed run in one action), `itemRestore` (undo). Pure. |
 | `followups.ts` | What to do once a snapshot holds an id the view sent (`exists`, `itemPlacedAt`, `groupPlacedAt`, `settleFollowups`). Pure. |
 | `focus.ts` | Selectors for the elements the focus returns to, and `neighbourMoves` (the slots of Move up/down/left/right). Pure. |
+| `focusWhenReady.ts` | `useFocusWhenReady`: the editors' replacement for `autoFocus`, which waits out the inert page a closing menu leaves (below). |
 | `clickSuppressor.ts` | Keeps a drag from activating its source, through the release (below). |
 | `dismissTimer.ts` | The undo toast's countdown with separate pointer and focus holds. |
 | `flip.ts` | Records element positions before a snapshot and plays the settle after it. |
 | `useBoardDrag.ts` | Pointer drag for items, open tabs and groups. |
 | `InlineEditor.tsx` | The one inline text field: Enter commits, Shift+Enter breaks a line in a multiline field, Esc cancels, blur commits; `maxLength` caps it at the stored field's limit. |
-| `ItemMenu`, `GroupSubmenu`, `EntityMenu`, `TabMenu` (in `TabsDrawer.tsx`) | The keyboard menus (below). |
+| `ItemMenu`, `GroupSubmenu`, `EntityMenu`, `TabMenu` (in `TabsDrawer.tsx`) | The row, group-list, column and open-tab menus (below). |
 | `AddGroup.tsx` | The "+ Group" button that becomes a name field; used by the board's trailing column and by the empty space. |
 | `LoadFailed.tsx` | The notice for a failed load (below). |
 | `SpacesList`, `BoardColumn`, `ItemRow`, `TabsDrawer`, `SearchResults`, `EmptySpace`, `UndoToasts` | The parts of the screen. |
@@ -234,14 +235,31 @@ a follow-up whose action was refused simply never fires. Show and hide clear the
 ### Keyboard alternatives to dragging
 
 Each pointer drag has a menu built from public Mux `Menu` parts, reached by Tab (the row
-actions and the column menu show on `:focus-within`, and stay while their menu is open through
+trigger and the column menu show on `:focus-within`, and stay while their menu is open through
 `:has([aria-expanded='true'], [data-muxui-state-open])`):
 
 | Surface | Menu | Action sent |
 | --- | --- | --- |
 | Open tab in the drawer (`TabMenu`, "Save <title>") | Save to group: a submenu of the current space's groups, then "New group" | `tabs/save` at the end of the group (or `groupId: null`) |
-| Item row (`ItemMenu`, a "Move" trigger among the hover actions) | Move to group (the other groups), Move up, Move down | `item/move` with `beforeId` from `neighbourMoves` |
+| Item row (`ItemMenu`, the "More actions" trigger) | Move, a submenu of Move to group (the other groups), Move up and Move down | `item/move` with `beforeId` from `neighbourMoves` |
 | Column header (`EntityMenu`, `move`) | Move left, Move right | `group/move` with `beforeId` from `neighbourMoves` |
+
+### Row actions
+
+A row has one hover action, the "More actions" trigger (`ItemMenu`, an ellipsis, `data-bm-item-menu`). Its
+menu holds Open in new tab (links only), Edit, Move (the submenu above) and Delete (after a separator).
+There is no separate Open in panel button: the row's own button opens a link in a panel (Mux `Button`,
+so Enter and Space open it too), and a note's button starts its edit. Five direct buttons covered
+most of a 236 px column, so titles and short notes disappeared under them; one trigger keeps the
+text readable.
+
+The trigger sits over the row's right end and paints no background. The text under it is masked
+out: the row text, the note text and the to-do text carry a `mask-image` while the row is hovered,
+holds the focus or has a menu open, and `data-bm-actions` marks rows that have an action (an item
+row or an open tab row; a search result has none, so no mask). The mask is a percentage of the
+masked element's own box, so each of those elements fills the row (`flex: 1 1 auto`); the
+trigger ends `--bento-bookmarks-actions-inset` (twice the focus ring width) short of the row's
+edge so its focus ring is not clipped by the column.
 
 A direction that is not possible (the first row up, the last column right) is a disabled item,
 and Mux skips disabled items when arrowing. `GroupSubmenu` shows a disabled item instead of an empty
@@ -262,6 +280,13 @@ gone, focuses `editReturnSelector(target)`: the row's first control, a column's 
 space's button, the "Link, note or to-do", "+ Group" or "+ Space" button. An editor that ends because
 it lost focus (the user clicked or tabbed elsewhere) passes nothing and the focus stays
 where the user put it. The Enter that adds an item keeps the entry open, so the focus stays there.
+
+An editor a menu opened (Edit on a row, Rename on a column or space) mounts while the closing menu's
+popup still makes the rest of the page inert, and `focus()` on an inert field does nothing, which
+is all `autoFocus` tries. The editors call `useFocusWhenReady` instead: it focuses at once on an
+ordinary page, and otherwise waits for the page to stop being inert plus one frame, so the
+menu's own focus return to its trigger does not take the focus back. `Menu.Popup modal={false}`
+is not a way out: that menu no longer closes on a click outside it.
 
 ## Undo toasts
 
@@ -301,9 +326,12 @@ asks first, in a Mux `Dialog`, and is not undoable.
 5. Search with text: results span all spaces; Esc clears the field.
 6. Open a private window: no palette command, and `Cmd+Shift+O` opens Firefox's Library.
 7. Light and dark colour mode and a non-default workspace theme.
-8. Keyboard only: Tab to a row (its actions show), open its Move menu with Enter, pick Move down
-   and Move to group; the focus stays on the moved row's Move button. Open an open tab's menu in
-   the drawer and Save to group; open a column's "..." menu and Move left and Move right.
+8. Keyboard only: Tab to a row, then Tab again to its "More actions" button and open it with Enter. Edit
+   puts the focus in the field (Esc returns it to the row); Open in new tab opens the link; Move
+   opens a submenu: pick Move down and Move to group, and the focus stays on the moved row's
+   "More actions" button. Open an open tab's menu in the drawer and Save to group; open a column's
+   "..." menu and Move left and Move right. Hover a row, a short note and a long title: the text
+   stays readable beside the button, and a focused button on a short note hides none of it.
 9. Drag a row, press Esc while holding the button, then release over the same row: the link must
    not open. Do the same by dropping a row onto its own place.
 10. Rename a group with Enter, and with Esc: the focus returns to its "..." button. Start an
@@ -326,8 +354,10 @@ asks first, in a Mux `Dialog`, and is not undoable.
 - Mux `Checkbox` has a hover/press gradient tint over an unregistered custom property, so it
   does not cross-fade with the theme; it is recorded in `MUX_GRADIENT_RESIDUAL` in
   `scripts/mount-fade-css.test.mjs` (a to-do checkbox under the pointer only).
-- The four hover action buttons use the small control size (24 px): at 32 px they covered most
-  of a narrow row and left little to grab.
+- A row's actions are one 24 px trigger (small control size) because five buttons covered most of
+  a narrow row; do not add direct buttons back. A masked element's `mask-size` percentage is of
+  its own box: a note text that shrink-wrapped to 70 px was masked from `100% - 88px`, fully
+  invisible with its Edit button focused. Every masked text element fills the row.
 - Never `stopPropagation` the click that follows a drag. React Aria fires `onPress` from that
   click, and when it does not see one it clicks the target itself 80 ms later, after the
   suppression has ended (see "Cancelled drags").
@@ -341,3 +371,9 @@ asks first, in a Mux `Dialog`, and is not undoable.
   matches, or the trigger would vanish under its own menu.
 - Reordering rows in the DOM drops the focus from the moved element; a keyboard move refocuses it
   once the snapshot shows it placed.
+- A Mux `Menu` is modal: while its popup is open or exiting, the rest of the page is `inert`. An
+  editor opened by a menu item (Edit, Rename) could not take the focus then (`autoFocus` tries
+  once and fails silently, leaving an unfocused field), and the menu's focus return to its trigger
+  would take it a frame later; see `useFocusWhenReady` above.
+- The column list clips at its edge (`overflow-x: hidden`), so a trigger flush with the row's end
+  has its focus ring cut; the actions are inset by the ring's width and offset.

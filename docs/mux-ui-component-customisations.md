@@ -755,10 +755,9 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
 
 - **Layout in `bento.components`, Mux overrides unlayered.** Mux paints some control rules
   outside a layer, so the view's overrides for a Mux control (a ghost button that left-aligns
-  its content, a row button that paints no fill because the row paints the hover, the compact
-  hover actions) sit unlayered at the end of `BookmarksView.css`, scoped by a Bento class and
-  the Mux class (`.bento-bookmarks__back.muxui-button`). Layout, surfaces and motion stay in
-  the layer.
+  its content, a row button that paints no fill because the row paints the hover) sit unlayered
+  at the end of `BookmarksView.css`, scoped by a Bento class and the Mux class
+  (`.bento-bookmarks__back.muxui-button`). Layout, surfaces and motion stay in the layer.
 - **Container query for the narrow mode.** The root is an inline-size container
   (`bento-bookmarks`); below `75rem` (1200 px at the 16 px root; a container query cannot read
   a token) the spaces fold to colour dots and the drawer overlays the board.
@@ -776,24 +775,32 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
   fires `onActivate` from the click after the release (React Aria `usePress`), so a drag must
   never `stopPropagation` that click: the row's `onActivate` asks `isSuppressed()` instead, which
   stays true from the start of the drag through the release, however the drag ended.
-- **Keyboard menus use the public `Menu` parts.** A row's "Move" (`ItemMenu`), an open tab's
+- **Keyboard menus use the public `Menu` parts.** A row's "More actions" (`ItemMenu`: Open in new
+  tab, Edit, a Move submenu of Move to group, Move up and Move down, and Delete), an open tab's
   "Save to group" (`TabMenu`) and a column's "Move left" and "Move right" (`EntityMenu`) are
-  `Menu.Root`, `Trigger`, `Popup`, `List`, `Item` and, for the group lists, `Submenu` (an item
-  and a popup, `GroupSubmenu`). Their triggers carry `.bento-bookmarks__more`, are sized like the
-  compact action buttons and show with the row's actions; a menu that is open keeps its row's
-  actions and text mask through `:has([aria-expanded='true'], [data-muxui-state-open])`. An
-  impossible direction is a disabled `Menu.Item`.
+  `Menu.Root`, `Trigger`, `Popup`, `List`, `Item`, `Separator` and, for submenus (Move, and the
+  group lists in `GroupSubmenu`), `Submenu` (an item and a popup). Their triggers carry
+  `.bento-bookmarks__more`, are sized as `--bento-control-size-sm` and show with the row's
+  actions; a menu that is open keeps its row's actions and text mask through
+  `:has([aria-expanded='true'], [data-muxui-state-open])`. An impossible direction is a disabled
+  `Menu.Item`. The popups stay modal (`modal={false}` stops them closing on an outside click), so
+  an editor a menu item opens takes the focus through `useFocusWhenReady`, not `autoFocus`: the
+  closing popup keeps the page inert.
 - **Colour tokens.** The seven space and group colours are `--bento-bookmark-color-{gray,red,
   orange,yellow,green,blue,purple}` in `bento-tokens.css` (the Mux reference hues at step 60;
   gray is the semantic neutral). Dimensions come from `--bento-bookmarks-*` tokens; the row or
   column being dragged dims to `--bento-bookmarks-dragging-opacity`.
-- **Hover actions without a background.** The row's actions paint no fill. The row text under
-  them is masked out with three `mask-image` layers whose lengths come from `mask-size` and
-  `mask-position`, not from gradient stops, because the fade check (`scripts/mount-fade-css.test.mjs`)
-  and the motion check read every `var()` inside a gradient. `canvas` is an opaque system colour
-  keyword: only the alpha matters. The mask applies only to rows that declare their actions with
-  `data-bm-actions` (a link five, a note or to-do three, an open tab one; the number sets
-  `--bento-bookmarks-action-count`), so search result rows, which have none, keep their full text.
+- **One hover action, without a background.** A row has a single action, its "More actions"
+  trigger, never a row of buttons: five buttons covered most of a 236 px column. The trigger paints
+  no fill and ends `--bento-bookmarks-actions-inset` (twice `--bento-focus-ring-width`) short of the
+  row's edge so its focus ring is not clipped by the column. The row text under it is masked out
+  with three `mask-image` layers whose lengths come from `mask-size` and `mask-position`, not from
+  gradient stops, because the fade check (`scripts/mount-fade-css.test.mjs`) and the motion check
+  read every `var()` inside a gradient. `canvas` is an opaque system colour keyword: only the alpha
+  matters. The mask applies only to rows that declare an action with `data-bm-actions` (an item row
+  or an open tab row), so search result rows, which have none, keep their full text. The mask's
+  percentages are of the masked element's own box, so the row text, note text and to-do text each
+  fill the row; a shrink-wrapped short note would otherwise be masked from its own edge.
 - **Reorder settle.** `[data-bm-flipping]` carries a `transform` transition on the `reveal`
   role; `flip.ts` ends it with `afterMotion({ properties: ['transform'] })` and skips it under
   reduced motion.

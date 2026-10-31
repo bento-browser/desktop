@@ -1,20 +1,18 @@
-// One row of a column: a link, a note or a to-do, with its hover actions and its inline editor.
-// The row starts a drag (useBoardDrag) from anywhere but its own controls; a press that ended a
-// drag must not also open the link, so the open checks `isSuppressed` first. The actions are
-// reachable by Tab (they show on focus), and the Move menu is the keyboard route to dragging.
+// One row of a column: a link, a note or a to-do, with its "More actions" menu and its inline
+// editor. The row starts a drag (useBoardDrag) from anywhere but its own controls; a press that
+// ended a drag must not also open the link, so the open checks `isSuppressed` first. The menu
+// trigger is the row's one hover action: it shows on focus too, so it is reached by Tab, and its
+// Move submenu is the keyboard route to dragging.
 
-import { memo, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { Button, Checkbox, IconButton, Input, Text } from '@muxui/react';
-import AppWindow from 'lucide-react/dist/esm/icons/app-window';
+import { Button, Checkbox, Input, Text } from '@muxui/react';
 import Globe from 'lucide-react/dist/esm/icons/globe';
-import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
-import Pencil from 'lucide-react/dist/esm/icons/pencil';
-import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import { BOOKMARK_LIMITS, type BookmarkItem } from '@shared/protocol';
 import { MAX_URL_LENGTH } from '@shared/export-schema';
 
 import { BentoIcon } from '../primitives';
+import { useFocusWhenReady } from './focusWhenReady';
 import { InlineEditor } from './InlineEditor';
 import { ItemMenu } from './ItemMenu';
 import { hostnameOf, normalizeUrl } from './model';
@@ -81,6 +79,8 @@ function LinkEditor({
   const [title, setTitle] = useState(item.title);
   const [url, setUrl] = useState(item.url);
   const [done, setDone] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
+  useFocusWhenReady(titleRef);
 
   const commit = (viaKeyboard: boolean) => {
     if (done) return;
@@ -122,10 +122,10 @@ function LinkEditor({
     >
       <Input.Input
         className="bento-bookmarks__field"
+        ref={titleRef}
         aria-label="Title"
         value={title}
         maxLength={BOOKMARK_LIMITS.linkTitle}
-        autoFocus
         onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => setTitle(event.currentTarget.value)}
         onKeyDown={onKeyDown}
@@ -169,53 +169,16 @@ function RowActions({
 >) {
   return (
     <div className="bento-bookmarks__row-actions" data-bm-no-drag>
-      {item.kind === 'link' ? (
-        <>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label="Open in panel"
-            title="Open in panel"
-            onActivate={() => onOpen(item.id, 'panel')}
-          >
-            <BentoIcon icon={PanelRightOpen} size="sm" />
-          </IconButton>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            aria-label="Open in tab"
-            title="Open in tab"
-            onActivate={() => onOpen(item.id, 'tab')}
-          >
-            <BentoIcon icon={AppWindow} size="sm" />
-          </IconButton>
-        </>
-      ) : null}
-      <IconButton
-        variant="ghost"
-        size="sm"
-        aria-label="Edit"
-        title="Edit"
-        onActivate={() => onEdit({ kind: 'item', id: item.id })}
-      >
-        <BentoIcon icon={Pencil} size="sm" />
-      </IconButton>
       <ItemMenu
         groups={groups}
         groupId={item.groupId}
         moveUpBefore={moveUpBefore}
         moveDownBefore={moveDownBefore}
         onMove={(groupId, beforeId) => onMove(item.id, groupId, beforeId)}
+        onOpenInTab={item.kind === 'link' ? () => onOpen(item.id, 'tab') : undefined}
+        onEdit={() => onEdit({ kind: 'item', id: item.id })}
+        onDelete={() => onDelete(item)}
       />
-      <IconButton
-        variant="ghost"
-        size="sm"
-        aria-label="Delete"
-        title="Delete"
-        onActivate={() => onDelete(item)}
-      >
-        <BentoIcon icon={Trash2} size="sm" />
-      </IconButton>
     </div>
   );
 }
@@ -227,8 +190,8 @@ function ItemRowImpl(props: ItemRowProps) {
     role: 'listitem',
     className: 'bento-bookmarks__row',
     'data-kind': item.kind,
-    // How many hover actions the row has: the stylesheet makes room for them in the text mask.
-    'data-bm-actions': item.kind === 'link' ? 5 : 3,
+    // The row has a hover action (its menu): the stylesheet makes room for it in the text mask.
+    'data-bm-actions': 1,
     'data-bm-item-id': item.id,
     'data-bm-flip': `item:${item.id}`,
     'data-dragging': dragging ? 'true' : undefined,

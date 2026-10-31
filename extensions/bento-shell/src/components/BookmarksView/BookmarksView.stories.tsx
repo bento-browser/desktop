@@ -1,12 +1,14 @@
 // Bookmarks view stories: the states of the chosen layout (default, editing, empty space, narrow
-// window with the drawer over the boards), plus search, long text, many columns, a failed load and
-// the keyboard menus (a row's Move, an open tab's Save to group, a column's Move left and right,
-// each opened as it appears). Each story edits a local copy of its fixture through
+// window with the drawer over the boards), plus search, long text, many columns, a failed load, rows
+// whose "More actions" trigger has the focus (a link, a long title, a short note and to-do: the
+// text beside the trigger stays readable) and the keyboard menus (a row's More actions, an open
+// tab's Save to group, a column's Move left and right, each opened as it appears; a row shows the
+// same trigger on hover). Each story edits a local copy of its fixture through
 // `useFakeBookmarks`, so reordering, deleting (with the undo toast), adding and dropping a tab
 // from the drawer all work. Switch Ladle's theme toggle for dark and light. Nothing here reaches
 // the tools port.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode } from 'react';
 import {
   EMPTY_SPACE_SNAPSHOT,
@@ -20,6 +22,7 @@ import type { BookmarksSnapshot } from '@shared/protocol';
 import BookmarksView from './BookmarksView';
 import { EntityMenu } from './EntityMenu';
 import { ItemMenu } from './ItemMenu';
+import { itemMenuSelector } from './focus';
 import { buildBoard, groupChoices } from './model';
 import { TabMenu } from './TabsDrawer';
 
@@ -56,7 +59,8 @@ function Story({
   );
 }
 
-/** a. The default: a space with four groups, rows with hover actions, the drawer closed. */
+/** a. The default: a space with four groups, rows with a hover "More actions" trigger, the
+ * drawer closed. */
 export const Default = () => <Story />;
 
 /** The drawer open beside the boards. Drag a tab into a column. */
@@ -109,6 +113,72 @@ export const Loading = () => (
  * again; the fake finds nothing stored and seeds the first space. */
 export const LoadFailed = () => <Story snapshot={LOAD_FAILED_SNAPSHOT} />;
 
+// ---- Rows whose "More actions" trigger has the focus --------------------------------------
+
+/** Short texts in the Gyms column: the row text must stay visible beside the focused trigger. */
+const SHORT_TEXT_SNAPSHOT: BookmarksSnapshot = {
+  ...SAMPLE_SNAPSHOT,
+  items: [
+    ...SAMPLE_SNAPSHOT.items,
+    {
+      id: 'item-short-note',
+      groupId: 'group-gyms',
+      order: 100,
+      createdAt: 1_700_000_100_000,
+      kind: 'note',
+      text: 'hello edited',
+    },
+    {
+      id: 'item-short-todo',
+      groupId: 'group-gyms',
+      order: 101,
+      createdAt: 1_700_000_100_001,
+      kind: 'todo',
+      text: 'Call gym',
+      done: false,
+    },
+  ],
+};
+
+const itemIdOf = (match: (item: BookmarksSnapshot['items'][number]) => boolean) =>
+  SHORT_TEXT_SNAPSHOT.items.find(match)!.id;
+
+/** Puts the focus on a row's trigger as Tab does, which shows the row's action and its mask. */
+function FocusedRow({ itemId }: { itemId: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>(itemMenuSelector(itemId))?.focus();
+  }, [itemId]);
+  return (
+    <div ref={ref}>
+      <Story snapshot={SHORT_TEXT_SNAPSHOT} />
+    </div>
+  );
+}
+
+/** A link row with its trigger focused: the title is faded only at the trigger. */
+export const RowFocused = () => (
+  <FocusedRow
+    itemId={itemIdOf((item) => item.kind === 'link' && item.title === 'Northside Boulders')}
+  />
+);
+
+/** A long title keeps its leading text and fades out at the trigger. */
+export const LongTitleFocused = () => (
+  <FocusedRow
+    itemId={itemIdOf((item) => item.kind === 'link' && item.title.startsWith('The complete'))}
+  />
+);
+
+/** A short note with its trigger focused is still readable. */
+export const ShortNoteFocused = () => (
+  <FocusedRow itemId={itemIdOf((item) => item.kind === 'note' && item.text === 'hello edited')} />
+);
+
+export const ShortTodoFocused = () => (
+  <FocusedRow itemId={itemIdOf((item) => item.kind === 'todo' && item.text === 'Call gym')} />
+);
+
 // ---- The keyboard menus, open -----------------------------------------------------------
 
 const GROUPS = groupChoices(buildBoard(SAMPLE_SNAPSHOT).groups);
@@ -121,8 +191,9 @@ function MenuFrame({ children }: { children: ReactNode }) {
   );
 }
 
-/** A row's Move menu: Move to group (a submenu of the other groups), Move up, Move down. */
-export const RowMoveMenu = () => (
+/** A link row's More actions menu: Open in new tab, Edit, Move (a submenu with Move to group, Move
+ * up and Move down) and Delete. */
+export const RowMenu = () => (
   <MenuFrame>
     <ItemMenu
       defaultOpen
@@ -131,12 +202,15 @@ export const RowMoveMenu = () => (
       moveUpBefore="item-before"
       moveDownBefore={null}
       onMove={() => {}}
+      onOpenInTab={() => {}}
+      onEdit={() => {}}
+      onDelete={() => {}}
     />
   </MenuFrame>
 );
 
-/** The first row of a group cannot move up. */
-export const RowMoveMenuFirstRow = () => (
+/** A note or to-do has no Open in new tab; the first row of a group cannot move up. */
+export const RowMenuNoteFirstRow = () => (
   <MenuFrame>
     <ItemMenu
       defaultOpen
@@ -145,6 +219,8 @@ export const RowMoveMenuFirstRow = () => (
       moveUpBefore={undefined}
       moveDownBefore="item-after"
       onMove={() => {}}
+      onEdit={() => {}}
+      onDelete={() => {}}
     />
   </MenuFrame>
 );
