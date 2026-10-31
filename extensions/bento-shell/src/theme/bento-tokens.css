@@ -151,7 +151,7 @@
       4.5ch + var(--muxui-semantic-layout-inset-tight) + var(--muxui-field-padding-inline)
     );
     /* The Settings slider page's drawn slider (over a native range input), sized as the Mux Slider is
-       (.muxui-slider-control is 1.25rem tall, its track 0.25rem, and its thumb 1.125rem plus a
+       (.muxui-slider__control is 1.25rem tall, its track 0.25rem, and its thumb 1.125rem plus a
        2px border on each side, with Mux's focus ring 2px and 4px outside the thumb). The
        drawn thumb and fill move from --bento-slider-ratio, which RangeSlider sets inline. */
     --bento-settings-palette-range-control-height: 1.25rem;
@@ -160,11 +160,6 @@
     --bento-settings-palette-range-thumb-border: 0.125rem;
     --bento-settings-palette-range-ring-inner: 0.125rem;
     --bento-settings-palette-range-ring-outer: 0.25rem;
-    /* The palettes' single row highlight (components/primitives/useRowHighlight.ts): a step
-       stronger than Mux's item focus fill (neutral-14) in both modes, because the semantic
-       neutral steps flip with the colour scheme. Pressed is a little further. */
-    --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-26);
-    --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-30);
     --bento-merge-progress-log-min-height: 8rem;
     --bento-merge-progress-log-max-height: 14rem;
     /* Floating sidebar cards (components/SidebarCards), laid over the bottom of the tab
@@ -398,6 +393,21 @@
     /* Hairline border (CSS convention). Used for panel-header
        bottom-border, dashed Add-panel outline, etc. */
     --bento-border-hairline: 1px;
+  }
+
+  /* The palettes' single row highlight (components/primitives/useRowHighlight.ts).
+     Resolve on each theme scope because inherited custom properties have already
+     substituted the ancestor's palette. Higher semantic neutral steps darken light
+     mode but lighten dark mode, so use different steps for a darker fill in both. */
+  :root,
+  [data-muxui-theme] {
+    --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-30);
+    --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-40);
+  }
+
+  [data-muxui-color-scheme='dark'] {
+    --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-14);
+    --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-18);
   }
 
   /* Per-element theme re-link. Critical for menu items that show

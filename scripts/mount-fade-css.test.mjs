@@ -133,7 +133,7 @@ test('the Settings pending dim is not drawn while the flip fade is present', () 
   // would restart against the fade's transition.
   const css = strip(readRepo('extensions/bento-shell/src/components/SettingsPalette/SettingsPalette.css'));
   const dims = [...css.matchAll(/([^{}]*\.bento-settings-palette__value)\s*\{([^}]*neutral-50[^}]*)\}/g)].filter(
-    ([, selector]) => selector.includes('[data-pending]'),
+    ([, selector]) => selector.includes('[data-muxui-state-pending]'),
   );
   assert.equal(dims.length, 1, 'one pending dim rule');
   assert.match(dims[0][1].replace(/\s+/g, ' ').trim(), /^:root:not\(\[data-bento-mode-fade\]\) /);
@@ -146,13 +146,13 @@ test('the theme cards reproduce Mux\'s outlined hover and pressed tint over a ca
   const mux = readRepo('node_modules/@muxui/react/generated/styles.css');
   const percent = (state) => {
     const rule = [...rules(mux)].find(
-      ({ selector }) => selector.includes('.muxui-card--button.muxui-card--outlined') && selector.includes(`[data-${state}]`),
+      ({ selector }) => selector.includes('.muxui-card--button.muxui-card--outlined') && selector.includes(`[data-muxui-state-${state}]`),
     );
     return /surface-strong\) (\d+)%/.exec(rule.body)[1];
   };
   const picker = readRepo('extensions/bento-shell/src/components/WorkspaceThemePicker/WorkspaceThemePicker.css');
   for (const state of ['hovered', 'pressed']) {
-    const ours = [...rules(picker)].find(({ selector }) => selector.includes(`[data-${state}]`));
+    const ours = [...rules(picker)].find(({ selector }) => selector.includes(`[data-muxui-state-${state}]`));
     assert.ok(ours, `the picker styles the ${state} card`);
     assert.equal(/surface-strong\) (\d+)%/.exec(ours.body)[1], percent(state));
     assert.match(ours.body, /background-image:\s*linear-gradient\(var\(--bento-card-tint\), var\(--bento-card-tint\)\)/);
@@ -169,7 +169,7 @@ const MUX_GRADIENT_HANDLED = {
 // the icon picker's tabs only show these edge buttons when their row overflows.
 const MUX_GRADIENT_RESIDUAL = {
   'toggle-button': 'Welcome only, a selected standalone toggle under the pointer',
-  'tabs-motion-edge': 'WorkspaceIconPicker only, the overflow edge buttons under the pointer',
+  tabs: 'WorkspaceIconPicker only, the tabs__motion-edge overflow buttons under the pointer',
   'color-swatch': 'two-tone swatches take fixed theme metadata colours, which do not depend on the mode',
 };
 
@@ -190,9 +190,7 @@ test('every Mux gradient tint on a component the shell renders is carried or rec
   };
   walk('extensions/bento-shell/src');
   const exportName = (component) =>
-    component === 'tabs-motion-edge'
-      ? 'Tabs'
-      : component.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('');
+    component.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('');
   const found = new Set();
   for (const { selector, body } of rules(mux)) {
     for (const match of body.matchAll(/(?:linear|radial|conic)-gradient\(/g)) {

@@ -416,12 +416,12 @@
  * shortened. Under the fade the value takes its settled colour, which changes once on the shared
  * timing; the ellipsis still marks the write. */
 :root:not([data-bento-mode-fade])
-  .bento-settings-palette__item[data-pending]:not([data-switch])
+  .bento-settings-palette__item[data-muxui-state-pending]:not([data-switch])
   .bento-settings-palette__value {
   color: var(--muxui-semantic-color-neutral-50);
 }
 
-.bento-settings-palette__item[data-pending]:not([data-switch])
+.bento-settings-palette__item[data-muxui-state-pending]:not([data-switch])
   .bento-settings-palette__value::after {
   content: '…';
 }
@@ -524,7 +524,7 @@
 /* Benefits are the longer list, so they get the wider column: with the description above and
  * no field row, the focused level (Standard) stays short enough for the next level to show
  * under it in the fixed-height palette. */
-.bento-settings-palette__item[data-focused] .bento-settings-palette__detail {
+.bento-settings-palette__item[data-muxui-state-focused] .bento-settings-palette__detail {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   column-gap: var(--muxui-semantic-layout-inset-large);
@@ -624,7 +624,7 @@
 
 @media (forced-colors: none) {
   .bento-settings-palette__switch
-    .muxui-switch-field__button[data-hovered]:not([data-disabled], [data-selected])::before {
+    .muxui-switch-field__button[data-muxui-state-hovered]:not([data-muxui-state-disabled], [data-muxui-state-selected])::before {
     --bento-switch-hover-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 8%, transparent);
     background-image: linear-gradient(var(--bento-switch-hover-tint), var(--bento-switch-hover-tint));
   }

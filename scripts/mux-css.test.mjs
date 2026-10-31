@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import test, { mock } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { splitTopLevelBlocks } from '../extensions/bento-shell/css-blocks.mjs';
 
 import {
   exitOnMuxSourceError,
@@ -95,8 +96,34 @@ test('extractPublicBlock fails loudly on a changed shape', () => {
   );
 });
 
+const publicLayers = (tokens, extra = '') =>
+  `@layer muxui.tokens, muxui.components, muxui.utilities;\n@layer muxui.tokens {${tokens}}\n${extra}`;
+
+function stylesLayers(css = stylesFixture(), componentExtra = '') {
+  const rules = splitTopLevelBlocks(css);
+  const closure = rules.shift();
+  return publicLayers(
+    rules.map(({ prelude, body }) => `${prelude} {${body}}`).join('\n'),
+    `@layer muxui.components {${closure.prelude} {${closure.body}} ${componentExtra}}`,
+  );
+}
+
+test('readPublicBlocks reads only the public token layer, excluding component root overrides', () => {
+  const css = stylesLayers(stylesFixture(), ':root { --component-only: red; }');
+  assert.match(readPublicBlocks(css).root, /brand-60/);
+  assert.doesNotMatch(readPublicBlocks(css).root, /component-only/);
+  assert.throws(
+    () => readPublicBlocks(css.replace('muxui.tokens {', 'other.tokens {')),
+    shapeError(/layer/),
+  );
+  assert.throws(
+    () => readPublicBlocks(css + '@layer muxui.tokens { :root { --x: 1; } }'),
+    shapeError(/layer/),
+  );
+});
+
 test('readPublicBlocks returns the root, mode and closure blocks and names a missing token', () => {
-  const blocks = readPublicBlocks(stylesFixture());
+  const blocks = readPublicBlocks(stylesLayers());
   assert.deepEqual(
     blocks.modes.map(({ selector }) => selector),
     [
@@ -109,11 +136,13 @@ test('readPublicBlocks returns the root, mode and closure blocks and names a mis
   assert.match(blocks.closure, /popup-bg/);
 
   assert.throws(
-    () => readPublicBlocks(stylesFixture({ drop: ['--muxui-semantic-effect-scrim'] })),
+    () =>
+      readPublicBlocks(stylesLayers(stylesFixture({ drop: ['--muxui-semantic-effect-scrim'] }))),
     shapeError(/root block is missing --muxui-semantic-effect-scrim/),
   );
   assert.throws(
-    () => readPublicBlocks(stylesFixture().replace('--muxui-popup-bg', '--muxui-other')),
+    () =>
+      readPublicBlocks(stylesLayers(stylesFixture().replace('--muxui-popup-bg', '--muxui-other'))),
     shapeError(/compatibility closure is missing --muxui-popup-bg/),
   );
 });
@@ -158,11 +187,10 @@ function themeRules(id, { light = true, dark = true, extra = '' } = {}) {
     .join('\n');
 }
 
+const splitThemeFixture = (css, ids) => splitCanonicalThemeRules(publicLayers(css), ids);
+
 test('splitCanonicalThemeRules groups rules per theme and drops contrast more', () => {
-  const rules = splitCanonicalThemeRules(`${themeRules('one')}\n${themeRules('two')}`, [
-    'one',
-    'two',
-  ]);
+  const rules = splitThemeFixture(`${themeRules('one')}\n${themeRules('two')}`, ['one', 'two']);
   assert.deepEqual([...rules.keys()], ['one', 'two']);
   assert.equal(rules.get('one').length, 2);
   assert.match(rules.get('one')[0], /--a: 1/);
@@ -171,35 +199,51 @@ test('splitCanonicalThemeRules groups rules per theme and drops contrast more', 
 
 test('splitCanonicalThemeRules fails loudly on an unknown shape', () => {
   assert.throws(
-    () => splitCanonicalThemeRules(`${themeRules('one')}\n${themeRules('ghost')}`, ['one']),
+    () => splitThemeFixture(`${themeRules('one')}\n${themeRules('ghost')}`, ['one']),
     shapeError(/outside the canonical themes/),
   );
   assert.throws(
-    () => splitCanonicalThemeRules(themeRules('one'), ['one', 'two']),
+    () => splitThemeFixture(themeRules('one'), ['one', 'two']),
     shapeError(/no rules for theme two/),
   );
   assert.throws(
-    () => splitCanonicalThemeRules(themeRules('one', { dark: false }), ['one']),
+    () => splitThemeFixture(themeRules('one', { dark: false }), ['one']),
     shapeError(/no dark color scheme rule for theme one/),
   );
   assert.throws(
-    () => splitCanonicalThemeRules(themeRules('one', { light: false }), ['one']),
+    () => splitThemeFixture(themeRules('one', { light: false }), ['one']),
     shapeError(/no light color scheme rule for theme one/),
   );
   assert.throws(
-    () =>
-      splitCanonicalThemeRules(themeRules('one', { extra: '@media (x) { a { --a: 1; } }' }), [
-        'one',
-      ]),
+    () => splitThemeFixture(themeRules('one', { extra: '@media (x) { a { --a: 1; } }' }), ['one']),
     shapeError(/unexpected at-rule/),
   );
   assert.throws(
     () =>
+      splitThemeFixture(themeRules('one', { extra: "[data-muxui-theme='one'] { --a: 1; }" }), [
+        'one',
+      ]),
+    shapeError(/unknown color scheme/),
+  );
+});
+
+test('theme layers reject component rules, unknown layers and changed public layer order', () => {
+  const css = publicLayers(themeRules('one'));
+  assert.equal(splitCanonicalThemeRules(css, ['one']).get('one').length, 2);
+  for (const extra of [
+    '@layer muxui.components { a { color: red; } }',
+    '@layer surprise { a { color: red; } }',
+    '@layer muxui.tokens { a { color: red; } }',
+  ]) {
+    assert.throws(() => splitCanonicalThemeRules(css + extra, ['one']), shapeError(/layer/));
+  }
+  assert.throws(
+    () =>
       splitCanonicalThemeRules(
-        themeRules('one', { extra: "[data-muxui-theme='one'] { --a: 1; }" }),
+        css.replace('muxui.tokens, muxui.components', 'muxui.components, muxui.tokens'),
         ['one'],
       ),
-    shapeError(/unknown color scheme/),
+    shapeError(/layer order/),
   );
 });
 

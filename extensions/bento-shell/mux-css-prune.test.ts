@@ -107,7 +107,7 @@ describe('MUX_UNUSED_COMPONENT_CLASSES', () => {
 
   it('names families the public stylesheet defines', () => {
     for (const family of MUX_UNUSED_COMPONENT_CLASSES) {
-      expect([...classes].some((name) => name === family || name.startsWith(`${family}-`))).toBe(
+      expect([...classes].some((name) => name === family || name.startsWith(`${family}-`) || name.startsWith(`${family}_`)), family).toBe(
         true,
       );
     }
