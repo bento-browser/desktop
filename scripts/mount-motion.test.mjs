@@ -478,6 +478,39 @@ test('a frame queued by a replaced switch does not lift the curtain of the newer
 // Native mode transactions are exercised end to end in mode-presentation.test.mjs.
 const COLOR_FADE = 'data-bento-mode-fade';
 
+test('mode page holes retain active pages and docked toolboxes but exclude the trailer', () => {
+  const page = { id: 'page-browser' }, selected = { id: 'selected-browser' };
+  const toolbox = { id: 'docked-toolbox' }, trailerFrame = { id: 'bento-panel-trailer-frame' };
+  const slot = (id, browser, active = true) => ({
+    id,
+    classList: { contains: (name) => active && name === 'split-view-panel-active' },
+    querySelector: (selector) => selector === ':scope > browser' ? browser : null,
+  });
+  const trailer = slot('bento-add-panel-trailer', trailerFrame);
+  const inactive = slot('inactive-page', { id: 'inactive-browser' }, false);
+  let deck = { children: [slot('page', page), trailer, slot('same-page', page), inactive, {}] };
+  const sandbox = {
+    document: {
+      getElementById(id) { assert.equal(id, 'tabbrowser-tabpanels'); return deck; },
+      querySelectorAll(selector) { assert.equal(selector, 'iframe.devtools-toolbox-iframe'); return [toolbox]; },
+    },
+    window: { gBrowser: { selectedBrowser: selected } },
+  };
+  const { modePageFrames, getPanelTargetBrowser } = vm.runInNewContext(
+    `${mountFunction('getPanelTargetBrowser')}\n${mountFunction('modePageFrames')}\n({ modePageFrames, getPanelTargetBrowser })`,
+    sandbox,
+  );
+  assert.equal(getPanelTargetBrowser(trailer), trailerFrame, 'general browser lookup still includes the trailer');
+  assert.deepEqual(Array.from(modePageFrames()), [page, toolbox], 'only live page/toolbox holes, deduplicated');
+
+  deck.children = [trailer, inactive, {}];
+  assert.deepEqual(Array.from(modePageFrames()), [selected, toolbox], 'trailer alone does not suppress selected-browser fallback');
+  deck = null;
+  assert.deepEqual(Array.from(modePageFrames()), [selected, toolbox], 'fallback also works before the deck exists');
+  sandbox.window.gBrowser = null;
+  assert.deepEqual(Array.from(modePageFrames()), [toolbox], 'an unavailable selected browser leaves only the toolbox');
+});
+
 test('the native final writer settles carriers before publishing its granted mode', () => {
   const writes = [], attributes = new Map();
   const root = { style: { removeProperty() {} }, setAttribute(name, value) { attributes.set(name, value); writes.push(name); }, removeAttribute(name) { attributes.delete(name); writes.push('remove:' + name); } };
