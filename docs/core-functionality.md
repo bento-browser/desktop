@@ -752,14 +752,12 @@ The theme system should support:
 - a grouped selector containing Bento's Default palette plus the standard and
   monochromatic palettes shipped by `@muxui/react/themes`;
 - per-workspace theme selection;
-- light, dark, and Auto UI modes; switching between them fades the whole Bento interface
-  (sidebar, toolbar, menus and palettes) together in about a tenth of a second, starting a
-  tenth of a second or so after the choice so that every part changes at the same instant
-  (a change that follows the computer's appearance in Auto is immediate). This holds with
-  hundreds of tabs open, and a workspace switch or sidebar collapse that is already moving
-  carries on through the flip. Web pages, native macOS menus and window controls, native scrollbars
-  and Firefox's own Passwords page are not part of the fade; Settings
-  (`about:preferences`) switches with the flip;
+- light, dark, and Auto UI modes; switching presents the sidebar, toolbar,
+  Settings, menus and palettes together on the theme's state motion. A rapid
+  reversal continues from the current progress. Reduced motion switches after
+  the same readiness barrier without playing a fade. Web pages keep live
+  visuals, execution and input; native OS menus and window controls remain
+  system-owned;
 - independent content color-scheme preference where possible;
 - user customization through token-based theme presets.
 

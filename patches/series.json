@@ -121,6 +121,21 @@
       "path": "patches/experiments/02-rust-thin-lto-hosted-build.patch",
       "id": "rust-thin-lto-hosted-build",
       "subject": "Use ThinLTO for hosted release Rust linking"
+    },
+    {
+      "path": "patches/core-ui/18-native-root-view-transition-capture.patch",
+      "id": "native-root-view-transition-capture",
+      "subject": "Capture native no-scroll browser roots for view transitions"
+    },
+    {
+      "path": "patches/core-ui/19-native-mode-transition-input.patch",
+      "id": "native-mode-transition-input",
+      "subject": "Preserve input for owned native theme capture transitions"
+    },
+    {
+      "path": "patches/core-ui/20-native-mode-presenter-resource.patch",
+      "id": "native-mode-presenter-resource",
+      "subject": "Package the shared native mode presenter actor resource"
     }
   ],
   "format": "git-format-patch"

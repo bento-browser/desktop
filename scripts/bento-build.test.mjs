@@ -8,13 +8,20 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
+  acquireSourceArchive,
+  adoptExistingSource,
+  assertLocalBuildPaths,
   compareFirefoxVersions,
   createContext,
+  engineStatus,
   extractArchive,
   loadConfig,
   main,
+  nativeBuildSettings,
+  recordEngineState,
   resolveObjDir,
   verifyRecordedEngineState,
+  verifyManagedEngine,
   verifySourceArchive,
   writeBrowserUpdateFiles,
   writeMozconfig,
@@ -23,6 +30,7 @@ import { isReleaseBuild } from './build-mode.mjs';
 import { extractArchive as extractBaselineArchive } from './firefox-patch-stack.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
 import { installBuiltinAddons } from './install-builtin-addons.mjs';
+import { installBranding } from './install-branding.mjs';
 import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
@@ -76,6 +84,74 @@ async function fixture() {
 
 const engineFile = (root, ...segments) => path.join(root, 'engine', ...segments);
 
+function isolationFixture(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-isolation-'));
+  const root = path.join(directory, 'checkout');
+  const foreign = `${root}-other`;
+  fs.mkdirSync(root);
+  fs.mkdirSync(foreign);
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  return { root, foreign, directory };
+}
+
+test('build path isolation rejects independently borrowed engine and state, including sibling prefixes', (t) => {
+  const { root, foreign } = isolationFixture(t);
+  for (const name of ['engine', '.bento']) {
+    const target = path.join(foreign, name);
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, 'marker'), 'foreign');
+    fs.symlinkSync(target, path.join(root, name), 'dir');
+    assert.throws(() => assertLocalBuildPaths(root), (error) => {
+      assert.match(error.message, /build outputs must stay inside checkout/);
+      assert.ok(error.message.includes(fs.realpathSync(root)));
+      assert.ok(error.message.includes(`${path.join(root, name)} -> ${fs.realpathSync(target)}`));
+      const localName = name === 'engine' ? '.bento' : 'engine';
+      assert.ok(!error.message.includes(`${path.join(root, localName)} ->`));
+      return true;
+    });
+    assert.equal(fs.readFileSync(path.join(target, 'marker'), 'utf8'), 'foreign');
+    fs.unlinkSync(path.join(root, name));
+  }
+});
+
+test('build path isolation accepts canonical root aliases, absent local outputs, and internal patch worktrees', (t) => {
+  const { root, directory } = isolationFixture(t);
+  const alias = path.join(directory, 'alias');
+  fs.symlinkSync(root, alias, 'dir');
+  assertLocalBuildPaths(alias);
+  assert.deepEqual(fs.readdirSync(root), [], 'preflight creates no output directories');
+  const internal = path.join(root, '.bento', 'patch-stack-worktree');
+  fs.mkdirSync(internal, { recursive: true });
+  fs.symlinkSync(internal, path.join(root, 'engine'), 'dir');
+  assertLocalBuildPaths(alias);
+});
+
+test('build path isolation fails closed for dangling and looping output symlinks', (t) => {
+  const { root } = isolationFixture(t);
+  for (const name of ['engine', '.bento']) {
+    const link = path.join(root, name);
+    for (const target of ['missing', name]) {
+      fs.symlinkSync(target, link, 'dir');
+      assert.throws(() => assertLocalBuildPaths(root), /unresolvable/);
+      assert.equal(fs.readlinkSync(link), target);
+      fs.unlinkSync(link);
+    }
+  }
+});
+
+test('direct build mutators reject borrowed output paths before reading or writing state', async (t) => {
+  const { root, foreign } = isolationFixture(t);
+  fs.symlinkSync(foreign, path.join(root, '.bento'), 'dir');
+  await assert.rejects(acquireSourceArchive(root), /build outputs must stay inside checkout/);
+  for (const mutate of [
+    () => adoptExistingSource(createContext(root), {}, '158.0'),
+    () => recordEngineState(root),
+    () => writeMozconfig(root),
+  ]) assert.throws(mutate, /build outputs must stay inside checkout/);
+  await assert.rejects(importSourceOverlays({ repoRoot: root }), /build outputs must stay inside checkout/);
+  assert.deepEqual(fs.readdirSync(foreign), []);
+});
+
 test('every build mode builds into the fixed object directory', async () => {
   const root = await fixture();
   try {
@@ -86,6 +162,20 @@ test('every build mode builds into the fixed object directory', async () => {
         /^mk_add_options MOZ_OBJDIR=@TOPSRCDIR@\/obj-bento$/m,
       );
     }
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('native build intent is read-only and ignores mutable engine mozconfig', async () => {
+  const root = await fixture();
+  try {
+    const before = nativeBuildSettings(root);
+    fs.writeFileSync(engineFile(root, 'mozconfig'), 'untrusted generated config\n');
+    assert.deepEqual(nativeBuildSettings(root), before);
+    assert.equal(fs.readFileSync(engineFile(root, 'mozconfig'), 'utf8'), 'untrusted generated config\n');
+    fs.appendFileSync(path.join(root, 'configs', platformName, 'mozconfig'), '\nac_add_options --enable-example\n');
+    assert.match(nativeBuildSettings(root).mozconfig, /--enable-example/);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
@@ -1298,6 +1388,102 @@ const runScript = (root, script) => spawnSync('bash', [path.join(root, 'scripts'
   cwd: root,
   encoding: 'utf8',
   env: { ...process.env, BENTO_OBJDIR: '' },
+});
+
+test('import and shell entry points reject borrowed outputs without changing marker bytes or app links', async (t) => {
+  for (const name of ['engine', '.bento']) {
+    const root = await scriptFixture();
+    const { foreign } = isolationFixture(t);
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const installed = engineFile(root, 'browser', 'extensions', 'bento-shell', 'dist');
+    const deployed = engineFile(root, 'obj-bento', 'dist', 'Bento.app', 'Contents', 'Resources', 'browser', 'chrome', 'browser', 'builtin-addons', 'bento-shell', 'dist');
+    const built = path.join(root, 'extensions', 'bento-shell', 'dist');
+    fs.mkdirSync(installed, { recursive: true });
+    fs.mkdirSync(path.dirname(deployed), { recursive: true });
+    fs.mkdirSync(built);
+    fs.mkdirSync(path.join(root, '.bento'));
+    fs.writeFileSync(path.join(installed, 'app.js'), 'installed old shell');
+    fs.writeFileSync(path.join(built, 'app.js'), 'checkout new shell');
+    fs.writeFileSync(path.join(root, '.bento', 'marker'), 'old state');
+    fs.symlinkSync(installed, deployed, 'dir');
+    const borrowed = path.join(root, name);
+    const destination = path.join(foreign, name);
+    fs.renameSync(borrowed, destination);
+    fs.symlinkSync(destination, borrowed, 'dir');
+    for (const script of ['import.sh', 'sync-shell.sh', 'sync-builtin-addon-symlinks.sh', 'reset-engine-patches.sh', 'append-prefs.sh', 'mach-raw.sh']) {
+      const result = runScript(root, script);
+      assert.notEqual(result.status, 0, script);
+      assert.match(result.stderr, /build outputs must stay inside checkout/, script);
+      assert.equal(fs.readFileSync(path.join(installed, 'app.js'), 'utf8'), 'installed old shell');
+      assert.equal(fs.readFileSync(path.join(root, '.bento', 'marker'), 'utf8'), 'old state');
+      assert.equal(fs.readlinkSync(deployed), installed);
+      assert.equal(fs.readlinkSync(borrowed), destination);
+    }
+  }
+});
+
+test('objdir stays read-only and an explicit BENTO_BIN launches without permitting borrowed-output writes', async (t) => {
+  const root = await scriptFixture();
+  const { foreign } = isolationFixture(t);
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const originalEngine = path.join(root, 'engine');
+  fs.renameSync(originalEngine, path.join(foreign, 'engine'));
+  fs.symlinkSync(path.join(foreign, 'engine'), originalEngine, 'dir');
+  const executable = path.join(foreign, 'fake-bento');
+  const marker = path.join(foreign, 'launched');
+  fs.writeFileSync(executable, '#!/bin/sh\nprintf launched > "$BENTO_TEST_LAUNCH_MARKER"\n');
+  fs.chmodSync(executable, 0o755);
+  const run = (script, args = [], extra = {}) => spawnSync('bash', [path.join(root, 'scripts', script), ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, BENTO_BIN: '', BENTO_TEST_LAUNCH_MARKER: marker, ...extra },
+  });
+  const lookup = spawnSync(process.execPath, [path.join(root, 'scripts', 'bento-build.mjs'), 'objdir', '--allow-missing'], { encoding: 'utf8' });
+  assert.equal(lookup.status, 0, lookup.stderr);
+  assert.equal(engineStatus(root).git, true, 'engine status remains readable');
+  await assert.rejects(main(['verify'], root), /build outputs must stay inside checkout/);
+  fs.mkdirSync(path.join(root, 'patches'));
+  fs.writeFileSync(path.join(root, 'patches', 'one.patch'), 'diff --git a/.gitignore b/.gitignore\n');
+  fs.writeFileSync(path.join(root, 'patches', 'series.json'), JSON.stringify({ series: [{ path: 'patches/one.patch' }] }));
+  assert.throws(() => verifyManagedEngine(createContext(root), ['.gitignore']), /build outputs must stay inside checkout/);
+  assert.equal(run('dev-launch.sh').status, 1);
+  assert.equal(fs.existsSync(marker), false);
+  const launch = run('dev-launch.sh', [path.join(root, 'test-profile')], { BENTO_BIN: executable });
+  assert.equal(launch.status, 0, launch.stderr);
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'launched');
+  assert.notEqual(run('sync-shell.sh', [], { BENTO_BIN: executable }).status, 0);
+
+  const mach = engineFile(root, 'mach');
+  fs.writeFileSync(mach, '#!/bin/sh\nprintf "fake mach %s\\n" "$1"\n');
+  fs.chmodSync(mach, 0o755);
+  for (const argument of ['--help', '--version']) {
+    const help = run('mach-raw.sh', [argument]);
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /fake mach/);
+  }
+});
+
+test('direct installers honor effective BENTO_REPO_ROOT and reject before pruning foreign files', (t) => {
+  const { root, foreign } = isolationFixture(t);
+  fs.symlinkSync(foreign, path.join(root, 'engine'), 'dir');
+  const stale = path.join(foreign, 'stale');
+  fs.writeFileSync(stale, 'preserve');
+  const previous = process.env.BENTO_REPO_ROOT;
+  process.env.BENTO_REPO_ROOT = root;
+  try {
+    for (const install of [installBranding, installBuiltinAddons]) {
+      assert.throws(() => install(), /build outputs must stay inside checkout/);
+    }
+    for (const script of ['install-branding.mjs', 'install-builtin-addons.mjs']) {
+      const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', script)], { encoding: 'utf8' });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /build outputs must stay inside checkout/);
+    }
+    assert.equal(fs.readFileSync(stale, 'utf8'), 'preserve');
+  } finally {
+    if (previous === undefined) delete process.env.BENTO_REPO_ROOT;
+    else process.env.BENTO_REPO_ROOT = previous;
+  }
 });
 
 test('shell scripts act on the one selected object directory, never on every obj-*', async () => {

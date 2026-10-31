@@ -162,10 +162,15 @@ test('reinstalling keeps unchanged branding, including the appended prefs block'
 test('append-prefs rewrites a pref file only when its content changes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-append-prefs-test-'));
   try {
-    fs.mkdirSync(path.join(root, 'scripts'));
+    fs.cpSync(
+      path.dirname(new URL(import.meta.url).pathname),
+      path.join(root, 'scripts'),
+      { recursive: true },
+    );
+    fs.mkdirSync(path.join(root, 'extensions', 'bento-shell'), { recursive: true });
     fs.copyFileSync(
-      path.join(path.dirname(new URL(import.meta.url).pathname), 'append-prefs.sh'),
-      path.join(root, 'scripts', 'append-prefs.sh'),
+      new URL('../extensions/bento-shell/muxui-local.mjs', import.meta.url),
+      path.join(root, 'extensions', 'bento-shell', 'muxui-local.mjs'),
     );
     fs.writeFileSync(path.join(root, 'bento.json'), JSON.stringify({ brand: 'bento' }));
     fs.mkdirSync(path.join(root, 'prefs'));
@@ -178,7 +183,8 @@ test('append-prefs rewrites a pref file only when its content changes', () => {
     }
     const run = () => spawnSync('bash', ['scripts/append-prefs.sh'], { cwd: root, encoding: 'utf8' });
 
-    assert.equal(run().status, 0);
+    const first = run();
+    assert.equal(first.status, 0, first.stderr);
     const past = new Date('2020-01-01T00:00:00Z');
     for (const file of [branding, firefox]) fs.utimesSync(file, past, past);
     const unchanged = run();

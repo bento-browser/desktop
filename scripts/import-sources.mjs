@@ -7,6 +7,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { assertLocalBuildPaths } from './bento-build.mjs';
+
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
 const MANIFEST_VERSION = 1;
@@ -165,6 +167,7 @@ function installEntry(ctx, entry, useLinks) {
 }
 
 export async function importSourceOverlays({ repoRoot = DEFAULT_ROOT, platform = process.platform } = {}) {
+  assertLocalBuildPaths(repoRoot);
   const ctx = repoContext(repoRoot);
   if (!fs.existsSync(path.join(ctx.engine, 'toolkit', 'moz.build'))) throw new Error('import-sources: engine is missing; run pnpm run download first');
   const activeConfig = config(ctx);

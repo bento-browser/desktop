@@ -675,20 +675,23 @@ describe('timing of a scheduled flip', () => {
     [30, '-30ms'],
     [60, '-60ms'],
     [61, '0ms'],
-  ])('a stamp that arrives %i ms after flipAt joins the fade with a delay of %s', async (late, delay) => {
-    const { applyModeWithFade } = await loadHelper();
-    flip(applyModeWithFade, 'light');
-    flip(applyModeWithFade, 'dark', NOW - late);
-    expect(attributes.get('data-color-mode')).toBe('dark');
-    expect(styleProps.get(DELAY)).toBe(delay);
-    expect(announced).toEqual(['light', 'dark']);
-    // The joined fade is shorter by what it is late: delay plus duration is what is waited for.
-    pass(40);
-    expect(attributes.has(FADE)).toBe(true);
-    pass(200);
-    expect(attributes.has(FADE)).toBe(false);
-    expect(styleProps.has(DELAY)).toBe(false);
-  });
+  ])(
+    'a stamp that arrives %i ms after flipAt joins the fade with a delay of %s',
+    async (late, delay) => {
+      const { applyModeWithFade } = await loadHelper();
+      flip(applyModeWithFade, 'light');
+      flip(applyModeWithFade, 'dark', NOW - late);
+      expect(attributes.get('data-color-mode')).toBe('dark');
+      expect(styleProps.get(DELAY)).toBe(delay);
+      expect(announced).toEqual(['light', 'dark']);
+      // The joined fade is shorter by what it is late: delay plus duration is what is waited for.
+      pass(40);
+      expect(attributes.has(FADE)).toBe(true);
+      pass(200);
+      expect(attributes.has(FADE)).toBe(false);
+      expect(styleProps.has(DELAY)).toBe(false);
+    },
+  );
 
   it('a stamp-less change fades from the start', async () => {
     const { applyModeWithFade } = await loadHelper();
@@ -702,17 +705,20 @@ describe('timing of a scheduled flip', () => {
     [145, '-25ms'],
     [180, '-60ms'],
     [181, '0ms'],
-  ])('a first frame %i ms after receipt (120 ms lead) gets a delay of %s', async (frameAt, delay) => {
-    const { applyModeWithFade } = await loadHelper();
-    flip(applyModeWithFade, 'light');
-    flip(applyModeWithFade, 'dark', NOW + 120);
-    // The renderer stalls: no frame runs until frameAt.
-    vi.advanceTimersByTime(frameAt);
-    frame();
-    expect(attributes.get('data-color-mode')).toBe('dark');
-    expect(styleProps.get(DELAY)).toBe(delay);
-    expect(announced).toEqual(['light', 'dark']);
-  });
+  ])(
+    'a first frame %i ms after receipt (120 ms lead) gets a delay of %s',
+    async (frameAt, delay) => {
+      const { applyModeWithFade } = await loadHelper();
+      flip(applyModeWithFade, 'light');
+      flip(applyModeWithFade, 'dark', NOW + 120);
+      // The renderer stalls: no frame runs until frameAt.
+      vi.advanceTimersByTime(frameAt);
+      frame();
+      expect(attributes.get('data-color-mode')).toBe('dark');
+      expect(styleProps.get(DELAY)).toBe(delay);
+      expect(announced).toEqual(['light', 'dark']);
+    },
+  );
 
   it('drops the fade, the delay and the pending measurement when the document hides after preparation', async () => {
     const { applyModeWithFade } = await loadHelper();
@@ -871,6 +877,95 @@ describe('timing of a scheduled flip', () => {
   });
 });
 
+describe('native-hosted overlay presentation', () => {
+  function present(value: boolean) {
+    attributes.set('data-bento-host-presented', String(value));
+    for (const listener of listeners.get('bento-host-presentation') ?? []) listener({});
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('location', { hash: '#bentoWindowId=4&bentoHostedOverlay=1' });
+  });
+
+  it('defaults to unpresented before init and settles the latest hidden mode without frames or style reads', async () => {
+    const { applyModeWithFade } = await loadHelper();
+    flip(applyModeWithFade, 'light');
+    flip(applyModeWithFade, 'dark', Date.now() + 120);
+    flip(applyModeWithFade, 'light', Date.now() + 180);
+    expect(attributes.get('data-color-mode')).toBe('light');
+    expect(attributes.has(FADE)).toBe(false);
+    expect(styleProps.size).toBe(0);
+    expect(frames.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(styleReads).toBe(0);
+    present(true);
+    pass(300);
+    expect(attributes.get('data-color-mode')).toBe('light');
+    expect(styleReads).toBe(0);
+    flip(applyModeWithFade, 'dark');
+    expect(attributes.has(FADE)).toBe(true);
+  });
+
+  it('reads an actor acknowledgement that arrived before controller initialization', async () => {
+    attributes.set('data-bento-host-presented', 'true');
+    const { applyModeWithFade } = await loadHelper();
+    flip(applyModeWithFade, 'light');
+    flip(applyModeWithFade, 'dark');
+    expect(attributes.has(FADE)).toBe(true);
+  });
+
+  for (const prepared of [false, true]) {
+    it(`hiding cancels a ${prepared ? 'prepared' : 'waiting'} flip and never revives its deadline`, async () => {
+      const { applyModeWithFade } = await loadHelper();
+      present(true);
+      flip(applyModeWithFade, 'light');
+      flip(applyModeWithFade, 'dark', Date.now() + 120);
+      if (prepared) frame();
+      present(false);
+      expect(attributes.get('data-color-mode')).toBe('dark');
+      expect(attributes.has(FADE)).toBe(false);
+      expect(styleProps.size).toBe(0);
+      expect(frames.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(announced).toEqual(['light', 'dark']);
+      present(true);
+      pass(300);
+      expect(announced).toEqual(['light', 'dark']);
+      expect(attributes.has(FADE)).toBe(false);
+    });
+  }
+
+  it('ends an active fade only when the host commits hidden, and cancels its cleanup read', async () => {
+    const { applyModeWithFade } = await loadHelper();
+    present(true);
+    flip(applyModeWithFade, 'light');
+    flip(applyModeWithFade, 'dark');
+    expect(attributes.has(FADE)).toBe(true);
+    // Native exit opacity is still painting: no hidden commit has arrived yet.
+    expect(attributes.has(FADE)).toBe(true);
+    present(false);
+    frame();
+    expect(styleReads).toBe(0);
+    expect(attributes.has(FADE)).toBe(false);
+    expect(styleProps.size).toBe(0);
+  });
+
+  it('settles a reduced-motion scheduled snap when its host hides', async () => {
+    reducedMotion = true;
+    const { applyModeWithFade } = await loadHelper();
+    present(true);
+    flip(applyModeWithFade, 'light');
+    flip(applyModeWithFade, 'dark', Date.now() + 120);
+    present(false);
+    expect(attributes.get('data-color-mode')).toBe('dark');
+    expect(vi.getTimerCount()).toBe(0);
+    present(true);
+    pass(300);
+    expect(attributes.has(FADE)).toBe(false);
+    expect(announced).toEqual(['light', 'dark']);
+  });
+});
+
 describe('attribute name across runtimes', () => {
   // The shell, the chrome stylesheet and the mount script each spell the name themselves.
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -883,7 +978,7 @@ describe('attribute name across runtimes', () => {
       `:root[${MODE_FADE_ATTRIBUTE}] *::after`,
     );
     expect(read(`${chrome}bento-shell-mount.js`)).toContain(
-      `BENTO_MODE_FADE_ATTR = '${MODE_FADE_ATTRIBUTE}'`,
+      `root.setAttribute('${MODE_FADE_ATTRIBUTE}', 'settle')`,
     );
   });
 });

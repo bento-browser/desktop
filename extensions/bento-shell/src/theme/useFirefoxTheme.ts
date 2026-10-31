@@ -24,6 +24,7 @@ import type { UiColorModePref } from '@shared/protocol';
 import { useSettingsStore } from '../state/settings';
 import { isForThisWindow, readPrivateFromHash, thisWindowId } from '../bridge/windowId';
 import { applyModeWithFade } from './modeFade';
+import { nativeModeHosted, onModeGranted, requestModePresentation } from './modePresentation';
 
 const STORAGE_KEY = 'color-mode';
 const RESOLVED_STORAGE_KEY = 'resolved-color-mode';
@@ -186,6 +187,23 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
   // applied, announced or faded again. settings/snapshot hasn't arrived yet when the store
   // holds no pref - boot.js's localStorage-based paint stays until it does.
   useEffect(() => {
+    if (nativeModeHosted) {
+      const stopGrants = onModeGranted(({ pref, resolved }) => {
+        appliedPref.current = pref;
+        localStorage.setItem(STORAGE_KEY, pref);
+        storeResolvedMode(resolved);
+        publishResolvedMode(pref, resolved);
+      });
+      const sync = (state: ReturnType<typeof useSettingsStore.getState>) => {
+        const pref = state.current?.uiColorMode;
+        // Same-mode notices still pass the hold/owner seam (including a tools
+        // restart); no cache or mode attribute changes before the grant.
+        if (pref) requestModePresentation(pref, 'settings');
+      };
+      sync(useSettingsStore.getState());
+      const stopSettings = useSettingsStore.subscribe(sync);
+      return () => { stopSettings(); stopGrants(); };
+    }
     const sync = (state: ReturnType<typeof useSettingsStore.getState>) => {
       const pref = state.current?.uiColorMode;
       if (!pref || pref === appliedPref.current) return;
@@ -207,6 +225,28 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
   // lead window and blocked the other documents' settings delivery. Manage listeners in the
   // store update alongside the mode subscription instead.
   useEffect(() => {
+    if (nativeModeHosted) {
+      const ask = (reason: string) => {
+        const pref = useSettingsStore.getState().current?.uiColorMode;
+        if (pref === 'system' || appliedPref.current === 'system') requestModePresentation(pref, reason);
+      };
+      const media = matchMedia(DARK_QUERY);
+      const mediaChanged = () => ask('media');
+      const stored = (event: StorageEvent) => { if (event.key === RESOLVED_READ_KEY) ask('storage'); };
+      const copied = (event: MessageEvent) => {
+        if (event.data?.kind === RESOLVED_MODE_KIND && isForThisWindow(event.data.windowId)) ask('broadcast');
+      };
+      const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(CHANNEL_NAME);
+      media.addEventListener('change', mediaChanged);
+      window.addEventListener('storage', stored);
+      channel?.addEventListener('message', copied);
+      return () => {
+        media.removeEventListener('change', mediaChanged);
+        window.removeEventListener('storage', stored);
+        channel?.removeEventListener('message', copied);
+        channel?.close();
+      };
+    }
     let stop: (() => void) | undefined;
     const sync = (state: ReturnType<typeof useSettingsStore.getState>) => {
       const auto = state.current?.uiColorMode === 'system';

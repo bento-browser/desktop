@@ -235,6 +235,7 @@ async function downloadFile(url, target) {
 }
 
 export async function acquireSourceArchive(repoRoot = DEFAULT_ROOT, version = undefined) {
+  assertLocalBuildPaths(repoRoot);
   const config = loadConfig(repoRoot);
   const requestedVersion = version || config.firefox.version;
   const target = sourceArchivePath(repoRoot, requestedVersion);
@@ -321,6 +322,41 @@ function canonicalPath(target) {
     || path.join(tryRealpath(path.dirname(absolute)) || path.dirname(absolute), path.basename(absolute));
   const normalized = path.normalize(canonical);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+/** Generated engine and state belong to the checkout whose source is being built. */
+export function assertLocalBuildPaths(repoRoot = DEFAULT_ROOT) {
+  const requestedRoot = path.resolve(repoRoot);
+  if (!tryRealpath(requestedRoot)) fail(`cannot resolve Bento checkout: ${requestedRoot}`);
+  const root = canonicalPath(requestedRoot);
+  const offending = [];
+  for (const name of ['engine', '.bento']) {
+    const requested = path.join(requestedRoot, name);
+    const resolved = tryRealpath(requested);
+    if (!resolved) {
+      const entry = fs.lstatSync(requested, { throwIfNoEntry: false });
+      if (entry) {
+        const target = entry.isSymbolicLink()
+          ? path.resolve(path.dirname(requested), fs.readlinkSync(requested))
+          : requested;
+        offending.push(`${requested} -> ${target} (unresolvable)`);
+      }
+      continue;
+    }
+    const actual = canonicalPath(resolved);
+    const relative = path.relative(root, actual);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      offending.push(`${requested} -> ${actual}`);
+    }
+  }
+  if (offending.length) {
+    fail([
+      `Bento build outputs must stay inside checkout ${root}:`,
+      ...offending.map((entry) => `  ${entry}`),
+      'Use independent engine/ and .bento/ directories in this checkout, then run download, bootstrap, and build normally.',
+      'For UI-only work, use pnpm run shell:ladle or pnpm run shell:dev.',
+    ].join('\n'));
+  }
 }
 
 function linkedEngineWorktrees(ctx) {
@@ -1049,6 +1085,7 @@ export function verifyManagedEngine(ctx, files) {
     const ref = `refs/bento/firefox-base/${version}`;
     const check = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], { cwd: ctx.engineDir, stdio: 'ignore' });
     if (check.status !== 0) return false;
+    assertLocalBuildPaths(ctx.root);
     expectedWorktree = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-managed-check-'));
     try {
       runSync('git', ['worktree', 'add', '--detach', expectedWorktree, ref], { cwd: ctx.engineDir });
@@ -1166,6 +1203,7 @@ function managedEnginePaths(ctx) {
 }
 
 export function recordEngineState(repoRoot = DEFAULT_ROOT) {
+  assertLocalBuildPaths(repoRoot);
   const ctx = createContext(repoRoot);
   const status = engineStatus(repoRoot);
   if (!status.git) fail('cannot record engine state without an engine Git checkout');
@@ -1473,6 +1511,7 @@ async function commandDownload(ctx, version, { force = false, replaceStale = fal
 }
 
 export function adoptExistingSource(ctx, config, version) {
+  assertLocalBuildPaths(ctx.root);
   const ref = `refs/bento/firefox-base/${version}`;
   const identity = baseIdentity(ctx, ref);
   if (!identity) return false;
@@ -1621,22 +1660,37 @@ function platformConfigName() {
   fail(`unsupported host platform ${process.platform}`);
 }
 
-export function writeMozconfig(repoRoot = DEFAULT_ROOT, mode = undefined) {
+/** Canonical native build intent, without writing generated engine state. */
+export function nativeBuildSettings(repoRoot = DEFAULT_ROOT, mode = undefined) {
   const ctx = createContext(repoRoot);
   const config = loadConfig(repoRoot);
   const platformName = platformConfigName();
   const selectedMode = resolveBuildMode(config, mode);
+  assertGeneratedMozconfigInUse(ctx);
   assertFragmentsDoNotOverrideBento(ctx);
   if (updatesEnabled(config)) assertUpdaterReady(ctx, config);
-  const content = generatedMozconfigText(ctx, config, selectedMode, requestedObjDirName(ctx) || FIXED_OBJDIR);
+  const objdirName = requestedObjDirName(ctx) || FIXED_OBJDIR;
+  return {
+    mode: selectedMode,
+    platform: platformName,
+    objdir: path.join(ctx.engineDir, objdirName),
+    mozconfig: generatedMozconfigText(ctx, config, selectedMode, objdirName),
+  };
+}
+
+export function writeMozconfig(repoRoot = DEFAULT_ROOT, mode = undefined) {
+  assertLocalBuildPaths(repoRoot);
+  const ctx = createContext(repoRoot);
+  const config = loadConfig(repoRoot);
+  const settings = nativeBuildSettings(repoRoot, mode);
   const destination = path.join(ctx.engineDir, 'mozconfig');
   // Unchanged files keep their mtime: configure depends on version.txt by mtime.
-  writeFileIfChanged(destination, content);
+  writeFileIfChanged(destination, settings.mozconfig);
   for (const file of ['browser/config/version.txt', 'browser/config/version_display.txt']) {
     const target = path.join(ctx.engineDir, file);
     if (fs.existsSync(target)) writeFileIfChanged(target, config.brands[config.brand].release.displayVersion);
   }
-  return { destination, mode: selectedMode, platform: platformName };
+  return { destination, mode: settings.mode, platform: settings.platform };
 }
 
 function requireEngine(ctx) {
@@ -1655,13 +1709,18 @@ async function commandBuild(ctx, ui, jobs) {
   const args = ['build'];
   if (ui) args.push('faster');
   if (jobs !== undefined) args.push(`-j${jobs}`);
-  await run('bash', ['scripts/mach-raw.sh', ...args], {
+  const build = () => run('bash', ['scripts/mach-raw.sh', ...args], {
     cwd: ctx.root,
     env: {
       ACCEPTED_MAR_CHANNEL_IDS: loadConfig(ctx.root).updates.channel,
       MAR_CHANNEL_ID: loadConfig(ctx.root).updates.channel,
     },
   });
+  if (ui) await build();
+  else {
+    const { withNativeBuildReceipt } = await import('./native-build-state.mjs');
+    await withNativeBuildReceipt(ctx.root, build);
+  }
   process.stdout.write(`bento: ${generated.mode} ${ui ? 'UI ' : ''}build complete\n`);
 }
 
@@ -1688,7 +1747,7 @@ function readLocales(ctx, config) {
  * - `configured` is its path either way, for error messages;
  * - `note` is set when `dir` is not the configured directory.
  * `package` and `updates-browser` need the directory mach builds into, so they use the
- * default. `allowLegacy` is for launching or syncing an existing old build before the
+ * default. `allowLegacy` is for syncing an existing old build before the
  * configured directory exists: it falls back to the single legacy engine/obj-* directory
  * (or an existing BENTO_OBJDIR) with a note, and throws when the choice is ambiguous.
  */
@@ -1975,7 +2034,7 @@ async function commandBrowserUpdates(ctx) {
 
 /**
  * Prints the selected object directory for the shell scripts, which must not pick one
- * themselves. `--allow-legacy` lets launch and sync scripts use an old build when the
+ * themselves. `--allow-legacy` lets sync scripts use an old build when the
  * configured directory does not exist yet (the fallback is announced on stderr);
  * `--allow-missing` prints nothing instead of failing when there is no directory.
  */
@@ -2033,7 +2092,11 @@ function parseArgs(argv) {
 export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT) {
   const ctx = createContext(repoRoot);
   const { command, options } = parseArgs(argv);
+  if (['download', 'update', 'bootstrap', 'build', 'package', 'updates-browser', 'updates-addons', 'record', 'preflight'].includes(command)) {
+    assertLocalBuildPaths(repoRoot);
+  }
   switch (command) {
+    case 'preflight': return undefined;
     case 'download': return commandDownload(ctx, options.version, options);
     case 'update': return commandUpdate(ctx);
     case 'bootstrap': return commandBootstrap(ctx);
@@ -2041,6 +2104,12 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
     case 'package': return commandPackage(ctx);
     case 'updates-browser': return commandBrowserUpdates(ctx);
     case 'objdir': return commandObjDir(ctx, options);
+    case 'native-check': {
+      const { assertNativeBuildFresh } = await import('./native-build-state.mjs');
+      const executable = await assertNativeBuildFresh(ctx.root);
+      process.stdout.write(`${executable}\n`);
+      return undefined;
+    }
     case 'updates-addons': return commandAddonUpdates(ctx);
     case 'license-check': return commandLicenseCheck(ctx);
     case 'verify': {
@@ -2061,7 +2130,7 @@ export async function main(argv = process.argv.slice(2), repoRoot = DEFAULT_ROOT
       process.stdout.write(`bento: recorded ${recordEngineState(repoRoot)} managed engine paths\n`);
       return undefined;
     case 'help':
-      process.stdout.write('Usage: bento-build <download|update|bootstrap|build|package|objdir|license-check>\n');
+      process.stdout.write('Usage: bento-build <download|update|bootstrap|build|package|objdir|native-check|license-check|preflight>\n');
       return undefined;
     default: fail(`unknown Bento build command: ${command}`);
   }

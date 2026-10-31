@@ -43,6 +43,18 @@ const documents = new Map();
 const upListeners = new Set();
 let backlog = []; // { record, chars }
 let backlogChars = 0;
+const modePresenters = new Map();
+const modeReads = new Map();
+let modeOwner = null;
+
+function replaceModeOwner(owner) {
+  if (modeOwner === owner) return;
+  modeOwner = owner;
+  for (const pending of [...modeReads.values()]) pending.finish(null);
+  for (const presenter of modePresenters.values()) {
+    try { presenter.ownerChanged(); } catch (error) { console.warn('[BentoShellBus] mode owner changed:', error); }
+  }
+}
 
 function windowIdOf(win) {
   try {
@@ -88,6 +100,7 @@ export const BentoShellBusHub = {
   /** Registers the single consumer of upward messages and hands it the backlog. */
   onUp(listener) {
     upListeners.add(listener);
+    replaceModeOwner(listener);
     const pending = backlog.map((entry) => entry.record);
     backlog = [];
     backlogChars = 0;
@@ -102,6 +115,59 @@ export const BentoShellBusHub = {
 
   offUp(listener) {
     upListeners.delete(listener);
+    if (modeOwner === listener) replaceModeOwner(null);
+  },
+
+  registerModePresenter(win, presenter) {
+    modePresenters.set(win, presenter);
+    return () => {
+      if (modePresenters.get(win) === presenter) modePresenters.delete(win);
+    };
+  },
+
+  modeDocuments(win) {
+    return [...documents.values()].map((actor) => actor.modeDocument(win)).filter(Boolean);
+  },
+
+  /** No backlog: a read belongs to this actual window and this background registration. */
+  requestModeState(win) {
+    const info = describeWindow(win);
+    if (!info || !modeOwner || !win.document?.nodePrincipal?.isSystemPrincipal ||
+        win.document.documentElement?.getAttribute('windowtype') !== 'navigator:browser') {
+      return Promise.reject(new Error('Mode owner unavailable'));
+    }
+    const owner = modeOwner;
+    const requestId = Services.uuid.generateUUID().toString().slice(1, -1);
+    return new Promise((resolve, reject) => {
+      let timer;
+      const closed = () => finish(null);
+      const finish = (response) => {
+        if (!modeReads.delete(requestId)) return;
+        win.clearTimeout(timer);
+        win.removeEventListener?.('unload', closed);
+        if (!response?.ok || win.closed || modeOwner !== owner ||
+            windowIdOf(win) !== info.windowId) reject(new Error(response?.error || 'Mode owner replaced or closed'));
+        else resolve(response);
+      };
+      modeReads.set(requestId, { owner, win, finish });
+      win.addEventListener?.('unload', closed, { once: true });
+      timer = win.setTimeout(() => finish(null), 5000);
+      try {
+        owner({ documentId: null, ...info, sessionId: SESSION_ID, message: { kind: 'mode-state-request', requestId } });
+      } catch { finish(null); }
+    });
+  },
+
+  replyModeState(owner, requestId, response) {
+    const pending = modeReads.get(requestId);
+    if (!owner || owner !== modeOwner || pending?.owner !== owner) return false;
+    const valid = response?.ok === false || (response?.ok === true &&
+      ['light', 'dark', 'system'].includes(response.pref) &&
+      typeof response.stamp?.run === 'string' && response.stamp.run.length > 0 &&
+      Number.isSafeInteger(response.stamp.seq) && response.stamp.seq >= 0);
+    if (!valid) return false;
+    pending.finish(response);
+    return true;
   },
 
   /** Sends a message down to one document. Returns false when it is gone. */
@@ -123,6 +189,30 @@ export const BentoShellBusHub = {
 export class BentoShellBusParent extends JSWindowActorParent {
   #documentId = null;
   #info = null;
+  #modeWriter = false;
+  #modeNativeWindow = null;
+  #modeRequest = 0;
+
+  #modeWindow() {
+    if (!this.#identify() || this.browsingContext?.currentWindowGlobal !== this.manager) return null;
+    const win = this.browsingContext?.top?.topChromeWindow;
+    return win && !win.closed ? win : null;
+  }
+
+  modeDocument(win) {
+    if (!this.#modeWriter || this.#modeWindow() !== win) return null;
+    return {
+      id: this.#documentId,
+      frame: this.browsingContext.embedderElement,
+      current: () => this.#modeWindow() === win,
+      query: async (command, data) => {
+        if (this.#modeWindow() !== win) throw new Error('Stale mode document');
+        const response = await this.sendQuery('BentoShellBus:ModeCommand', { ...data, command, documentId: this.#documentId });
+        if (this.#modeWindow() !== win || response?.documentId !== this.#documentId) throw new Error('Mode document navigated');
+        return response;
+      },
+    };
+  }
 
   // Window id and privacy are read once, while the hosting window is alive, so
   // the close notification can still name them.
@@ -142,6 +232,23 @@ export class BentoShellBusParent extends JSWindowActorParent {
   }
 
   receiveMessage(message) {
+    if (['BentoShellBus:ModeRegister', 'BentoShellBus:ModeIntent', 'BentoShellBus:ModeActivity'].includes(message.name)) {
+      const win = this.#modeWindow();
+      const presenter = win && modePresenters.get(win);
+      if (!presenter || !Number.isSafeInteger(message.data?.request) || message.data.request <= this.#modeRequest) return null;
+      this.#modeRequest = message.data.request;
+      if (!this.#documentId) {
+        this.#documentId = Services.uuid.generateUUID().toString().slice(1, -1);
+        documents.set(this.#documentId, this);
+      }
+      this.#modeWriter = true;
+      this.#modeNativeWindow = win;
+      const participant = this.modeDocument(win);
+      if (message.name === 'BentoShellBus:ModeActivity') return presenter.activity({ participant, generation: message.data.generation, reason: message.data.reason });
+      return message.name === 'BentoShellBus:ModeRegister'
+        ? presenter.synchronizeDocument(participant)
+        : presenter.request({ participant, request: message.data.request, pref: message.data.pref, reason: message.data.reason });
+    }
     if (message.name !== 'BentoShellBus:Up' || typeof message.data !== 'string') return;
     const info = this.#identify();
     if (!info) return;
@@ -172,6 +279,10 @@ export class BentoShellBusParent extends JSWindowActorParent {
   didDestroy() {
     if (!this.#documentId) return;
     documents.delete(this.#documentId);
+    const win = this.#modeNativeWindow;
+    modePresenters.get(win)?.documentClosed(this.#documentId);
+    this.#modeWriter = false;
+    this.#modeNativeWindow = null;
     if (this.#info) {
       emitUp({
         documentId: this.#documentId,
