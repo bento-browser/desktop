@@ -146,7 +146,8 @@ is not local: `bookmarks/space/select` records `lastSpaceId` in tools, and the v
 
 Chrome dispatches `bento-bookmarks-show` with `detail: { focus: boolean }`: `focus: false`
 when something above the view (a prompt, another overlay) holds the focus. `showMayFocus`
-reads it (an event with no usable detail, as a story or a test sends, may focus), `useVisibilityTokens`
+reads it (an event with no usable detail, as a story or a test sends, may focus; chrome's frame
+script also sends the event without a detail, and logs why, if it cannot build one), `useVisibilityTokens`
 returns it as `focusOnOpen` together with the show and hide counters, and `BookmarksView` takes
 it as `focusSearchOnOpen`: the show still resets the view, but the search field takes the focus
 only when it is true.
@@ -198,7 +199,10 @@ source's own place), and the controls ask the suppressor instead: `ItemRow` chec
 button still down, and stays armed whatever ends the drag. Esc, a lost window focus and a drop
 all leave it on through the release of that pointer (`pointerup` or `pointercancel` with its id)
 and a `RELEASE_GRACE_MS` (120 ms) after it, which covers the click and the fallback click. A
-new `pointerdown`, the window `blur`, `cancel()` (a show or hide) and unmount end it at once.
+new `pointerdown`, the window `blur`, `cancel()` (a show or hide) and unmount end it at once. Each
+gesture has a generation, and the release callback is bound to it: the timer of a drop that is
+still running when the next drag starts (inside the 120 ms) does nothing, so it cannot disarm the
+drag that is going on.
 
 Reorder settle: `recordFlip` stores the rects of `[data-bm-flip]` elements (the dragged row's
 start comes from the ghost) before the action goes out, and `playFlip` runs in a layout effect

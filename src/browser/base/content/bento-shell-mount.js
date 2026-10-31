@@ -2334,12 +2334,18 @@
     }
   }
 
-  function focusOverlayFrame(frame) {
+  // The focus goes on the next tick, unless the overlay was hidden or reopened by then or
+  // `mayFocus` (checked at that moment) says another surface has taken it.
+  function focusOverlayFrame(frame, mayFocus = () => true) {
     if (!frame) return;
     const id = overlays.idForFrame(frame.id);
     const generation = overlays.generation(id);
     setTimeout(() => {
-      if (overlays.generation(id) === generation && document.getElementById(frame.id) === frame) {
+      if (
+        overlays.generation(id) === generation &&
+        document.getElementById(frame.id) === frame &&
+        mayFocus()
+      ) {
         frame.focus();
       }
     }, 0);
@@ -2592,14 +2598,26 @@
     });
   }
 
-  // Whether a tab-modal or content prompt, or a tab dialog, is showing in a tab the window shows:
-  // the selected tab, or the panels of its split view. Firefox's TabDialogBox sets tabDialogShowing
-  // on the browser when its first dialog opens (the prompt is drawn in the page's
-  // .browserSidebarContainer, which the view hides) and removes it with the last; Firefox reads it
-  // the same way. A background tab's dialog does not count: nobody sees it until that tab is selected.
+  // The browsers the window shows: the selected one, or the panels of its split view.
+  function shownBrowsers() {
+    return window.gBrowser?.selectedBrowsers ?? [window.gBrowser?.selectedBrowser];
+  }
+
+  // Whether a tab-modal or content prompt, or a tab dialog, is showing in a tab the window shows.
+  // Firefox's TabDialogBox sets tabDialogShowing on the browser when its first dialog opens (the
+  // prompt is drawn in the page's .browserSidebarContainer, which the view hides) and removes it
+  // with the last; Firefox reads it the same way. A background tab's dialog does not count: nobody
+  // sees it until that tab is shown, and closeBookmarksViewForShownDialog looks again then.
   function isTabDialogShowing() {
-    const browsers = window.gBrowser?.selectedBrowsers ?? [window.gBrowser?.selectedBrowser];
-    return browsers.some((browser) => browser?.hasAttribute('tabDialogShowing'));
+    return shownBrowsers().some((browser) => browser?.hasAttribute('tabDialogShowing'));
+  }
+
+  // Whether `container` (a .browserSidebarContainer, where a tab's dialogs are drawn) is the page
+  // area of a browser the window shows.
+  function isPageContainerShown(container) {
+    return shownBrowsers().some(
+      (browser) => browser?.closest('.browserSidebarContainer') === container,
+    );
   }
 
   function showBookmarksView() {
@@ -2649,7 +2667,13 @@
       document.documentElement.setAttribute(BOOKMARKS_VIEW_ATTR, 'true');
       // The show goes out with the reveal, to a document that is listening.
       dispatchBookmarksViewShow(focus);
-      if (focus) focusOverlayFrame(document.getElementById('bento-bookmarks-frame'));
+      // The focus lands on the next tick; an overlay that opened in between keeps it.
+      if (focus) {
+        focusOverlayFrame(
+          document.getElementById('bento-bookmarks-frame'),
+          () => !isOverlayAboveBookmarksViewShown(),
+        );
+      }
     });
   }
 
@@ -2698,22 +2722,50 @@
 
   // A tab-modal prompt (the Leave page prompt of a tab or window close, an auth prompt) or any
   // other tab dialog (print preview) is drawn inside the page's .browserSidebarContainer, which
-  // the view hides, so nothing could answer it. The view closes at once when one is about to open
-  // or has opened, and a still pending open is cancelled. DOMWillOpenModalDialog comes first for
-  // page prompts (its target is the prompting <browser>, or its window for a prompt in this
-  // process); dialogopen reaches every tab dialog, with the dialog overlay as the target.
+  // the view hides, so nothing could answer it. The view closes at once when a dialog is showing
+  // in a tab the window shows, and a still pending open is cancelled. Three signals, since a
+  // dialog and the moment it is seen do not always coincide:
+  //  - DOMWillOpenModalDialog and dialogopen, for a dialog that opens in a shown tab.
+  //    DOMWillOpenModalDialog comes first for page prompts (its target is the prompting <browser>,
+  //    or its window for a prompt in this process); dialogopen reaches every tab dialog, with the
+  //    dialog overlay as the target. A dialog in a background tab is not under the view and is
+  //    left alone.
+  //  - TabSelect and TabSplitViewActivate, for a dialog that was already open in a tab that is now
+  //    shown: Firefox focuses the existing dialog and fires no dialog event.
+  // A Leave page prompt of a background tab goes the other way round: PromptParent fires
+  // DOMWillOpenModalDialog (the tab is not shown yet, so the listener below only looks again
+  // later), tabbrowser's own capture listener for it then selects the tab and fires TabSelect
+  // (no dialog yet), and TabDialogBox sets tabDialogShowing before the dialog loads and fires
+  // dialogopen. The look after the event (a timer) and dialogopen both catch that order.
   function closeBookmarksViewForDialog(event) {
     if (!isBookmarksViewOpen()) return;
     const source = event.originalTarget ?? event.target;
     const container = (source?.docShell?.chromeEventHandler ?? source)?.closest?.(
       '.browserSidebarContainer',
     );
-    if (container) hideBookmarksView({ immediate: true });
+    if (!container) return;
+    if (isPageContainerShown(container)) hideBookmarksView({ immediate: true });
+    else recheckBookmarksViewDialogLater();
+  }
+
+  function closeBookmarksViewForShownDialog() {
+    if (isBookmarksViewOpen() && isTabDialogShowing()) hideBookmarksView({ immediate: true });
+  }
+
+  // Once the event has been through every listener: tabbrowser's own selects the tab and updates
+  // the split view, and TabDialogBox sets tabDialogShowing straight after the event returns.
+  function recheckBookmarksViewDialogLater() {
+    setTimeout(closeBookmarksViewForShownDialog, 0);
   }
 
   function attachBookmarksViewDialogListener() {
     window.addEventListener('DOMWillOpenModalDialog', closeBookmarksViewForDialog, true);
     window.addEventListener('dialogopen', closeBookmarksViewForDialog, true);
+    // Tab selection updates the shown browsers before it fires TabSelect, so this looks at once;
+    // the focus Firefox then gives the dialog is not taken by a view that is already closed.
+    window.addEventListener('TabSelect', closeBookmarksViewForShownDialog, true);
+    // The split view's browsers change when Bento (or Firefox) activates one.
+    window.addEventListener('TabSplitViewActivate', recheckBookmarksViewDialogLater);
   }
 
   // Cmd/Ctrl+Shift+O. Firefox's "Show All Bookmarks" key (Library) toggles the Bookmarks view. The
@@ -9929,20 +9981,36 @@
 
   // The Bookmarks view document stays loaded while hidden, so chrome tells it when it is shown and
   // when it is hidden with DOM events, the same way (a private window never shows it). The show's
-  // detail is { focus: boolean }, an object made in the page's realm so the page can read it.
+  // detail is { focus: boolean }, an object made in the page's realm so the page can read it. If
+  // that object cannot be made the event still goes out, without a detail (the document then
+  // takes the focus), and the failure is logged: a view that never shows is the worse outcome.
   const BOOKMARKS_VIEW_FRAME_SCRIPT_SRC =
     '"use strict";' +
+    'function bentoBookmarksWarn(what, e) {' +
+    '  var line = "[bento-shell-mount] bookmarks view " + what + ": " + e;' +
+    '  try { console.warn(line); } catch (x) { dump(line + "\\n"); }' +
+    '}' +
     'addMessageListener("BentoBookmarksViewShow", function(msg) {' +
+    '  var init = {};' +
     '  try {' +
     '    var detail = new content.wrappedJSObject.Object();' +
     '    detail.focus = !!(msg.data && msg.data.focus);' +
-    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-show", { detail: detail }));' +
-    '  } catch (e) {}' +
+    '    init.detail = detail;' +
+    '  } catch (e) {' +
+    '    bentoBookmarksWarn("show detail failed, showing without it", e);' +
+    '  }' +
+    '  try {' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-show", init));' +
+    '  } catch (e) {' +
+    '    bentoBookmarksWarn("show event failed", e);' +
+    '  }' +
     '});' +
     'addMessageListener("BentoBookmarksViewHide", function() {' +
     '  try {' +
     '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-hide"));' +
-    '  } catch (e) {}' +
+    '  } catch (e) {' +
+    '    bentoBookmarksWarn("hide event failed", e);' +
+    '  }' +
     '});';
   const BOOKMARKS_VIEW_FRAME_SCRIPT_URL =
     'data:application/javascript;charset=utf-8,' +
@@ -10200,9 +10268,11 @@
   // generation, and a retry of an older one is dropped.
   let bookmarksLifecycleSeq = 0;
 
+  // `getData` is called at each attempt, not once: a retry comes 100 ms on, and what the message
+  // says (whether the view may take the focus) can have changed by then.
   function sendBookmarksViewMessage(
     name,
-    data,
+    getData,
     attempt = 0,
     generation = (bookmarksLifecycleSeq += 1),
   ) {
@@ -10210,7 +10280,7 @@
     const frame = document.getElementById('bento-bookmarks-frame');
     if (!frame) return false;
     const retry = () =>
-      setTimeout(() => sendBookmarksViewMessage(name, data, attempt + 1, generation), 100);
+      setTimeout(() => sendBookmarksViewMessage(name, getData, attempt + 1, generation), 100);
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
@@ -10221,7 +10291,7 @@
         mm.loadFrameScript(BOOKMARKS_VIEW_FRAME_SCRIPT_URL, true);
         frame._bentoBookmarksViewScriptLoaded = true;
       }
-      mm.sendAsyncMessage(name, data);
+      mm.sendAsyncMessage(name, getData());
       return true;
     } catch (err) {
       if (attempt < 10) {
@@ -10234,9 +10304,13 @@
   }
 
   // `focus`: the document may take the focus (its search field). False when an overlay above the
-  // view is on screen.
+  // view is on screen. A delivery that waits for the frame is checked again when it goes out: an
+  // overlay that opened meanwhile has the focus, and a grant is never turned into one the first
+  // attempt did not have.
   function dispatchBookmarksViewShow(focus) {
-    return sendBookmarksViewMessage('BentoBookmarksViewShow', { focus: focus === true });
+    return sendBookmarksViewMessage('BentoBookmarksViewShow', () => ({
+      focus: focus === true && !isOverlayAboveBookmarksViewShown(),
+    }));
   }
 
   // A document that was never shown has nothing to drop, so that hide is not sent (it would load
@@ -10247,7 +10321,7 @@
       bookmarksLifecycleSeq += 1;
       return false;
     }
-    return sendBookmarksViewMessage('BentoBookmarksViewHide', {});
+    return sendBookmarksViewMessage('BentoBookmarksViewHide', () => ({}));
   }
 
   function setPanelTrailerAddFocus(focused) {

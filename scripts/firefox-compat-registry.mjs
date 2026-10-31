@@ -493,9 +493,9 @@ export const MEMBERS = [
     probe: 'R',
     sites: [
       'patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers',
-      'isTabDialogShowing',
+      'shownBrowsers',
     ],
-    use: 'Patch 11 lets DOM fullscreen requests come from any browser active in the split. isTabDialogShowing checks each of them for a showing tab dialog (the selected browser alone outside a split view).',
+    use: 'Patch 11 lets DOM fullscreen requests come from any browser active in the split. shownBrowsers hands the Bookmarks view the browsers the window shows (the selected browser alone outside a split view): isTabDialogShowing checks each for a showing tab dialog, and isPageContainerShown tells a dialog of a shown tab from one of a background tab.',
     at: [FF.tabbrowser, '^\\s+get selectedBrowsers\\(', 641],
   },
   {
@@ -662,7 +662,7 @@ export const MEMBERS = [
     how: 'listens',
     probe: 'E',
     sites: ['attachBookmarksViewDialogListener', 'closeBookmarksViewForDialog'],
-    use: "Chrome-only bubbling event that PromptParent fires on the prompting <browser> (on its Window for a prompt in this process) just before a prompt opens, the Leave page prompt of a tab or window close included. Tab-modal prompts are drawn inside the page's .browserSidebarContainer, which the Bookmarks view hides, so the window listens in the capture phase and closes the view at once (no fade, no focus move) and cancels a pending open; the event comes before the dialog exists.",
+    use: "Chrome-only bubbling event that PromptParent fires on the prompting <browser> (on its Window for a prompt in this process) just before a prompt opens, the Leave page prompt of a tab or window close included. Tab-modal prompts are drawn inside the page's .browserSidebarContainer, which the Bookmarks view hides, so the window listens in the capture phase and, for a browser the window shows, closes the view at once (no fade, no focus move) and cancels a pending open; the event comes before the dialog exists. A prompt of a background tab is left alone and looked at again after the event: tabbrowser's own capture listener for it (Tabbrowser.sys.mjs) selects the tab of a Leave page prompt right after Bento's, firing TabSelect before TabDialogBox sets tabDialogShowing, so by the second look that tab is shown and has the attribute.",
     at: [FF.promptParent, 'lazy\\.PromptUtils\\.fireDialogEvent\\(\\s*win,\\s*"DOMWillOpenModalDialog"', 207],
   },
   {
@@ -671,7 +671,7 @@ export const MEMBERS = [
     how: 'listens',
     probe: 'E',
     sites: ['attachBookmarksViewDialogListener', 'closeBookmarksViewForDialog'],
-    use: "Bubbling event SubDialog dispatches on a dialog's overlay once it is sized and shown. Every tab dialog fires it, also those that fire no DOMWillOpenModalDialog (print preview, share, screenshots), so the Bookmarks view closes for any dialog whose overlay sits in a page's .browserSidebarContainer. A window-level dialog (gDialogBox) is outside that container and leaves the view open.",
+    use: "Bubbling event SubDialog dispatches on a dialog's overlay once it is sized and shown, after TabDialogBox set tabDialogShowing. Every tab dialog fires it, also those that fire no DOMWillOpenModalDialog (print preview, share, screenshots), so the Bookmarks view closes for any dialog whose overlay sits in the .browserSidebarContainer of a browser the window shows. A window-level dialog (gDialogBox) is outside that container and leaves the view open, and so does a dialog of a background tab.",
     at: [FF.subDialog, 'new CustomEvent\\("dialogopen"', 501],
   },
   {
@@ -680,7 +680,7 @@ export const MEMBERS = [
     how: 'reads',
     probe: 'E',
     sites: ['isTabDialogShowing'],
-    use: "Attribute on a <browser> while its TabDialogBox has a dialog open, tab-modal prompts and content prompts included: _onFirstDialogOpen sets it when the first dialog opens and _onLastDialogClose removes it with the last. Firefox reads it for the selected browser the same way (popup notification suppression, tab-switch focus). The Bookmarks view refuses to open while a browser the window shows has it, and cancels a pending open at its reveal, because the prompt is drawn in the .browserSidebarContainer that the view hides.",
+    use: "Attribute on a <browser> while its TabDialogBox has a dialog open, tab-modal prompts and content prompts included: _onFirstDialogOpen sets it when the first dialog opens and _onLastDialogClose removes it with the last. Firefox reads it for the selected browser the same way (popup notification suppression, tab-switch focus). The Bookmarks view refuses to open while a browser the window shows has it, cancels a pending open at its reveal, and closes when a tab that has it is selected (TabSelect) or joins the split view, because the prompt is drawn in the .browserSidebarContainer that the view hides. Firefox focuses an existing dialog on selection and fires no dialog event for it.",
     at: [FF.browserJs, 'this\\.browser\\.setAttribute\\("tabDialogShowing", true\\)', 4594],
   },
   {
@@ -688,8 +688,8 @@ export const MEMBERS = [
     kind: 'source',
     how: 'reads',
     probe: 'E',
-    sites: ['closeBookmarksViewForDialog'],
-    use: "Where a tab dialog is drawn: appended to browser.closest('.browserSidebarContainer, .webextension-popup-stack, .sidebar-browser-stack'). The Bookmarks view hides every .browserSidebarContainer under its host, so a dialog there is invisible; closeBookmarksViewForDialog tells that container from a window-level dialog by the same selector. If Firefox draws page prompts elsewhere, the view would stay open over them or close for dialogs it does not hide.",
+    sites: ['closeBookmarksViewForDialog', 'isPageContainerShown'],
+    use: "Where a tab dialog is drawn: appended to browser.closest('.browserSidebarContainer, .webextension-popup-stack, .sidebar-browser-stack'). The Bookmarks view hides every .browserSidebarContainer under its host, so a dialog there is invisible; closeBookmarksViewForDialog tells that container from a window-level dialog by the same selector, and isPageContainerShown compares it with the container of each browser the window shows. If Firefox draws page prompts elsewhere, the view would stay open over them or close for dialogs it does not hide.",
     at: [FF.browserJs, 'static _containerFor\\(browser\\) \\{\\s*return browser\\.closest\\(\\s*"\\.browserSidebarContainer', 4466],
   },
 
@@ -2185,9 +2185,19 @@ export const MEMBERS = [
       'attachTabSelectListener',
       'setupPanelNavigator',
       'attachSidebarAddressSnapshotListeners',
+      'attachBookmarksViewDialogListener',
     ],
-    use: 'Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes.',
+    use: 'Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes. The Bookmarks view also closes if the tab now selected has a showing dialog: updateCurrentBrowser sets the selected browser before it fires the event, and Firefox focuses that dialog right after.',
     at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabSelect"', 2009],
+  },
+  {
+    id: 'TabSplitViewActivate',
+    kind: 'source',
+    how: 'listens',
+    probe: 'E',
+    sites: ['attachBookmarksViewDialogListener'],
+    use: "Window event that Bento's panel reconcile and Firefox's split view both dispatch when a split view becomes the shown one; Tabbrowser's own window listener (on_TabSplitViewActivate) stores it, which is what gBrowser.selectedBrowsers lists. The Bookmarks view looks for a showing tab dialog among the new browsers (on a timer, so the order of the listeners does not matter).",
+    at: [FF.tabbrowser, 'documentGlobal\\.addEventListener\\("TabSplitViewActivate", this\\)', 265],
   },
   {
     id: 'TabOpen',

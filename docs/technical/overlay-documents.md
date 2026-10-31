@@ -222,7 +222,8 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   so every panel of a split view) has the `tabDialogShowing` attribute, which Firefox's
   `TabDialogBox` sets when its first dialog (tab-modal prompt, content prompt, any tab dialog)
   opens and removes with the last. The view would cover a prompt that waits for an answer. A
-  background tab's dialog does not count. The same check runs first in the reveal, so an open
+  background tab's dialog does not count (selecting that tab closes an open view, below). The
+  same check runs first in the reveal, so an open
   that waited for its document is cancelled (`hideBookmarksView({ immediate: true })`: the
   document gets no show and its presentation is taken back) when a tab with an open prompt got
   selected meanwhile. The command palette and the other overlays stay as they are on a refusal.
@@ -235,8 +236,15 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   reveal still shows the view but leaves the focus where it is, and the show goes out with
   `focus: false`. The `bento-bookmarks-show` event carries `detail: { focus: boolean }`,
   made in the page's realm (`content.wrappedJSObject.Object`, since a chrome object is not
-  readable by the page): the document focuses its search field only for `focus: true`. A
-  pending overlay does not count; it takes the focus itself when it reveals.
+  readable by the page): the document focuses its search field only for `focus: true`. If the
+  frame script cannot build that object it still dispatches the event, without a detail, and
+  logs the failure (a view that never shows is worse; the document then takes the focus).
+  A pending overlay does not count; it takes the focus itself when it reveals. Nothing is
+  decided once: a Show that waits for the frame's message manager is retried every 100 ms, and
+  `sendBookmarksViewMessage` builds the message at each attempt (`focus` can only turn off:
+  `focus && !isOverlayAboveBookmarksViewShown()`), and the frame's own focus, which lands on the
+  next tick through `focusOverlayFrame(frame, mayFocus)`, is skipped if an overlay above has
+  appeared by then.
 - **Closing.** `BENTO_CLOSE_BOOKMARKS_<ts>` from the bookmarks frame, `Cmd/Ctrl+Shift+O`
   again, or Esc (below). `hideBookmarksView` removes the attribute at once, so the chrome is
   visible under the host's fade-out, sends `BentoBookmarksViewHide` (`bento-bookmarks-hide`;
@@ -251,18 +259,36 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   drops a repeated title.
 - **Tab dialogs.** Firefox draws a tab-modal prompt (the Leave/Stay prompt of a tab or
   window close, an auth prompt) and any other tab dialog (print preview) inside the page's
-  `.browserSidebarContainer`, which the view hides, so nothing could answer it.
-  `attachBookmarksViewDialogListener` listens on the window in the capture phase for
-  `DOMWillOpenModalDialog` (PromptParent fires it before a prompt opens, on the prompting
-  `<browser>` or on its window for a prompt in this process) and `dialogopen` (SubDialog fires
-  it on the dialog overlay once the dialog is shown, for every tab dialog, also those without
-  the first event). `closeBookmarksViewForDialog` acts only while the view is open (shown or
-  waiting for its document) and only if the event's browser or overlay is inside a
-  `.browserSidebarContainer`; a window-level dialog (`gDialogBox`) or a prompt of an overlay
-  frame is left alone. It calls `hideBookmarksView({ immediate: true })`: a pending open is
-  cancelled, the root attribute goes, the host is set `display: none` with no fade (so
-  `hideOverlayHostAfterFade` finishes at once and the document is told it is no longer
-  presented), the document gets its hide, and no focus moves (the dialog takes it).
+  `.browserSidebarContainer`, which the view hides, so nothing could answer it. Only a dialog
+  in a tab the window shows is under the view (`shownBrowsers`: `gBrowser.selectedBrowsers`,
+  every panel of a split view), and the view closes when one is showing:
+  - `attachBookmarksViewDialogListener` listens on the window in the capture phase for
+    `DOMWillOpenModalDialog` (PromptParent fires it before a prompt opens, on the prompting
+    `<browser>` or on its window for a prompt in this process) and `dialogopen` (SubDialog fires
+    it on the dialog overlay once the dialog is shown, for every tab dialog, also those without
+    the first event). `closeBookmarksViewForDialog` acts only while the view is open (shown or
+    waiting for its document) and only if the event's browser or overlay is inside a
+    `.browserSidebarContainer` that belongs to a shown browser (`isPageContainerShown`); a
+    window-level dialog (`gDialogBox`), a prompt of an overlay frame or a dialog of a background
+    tab is left alone.
+  - A dialog that is already open in a tab fires no event when the tab is selected: Firefox
+    focuses the existing dialog (`_adjustFocusAfterTabSwitch`). `TabSelect` (listened to in the
+    capture phase; `updateCurrentBrowser` sets the selected browser before it fires) and
+    `TabSplitViewActivate` (Bento's panel reconcile and Firefox's split view fire it; handled on a
+    timer, so the order against Tabbrowser's own listener does not matter) run
+    `closeBookmarksViewForShownDialog`: `isTabDialogShowing` over `shownBrowsers`.
+  - Event order for a Leave/Stay prompt of a background tab (a tab or window close): PromptParent
+    fires `DOMWillOpenModalDialog` (the tab is not shown, so the listener only schedules another
+    look: `recheckBookmarksViewDialogLater`); Tabbrowser's own capture listener for that event,
+    which runs after the window's, selects the tab and fires `TabSelect` (no dialog yet); the
+    event returns and `TabDialogBox` sets `tabDialogShowing`; the second look then sees a shown
+    tab with a dialog. `dialogopen` follows once the dialog has loaded and closes the view
+    if the look has not. A page `alert()` of a background tab that Firefox does not select
+    (`tabForEvent.attention`) leaves the view open; selecting that tab runs `TabSelect`.
+  Closing is `hideBookmarksView({ immediate: true })`: a pending open is cancelled, the root
+  attribute goes, the host is set `display: none` with no fade (so `hideOverlayHostAfterFade`
+  finishes at once and the document is told it is no longer presented), the document gets its
+  hide, and no focus moves (the dialog takes it).
 - **Esc.** The document owns it (an inline editor closes before the view). Like Settings,
   `attachPaletteEscListener` returns for a key whose target is `bento-bookmarks-frame` (or a
   delivered menu above it, which handles its own), and consumes Esc only for an open that
@@ -325,6 +351,11 @@ Pitfalls:
   Leave/Stay prompt that opened under the view made a tab or window close wait on an invisible
   prompt. The view closes for them (see Tab dialogs above); a new Firefox mechanism that draws
   page-level dialogs elsewhere, or outside `.browserSidebarContainer`, needs the same check.
+- A dialog event is not the only way a prompt comes into view. Closing on any
+  `.browserSidebarContainer` dialog dismissed the view for an `alert()` of a tab nobody sees, and
+  not listening for `TabSelect` left it over a prompt that was already open in the tab the user
+  switched to (Firefox reuses the dialog and fires nothing). Keep the shown-browsers test on the
+  events and the `TabSelect` / `TabSplitViewActivate` look; do not drop either for the other.
 - Opening the view over a prompt that already waits hides it: the check is `tabDialogShowing`
   on the shown browsers, which `TabDialogBox` owns. Its dialogs queue per browser, so a second
   prompt of the same tab keeps the attribute until the last one closes. A system print dialog
@@ -349,6 +380,14 @@ their overlays above it, and Esc closes only those. Close it: the sidebar, panel
 bookmarks toolbar return without a shift, and the focus is back where it was. Repeat in light
 and dark, with the sidebar collapsed and hidden, with several panels, with reduced motion, and
 confirm a private window never opens it and keeps the stock `Cmd+Shift+O`.
+
+Prompts in other tabs: with the view open over tab A, an `alert()` from a background tab B
+(a page timer) leaves the view open; selecting B from the command palette then closes it and
+shows B's prompt focused. With a `beforeunload` prompt left open in B (close B, leave the prompt
+open, select A, open the view), select B from the command palette: the view closes at once. Close
+a background tab that has a `beforeunload` handler with the view open (command palette or a
+window close with several tabs): the view closes, the tab is selected and the Leave/Stay prompt is
+visible. Repeat in a split view with the prompt in the second panel.
 
 Dialogs and focus (same window, then repeat the first with the window close button): with a
 `beforeunload` prompt showing in the selected tab (close the tab and leave the prompt open),

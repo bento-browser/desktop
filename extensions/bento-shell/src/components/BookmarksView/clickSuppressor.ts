@@ -24,13 +24,18 @@ export const RELEASE_GRACE_MS = 120;
 export function createClickSuppressor(
   /** The window, read when a drag begins so the suppressor can be made while rendering. */
   getTarget: () => Listeners,
-  /** Runs `done` once the click and the late fallback click that follow a release are past. */
+  /** Runs `done` once the click and the late fallback click that follow a release are past. A
+   * `done` that arrives after another gesture began does nothing. */
   afterRelease: (done: () => void) => void = (done) => void setTimeout(done, RELEASE_GRACE_MS),
 ): ClickSuppressor {
   let active = false;
   let stop: (() => void) | null = null;
+  // Counts gestures. A release timer of an earlier gesture can fire during the next one (a drag
+  // started within the grace of the last drop), and must not end that one.
+  let gesture = 0;
 
   const end = () => {
+    gesture += 1;
     stop?.();
     stop = null;
     active = false;
@@ -42,9 +47,13 @@ export function createClickSuppressor(
     begin(pointerId, released) {
       end();
       active = true;
+      const mine = gesture;
+      const endMine = () => {
+        if (gesture === mine) end();
+      };
       const target = getTarget();
       const onRelease = (event: Event) => {
-        if ((event as PointerEvent).pointerId === pointerId) afterRelease(end);
+        if ((event as PointerEvent).pointerId === pointerId) afterRelease(endMine);
       };
       // A new press, or the window losing focus, means the old gesture is over.
       target.addEventListener('pointerdown', end, { capture: true });
@@ -59,7 +68,7 @@ export function createClickSuppressor(
         target.removeEventListener('pointerup', onRelease, { capture: true });
         target.removeEventListener('pointercancel', onRelease, { capture: true });
       };
-      if (released) afterRelease(end);
+      if (released) afterRelease(endMine);
     },
   };
 }

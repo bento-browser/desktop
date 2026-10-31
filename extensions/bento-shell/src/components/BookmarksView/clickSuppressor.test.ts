@@ -70,6 +70,53 @@ describe('click suppressor', () => {
     expect(suppressor.isActive()).toBe(false);
   });
 
+  it('keeps a drag going when the release timer of the drop before it fires', () => {
+    const win = new EventTarget();
+    const suppressor = createClickSuppressor(() => win);
+    // A drop, whose release timer is out for RELEASE_GRACE_MS.
+    suppressor.begin(1, true);
+    vi.advanceTimersByTime(RELEASE_GRACE_MS / 2);
+
+    // A new drag starts inside that grace and is still held when the old timer fires.
+    suppressor.begin(2, false);
+    vi.advanceTimersByTime(RELEASE_GRACE_MS / 2);
+    expect(suppressor.isActive()).toBe(true);
+    vi.advanceTimersByTime(60_000);
+    expect(suppressor.isActive()).toBe(true);
+
+    // Its own release still ends it, a full grace later.
+    win.dispatchEvent(pointer('pointerup', 2));
+    vi.advanceTimersByTime(RELEASE_GRACE_MS - 1);
+    expect(suppressor.isActive()).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(suppressor.isActive()).toBe(false);
+  });
+
+  it('ignores a release callback of a gesture that is over, whoever runs it and when', () => {
+    const win = new EventTarget();
+    const pending: Array<() => void> = [];
+    const suppressor = createClickSuppressor(
+      () => win,
+      (done) => void pending.push(done),
+    );
+    suppressor.begin(1, true);
+    suppressor.begin(2, true);
+    const [first, second] = pending;
+
+    // The first drop's callback arrives after the second drop began.
+    first?.();
+    expect(suppressor.isActive()).toBe(true);
+    second?.();
+    expect(suppressor.isActive()).toBe(false);
+
+    // A callback after the gesture was ended by hand cannot end the next one either.
+    suppressor.begin(3, true);
+    suppressor.end();
+    suppressor.begin(4, false);
+    pending[2]?.();
+    expect(suppressor.isActive()).toBe(true);
+  });
+
   it('ends when told to, and a second drag replaces the first without leaving a listener', () => {
     const win = new EventTarget();
     const suppressor = createClickSuppressor(() => win);

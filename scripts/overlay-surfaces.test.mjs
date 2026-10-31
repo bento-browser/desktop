@@ -149,9 +149,13 @@ const FUNCTIONS = [
   'hideBookmarksView',
   'toggleBookmarksView',
   'isOverlayAboveBookmarksViewShown',
+  'shownBrowsers',
   'isTabDialogShowing',
+  'isPageContainerShown',
   'restoreBookmarksViewFocus',
   'closeBookmarksViewForDialog',
+  'closeBookmarksViewForShownDialog',
+  'recheckBookmarksViewDialogLater',
   'attachBookmarksViewDialogListener',
   'retargetLibraryKeyToBookmarksView',
   'setAddrbarOverSidebarRow',
@@ -304,6 +308,8 @@ class FakeElement {
     this.focusCount = 0;
     /** Whether it sits in a page's .browserSidebarContainer, where tab dialogs are drawn. */
     this.inPageContainer = false;
+    /** The container it sits in when that is another element (a dialog overlay of a browser). */
+    this.pageContainer = null;
     if (tag === 'browser') {
       this.messageManager = {
         loadFrameScript: () => {},
@@ -343,7 +349,8 @@ class FakeElement {
   }
 
   closest(selector) {
-    return selector === '.browserSidebarContainer' && this.inPageContainer ? this : null;
+    if (selector !== '.browserSidebarContainer') return null;
+    return this.pageContainer ?? (this.inPageContainer ? this : null);
   }
 
   addEventListener(type, handler) {
@@ -690,14 +697,43 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
       return event.consumed;
     },
     /**
-     * A dialog event as Firefox dispatches it on the chrome window: the listeners the mount
-     * attached (installed on first use) get `init`, with `type` added.
+     * An event as Firefox dispatches it on the chrome window (a dialog event, TabSelect): the
+     * listeners the mount attached (installed on first use) get `init`, with `type` added.
      */
-    dialogEvent(type, init) {
+    windowEvent(type, init) {
       if (!listeners.some((entry) => entry.type === type)) api.attachBookmarksViewDialogListener();
       for (const entry of listeners.filter((candidate) => candidate.type === type)) {
         entry.handler({ type, ...init });
       }
+    },
+    dialogEvent(type, init) {
+      this.windowEvent(type, init);
+    },
+    /**
+     * Firefox selects `browser`'s tab: the shown browser changes first, then TabSelect fires
+     * (updateCurrentBrowser sets #selectedBrowser before it dispatches the event).
+     */
+    selectTab(browser) {
+      selectedBrowser = browser;
+      this.windowEvent('TabSelect', { target: browser });
+    },
+    /** Bento (or Firefox) activates a split view: its browsers are shown, then the event fires. */
+    activateSplitView(browsers) {
+      splitBrowsers = browsers;
+      this.windowEvent('TabSplitViewActivate', { target: window });
+    },
+    /** A <browser> in its own page container, as a tab has; `dialogShowing`: it has a prompt open. */
+    makeBrowser: (dialogShowing = false) => {
+      const browser = new FakeElement(registry, 'browser', sent);
+      browser.inPageContainer = true;
+      if (dialogShowing) browser.setAttribute('tabDialogShowing', 'true');
+      return browser;
+    },
+    /** The overlay a tab dialog of `browser` is drawn on, inside the browser's page container. */
+    dialogOverlayOf: (browser) => {
+      const overlay = new FakeElement(registry, 'vbox', sent);
+      overlay.pageContainer = browser.closest('.browserSidebarContainer');
+      return overlay;
     },
     /** The ids of the elements that took the focus, in order. */
     focusLog: () => [...registry.focusLog],
@@ -2244,8 +2280,8 @@ test('a tab dialog that opens without that event also closes the view', () => {
   // Print preview, share and screenshots use the tab dialog box without DOMWillOpenModalDialog.
   const world = bookmarksWorld();
   world.showBookmarksView();
-  // The target is the dialog overlay, drawn in the page's container.
-  world.dialogEvent('dialogopen', { target: world.makeElement(true) });
+  // The target is the dialog overlay, drawn in the container of the tab the window shows.
+  world.dialogEvent('dialogopen', { target: world.dialogOverlayOf(world.selectedBrowser) });
   assert.equal(world.isShown('bookmarks'), false);
   assert.equal(hasBookmarksAttr(world), false);
 });
@@ -2376,6 +2412,189 @@ test('an open that waited for its document is cancelled at the reveal if a dialo
   assert.equal(hasBookmarksAttr(world), true);
 });
 
+test('selecting a tab that already shows a prompt closes the view at once, with no focus move', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  const quiet = world.makeBrowser();
+  const prompting = world.makeBrowser(true);
+  world.showBookmarksView();
+  world.advance(1);
+  world.setNativeFocus(world.frame('bookmarks'));
+  const log = world.focusLog();
+
+  // A tab without a prompt changes nothing.
+  world.selectTab(quiet);
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+
+  // Firefox focuses the dialog the tab already has and fires no dialog event, so TabSelect is the
+  // only signal (the command palette selecting a tab behind a prompt, for one).
+  world.selectTab(prompting);
+  assert.equal(hasBookmarksAttr(world), false, 'the chrome is back for the prompt');
+  assert.equal(world.isShown('bookmarks'), false, 'the host is gone now, not after a fade');
+  assert.equal(world.bookmarksHides().length, 1, 'the document drops an open editor or search');
+  assert.deepEqual(world.focusLog(), log, 'the prompt takes the focus; the view does not move it');
+  assert.equal(sidebar.focusCount, 0);
+  assert.equal(prompting.focusCount, 0);
+});
+
+test('selecting a tab that shows a prompt cancels a view that still waits for its document', () => {
+  const world = makeWorld();
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), true);
+
+  world.selectTab(world.makeBrowser(true));
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  world.ready('bookmarks');
+  world.advance(10_000);
+  assert.equal(world.isShown('bookmarks'), false, 'the late announcement reveals nothing');
+  assert.deepEqual(world.bookmarksShows(), []);
+  assert.deepEqual(world.focusLog(), []);
+});
+
+test('a split view that brings a prompting tab into view closes the view, one without does not', () => {
+  const world = bookmarksWorld();
+  const quiet = world.makeBrowser();
+  const prompting = world.makeBrowser(true);
+  world.showBookmarksView();
+  world.advance(1);
+
+  world.activateSplitView([world.selectedBrowser, quiet]);
+  world.advance(1);
+  assert.equal(world.isShown('bookmarks'), true);
+
+  world.activateSplitView([world.selectedBrowser, prompting]);
+  world.advance(1);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(world.bookmarksHides().length, 1);
+});
+
+test('a prompt in a background tab leaves the view open until that tab is shown', () => {
+  const world = bookmarksWorld();
+  const background = world.makeBrowser();
+  world.showBookmarksView();
+  world.advance(1);
+
+  // An alert() of a tab nobody sees: tabbrowser does not select it (no focus-tab permission).
+  world.dialogEvent('DOMWillOpenModalDialog', {
+    target: background,
+    detail: { tabPrompt: true, inPermitUnload: false },
+  });
+  background.setAttribute(DIALOG_ATTR, 'true');
+  world.dialogEvent('dialogopen', { target: world.dialogOverlayOf(background) });
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), true, 'the dialog is not under the view');
+  assert.equal(hasBookmarksAttr(world), true);
+  assert.deepEqual(world.bookmarksHides(), []);
+
+  // The user selects that tab: now the view would cover the prompt.
+  world.selectTab(background);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('a background tab Leave/Stay prompt is caught once Firefox selects the tab, whichever event gets there first', () => {
+  // The engine order for a beforeunload prompt of a background tab: PromptParent fires
+  // DOMWillOpenModalDialog (the tab is not shown yet), tabbrowser's capture listener for it selects
+  // the tab (TabSelect, and no dialog exists yet), TabDialogBox then sets tabDialogShowing as the
+  // event returns, and dialogopen follows once the dialog has loaded.
+  for (const caughtBy of ['the look after the event', 'dialogopen']) {
+    const world = bookmarksWorld();
+    const background = world.makeBrowser();
+    world.showBookmarksView();
+    world.advance(1);
+
+    world.dialogEvent('DOMWillOpenModalDialog', {
+      target: background,
+      detail: { tabPrompt: true, inPermitUnload: true },
+    });
+    assert.equal(world.isShown('bookmarks'), true, `${caughtBy}: the tab is not shown yet`);
+    world.selectTab(background);
+    assert.equal(world.isShown('bookmarks'), true, `${caughtBy}: TabSelect is before the dialog`);
+
+    background.setAttribute(DIALOG_ATTR, 'true');
+    if (caughtBy === 'dialogopen') {
+      world.dialogEvent('dialogopen', { target: world.dialogOverlayOf(background) });
+    } else {
+      world.advance(0);
+    }
+    assert.equal(world.isShown('bookmarks'), false, `${caughtBy} closes the view`);
+    assert.equal(hasBookmarksAttr(world), false, caughtBy);
+    assert.equal(world.bookmarksHides().length, 1, caughtBy);
+  }
+});
+
+test('a prompt that is open before its tab is selected is caught by the selection', () => {
+  // The other order: tabDialogShowing is set (the alert came while the tab was in the background),
+  // and the tab is selected later with no dialog event at all.
+  const world = bookmarksWorld();
+  const background = world.makeBrowser();
+  world.showBookmarksView();
+  world.advance(1);
+  background.setAttribute(DIALOG_ATTR, 'true');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), true);
+
+  world.selectTab(background);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('a Show that waited for the frame is checked against the overlays above the view when it goes out', () => {
+  const world = bookmarksWorld();
+  world.overlays.ensure('bookmarks', 'idle');
+  const mm = world.frame('bookmarks').messageManager;
+  const send = mm.sendAsyncMessage;
+
+  // The frame has no message manager yet: the Show is retried every 100 ms.
+  mm.sendAsyncMessage = undefined;
+  world.showBookmarksView();
+  assert.deepEqual(world.bookmarksShows(), []);
+
+  // The command palette opens over the view meanwhile and takes the focus.
+  world.host('palette').style.display = 'flex';
+  world.host('palette').style.opacity = '1';
+  mm.sendAsyncMessage = send;
+  world.advance(100);
+  assert.deepEqual(
+    world.bookmarksShows().map((message) => message.data),
+    [{ focus: false }],
+    'the first attempt said focus: true; the delivery says what is true now',
+  );
+  assert.equal(world.frame('bookmarks').focusCount, 0, 'and the frame does not take it either');
+});
+
+test('a Show told not to take the focus is not promoted when its retry goes out', () => {
+  const world = bookmarksWorld();
+  world.overlays.ensure('bookmarks', 'idle');
+  const mm = world.frame('bookmarks').messageManager;
+  const send = mm.sendAsyncMessage;
+  world.host('confirm').style.display = 'flex';
+  world.host('confirm').style.opacity = '1';
+
+  mm.sendAsyncMessage = undefined;
+  world.showBookmarksView();
+  // The overlay closes before the retry; the view still did not take the focus at the reveal.
+  world.host('confirm').style.opacity = '0';
+  mm.sendAsyncMessage = send;
+  world.advance(100);
+  assert.deepEqual(world.bookmarksShows().map((message) => message.data), [{ focus: false }]);
+  assert.equal(world.frame('bookmarks').focusCount, 0);
+});
+
+test('the view does not take the focus on the next tick from an overlay that opened in between', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  // The reveal asked for the focus; before it lands, a menu is on screen.
+  world.host('menu').style.display = 'flex';
+  world.host('menu').style.opacity = '1';
+  world.advance(1);
+  assert.deepEqual(world.focusLog(), []);
+  assert.equal(world.frame('bookmarks').focusCount, 0);
+});
+
 test('a Bookmarks view whose document reloads gives the chrome back and hides it again on the replay', () => {
   const world = bookmarksWorld();
   world.showBookmarksView();
@@ -2456,6 +2675,68 @@ test('the Bookmarks frame script turns the messages into the document events', (
     'the show detail is { focus } in the page realm, so the page can read it',
   );
   assert.equal(events[2].detail, undefined);
+});
+
+/** Runs the Bookmarks frame script in a scope like a frame script's; returns what it did. */
+function runBookmarksFrameScript({ pageObject, dispatchEvent, scope }) {
+  const listeners = new Map();
+  const events = [];
+  vm.runInNewContext(BOOKMARKS_FRAME_SCRIPT_SRC, {
+    addMessageListener: (name, handler) => listeners.set(name, handler),
+    content: {
+      wrappedJSObject: { Object: pageObject },
+      CustomEvent: class {
+        constructor(type, init) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+      dispatchEvent: (event) => {
+        dispatchEvent?.(event);
+        events.push(event);
+      },
+    },
+    ...scope,
+  });
+  return { listeners, events };
+}
+
+test('the Bookmarks frame script still shows the view when the detail cannot be built, and says so', () => {
+  const warnings = [];
+  const { listeners, events } = runBookmarksFrameScript({
+    pageObject: class {
+      constructor() {
+        throw new Error('no page realm');
+      }
+    },
+    scope: { console: { warn: (line) => warnings.push(line) } },
+  });
+  listeners.get('BentoBookmarksViewShow')({ data: { focus: false } });
+  assert.deepEqual(events.map((event) => event.type), ['bento-bookmarks-show']);
+  assert.equal(events[0].detail, undefined, 'the document gets the show without a detail');
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /bookmarks view show detail failed.*no page realm/);
+});
+
+test('the Bookmarks frame script logs through dump when the frame has no console, and never throws', () => {
+  const dumped = [];
+  const { listeners, events } = runBookmarksFrameScript({
+    pageObject: class {
+      constructor() {
+        throw new Error('no page realm');
+      }
+    },
+    dispatchEvent: () => {
+      throw new Error('document gone');
+    },
+    // No console in the frame's scope: using it throws, which sends the line to dump.
+    scope: { console: undefined, dump: (line) => dumped.push(line) },
+  });
+  listeners.get('BentoBookmarksViewShow')({ data: { focus: true } });
+  listeners.get('BentoBookmarksViewHide')({ data: {} });
+  assert.equal(events.length, 0, 'nothing could be delivered');
+  assert.equal(dumped.length, 3, 'the detail failure, the show failure and the hide failure');
+  assert.match(dumped[1], /show event failed.*document gone\n$/);
 });
 
 test('the Library key toggles the Bookmarks view, and the Library stays on its command', () => {
