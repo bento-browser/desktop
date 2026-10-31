@@ -9,7 +9,7 @@
   padding: var(--space-s);
 }
 
-.muxui-dialog-content.bento-workspace-palette__dialog-content {
+.muxui-dialog__content.bento-workspace-palette__dialog-content {
   display: flex;
   min-height: 0;
   flex: 1 1 auto;
@@ -22,7 +22,7 @@
   flex: 1 1 auto;
 }
 
-.muxui-dialog-title.bento-workspace-palette__title {
+.muxui-dialog__title.bento-workspace-palette__title {
   margin: 0;
 }
 
@@ -97,7 +97,7 @@
   min-height: var(--bento-workspace-palette-icon-field-width);
 }
 
-.muxui-dialog-actions.bento-workspace-palette__footer {
+.muxui-dialog__actions.bento-workspace-palette__footer {
   display: flex;
   align-items: center;
   gap: var(--space-xs);

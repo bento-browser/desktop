@@ -1,4 +1,4 @@
-/* The single highlight of a palette list (useRowHighlight.ts). Mux's unlayered item rules set
+/* The single highlight of a palette list (useRowHighlight.ts). Mux's layered item rules set
  * the row fills, so the overrides here are unlayered with selectors scoped to the opted-in list. */
 
 .bento-row-highlight {
@@ -7,8 +7,9 @@
 }
 
 /* The slab: a pseudo-element of the scrolling list, so it scrolls with the rows. Its box is
- * written by the hook. Geometry only changes through transform and height, on the Mux
- * state pair, the speed of the sidebar's hover highlight; the first placement and a stage change are instant. */
+ * written by the hook. Geometry uses half the Mux state duration with its same spring easing
+ * so moves catch up quickly; colour and opacity keep the full pair. First placement and a
+ * stage change are instant. */
 .bento-row-highlight::before {
   content: '';
   position: absolute;
@@ -30,11 +31,11 @@
 
 .bento-row-highlight[data-highlight-motion]::before {
   transition:
-    transform var(--muxui-semantic-motion-state-transition-duration)
+    transform calc(var(--muxui-semantic-motion-state-transition-duration) / 2)
       var(--muxui-semantic-motion-state-transition-easing),
-    block-size var(--muxui-semantic-motion-state-transition-duration)
+    block-size calc(var(--muxui-semantic-motion-state-transition-duration) / 2)
       var(--muxui-semantic-motion-state-transition-easing),
-    inline-size var(--muxui-semantic-motion-state-transition-duration)
+    inline-size calc(var(--muxui-semantic-motion-state-transition-duration) / 2)
       var(--muxui-semantic-motion-state-transition-easing),
     background-color var(--muxui-semantic-motion-state-transition-duration)
       var(--muxui-semantic-motion-state-transition-easing),
@@ -42,7 +43,7 @@
       var(--muxui-semantic-motion-state-transition-easing);
 }
 
-.bento-row-highlight:has([data-pressed])::before {
+.bento-row-highlight:has([data-muxui-state-pressed])::before {
   background-color: var(--bento-palette-highlight-pressed-bg);
 }
 
@@ -59,8 +60,8 @@
 }
 
 .bento-row-highlight
-  [role='option']:is([data-focused], [data-hovered], [data-pressed], [data-selected]),
-.bento-row-highlight [role='option'][data-focus-visible] {
+  [role='option']:is([data-muxui-state-focused], [data-muxui-state-hovered], [data-muxui-state-pressed], [data-muxui-state-selected]),
+.bento-row-highlight [role='option'][data-muxui-state-focus-visible] {
   background-color: transparent;
   box-shadow: none;
 }

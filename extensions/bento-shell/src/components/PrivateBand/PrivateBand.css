@@ -36,7 +36,7 @@
     transition: background-color var(--muxui-semantic-motion-state-transition);
   }
 
-  .muxui-button.bento-private-band__button:hover:not([data-disabled]),
+  .muxui-button.bento-private-band__button:hover:not([data-muxui-state-disabled]),
   .muxui-button.bento-private-band__button[aria-expanded='true'] {
     background-color: color-mix(
       in srgb,
@@ -52,7 +52,7 @@
       inset 0 0 0 calc(var(--bento-focus-ring-width) * 2) var(--muxui-semantic-focus-ring);
   }
 
-  .bento-private-band__button .muxui-button-content {
+  .bento-private-band__button .muxui-button__label {
     display: flex;
     flex: 1 1 auto;
     align-items: center;

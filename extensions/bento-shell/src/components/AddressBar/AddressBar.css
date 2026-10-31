@@ -63,9 +63,9 @@ html[data-bento-address-bar='true'] #root {
 }
 
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
-  .muxui-command-palette__popup:has(.bento-address-bar__popup)[data-entering],
+  .muxui-command-palette__popup:has(.bento-address-bar__popup)[data-muxui-state-entering],
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
-  .muxui-command-palette__popup:has(.bento-address-bar__popup)[data-exiting] {
+  .muxui-command-palette__popup:has(.bento-address-bar__popup)[data-muxui-state-exiting] {
   opacity: 0;
   transform: translateX(-50%);
 }
@@ -132,9 +132,9 @@ html[data-bento-address-bar='true'] #root {
 }
 
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
-  .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-entering],
+  .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-muxui-state-entering],
 .muxui-command-palette__backdrop.bento-address-bar__backdrop
-  .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-exiting] {
+  .muxui-command-palette__popup:has(.bento-address-bar__popup--anchored)[data-muxui-state-exiting] {
   transform: none;
 }
 
@@ -280,7 +280,6 @@ html[data-bento-address-bar='true'] #root {
   .bento-address-bar__engine-trigger:not(
     :hover,
     :focus-visible,
-    [data-focus-visible],
     [data-muxui-state-focus-visible],
     [aria-expanded='true']
   ) {
@@ -399,7 +398,7 @@ html[data-bento-address-bar='true'] #root {
   visibility: hidden;
 }
 
-.muxui-command-palette__item:is([data-focused], [data-hovered], [data-pending])
+.muxui-command-palette__item:is([data-muxui-state-focused], [data-muxui-state-hovered], [data-muxui-state-pending])
   .bento-address-bar__reopen {
   visibility: visible;
 }

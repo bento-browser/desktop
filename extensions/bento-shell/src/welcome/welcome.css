@@ -6,7 +6,7 @@
   /* The block-end padding is room for the entry slide: a transformed box counts toward
    * scrollable overflow, so without it this scroller shows a scrollbar while the stage (and the
    * tiles) sit offset by the slide distance, then drops it when the slide ends. */
-  .bento-welcome > .muxui-dialog-content {
+  .bento-welcome > .muxui-dialog__content {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -116,7 +116,7 @@
     overflow-y: auto;
   }
 
-  .bento-welcome__options > .muxui-toggle-button-group-motion-indicator {
+  .bento-welcome__options > .muxui-toggle-button-group__motion-indicator {
     border-radius: var(--muxui-semantic-control-radius);
   }
 
@@ -134,7 +134,7 @@
     text-align: start;
   }
 
-  .bento-welcome__option[data-selected] {
+  .bento-welcome__option[data-muxui-state-selected] {
     outline-color: var(--muxui-semantic-border-emphasis);
   }
 
@@ -444,12 +444,12 @@
     background-color: transparent;
   }
 
-  .bento-welcome__swatch:hover:not([data-disabled], [data-selected]) {
+  .bento-welcome__swatch:hover:not([data-muxui-state-disabled], [data-muxui-state-selected]) {
     background-color: transparent;
     outline-color: var(--muxui-semantic-border-strong);
   }
 
-  .bento-welcome__swatch[data-selected] {
+  .bento-welcome__swatch[data-muxui-state-selected] {
     outline-color: var(--muxui-semantic-content-default);
   }
 
@@ -551,13 +551,13 @@
     text-align: start;
   }
 
-  .bento-welcome__source:hover:not([data-disabled]),
-  .bento-welcome__source[data-hovered]:not([data-disabled]) {
+  .bento-welcome__source:hover:not([data-muxui-state-disabled]),
+  .bento-welcome__source[data-muxui-state-hovered]:not([data-muxui-state-disabled]) {
     --muxui-button-border: var(--muxui-semantic-border-emphasis);
   }
 
   /* Leading logo or glyph, the name (and a sub-label), then the chevron. */
-  .bento-welcome__source > .muxui-button-content {
+  .bento-welcome__source > .muxui-button__label {
     display: grid;
     flex: 1;
     grid-template-columns: auto minmax(0, 1fr) auto;

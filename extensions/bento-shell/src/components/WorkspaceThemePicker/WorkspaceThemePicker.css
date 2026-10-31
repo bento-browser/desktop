@@ -11,7 +11,7 @@
 /* Button's label part wraps the swatch, name and chevron. It fills the trigger
  * as one centered row so the name grows and the chevron sits at the end, with
  * an inline (published Mux) or shrink-to-fit inline-flex (Mux main) wrapper. */
-.bento-workspace-theme-picker__trigger .muxui-button-content {
+.bento-workspace-theme-picker__trigger .muxui-button__label {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
@@ -77,14 +77,14 @@
 }
 
 .muxui-search-field.bento-workspace-theme-picker__search-field
-  .muxui-field-input:hover:not(:focus, [data-disabled], [data-invalid]),
+  .muxui-field-input:hover:not(:focus, [data-muxui-state-disabled], [data-muxui-state-invalid]),
 .muxui-search-field.bento-workspace-theme-picker__search-field .muxui-field-input:focus,
-.muxui-search-field.bento-workspace-theme-picker__search-field .muxui-field-input[data-focused],
-.muxui-search-field.bento-workspace-theme-picker__search-field .muxui-field-input[data-invalid],
+.muxui-search-field.bento-workspace-theme-picker__search-field .muxui-field-input[data-muxui-state-focused],
+.muxui-search-field.bento-workspace-theme-picker__search-field .muxui-field-input[data-muxui-state-invalid],
 .muxui-search-field.bento-workspace-theme-picker__search-field
-  .muxui-field-input[data-invalid]:focus,
+  .muxui-field-input[data-muxui-state-invalid]:focus,
 .muxui-search-field.bento-workspace-theme-picker__search-field
-  .muxui-field-input[data-invalid][data-focused] {
+  .muxui-field-input[data-muxui-state-invalid][data-muxui-state-focused] {
   border-color: transparent;
   box-shadow: none;
 }
@@ -134,17 +134,17 @@
   initial-value: transparent;
 }
 
-.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-hovered]:not(
-    [data-disabled],
-    [data-pending]
+.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-muxui-state-hovered]:not(
+    [data-muxui-state-disabled],
+    [data-muxui-state-pending]
   ) {
   --bento-card-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 3%, transparent);
   background-image: linear-gradient(var(--bento-card-tint), var(--bento-card-tint));
 }
 
-.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-pressed]:not(
-    [data-disabled],
-    [data-pending]
+.muxui-card--button.muxui-card--outlined.bento-workspace-theme-picker__option[data-muxui-state-pressed]:not(
+    [data-muxui-state-disabled],
+    [data-muxui-state-pending]
   ) {
   --bento-card-tint: color-mix(in srgb, var(--muxui-semantic-surface-strong) 8%, transparent);
   background-image: linear-gradient(var(--bento-card-tint), var(--bento-card-tint));

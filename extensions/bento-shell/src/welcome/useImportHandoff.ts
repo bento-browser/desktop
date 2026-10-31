@@ -106,7 +106,7 @@ export function useImportHandoff({
   // Out: the content fade ends, then READY; a handoff chrome never takes over is released.
   useEffect(() => {
     if (state !== 'out') return;
-    const content = document.querySelector('.bento-welcome > .muxui-dialog-content');
+    const content = document.querySelector('.bento-welcome > .muxui-dialog__content');
     const stopWaiting = content
       ? afterMotion(content, { properties: ['opacity'] }, () => {
           progress.current.faded = true;
