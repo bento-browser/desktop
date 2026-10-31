@@ -268,8 +268,8 @@
   // logs '[bento-compat] missing <id>'. The probe is passive: it reads
   // descriptors, never calls an accessor. A member anywhere on the prototype
   // chain is present; a lazy-accessor owner is deferred, and a module is imported
-  // only if Cu.isESModuleLoaded. It sits above the patch sites (they call
-  // bentoCompatNoteNative); window.BentoFirefoxCompat.check() re-runs it.
+  // only if Cu.isESModuleLoaded. Patch sites call bentoCompatNoteNative;
+  // window.BentoFirefoxCompat.check() re-runs the probe.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
     // the rest need only exist, accessors included. '' is the window.
@@ -310,7 +310,7 @@
       'browser', 'tabbrowser-tabbox', 'sidebar', 'sidebar-box', 'sidebar-splitter', 'navigator-toolbox',
       'nav-bar', 'nav-bar-customization-target', 'urlbar', 'identity-box', 'identity-icon',
       'identity-icon-label', 'PersonalToolbar', 'mainPopupSet', 'contentAreaContextMenu',
-      'placesContext',
+      'placesContext', 'manBookmarkKb',
     ],
     // module URL: the export it must have
     modules: {
@@ -1465,6 +1465,10 @@
   // title handler.
   const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
 
+  // Set on the chrome root while the Bookmarks view is shown. bento-shell-mount.css hides the Bento
+  // chrome under it (see showBookmarksView).
+  const BOOKMARKS_VIEW_ATTR = 'bento-bookmarks-view';
+
   // One row per overlay, in prewarm order. `eager` rows start at window startup
   // (overlays.startEager()), `prewarm` rows at idle after the veil lifts, the rest
   // on first use. `created` rows have a host from ensureOverlayHost and get their
@@ -1494,6 +1498,8 @@
       suspend: () => {
         // Reveal ids and timers belong to the old page; the open callback keeps its payload.
         if (id === 'addrbar') clearPendingAddrbarReveal();
+        // The chrome comes back while the document reloads; the replayed open hides it again.
+        if (id === 'bookmarks') document.documentElement.removeAttribute(BOOKMARKS_VIEW_ATTR);
         const host = document.getElementById('bento-' + id + '-host');
         if (host) {
           host.style.opacity = '0';
@@ -1536,6 +1542,7 @@
         created: true,
         navigate: setBentoSettingsPaletteSrc,
       }),
+      overlayEntry({ id: 'bookmarks', created: true, navigate: setBentoBookmarksSrc }),
       overlayEntry({ id: 'welcome', created: true, navigate: setBentoWelcomeSrc }),
       // Chrome-hosted page with no handshake; showEmbeddedBrowserImportFromWelcome
       // sets its src each time it opens.
@@ -1833,6 +1840,10 @@
 
   function setBentoSettingsPaletteSrc() {
     setFrameSrc('bento-settings-palette-frame', '/dist/settings-palette.html');
+  }
+
+  function setBentoBookmarksSrc() {
+    setFrameSrc('bento-bookmarks-frame', '/dist/bookmarks.html');
   }
 
   function setBentoAddrbarSrc() {
@@ -2159,6 +2170,15 @@
   ensureOverlayHost({
     hostId: 'bento-settings-palette-host',
     zIndex: 99997,
+  });
+
+  // The Bookmarks view: a full-window view, not a modal. Its host is the lowest overlay of the
+  // stack on purpose, so the palettes, the menu, the address bar, confirm and the tooltip still
+  // open above it. It fills #browser; the toolbar strip above it stays Firefox's own (the window
+  // controls), see the :root[bento-bookmarks-view] block in bento-shell-mount.css.
+  ensureOverlayHost({
+    hostId: 'bento-bookmarks-host',
+    zIndex: 99000,
   });
 
   ensureOverlayHost({
@@ -2511,6 +2531,129 @@
       });
     }
     window.focus();
+  }
+
+  // ─── Bookmarks view ───────────────────────────────────────────────────
+  // A full-window view (extensions/bento-shell/src/bookmarks), not a modal: no toolbar scrim. While
+  // it is shown the root carries bento-bookmarks-view and bento-shell-mount.css hides the Bento
+  // chrome beneath the host, leaving the toolbar strip with Firefox's own window controls. Regular
+  // windows only: a private window refuses to open it (and keeps the stock Library key, see
+  // retargetLibraryKeyToBookmarksView). Other overlays open above it and do not close it.
+  function isBookmarksViewVisible(host) {
+    return host.style.display !== 'none';
+  }
+
+  // Open from the moment its reveal sets the root attribute until its hide removes it, and while an
+  // open waits for the document. (The host stays visible through the fade-out, so a reopen or a
+  // toggle during it must not count it as open.)
+  function isBookmarksViewOpen() {
+    return (
+      document.documentElement.hasAttribute(BOOKMARKS_VIEW_ATTR) ||
+      overlays.hasPendingOpen('bookmarks')
+    );
+  }
+
+  // What had the focus, and which tab was selected, when the view opened; the close gives the
+  // focus back. A frame of the overlay table is not a place to return to: a command palette that
+  // opened the view is closed by it.
+  let bookmarksViewReturnFocus = null;
+  let bookmarksViewSelectedBrowser = null;
+
+  function showBookmarksView() {
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
+    const host = document.getElementById('bento-bookmarks-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showBookmarksView: host missing');
+      return;
+    }
+    // A request while the view is already open (the command palette over it) shows it again but
+    // keeps what the first request recorded.
+    if (!isBookmarksViewOpen()) {
+      const active = document.activeElement;
+      const returnable =
+        !!active &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        overlays.idForFrame(active.id) === null;
+      bookmarksViewReturnFocus = returnable ? active : null;
+      bookmarksViewSelectedBrowser = window.gBrowser?.selectedBrowser ?? null;
+    }
+    dismissPalette();
+    dismissMergePalette();
+    dismissWorkspacePalette();
+    dismissSettingsPalette();
+    openOverlay('bookmarks', () => {
+      cancelMotion(host, 'hide');
+      host.style.display = 'flex';
+      host.removeAttribute('hidden');
+      void host.getBoundingClientRect();
+      host.style.opacity = '1';
+      // The chrome beneath hides when the host's fade-in ends (a visibility transition in the
+      // stylesheet), so the view cross-fades over the browser instead of over a blank window.
+      document.documentElement.setAttribute(BOOKMARKS_VIEW_ATTR, 'true');
+      // The show goes out with the reveal, to a document that is listening.
+      dispatchBookmarksViewShow();
+      focusOverlayFrame(document.getElementById('bento-bookmarks-frame'));
+    });
+  }
+
+  function hideBookmarksView() {
+    overlays.cancel('bookmarks');
+    const root = document.documentElement;
+    // An open that was cancelled before its reveal never set the attribute and moved no focus.
+    const wasShown = root.hasAttribute(BOOKMARKS_VIEW_ATTR);
+    root.removeAttribute(BOOKMARKS_VIEW_ATTR);
+    const host = document.getElementById('bento-bookmarks-host');
+    if (!host) return;
+    host.style.opacity = '0';
+    hideOverlayHostAfterFade(host);
+    // The document stays loaded, so it is told: an open inline editor or search is dropped now.
+    dispatchBookmarksViewHide();
+    if (wasShown) restoreBookmarksViewFocus();
+  }
+
+  function toggleBookmarksView() {
+    if (isBookmarksViewOpen()) hideBookmarksView();
+    else showBookmarksView();
+  }
+
+  // Opening a tab from the view selects it, and that page gets the focus; otherwise the element
+  // that had it before (the sidebar, usually) gets it back.
+  function restoreBookmarksViewFocus() {
+    const target = bookmarksViewReturnFocus;
+    const opened = bookmarksViewSelectedBrowser;
+    bookmarksViewReturnFocus = null;
+    bookmarksViewSelectedBrowser = null;
+    try {
+      const selected = window.gBrowser?.selectedBrowser;
+      if (target?.isConnected && selected === opened) target.focus({ preventScroll: true });
+      else selected?.focus({ preventScroll: true });
+    } catch (err) {
+      console.warn('[bento-shell-mount] bookmarks view focus restore failed:', err);
+    }
+  }
+
+  // Cmd/Ctrl+Shift+O. Firefox's "Show All Bookmarks" key (Library) toggles the Bookmarks view. The
+  // key loses its command attribute, so the key raises 'command' on itself (as the mainKeyset keys
+  // without a command do); the menus and toolbar buttons keep Browser:ShowAllBookmarks, so the
+  // Library stays reachable. The key is Firefox's, so its letter follows the locale. A private
+  // window keeps the stock key because the view refuses to open there.
+  function retargetLibraryKeyToBookmarksView() {
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
+    const key = document.getElementById('manBookmarkKb');
+    if (!key) {
+      if (document.readyState !== 'complete') {
+        const evt = document.readyState === 'loading' ? 'DOMContentLoaded' : 'load';
+        window.addEventListener(evt, retargetLibraryKeyToBookmarksView, { once: true });
+      } else {
+        console.warn('[bento-shell-mount] Library key manBookmarkKb missing; Cmd+Shift+O unchanged');
+      }
+      return;
+    }
+    if (key.getAttribute('data-bento-library-retargeted') === '1') return;
+    key.setAttribute('data-bento-library-retargeted', '1');
+    key.removeAttribute('command');
+    key.addEventListener('command', toggleBookmarksView);
   }
 
   let mergePaletteOpenSeq = 0;
@@ -3007,6 +3150,8 @@
   // Whether the expanded sidebar's address row can be on screen to open the palette over:
   // not in the rail, hidden (even revealed on edge hover), or mid-push.
   function canAnchorAddrbarToSidebarRow() {
+    // The sidebar is hidden under the Bookmarks view; the address bar opens centered over it.
+    if (document.documentElement.hasAttribute(BOOKMARKS_VIEW_ATTR)) return false;
     const host = document.getElementById('bento-shell-host');
     if (!host || isSidebarCollapsedTarget(host) || isSidebarHiddenTarget(host)) return false;
     return !isBentoSidebarPushing();
@@ -4070,6 +4215,9 @@
   // Settings and show the command palette again, which still holds its query.
   const SETTINGS_BACK_TO_PALETTE_PREFIX = 'BENTO_SETTINGS_BACK_TO_PALETTE';
   const FIREFOX_SEARCH_SETTINGS_OPEN_PREFIX = 'BENTO_OPEN_FIREFOX_SEARCH_SETTINGS';
+  // The Bookmarks view: opened by the sidebar and the command palette, closed by its own document.
+  const BOOKMARKS_OPEN_PREFIX = 'BENTO_OPEN_BOOKMARKS';
+  const BOOKMARKS_CLOSE_PREFIX = 'BENTO_CLOSE_BOOKMARKS';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
   const DOWNLOADS_ANCHOR_PREFIX = 'BENTO_DOWNLOADS_ANCHOR:';
@@ -9696,6 +9844,24 @@
     'data:application/javascript;charset=utf-8,' +
     encodeURIComponent(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC);
 
+  // The Bookmarks view document stays loaded while hidden, so chrome tells it when it is shown and
+  // when it is hidden with DOM events, the same way (a private window never shows it).
+  const BOOKMARKS_VIEW_FRAME_SCRIPT_SRC =
+    '"use strict";' +
+    'addMessageListener("BentoBookmarksViewShow", function() {' +
+    '  try {' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-show"));' +
+    '  } catch (e) {}' +
+    '});' +
+    'addMessageListener("BentoBookmarksViewHide", function() {' +
+    '  try {' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-hide"));' +
+    '  } catch (e) {}' +
+    '});';
+  const BOOKMARKS_VIEW_FRAME_SCRIPT_URL =
+    'data:application/javascript;charset=utf-8,' +
+    encodeURIComponent(BOOKMARKS_VIEW_FRAME_SCRIPT_SRC);
+
   const PANEL_TRAILER_FOCUS_FRAME_SCRIPT_SRC =
     '"use strict";' +
     'addMessageListener("BentoPanelTrailerCycleFocus", function(msg) {' +
@@ -9942,6 +10108,53 @@
       return false;
     }
     return sendSettingsPaletteMessage('BentoSettingsPaletteHide', {});
+  }
+
+  // Same ordering rule as the Settings palette's lifecycle: every Show or Hide takes the next
+  // generation, and a retry of an older one is dropped.
+  let bookmarksLifecycleSeq = 0;
+
+  function sendBookmarksViewMessage(name, attempt = 0, generation = (bookmarksLifecycleSeq += 1)) {
+    if (generation !== bookmarksLifecycleSeq) return false;
+    const frame = document.getElementById('bento-bookmarks-frame');
+    if (!frame) return false;
+    const retry = () =>
+      setTimeout(() => sendBookmarksViewMessage(name, attempt + 1, generation), 100);
+    try {
+      const mm = frame.messageManager;
+      if (!mm || typeof mm.sendAsyncMessage !== 'function') {
+        if (attempt < 10) retry();
+        return false;
+      }
+      if (!frame._bentoBookmarksViewScriptLoaded && typeof mm.loadFrameScript === 'function') {
+        mm.loadFrameScript(BOOKMARKS_VIEW_FRAME_SCRIPT_URL, true);
+        frame._bentoBookmarksViewScriptLoaded = true;
+      }
+      mm.sendAsyncMessage(name, {});
+      return true;
+    } catch (err) {
+      if (attempt < 10) {
+        retry();
+      } else {
+        console.warn('[bento-shell-mount] bookmarks view ' + name + ' dispatch failed:', err);
+      }
+      return false;
+    }
+  }
+
+  function dispatchBookmarksViewShow() {
+    return sendBookmarksViewMessage('BentoBookmarksViewShow');
+  }
+
+  // A document that was never shown has nothing to drop, so that hide is not sent (it would load
+  // the frame script for nothing). It still ends a Show that is waiting for the frame.
+  function dispatchBookmarksViewHide() {
+    const frame = document.getElementById('bento-bookmarks-frame');
+    if (!frame || !frame._bentoBookmarksViewScriptLoaded) {
+      bookmarksLifecycleSeq += 1;
+      return false;
+    }
+    return sendBookmarksViewMessage('BentoBookmarksViewHide');
   }
 
   function setPanelTrailerAddFocus(focused) {
@@ -17710,7 +17923,8 @@
   function attachPaletteCloseListener() {
     // Palette: CLOSE hides it; the SETTINGS prefixes open the Settings palette (the privacy one on
     // the protection level list, a command palette result at its setting), which dismisses it;
-    // OPEN_MERGE_PALETTE opens the merge palette, which dismisses it too.
+    // OPEN_MERGE_PALETTE opens the merge palette, which dismisses it too; OPEN_BOOKMARKS opens the
+    // Bookmarks view, which dismisses it as well.
     const handlePaletteFrameTitle = (title) => {
       if (title.startsWith(PALETTE_CLOSE_PREFIX)) hidePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
@@ -17718,6 +17932,7 @@
         showSettingsPalette('privacy:level', 'palette');
       } else if (title.startsWith(SETTINGS_OPEN_PREFIX)) showSettingsPalette(undefined, 'palette');
       else if (title.startsWith(SETTINGS_TARGET_OPEN_PREFIX)) handleSettingsTargetTitle(title);
+      else if (title.startsWith(BOOKMARKS_OPEN_PREFIX)) showBookmarksView();
     };
 
     // Menu overlay: SELECT routes the chosen itemId back to the chrome
@@ -17756,6 +17971,7 @@
       if (title.startsWith(PALETTE_OPEN_PREFIX)) showPalette();
       else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
+      else if (title.startsWith(BOOKMARKS_OPEN_PREFIX)) showBookmarksView();
       else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
       else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
       else if (title.startsWith(DOWNLOADS_ANCHOR_PREFIX)) handleDownloadsAnchorTitle(title);
@@ -17805,6 +18021,12 @@
             hideSettingsPalette();
             openFirefoxSearchSettings();
           }
+        },
+      ],
+      [
+        'bento-bookmarks-frame',
+        (title) => {
+          if (title.startsWith(BOOKMARKS_CLOSE_PREFIX)) hideBookmarksView();
         },
       ],
       [
@@ -17979,7 +18201,7 @@
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): menu > confirm > edit-workspace >
         // workspace palette / settings palette > welcome > workspace-switcher > address bar >
-        // merge palette > palette. An overlay whose open still waits for its
+        // merge palette > palette > bookmarks view. An overlay whose open still waits for its
         // document counts as open: Esc cancels that open instead of letting it
         // appear afterwards. Welcome is mandatory onboarding: consume Esc there
         // without hiding it. Other overlays keep their normal Esc dismissal.
@@ -18044,7 +18266,17 @@
           return consume(hideMergePalette);
         }
         if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) {
-          consume(hidePalette);
+          return consume(hidePalette);
+        }
+        // Like Settings, the Bookmarks view handles its own Esc while its frame has focus (it
+        // leaves an inline editor before it closes, and sends BENTO_CLOSE_BOOKMARKS itself), and
+        // a menu above it handles its own. Chrome takes Esc for an open still waiting for its
+        // document, and for focus left elsewhere in the window.
+        if (isOverlayOpen('bento-bookmarks-host', isBookmarksViewVisible, 'bookmarks')) {
+          const targetId = e.target?.id;
+          const ownEsc = targetId === 'bento-bookmarks-frame' || targetId === 'bento-menu-frame';
+          if (ownEsc && !overlays.hasPendingOpen('bookmarks')) return;
+          return consume(hideBookmarksView);
         }
       },
       true,
@@ -18833,6 +19065,7 @@
           'bento-workspace-palette-frame',
           'bento-merge-palette-frame',
           'bento-settings-palette-frame',
+          'bento-bookmarks-frame',
           'bento-addrbar-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
@@ -18862,6 +19095,7 @@
             else if (id === 'bento-workspace-palette-frame') setBentoWorkspacePaletteSrc();
             else if (id === 'bento-merge-palette-frame') setBentoMergePaletteSrc();
             else if (id === 'bento-settings-palette-frame') setBentoSettingsPaletteSrc();
+            else if (id === 'bento-bookmarks-frame') setBentoBookmarksSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
@@ -19290,6 +19524,7 @@
   configureSidePanelOnce();
   attachReloadListener();
   attachAddrbarKeybinding();
+  retargetLibraryKeyToBookmarksView();
   attachOutsideClickDismissListener();
   attachTopUrlbarModalListener();
   attachSidebarAddressSnapshotListeners();

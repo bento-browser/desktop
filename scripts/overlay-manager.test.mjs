@@ -591,6 +591,33 @@ test('the table lists the strategies the docs promise', () => {
   assert.ok(rows.every((row) => !(row.eager && row.prewarm)));
 });
 
+test('the Bookmarks view is created on first use, and its host is the lowest of the stack', () => {
+  const row = /overlayEntry\(\{\s*id: 'bookmarks',([\s\S]*?)\}\)/.exec(MOUNT);
+  assert.ok(row, 'no bookmarks row in the overlay table');
+  assert.match(row[1], /created: true/);
+  assert.doesNotMatch(row[1], /eager: true|prewarm: true/, 'a view nobody asked for is not loaded');
+
+  // Palettes, the menu, the address bar, confirm and the tooltip open over the view, so every
+  // other host (the mount's ensureOverlayHost calls and the hosts the patch declares) is higher.
+  const patch = fs.readFileSync(
+    path.join(ROOT, 'patches/chrome-layout/01-bento-shell-mount.patch'),
+    'utf8',
+  );
+  const hostZ = new Map();
+  for (const match of MOUNT.matchAll(/ensureOverlayHost\(\{\s*hostId: '([a-z-]+)',\s*zIndex: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  for (const match of patch.matchAll(/id="(bento-[a-z-]+-host)"[\s\S]*?z-index: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  const bookmarks = hostZ.get('bento-bookmarks-host');
+  assert.equal(typeof bookmarks, 'number');
+  assert.ok(hostZ.size >= 8, 'the other hosts were not found');
+  for (const [host, z] of hostZ) {
+    if (host !== 'bento-bookmarks-host') assert.ok(z > bookmarks, `${host} must stack above the view`);
+  }
+});
+
 test('presentation acknowledgement gates reveal and cancellation invalidates a stale show', async () => {
   const queries = [];
   const world = makeWorld([{ id: 'palette', setPresented: (presented, generation) =>

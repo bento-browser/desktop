@@ -113,6 +113,8 @@ const WORKSPACE_BOUND_EVENTS = new Set<Event['type']>([
   'pinnedPanels/changed',
   'tabFolders/snapshot',
   'tabFolders/changed',
+  // The Bookmarks manager is for regular windows only.
+  'bookmarks/snapshot',
 ]);
 
 /** Private-window documents that said hello, by hub document id. */

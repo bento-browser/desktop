@@ -34,6 +34,18 @@ const SETTINGS_FRAME_SCRIPT_SRC = (() => {
   return vm.runInNewContext(expression);
 })();
 
+/** The Bookmarks view's frame script source, as the string the mount script builds. */
+const BOOKMARKS_FRAME_SCRIPT_SRC = (() => {
+  const start = MOUNT.indexOf('const BOOKMARKS_VIEW_FRAME_SCRIPT_SRC =');
+  const end = MOUNT.indexOf('const BOOKMARKS_VIEW_FRAME_SCRIPT_URL', start);
+  assert.ok(start !== -1 && end !== -1, 'the Bookmarks view frame script source is missing');
+  const expression = MOUNT.slice(start, end).replace(
+    'const BOOKMARKS_VIEW_FRAME_SCRIPT_SRC =',
+    '',
+  );
+  return vm.runInNewContext(expression);
+})();
+
 // ─── Extraction ──────────────────────────────────────────────────────────────
 
 /** Index just past the bracket that closes the one opened at `open`. */
@@ -131,6 +143,13 @@ const FUNCTIONS = [
   'showSettingsPalette',
   'hideSettingsPalette',
   'handleSettingsTargetTitle',
+  'isBookmarksViewVisible',
+  'isBookmarksViewOpen',
+  'showBookmarksView',
+  'hideBookmarksView',
+  'toggleBookmarksView',
+  'restoreBookmarksViewFocus',
+  'retargetLibraryKeyToBookmarksView',
   'setAddrbarOverSidebarRow',
   'syncAddrbarOverSidebarRow',
   'handleSidebarAddressReadyTitle',
@@ -175,6 +194,10 @@ const FUNCTIONS = [
   'sendSettingsPaletteMessage',
   'dispatchSettingsPaletteShow',
   'dispatchSettingsPaletteHide',
+  'sendBookmarksViewMessage',
+  'dispatchBookmarksViewShow',
+  'dispatchBookmarksViewHide',
+  'attachPaletteCloseListener',
   'attachPaletteEscListener',
   'attachOutsideClickDismissListener',
 ];
@@ -185,6 +208,19 @@ const CONSTANTS = [
   'motionWaits',
   'SETTINGS_TARGET_OPEN_PREFIX',
   'SETTINGS_TARGET_ID_PATTERN',
+  'SETTINGS_OPEN_PREFIX',
+  'SETTINGS_PRIVACY_OPEN_PREFIX',
+  'PALETTE_OPEN_PREFIX',
+  'PALETTE_CLOSE_PREFIX',
+  'WORKSPACE_PALETTE_OPEN_PREFIX',
+  'MERGE_PALETTE_OPEN_PREFIX',
+  'MERGE_PALETTE_CLOSE_PREFIX',
+  'BOOKMARKS_OPEN_PREFIX',
+  'BOOKMARKS_CLOSE_PREFIX',
+  'BOOKMARKS_VIEW_ATTR',
+  'OVERLAY_READY_PREFIX',
+  'ADDON_ID',
+  'BENTO_EMBEDDED_IMPORT_URL',
   'ADDRBAR_POPUP_WIDTH_PX',
   'ADDRBAR_POPUP_HEIGHT_PX',
   'ADDRBAR_FRAME_GUTTER_TOP_PX',
@@ -218,6 +254,11 @@ const EXPORTED = [
   'showSettingsPalette',
   'hideSettingsPalette',
   'handleSettingsTargetTitle',
+  'showBookmarksView',
+  'hideBookmarksView',
+  'toggleBookmarksView',
+  'retargetLibraryKeyToBookmarksView',
+  'attachPaletteCloseListener',
   'showAddrbar',
   'requestAddrbarOpen',
   'takeAddrbarOpenRequest',
@@ -275,6 +316,10 @@ class FakeElement {
     return this.attrs.has(name);
   }
 
+  getAttribute(name) {
+    return this.attrs.get(name) ?? null;
+  }
+
   appendChild(child) {
     if (child.id) this.registry.set(child.id, child);
     return child;
@@ -316,6 +361,7 @@ const HOSTS = {
   addrbar: {},
   'workspace-palette': {},
   'settings-palette': {},
+  bookmarks: {},
   'edit-workspace': {},
   welcome: {},
   'embedded-import': {},
@@ -395,10 +441,17 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
   registry.set(sidebarHost.id, sidebarHost);
   const shellMessageManager = shellFrame.messageManager;
 
+  const documentElement = new FakeElement(registry, 'html', sent);
   const document = {
+    documentElement,
+    body: new FakeElement(registry, 'body', sent),
+    readyState: 'complete',
+    activeElement: null,
     getElementById: (id) => registry.get(id) ?? null,
     createXULElement: (tag) => new FakeElement(registry, tag, sent),
   };
+  // The tab that is selected: opening a tab from a view selects another one.
+  let selectedBrowser = new FakeElement(registry, 'browser', sent);
 
   function setTimeout(callback, ms = 0) {
     const id = nextTimer++;
@@ -413,6 +466,11 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     setTimeout,
     clearTimeout,
     addEventListener: (type, handler) => listeners.push({ type, handler }),
+    gBrowser: {
+      get selectedBrowser() {
+        return selectedBrowser;
+      },
+    },
   };
 
   const navigate = (name) => () => events.navigations.push(name);
@@ -436,6 +494,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     setBentoWorkspacePaletteSrc: navigate('workspace-palette'),
     setBentoMergePaletteSrc: navigate('merge-palette'),
     setBentoSettingsPaletteSrc: navigate('settings-palette'),
+    setBentoBookmarksSrc: navigate('bookmarks'),
     setBentoAddrbarSrc: navigate('addrbar'),
     setBentoConfirmSrc: navigate('confirm'),
     setBentoEditWorkspaceSrc: navigate('edit-workspace'),
@@ -449,6 +508,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
       return presentationQuery ? presentationQuery(frameId, presented, generation) : true;
     },
     focusSelectedMainAfterPanelRemoval: () => { events.focusFallback += 1; },
+    // The title listener checks that a frame shows a page of the bento-shell add-on.
+    WebExtensionPolicy: { getByID: () => ({ mozExtensionHostname: 'bento-host' }) },
     // showMergePalette hides the rail merge card's tooltip; the tooltip is not under test here.
     hidePanelNavigatorTooltip: () => {},
     showOverlayToolbarScrim: (owner) => {
@@ -487,12 +548,16 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     ADDRBAR_OPEN_FRAME_SCRIPT_URL: 'addrbar-open',
     MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT_URL: 'merge-lifecycle',
     SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_URL: 'settings-show',
+    BOOKMARKS_VIEW_FRAME_SCRIPT_URL: 'bookmarks-view',
   };
 
   const script = `"use strict";
     ${CONSTANTS.map(extractConst).join('\n')}
     let mergePaletteOpenSeq = 0;
     let settingsLifecycleSeq = 0;
+    let bookmarksLifecycleSeq = 0;
+    let bookmarksViewReturnFocus = null;
+    let bookmarksViewSelectedBrowser = null;
     let addrbarOpenSeq = 0;
     let pendingAddrbarReveal = null;
     let pendingAddrbarOpenRequest = null;
@@ -515,6 +580,33 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     sent,
     registry,
     setNativeFocus: (frame) => { document.activeElement = frame; },
+    get activeElement() { return document.activeElement; },
+    documentElement,
+    /** The tab the window shows: a view that opens a tab leaves another one selected. */
+    selectBrowser: (browser) => { selectedBrowser = browser; },
+    get selectedBrowser() { return selectedBrowser; },
+    /** Firefox's Library key, as browser-sets.inc.xhtml declares it. */
+    addLibraryKey: () => {
+      const key = new FakeElement(registry, 'key', sent);
+      key.id = 'manBookmarkKb';
+      key.setAttribute('command', 'Browser:ShowAllBookmarks');
+      registry.set(key.id, key);
+      return key;
+    },
+    /**
+     * A title written by the document in `frameId`, as the parent process reports it. The real
+     * listener of attachPaletteCloseListener handles it (installed on first use).
+     */
+    titleChanged(frameId, title) {
+      if (!listeners.some((entry) => entry.type === 'pagetitlechanged')) {
+        api.attachPaletteCloseListener();
+      }
+      const frame = registry.get(frameId);
+      frame.currentURI = { schemeIs: (scheme) => scheme === 'moz-extension', host: 'bento-host' };
+      frame.contentTitle = title;
+      const { handler } = listeners.findLast((entry) => entry.type === 'pagetitlechanged');
+      handler({ target: frame });
+    },
     timerCallback: (id) => timers.get(id)?.callback,
     /** What chrome sent the sidebar row over the address channel. */
     get sidebarMessages() {
@@ -587,6 +679,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
         .filter((data) => data.type === 'open'),
     settingsShows: () => messages('BentoSettingsPaletteShow').map((message) => message.data),
     settingsHides: () => messages('BentoSettingsPaletteHide').map((message) => message.data),
+    bookmarksShows: () => messages('BentoBookmarksViewShow'),
+    bookmarksHides: () => messages('BentoBookmarksViewHide'),
     shellActions: () => messages('BentoShellAction').map((message) => message.data),
     hubPosts: () => plain(hubPosts.map(({ message }) => message)),
     menuOpens: () =>
@@ -1653,6 +1747,388 @@ test('the address bar does not take the focus from a Settings palette waiting to
 
   assert.equal(world.addrbarOpens().length, 1);
   assert.equal(world.addrbarOpens()[0].suppressFocus, true);
+});
+
+// ─── Bookmarks view ─────────────────────────────────────────────────────────
+
+const BOOKMARKS_ATTR = 'bento-bookmarks-view';
+const hasBookmarksAttr = (world) => world.documentElement.hasAttribute(BOOKMARKS_ATTR);
+
+/** A window with a Bookmarks view whose document has announced itself. */
+function bookmarksWorld(options) {
+  const world = warmWorld(options);
+  world.ready('bookmarks');
+  return world;
+}
+
+test('a cold Bookmarks view open waits for its document, then reveals, hides the chrome and sends the show once', () => {
+  const world = makeWorld();
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), true);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false, 'the chrome stays until the view is revealed');
+  assert.deepEqual(world.bookmarksShows(), [], 'nothing is sent to a document that is not listening');
+
+  world.ready('bookmarks');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(world.host('bookmarks').style.opacity, '1');
+  assert.equal(world.documentElement.getAttribute(BOOKMARKS_ATTR), 'true');
+  assert.equal(world.bookmarksShows().length, 1);
+  assert.deepEqual([...world.events.scrim], [], 'a view, not a modal: no toolbar scrim');
+  assert.deepEqual(world.events.navigations, ['bookmarks']);
+  world.advance(1);
+  assert.equal(world.frame('bookmarks').focusCount, 1, 'the document gets the focus');
+});
+
+test('the Bookmarks view host is the lowest overlay, so the others open above it', () => {
+  assert.match(MOUNT, /ensureOverlayHost\(\{\s*hostId: 'bento-bookmarks-host',\s*zIndex: 99000,/);
+});
+
+test('the sidebar and the command palette open the Bookmarks view by title, and its document closes it', () => {
+  const world = bookmarksWorld();
+
+  world.titleChanged('bento-shell-frame', 'BENTO_OPEN_BOOKMARKS_1792650000000');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+
+  world.titleChanged('bento-bookmarks-frame', 'BENTO_CLOSE_BOOKMARKS_1792650000001');
+  assert.equal(hasBookmarksAttr(world), false, 'the chrome comes back at once, under the fade');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), false);
+
+  world.titleChanged('bento-palette-frame', 'BENTO_OPEN_BOOKMARKS_1792650000002');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('only the sidebar, the command palette and the view itself speak for the Bookmarks view', () => {
+  const world = bookmarksWorld();
+  // The merge palette frame's handler knows its own close title only.
+  world.titleChanged('bento-merge-palette-frame', 'BENTO_OPEN_BOOKMARKS_1');
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+});
+
+test('a private window refuses the Bookmarks view and keeps the stock Library key', () => {
+  const world = makeWorld({ privateWindow: true });
+  const key = world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  assert.equal(key.getAttribute('command'), 'Browser:ShowAllBookmarks');
+  assert.equal(key.listenerCount(), 0);
+
+  world.showBookmarksView();
+  world.toggleBookmarksView();
+  world.titleChanged('bento-shell-frame', 'BENTO_OPEN_BOOKMARKS_1');
+  assert.equal(world.overlays.hasStarted('bookmarks'), false, 'no document is created');
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  assert.deepEqual(world.events.navigations, []);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('opening the Bookmarks view dismisses the palettes, which still open above it afterwards', () => {
+  const world = warmWorld();
+  for (const id of ['bookmarks', 'workspace-palette', 'merge-palette', 'settings-palette']) {
+    world.ready(id);
+  }
+  const palettes = [
+    ['palette', (w) => w.showPalette()],
+    ['workspace-palette', (w) => w.showWorkspacePalette()],
+    ['merge-palette', (w) => w.showMergePalette()],
+    ['settings-palette', (w) => w.showSettingsPalette()],
+  ];
+  for (const [id, open] of palettes) {
+    open(world);
+    assert.equal(world.isShown(id), true);
+    world.showBookmarksView();
+    world.advance(1000);
+    assert.equal(world.isShown(id), false, `the view closes the ${id}`);
+    assert.equal(world.isShown('bookmarks'), true);
+
+    open(world);
+    world.advance(1000);
+    assert.equal(world.isShown(id), true, `the ${id} opens over the view`);
+    assert.equal(world.isShown('bookmarks'), true, `and does not close it`);
+    assert.equal(hasBookmarksAttr(world), true);
+    world.hideBookmarksView();
+    world.advance(1000);
+  }
+});
+
+test('Esc in the Bookmarks frame is left to the document, which closes itself', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  assert.equal(world.pressEscape('bento-bookmarks-frame'), false, 'the document decides');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+  assert.deepEqual(world.bookmarksHides(), []);
+
+  // With the focus somewhere else in the window, chrome closes the view.
+  assert.equal(world.pressEscape('bento-shell-frame'), true);
+  assert.equal(hasBookmarksAttr(world), false);
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(world.pressEscape('bento-shell-frame'), false, 'nothing left to close');
+});
+
+test('Esc in a delivered menu above the Bookmarks view is left to the menu', () => {
+  const world = bookmarksWorld();
+  world.ready('menu');
+  world.showBookmarksView();
+  world.showChromeMenu({ ...MENU });
+  assert.equal(world.isShown('menu'), true);
+
+  assert.equal(world.pressEscape('bento-menu-frame'), false, 'the menu page handles its own Esc');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('Esc still cancels a Bookmarks view open that waits for its document', () => {
+  const world = makeWorld();
+  world.showBookmarksView();
+  assert.equal(world.pressEscape('bento-bookmarks-frame'), true);
+  world.ready('bookmarks');
+  world.advance(10_000);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.bookmarksShows(), []);
+});
+
+test('an overlay over the Bookmarks view takes Esc first, and the view stays', () => {
+  const world = bookmarksWorld();
+  world.ready('palette');
+  world.showBookmarksView();
+  world.showPalette();
+  assert.equal(world.pressEscape('bento-palette-frame'), true);
+  world.advance(1000);
+  assert.equal(world.isShown('palette'), false);
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('closing the Bookmarks view tells its document and gives the focus back', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.advance(1);
+  world.setNativeFocus(world.frame('bookmarks'));
+
+  world.hideBookmarksView();
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(world.bookmarksHides().length, 1, 'the document drops an open editor or search');
+  assert.equal(sidebar.focusCount, 1, 'the element that had the focus gets it back');
+  assert.equal(world.selectedBrowser.focusCount, 0);
+
+  // A second hide (the title after Esc) neither re-sends nor moves the focus again.
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 1);
+});
+
+test('a view opened from the command palette returns to the page, not to the closed palette', () => {
+  const world = bookmarksWorld();
+  world.ready('palette');
+  world.showPalette();
+  world.setNativeFocus(world.frame('palette'));
+  world.titleChanged('bento-palette-frame', 'BENTO_OPEN_BOOKMARKS_1');
+  world.advance(1);
+  world.setNativeFocus(world.frame('bookmarks'));
+  const page = world.selectedBrowser;
+
+  world.hideBookmarksView();
+  assert.equal(world.frame('palette').focusCount, 0);
+  assert.equal(page.focusCount, 1);
+});
+
+test('a second request while the view is open keeps the focus recorded by the first', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.setNativeFocus(world.frame('bookmarks'));
+  world.showBookmarksView();
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 1);
+});
+
+test('a reopen during the fade-out records the focus afresh', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 1);
+
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 2, 'the second close returns to the sidebar, not the page');
+  assert.equal(world.selectedBrowser.focusCount, 0);
+});
+
+test('opening a tab from the view leaves the focus on that tab', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  const openedTab = { focusCount: 0, isConnected: true, focus() { this.focusCount += 1; } };
+  world.selectBrowser(openedTab);
+
+  world.hideBookmarksView();
+  assert.equal(openedTab.focusCount, 1);
+  assert.equal(sidebar.focusCount, 0);
+});
+
+test('a cancelled open sends no hide, sets no attribute and moves no focus', () => {
+  const world = makeWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.hideBookmarksView();
+  world.ready('bookmarks');
+  assert.deepEqual(world.bookmarksHides(), [], 'a document that was never shown has nothing to drop');
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(sidebar.focusCount, 0);
+  assert.equal(world.selectedBrowser.focusCount, 0);
+});
+
+test('a Bookmarks view whose document reloads gives the chrome back and hides it again on the replay', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  assert.equal(hasBookmarksAttr(world), true);
+
+  world.overlays.reset('bookmarks');
+  assert.equal(hasBookmarksAttr(world), false, 'no hidden chrome while there is no view to see');
+  assert.equal(world.isShown('bookmarks'), false);
+
+  world.ready('bookmarks');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('a Bookmarks view Hide that waited for the frame does not land after the Show that came later', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  const mm = world.frame('bookmarks').messageManager;
+  const send = mm.sendAsyncMessage;
+
+  mm.sendAsyncMessage = undefined;
+  world.hideBookmarksView();
+  mm.sendAsyncMessage = send;
+  world.showBookmarksView();
+  world.advance(2000);
+  assert.deepEqual(world.bookmarksHides(), [], 'the older Hide is dropped, not sent after the Show');
+  assert.equal(world.bookmarksShows().length, 2);
+});
+
+test('a Bookmarks view Show that waited for the frame does not land after the Hide that came later', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  const mm = world.frame('bookmarks').messageManager;
+  const send = mm.sendAsyncMessage;
+  const shows = world.bookmarksShows().length;
+
+  mm.sendAsyncMessage = undefined;
+  world.showBookmarksView();
+  mm.sendAsyncMessage = send;
+  world.hideBookmarksView();
+  world.advance(2000);
+  assert.equal(world.bookmarksShows().length, shows, 'the older Show is dropped');
+  assert.equal(world.bookmarksHides().length, 1);
+});
+
+test('the Bookmarks frame script turns the messages into the document events', () => {
+  const listeners = new Map();
+  const events = [];
+  vm.runInNewContext(BOOKMARKS_FRAME_SCRIPT_SRC, {
+    addMessageListener: (name, handler) => listeners.set(name, handler),
+    content: {
+      CustomEvent: class {
+        constructor(type) {
+          this.type = type;
+        }
+      },
+      dispatchEvent: (event) => events.push(event.type),
+    },
+  });
+  listeners.get('BentoBookmarksViewShow')({ data: {} });
+  listeners.get('BentoBookmarksViewHide')({ data: {} });
+  assert.deepEqual(events, ['bento-bookmarks-show', 'bento-bookmarks-hide']);
+});
+
+test('the Library key toggles the Bookmarks view, and the Library stays on its command', () => {
+  const world = bookmarksWorld();
+  const key = world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  world.retargetLibraryKeyToBookmarksView();
+  assert.equal(key.hasAttribute('command'), false, 'the key raises command on itself now');
+  assert.equal(key.listenerCount(), 1, 'a second call adds nothing');
+
+  key.dispatch('command');
+  assert.equal(world.isShown('bookmarks'), true);
+  key.dispatch('command');
+  assert.equal(hasBookmarksAttr(world), false);
+  // During the fade-out the host is still visible, but the view is closed: the key reopens it.
+  key.dispatch('command');
+  assert.equal(hasBookmarksAttr(world), true);
+  key.dispatch('command');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), false);
+
+  // The menus and toolbar buttons keep Browser:ShowAllBookmarks; only the key is retargeted.
+  assert.ok(!MOUNT.includes("'Browser:ShowAllBookmarks'"));
+});
+
+test('a window without the Library key leaves Cmd+Shift+O alone and does not throw', () => {
+  const world = makeWorld();
+  world.retargetLibraryKeyToBookmarksView();
+  assert.equal(world.overlays.hasStarted('bookmarks'), false);
+});
+
+test('Cmd+L does not anchor to the sidebar row while the Bookmarks view hides the sidebar', () => {
+  const attrs = new Set();
+  const canAnchor = vm.runInNewContext(
+    `"use strict";${extractFunction('canAnchorAddrbarToSidebarRow')}\ncanAnchorAddrbarToSidebarRow`,
+    {
+      BOOKMARKS_VIEW_ATTR: BOOKMARKS_ATTR,
+      document: {
+        documentElement: { hasAttribute: (name) => attrs.has(name) },
+        getElementById: () => ({}),
+      },
+      isSidebarCollapsedTarget: () => false,
+      isSidebarHiddenTarget: () => false,
+      isBentoSidebarPushing: () => false,
+    },
+  );
+  assert.equal(canAnchor(), true);
+  attrs.add(BOOKMARKS_ATTR);
+  assert.equal(canAnchor(), false);
+});
+
+test('the stylesheet never hides, fades or transforms the toolbox, the nav bar or the window buttons', () => {
+  // macOS drops the traffic lights when #navigator-toolbox, #nav-bar or the button box is hidden,
+  // or has opacity, a transform or a filter (docs/technical/overlay-documents.md).
+  const css = fs
+    .readFileSync(path.join(ROOT, 'src/browser/base/content/bento-shell-mount.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  const forbidden = /(^|;)\s*(visibility|display|opacity|transform|filter|-moz-subtree-hidden-only-visually)\s*:/;
+  const protectedSubject =
+    /(^|[\s>+~])(#navigator-toolbox|#nav-bar|#TabsToolbar|\.titlebar-buttonbox-container|\.titlebar-buttonbox)\s*$|^(html|:root)(\[[^\]]*\])*$/;
+  let rules = 0;
+  for (const [, selectors, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!selectors.includes(BOOKMARKS_ATTR)) continue;
+    rules += 1;
+    if (!forbidden.test(declarations)) continue;
+    for (const selector of selectors.split(/,(?![^(]*\))/)) {
+      assert.ok(
+        !protectedSubject.test(selector.trim()),
+        `${selector.trim()} must not take ${declarations.trim()}`,
+      );
+    }
+  }
+  assert.ok(rules >= 3, 'the Bookmarks view rules are missing from the stylesheet');
+  // The strip keeps only the button box: every other nav-bar child is hidden, that one is not.
+  assert.match(css, /#nav-bar > :not\(\.titlebar-buttonbox-container\)/);
 });
 
 // ─── Chrome stamps the window on what it sends ──────────────────────────────

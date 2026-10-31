@@ -1081,6 +1081,71 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Rollback or migration notes: none; the native pane and the rollback builds were
   retired with this surface.
 
+### Bookmarks View Host (mount script, stylesheet)
+
+- Status: Active
+- Last updated: 2026-11-01
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`bookmarks` overlay entry,
+    `ensureOverlayHost` for `bento-bookmarks-host`, `showBookmarksView` /
+    `hideBookmarksView` / `toggleBookmarksView`, `restoreBookmarksViewFocus`,
+    `retargetLibraryKeyToBookmarksView`, `dispatchBookmarksViewShow` / `Hide` and their
+    `BOOKMARKS_VIEW_FRAME_SCRIPT_URL`, the `bento-bookmarks-frame` title handler and the
+    `BENTO_OPEN_BOOKMARKS` routes of the sidebar and command palette frames, the Esc early
+    return in `attachPaletteEscListener`, `canAnchorAddrbarToSidebarRow`)
+  - `src/browser/base/content/bento-shell-mount.css` (the `:root[bento-bookmarks-view]`
+    block next to the `:root[inDOMFullscreen]` rules)
+  - `scripts/firefox-compat-registry.mjs` (new entries `manBookmarkKb` and
+    `titlebar-buttonbox-container`), the regenerated table below
+  - `extensions/bento-shell/src/bridge/overlayReady.ts` (`bookmarks` in `OverlayName`)
+  - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`
+  - No Firefox patch.
+- Bento functionality: the Bookmarks view is a full-window view over the browser. While it
+  is open the sidebar, panels, splitters, panel navigator, trailer and the toolbar's
+  contents are hidden; the toolbar row stays as a strip that carries Firefox's own window
+  controls. The sidebar and the command palette open it, and so does `Cmd/Ctrl+Shift+O`,
+  which was Firefox's Library shortcut. Not opened in private windows.
+- Vanilla Firefox surface touched or depended on:
+  - `#nav-bar` and its `.titlebar-buttonbox-container` child (the nav-bar copy of
+    `titlebar-items.inc.xhtml`): every other child of `#nav-bar` is hidden with
+    `visibility`, `#PersonalToolbar` with `display: none`, and the toolbar gradient's custom
+    property stop `--bento-toolbar-left-bg` is overridden on `#navigator-toolbox`,
+    `#TabsToolbar` and `#nav-bar`. The button box, `#nav-bar` and `#navigator-toolbox` are
+    never hidden, faded or transformed, and no ancestor gets opacity, a transform or a filter.
+  - A root attribute, `bento-bookmarks-view` on `documentElement` (Bento's own, no Firefox
+    meaning).
+  - The `manBookmarkKb` key in `mainKeyset` (`browser-sets.inc.xhtml`): the mount removes its
+    `command` attribute at window load and listens for the `command` event a key without one
+    raises on itself (the `mainKeyset` handler in `browser-sets.js` already relies on that for
+    keys such as `viewBookmarksSidebarKb`). The `Browser:ShowAllBookmarks` command, the
+    `bookmarksShowAll` menu item, `panelMenu_showAllBookmarks` and the bookmarks toolbar
+    button menus are untouched, so the Library stays reachable from the menus; they still show
+    the key's accelerator text.
+- Why this cannot stay extension-only: the view must cover the window including the area of
+  the toolbox, which only chrome can hide or lay out, and Firefox's key and the chrome DOM are
+  not reachable from an extension document.
+- Firefox update risk: a rename of `.titlebar-buttonbox-container` would make the strip rule
+  hide the window controls (the `titlebar-buttonbox-container` registry entry checks it); on
+  macOS the traffic lights leave the window if the button box, `#nav-bar` or
+  `#navigator-toolbox` is hidden, or an ancestor gets an effect (Gecko registers the window
+  button rects from the display items of the laid-out, visible button frames in
+  `.titlebar-buttonbox`, `DealWithWindowsAppearanceHacks` and `SetWindowButtonRect` in
+  `layout/painting/nsDisplayList.cpp`; an empty rect places the lights above the window,
+  `widget/cocoa/nsCocoaWindow.mm`). A change of how a `<key>` without a `command`
+  attribute dispatches (`dom/events/KeyEventHandler.cpp`, `DispatchXULKeyCommand`) would stop
+  the shortcut, which then does nothing in a regular window. A new top-layer popover in the
+  toolbar would show over the hidden strip (the native urlbar is one today and is hidden).
+- Regression checks for future updates: on macOS, open the Bookmarks view from the sidebar and
+  with `Cmd+Shift+O` in a regular window: the traffic lights stay visible, in place and
+  clickable, the empty strip drags the window, the Library window does not open, and
+  Bookmarks > Manage Bookmarks still does. Close it: the chrome returns without a shift.
+  Repeat in light and dark, with the sidebar collapsed, hidden and expanded. In a private
+  window the shortcut still opens the Library. Run `pnpm run firefox:compat:engine` and
+  confirm `manBookmarkKb` and `titlebar-buttonbox-container` are found.
+- Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
+  entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` leaves
+  no persistent change (the key is edited in the window's DOM only).
+
 ### Search Engine Icons (bento-privacy Experiment)
 
 - Status: Active
@@ -3035,7 +3100,8 @@ below is generated; edit the registry, then run
 | `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |
 | `sidebar-splitter` | element (runtime) | Native sidebar splitter whose resize behavior Bento replaces. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:27` |
 | `navigator-toolbox` | element (runtime) | Native toolbox whose separators and offsets Bento adjusts. | `attachSidebarChromeDivider` | `browser/base/content/navigator-toolbox.inc.xhtml:5` |
-| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
+| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#bento-bookmarks-view` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
+| `titlebar-buttonbox-container` | source (engine only) | The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls. | `src/browser/base/content/bento-shell-mount.css#titlebar-buttonbox-container` | `browser/base/content/titlebar-items.inc.xhtml:5` |
 | `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:127` |
 | `urlbar` | element (runtime) | Native urlbar; Bento intercepts pointer and focus events on it and opens its own address overlay. | `attachTopUrlbarModalListener` | `browser/base/content/navigator-toolbox.inc.xhtml:165` |
 | `urlbar-input` | source (engine only) | Native urlbar text input; Bento blurs it and opens its own address overlay instead. | `attachTopUrlbarModalListener` | `browser/components/urlbar/content/UrlbarInputBase.mjs:402` |
@@ -3046,7 +3112,8 @@ below is generated; edit the registry, then run
 | `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:230` |
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |
 | `identity-popup` | source (engine only) | Native identity panel that Bento opens at a sidebar anchor. It sits inside template-identity-popup until gIdentityHandler._initializePopup() expands it, which Bento calls first. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:5` |
-| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute and listens for the command event the key then raises on itself, to toggle the Bookmarks view. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView` | `browser/base/content/browser-sets.inc.xhtml:290` |
 | `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:679` |
 | `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |

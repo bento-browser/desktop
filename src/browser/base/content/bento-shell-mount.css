@@ -2265,6 +2265,72 @@
   visibility: inherit !important;
   opacity: 1 !important;
 }
+/* Bookmarks view. showBookmarksView sets bento-bookmarks-view on the root while
+   #bento-bookmarks-host (a full #browser overlay) is shown. Everything Bento draws below the
+   toolbox hides, and the toolbar row shrinks to a strip that keeps only Firefox's window
+   controls, so the view reads as the whole window.
+
+   Hiding uses visibility, not display: every box keeps its size, so no resize observer sees a
+   change and nothing persists a bogus width. The '*' half is needed because children with their
+   own visibility would otherwise stay. The flip waits for the host's fade-in (a visibility
+   transition on the modal role), so the view cross-fades over the browser; when the attribute
+   goes, the chrome is visible at once, under the host's fade-out.
+
+   NEVER hide, fade or transform the toolbox, #nav-bar or .titlebar-buttonbox-container, and
+   never give one of their ancestors opacity, transform or filter. macOS draws the traffic
+   lights itself and Gecko positions them from the rects of the window buttons inside
+   .titlebar-buttonbox, which are registered only while those are laid out, visible and have no
+   effect on an ancestor; if they are not, the lights leave the window. Only the strip's other
+   children hide, and #PersonalToolbar (a toolbar row, not window chrome) is removed so the
+   strip is one row. */
+:root[bento-bookmarks-view] :is(
+    #bento-shell-host,
+    #bento-shell-splitter,
+    #bento-shell-splitter-affordance,
+    #bento-sidebar-chrome-divider,
+    #bento-strip-container,
+    #bento-side-panel-host,
+    #tabbrowser-tabbox,
+    #bento-add-panel-trailer,
+    #bento-strip-scrollbar,
+    #bento-flat-layout-extent,
+    #bento-panel-nav,
+    #urlbar
+  ),
+:root[bento-bookmarks-view] :is(
+    #bento-shell-host,
+    #bento-shell-splitter,
+    #bento-shell-splitter-affordance,
+    #bento-sidebar-chrome-divider,
+    #bento-strip-container,
+    #bento-side-panel-host,
+    #tabbrowser-tabbox,
+    #bento-add-panel-trailer,
+    #bento-strip-scrollbar,
+    #bento-flat-layout-extent,
+    #bento-panel-nav,
+    #urlbar
+  ) *,
+:root[bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container),
+:root[bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container) * {
+  visibility: hidden !important;
+  transition: visibility var(--muxui-semantic-motion-modal-transition);
+}
+:root[bento-bookmarks-view] #PersonalToolbar {
+  display: none !important;
+}
+/* One surface: the strip loses the sidebar-coloured left half of its gradient, fading with the
+   host. (The gradient stops are the toolbar custom properties above; the inline gradient the
+   mount script writes reads them, so only they can be overridden.) */
+:root[bento-bookmarks-view] :is(#navigator-toolbox, #TabsToolbar, #nav-bar) {
+  --bento-toolbar-left-bg: var(--bento-toolbar-main-bg) !important;
+}
+/* Not on a toolbox whose fullscreen reveal is animating: its own transition would be replaced
+   (the same rule as the sidebar push colour transition above). */
+:root[bento-bookmarks-view]
+  :is(#navigator-toolbox:not([fullscreenShouldAnimate]), #TabsToolbar, #nav-bar) {
+  transition: --bento-toolbar-left-bg var(--muxui-semantic-motion-modal-transition);
+}
 /* Injected per-panel header — sits above the browser, takes its
    natural height, doesn't flex. */
 .bento-panel-header[data-bento-injected="1"] {

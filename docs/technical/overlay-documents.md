@@ -22,6 +22,7 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                                        | first use                  | Nothing                                                                                                                                                                                |
 | `merge-palette`                         | `merge-palette.html`                                 | Command palette, Settings button, sidebar merge card (`BENTO_OPEN_MERGE_PALETTE`)                                         | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                                                         |
 | `settings-palette`                      | `settings-palette.html`                              | App menu "Bento Settings", command palette `BENTO_OPEN_SETTINGS` and `BENTO_OPEN_SETTINGS_PRIVACY`, welcome Open Settings | first use                  | A `bento-settings-show` DOM event (stage for the privacy link) through the `BentoSettingsPaletteShow` frame script; requests and results travel the BentoShellBus relay, not a channel |
+| `bookmarks`                             | `bookmarks.html`                                     | Sidebar and command palette `BENTO_OPEN_BOOKMARKS`, `Cmd/Ctrl+Shift+O` (Firefox's Library key, retargeted)                | first use                  | A `bento-bookmarks-show` DOM event through the `BentoBookmarksViewShow` frame script; never opened in a private window                                                                 |
 | `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                                       | first use (first run only) | Resume step hash, read from the environment at window startup; the import handoff messages through the `BentoWelcomeHandoff` frame script (see below)                                  |
 | `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                                       | first use                  | None: a non-remote chrome page with no handshake, src set on every open (its `BENTO_EMBEDDED_IMPORT_READY` title only gates the onboarding handoff)                                    |
 | `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                                                | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script (`content.postMessage` into this frame's own window), sent again on readiness                                      |
@@ -195,6 +196,95 @@ active cover safely. These states remain separate from `document.hidden`, which
 can report visible under a hidden native host. Sidebar visibility and docshell
 activity are unchanged. See [Hosted overlay presentation](theming.md#hosted-overlay-presentation)
 for the shared presenter and remaining physical validation.
+
+## Bookmarks view
+
+The Bookmarks view (`bookmarks`, `bookmarks.html`) is a full-window view, not a modal.
+Its host `bento-bookmarks-host` is a child of `#browser` like the others, created on first
+use, at `z-index: 99000`: the lowest of the stack, so the palettes, the menu, the address
+bar, confirm and the tooltip (99994 and up) open above it and never close it.
+`scripts/overlay-manager.test.mjs` fails if a host stacks below it. Source of truth: none
+here; the document's data is `bento-tools`' bookmarks store, which chrome never reads.
+
+- **Opening.** `BENTO_OPEN_BOOKMARKS_<ts>` from the sidebar shell frame and the command
+  palette frame, or `Cmd/Ctrl+Shift+O`. `showBookmarksView` refuses in a private window,
+  records the focused element and selected tab (unless the view is already open, which the
+  root attribute or a waiting open says; the host stays visible through the fade-out),
+  dismisses the command palette, merge palette, workspace palette and Settings, and goes
+  through `openOverlay` like every other overlay.
+  The reveal (on the document's readiness announcement) fades the host in, sets
+  `bento-bookmarks-view` on `documentElement`, sends `BentoBookmarksViewShow` (a frame script
+  that dispatches `bento-bookmarks-show` in the document, as Settings does) and focuses the
+  frame. A repeated request while it is open shows it again and keeps the first request's
+  focus record.
+- **Closing.** `BENTO_CLOSE_BOOKMARKS_<ts>` from the bookmarks frame, `Cmd/Ctrl+Shift+O`
+  again, or Esc (below). `hideBookmarksView` removes the attribute at once, so the chrome is
+  visible under the host's fade-out, sends `BentoBookmarksViewHide` (`bento-bookmarks-hide`;
+  not sent before the first show, and a Show and a Hide share a generation counter, as in
+  Settings), fades the host out with `hideOverlayHostAfterFade`, and returns the focus: to the
+  element that had it when the view opened, or to the selected tab when that changed (a tab
+  opened from the view) or when the opener was an overlay frame (the command palette, which
+  the open closed). Titles carry a timestamp because chrome drops a repeated title.
+- **Esc.** The document owns it (an inline editor closes before the view). Like Settings,
+  `attachPaletteEscListener` returns for a key whose target is `bento-bookmarks-frame` (or a
+  delivered menu above it, which handles its own), and consumes Esc only for an open that
+  still waits for its document or with the focus elsewhere in the window. The view is last in
+  the Esc stack, so every overlay above it takes Esc first.
+- **Cmd/Ctrl+Shift+O.** `retargetLibraryKeyToBookmarksView` removes the `command` attribute
+  from Firefox's `manBookmarkKb` key (Show All Bookmarks, the Library) and listens for the
+  `command` event the key then raises on itself, as the `mainKeyset` keys without a command
+  do. The key's letter follows the locale. The menu items and toolbar buttons keep
+  `Browser:ShowAllBookmarks`, so the Library stays reachable; they still show the key's
+  accelerator text. A private window keeps the stock key.
+- **Chrome under the view.** The `:root[bento-bookmarks-view]` block in
+  `bento-shell-mount.css` (next to the `inDOMFullscreen` rules) hides the shell host,
+  splitters, divider, strip container, side-panel host, tabbox, trailer, strip scrollbar, flat
+  layout extent and panel navigator, and every child of `#nav-bar` but
+  `.titlebar-buttonbox-container`, with `visibility: hidden` (the `*` half covers children
+  with their own visibility). `#PersonalToolbar` is `display: none`. The toolbar strip is one
+  surface: the left stop of the toolbar gradient takes `--bento-toolbar-main-bg`, which the
+  document should paint too. The hidden chrome flips on a `visibility` transition of the
+  `modal` role, so it hides when the host's fade-in ends and the view cross-fades over the
+  browser. Entering the view fades the strip's left half with it; leaving it does not (the
+  attribute and the transition go together). Dragging the window in the strip is Firefox's
+  own nav-bar drag, because only the top-level chrome document computes drag regions.
+- **Address bar.** While the view is open the sidebar is hidden, so `Cmd+L` opens the centered
+  address bar (`canAnchorAddrbarToSidebarRow`) instead of anchoring it to an invisible row.
+- **Dev reload.** `overlayEntry`'s `suspend` removes the attribute for `bookmarks`, so the
+  chrome returns while the document reloads, and the replayed open hides it again.
+
+Pitfalls:
+
+- Never hide, fade or transform `#navigator-toolbox`, `#nav-bar` or
+  `.titlebar-buttonbox-container`, and never give one of their ancestors `opacity`,
+  `transform` or `filter`. macOS draws the traffic lights itself and Gecko places them from the
+  rects of the window buttons inside `.titlebar-buttonbox`, which it registers only while they
+  are laid out, visible and without an effect on an ancestor; otherwise the lights leave the
+  window.
+  `scripts/overlay-surfaces.test.mjs` reads the stylesheet and fails on such a rule.
+- Hide with `visibility`, not `display`, except `#PersonalToolbar`. Boxes that keep their size
+  fire no resize observer and persist no bogus width; the toolbar row is the one that has to
+  go for the strip to be a single row.
+- The mount script writes the toolbar gradient inline with `!important`, so a stylesheet can
+  override only its custom-property stops (`--bento-toolbar-left-bg`,
+  `--bento-toolbar-right-bg`).
+- The host is transparent like every host: the view's document paints its own opaque
+  background, and it has to override the shared `html, body, #root { background: transparent }`
+  of the overlay entries.
+- Do not close the view from the other overlays' stack rules. Only the open dismisses the
+  palettes; the reverse would close the view under a command palette that was opened over it.
+- A page can still intercept Cmd+Shift+O (the key is not reserved), as it could the Library.
+
+Manual verification (macOS, regular window, `--jsdebugger` for the Browser Toolbox): open the
+view from the sidebar and from the command palette (the palette closes), and with
+`Cmd+Shift+O` with a web page focused (the Library window must not open; Bookmarks > Manage
+Bookmarks still opens it). The traffic lights stay visible and in place, and clickable, while
+it is open and after it closes; dragging the empty strip moves the window. Esc closes it from
+its first screen and leaves an open inline editor first. `Cmd+L`, `Cmd+T` and `Cmd+Alt+P` open
+their overlays above it, and Esc closes only those. Close it: the sidebar, panels and
+bookmarks toolbar return without a shift, and the focus is back where it was. Repeat in light
+and dark, with the sidebar collapsed and hidden, with several panels, with reduced motion, and
+confirm a private window never opens it and keeps the stock `Cmd+Shift+O`.
 
 ## Onboarding import handoff
 
@@ -441,7 +531,9 @@ Tests: `scripts/overlay-manager.test.mjs` runs the real manager under fake timer
 Esc, outside-click, and `dispatch*` functions and the real overlay table from the
 mount and drives them with a fake DOM and recording message managers (cold open
 then Esc, palette then merge palette in both readiness orders, a stalled document,
-the menu and address bar at 7 s, the window id chrome stamps).
+the menu and address bar at 7 s, the window id chrome stamps, the Bookmarks view's titles, root
+attribute, focus return, Esc, Library key and private-window refusal, and a guard on its
+stylesheet rules).
 `src/bridge/windowScope.test.ts` runs the real bridge modules for several windows
 on an in-memory channel, and runs the frame scripts read from the mount into them,
 including the two-window confirm case.

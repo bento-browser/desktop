@@ -1545,6 +1545,15 @@
       var(--bento-mode-fade-colours) !important;
   }
 
+  :root[data-bento-mode-fade][bento-bookmarks-view] :is( #bento-shell-host, #bento-shell-splitter, #bento-shell-splitter-affordance, #bento-sidebar-chrome-divider, #bento-strip-container, #bento-side-panel-host, #tabbrowser-tabbox, #bento-add-panel-trailer, #bento-strip-scrollbar, #bento-flat-layout-extent, #bento-panel-nav, #urlbar ),
+  :root[data-bento-mode-fade][bento-bookmarks-view] :is( #bento-shell-host, #bento-shell-splitter, #bento-shell-splitter-affordance, #bento-sidebar-chrome-divider, #bento-strip-container, #bento-side-panel-host, #tabbrowser-tabbox, #bento-add-panel-trailer, #bento-strip-scrollbar, #bento-flat-layout-extent, #bento-panel-nav, #urlbar ) *,
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container),
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container) * {
+    transition:
+      visibility var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
   [data-bento-mode-fade] #bento-add-panel-trailer {
     transition:
       flex-basis var(--muxui-semantic-motion-reveal-transition),

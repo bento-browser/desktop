@@ -21,12 +21,14 @@ import {
   isValidBentoSettingsPatch,
 } from './export-schema';
 import { ADVANCED_KEY_TO_BROWSER_PRIVACY, ADVANCED_KEY_TO_PREF } from './privacy-levels';
-import type {
-  Action,
-  BentoSettings,
-  PanelLayoutMoveTarget,
-  PrivacyAdvancedKey,
-  Workspace,
+import {
+  BOOKMARK_COLORS,
+  type Action,
+  type BentoSettings,
+  type BookmarkItemInput,
+  type PanelLayoutMoveTarget,
+  type PrivacyAdvancedKey,
+  type Workspace,
 } from './protocol';
 
 type Guard<T> = (value: unknown) => value is T;
@@ -37,6 +39,7 @@ type Guards<T> = { [K in keyof T]-?: Guard<T[K]> };
 const MAX_TAB_IDS = 20_000;
 const MAX_ID_LIST = 5_000;
 const MAX_QUERY_LENGTH = MAX_TITLE_LENGTH;
+const MAX_NOTE_LENGTH = 32_768;
 const MAX_FAVICON_URL_LENGTH = 262_144;
 const MAX_PIXELS = 100_000;
 const MAX_SCROLL_PIXELS = 10_000_000;
@@ -88,10 +91,10 @@ function shape<T>(fields: Guards<T>): Guard<T> {
     guards.every(([key, guard]) => guard(v[key]));
 }
 
-function hasNavigationScheme(value: string): boolean {
+function hasScheme(value: string, schemes: ReadonlySet<string>): boolean {
   if (value.length > MAX_URL_LENGTH) return false;
   try {
-    return NAVIGATION_SCHEMES.has(new URL(value).protocol);
+    return schemes.has(new URL(value).protocol);
   } catch {
     return false;
   }
@@ -101,10 +104,41 @@ function hasNavigationScheme(value: string): boolean {
 const navUrl =
   (allowEmpty = false): Guard<string> =>
   (v): v is string =>
-    typeof v === 'string' && (v === '' ? allowEmpty : hasNavigationScheme(v));
+    typeof v === 'string' && (v === '' ? allowEmpty : hasScheme(v, NAVIGATION_SCHEMES));
 
 const favIconUrl: Guard<string> = (v): v is string =>
   typeof v === 'string' && v.length <= MAX_FAVICON_URL_LENGTH && (v === '' || FAVICON_URL.test(v));
+
+/** A bookmark link target: the schemes backups accept (no view-source: or moz-extension:). */
+const bookmarkUrl: Guard<string> = (v): v is string =>
+  typeof v === 'string' && hasScheme(v, ALLOWED_URL_SCHEMES);
+const bookmarkColor = oneOf(...BOOKMARK_COLORS);
+const noteText = text(MAX_NOTE_LENGTH);
+
+const BOOKMARK_ITEM_INPUTS: {
+  [K in BookmarkItemInput['kind']]: Guard<BookmarkItemInput>;
+} = {
+  link: shape<Extract<BookmarkItemInput, { kind: 'link' }>>({
+    kind: oneOf('link'),
+    url: bookmarkUrl,
+    title,
+    favIconUrl: optional(favIconUrl),
+  }),
+  note: shape<Extract<BookmarkItemInput, { kind: 'note' }>>({
+    kind: oneOf('note'),
+    text: noteText,
+  }),
+  todo: shape<Extract<BookmarkItemInput, { kind: 'todo' }>>({
+    kind: oneOf('todo'),
+    text: title,
+  }),
+};
+
+const bookmarkItemInput: Guard<BookmarkItemInput> = (v): v is BookmarkItemInput =>
+  isRecord(v) &&
+  typeof v.kind === 'string' &&
+  Object.hasOwn(BOOKMARK_ITEM_INPUTS, v.kind) &&
+  BOOKMARK_ITEM_INPUTS[v.kind as BookmarkItemInput['kind']](v);
 
 const ids = list(nat, MAX_TAB_IDS);
 const idStrings = list(id, MAX_ID_LIST);
@@ -250,6 +284,29 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'pinnedPanels/requestSnapshot': {},
   'savedPanels/save': { url: navUrl(), title, favIconUrl: optional(favIconUrl) },
   'savedPanels/requestSnapshot': {},
+  'bookmarks/requestSnapshot': {},
+  'bookmarks/space/create': { name },
+  'bookmarks/space/update': { id, name: optional(name), color: optional(bookmarkColor) },
+  'bookmarks/space/delete': { id },
+  'bookmarks/space/select': { id },
+  'bookmarks/group/create': { spaceId: id, name },
+  'bookmarks/group/update': { id, name: optional(name), color: optional(bookmarkColor) },
+  'bookmarks/group/delete': { id },
+  'bookmarks/group/move': { id, spaceId: id, beforeId: nullable(id) },
+  'bookmarks/item/create': { groupId: id, beforeId: nullable(id), item: bookmarkItemInput },
+  'bookmarks/item/update': {
+    id,
+    title: optional(title),
+    url: optional(bookmarkUrl),
+    text: optional(noteText),
+    done: optional(bool),
+  },
+  'bookmarks/item/delete': { id },
+  'bookmarks/item/move': { id, groupId: id, beforeId: nullable(id) },
+  'bookmarks/item/open': { id, where: oneOf('panel', 'tab') },
+  'bookmarks/tabs/save': { spaceId: id, groupId: nullable(id), tabIds: ids },
+  'bookmarks/import/firefox': {},
+  'bookmarks/import/dismiss': {},
   'externalMerge/requestSources': { requestId: id },
   'externalMerge/merge': {
     sourceId: id,
