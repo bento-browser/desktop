@@ -78,12 +78,11 @@ describe('ready-model target availability', () => {
     );
   });
 
-  it('rejects both demo-only switches in an ordinary build', () => {
+  it('accepts both tab appearance switches in regular and private windows', () => {
     for (const id of ['setting:tabStateTintsEnabled', 'setting:customTabStateIconsEnabled']) {
       const requested = target(id);
-      expect(targetForModel(requested, REGULAR_MODEL), id).toBe(
-        __BENTO_SOFTCAST_DEMO__ ? requested : ROOT_TARGET,
-      );
+      expect(targetForModel(requested, REGULAR_MODEL), id).toBe(requested);
+      expect(targetForModel(requested, PRIVATE_MODEL), id).toBe(requested);
     }
   });
 

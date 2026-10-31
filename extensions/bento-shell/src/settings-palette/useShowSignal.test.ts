@@ -39,8 +39,8 @@ describe('show targets awaiting a snapshot', () => {
   it('falls back for unavailable ready targets without changing unknown fallback', () => {
     const backup = targetForShow(JSON.stringify({ target: 'backup:open' }));
     expect(targetForModel(backup, PRIVATE_MODEL)).toBe(ROOT_TARGET);
-    const demo = targetForShow(JSON.stringify({ target: 'setting:tabStateTintsEnabled' }));
-    expect(targetForModel(demo, REGULAR_MODEL)).toBe(__BENTO_SOFTCAST_DEMO__ ? demo : ROOT_TARGET);
+    const tints = targetForShow(JSON.stringify({ target: 'setting:tabStateTintsEnabled' }));
+    expect(targetForModel(tints, REGULAR_MODEL)).toBe(tints);
     expect(
       targetForModel(targetForShow(JSON.stringify({ target: 'setting:nope' })), REGULAR_MODEL),
     ).toBe(ROOT_TARGET);

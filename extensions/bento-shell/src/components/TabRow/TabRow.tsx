@@ -11,9 +11,9 @@ import { dispatch } from '../../bridge/useToolsPort';
 import { useTab } from '../../state/tabs';
 import { useUiStore } from '../../state/ui';
 import { useSettingsStore } from '../../state/settings';
-import { softcastPresentation } from '../../dev/softcast';
-import { SoftcastIcon } from '../../dev/SoftcastIcon';
 import { BentoIcon, Row } from '../primitives';
+import { TAB_STATES, tabStateOf } from './tabState';
+import { TabStateIcon } from './TabStateIcon';
 import './TabRow.css';
 
 export interface TabRowProps {
@@ -98,10 +98,7 @@ function TabRowImpl({
 
   const loading = tab.loading ?? false;
   const discarded = tab.discarded ?? false;
-  const softcast =
-    typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
-      ? softcastPresentation(tab, location.href, true)
-      : null;
+  const tabState = tabStateOf(tab);
   const audible = tab.audible;
   const muted = tab.muted ?? false;
   const showAudioControl = audible || muted;
@@ -135,7 +132,9 @@ function TabRowImpl({
     <Row
       gap="xs"
       data-bento-tab-id={id}
-      data-softcast-state={tabStateTintsEnabled ? softcast?.state : undefined}
+      data-tab-state={
+        tabStateTintsEnabled && tabState && TAB_STATES[tabState].tinted ? tabState : undefined
+      }
       className={
         'bento-tab-row' +
         (active ? ' bento-tab-row--active' : '') +
@@ -220,9 +219,9 @@ function TabRowImpl({
           </IconButton>
         </span>
       )}
-      {/* Demo fixtures affect presentation only; ordinary builds retain the native loading cue. */}
-      {customTabStateIconsEnabled && softcast ? (
-        <SoftcastIcon icon={softcast} loading={loading} />
+      {/* A loading tab has no state, so it keeps the native loading cue. */}
+      {customTabStateIconsEnabled && tabState ? (
+        <TabStateIcon state={tabState} />
       ) : loading ? (
         <span className="bento-tab-row__favicon bento-tab-row__favicon--loading">
           <ProgressCircle.Root size="sm" aria-label="Loading">
