@@ -1,7 +1,8 @@
 // A one-field inline editor: the rename of a space, group or to-do, a note's text, and the
 // "+ Link, note or to-do" entry. Enter saves (Shift+Enter breaks a line in the multi-line form),
 // Esc cancels, and leaving the field saves what was typed. The parent decides what an empty or
-// unchanged text means, so one rule covers both the blur and the Enter.
+// unchanged text means, so one rule covers both the blur and the Enter, and where the focus goes
+// afterwards (back to the row or trigger after a key, nowhere after a blur).
 
 import { useEffect, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
@@ -14,6 +15,8 @@ export interface InlineEditorProps {
   multiline?: boolean;
   /** Select the whole initial text on focus (a rename), instead of putting the caret at the end. */
   selectAll?: boolean;
+  /** The most characters the field takes (UTF-16 code units, as the stored field is capped). */
+  maxLength?: number;
   /** Under the field: what Enter and Esc do. */
   hint?: ReactNode;
   className?: string;
@@ -28,6 +31,7 @@ export function InlineEditor({
   placeholder,
   multiline = false,
   selectAll = false,
+  maxLength,
   hint,
   className,
   onCommit,
@@ -74,6 +78,7 @@ export function InlineEditor({
     className: 'bento-bookmarks__field',
     value: draft,
     placeholder,
+    maxLength,
     autoFocus: true,
     onFocus: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       if (selectAll) event.currentTarget.select();

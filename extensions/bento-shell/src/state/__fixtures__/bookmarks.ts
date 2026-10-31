@@ -1,6 +1,9 @@
 // Fake Bookmarks manager data for Ladle stories and tests. `useFakeBookmarks` stands in for
 // bento-tools: it applies the same `bookmarks/*` actions the real store does to a local snapshot,
-// so reordering, deleting and undoing work in a story. Nothing here reaches the tools port.
+// so reordering, deleting and undoing work in a story. It follows the same contract for client
+// ids (a create with an id that exists is refused), a to-do's `done` on create, `tabs/save`
+// placement (`beforeId`, `ids`) and the load status (`loadFailed` refuses everything until a
+// `requestSnapshot` retries). Nothing here reaches the tools port.
 
 import { useCallback, useState } from 'react';
 import type {
@@ -146,6 +149,16 @@ export const SAMPLE_SNAPSHOT: BookmarksSnapshot = snapshotOf(
   'space-climbing',
 );
 
+/** The store could not read its data: empty arrays, every change refused until a retry. */
+export const LOAD_FAILED_SNAPSHOT: BookmarksSnapshot = {
+  status: 'loadFailed',
+  spaces: [],
+  groups: [],
+  items: [],
+  lastSpaceId: null,
+  firefoxImportOffered: false,
+};
+
 /** A space with no groups yet. */
 export const EMPTY_SPACE_SNAPSHOT: BookmarksSnapshot = snapshotOf(
   SPACES,
@@ -223,8 +236,13 @@ function insert<T extends { id: string; order: number }>(
   renumber(rest);
 }
 
-function itemFrom(groupId: string, order: number, input: BookmarkItemInput): BookmarkItem {
-  const base = { id: nextId('item'), groupId, order, createdAt: Date.now() };
+function itemFrom(
+  groupId: string,
+  order: number,
+  input: BookmarkItemInput,
+  id: string = nextId('item'),
+): BookmarkItem {
+  const base = { id, groupId, order, createdAt: Date.now() };
   if (input.kind === 'link') {
     return {
       ...base,
@@ -236,7 +254,7 @@ function itemFrom(groupId: string, order: number, input: BookmarkItemInput): Boo
   }
   return input.kind === 'note'
     ? { ...base, kind: 'note', text: input.text }
-    : { ...base, kind: 'todo', text: input.text, done: false };
+    : { ...base, kind: 'todo', text: input.text, done: input.done ?? false };
 }
 
 /** Applies one action to a copy of the snapshot, as bento-tools' store does (without validation). */
@@ -245,6 +263,17 @@ export function applyFakeAction(
   action: BookmarksAction,
   tabs: readonly OpenTab[] = SAMPLE_TABS,
 ): BookmarksSnapshot {
+  if (current.status === 'loadFailed') {
+    // A retry reads the storage again: here it finds nothing and seeds the first space.
+    if (action.type !== 'bookmarks/requestSnapshot') return current;
+    const seeded: BookmarkSpace = {
+      id: nextId('space'),
+      name: 'Personal',
+      color: 'blue',
+      order: 0,
+    };
+    return { ...current, status: 'ready', spaces: [seeded], lastSpaceId: seeded.id };
+  }
   const next: BookmarksSnapshot = {
     ...current,
     spaces: current.spaces.map((space) => ({ ...space })),
@@ -253,9 +282,15 @@ export function applyFakeAction(
   };
   const groupsOf = (spaceId: string) => next.groups.filter((entry) => entry.spaceId === spaceId);
   const itemsIn = (groupId: string) => next.items.filter((item) => item.groupId === groupId);
-  const addGroup = (spaceId: string, name: string) => {
+  /** One id namespace, as in tools: a client id that is taken makes the create a no-op. */
+  const taken = (id: string | undefined) =>
+    id !== undefined &&
+    (next.spaces.some((entry) => entry.id === id) ||
+      next.groups.some((entry) => entry.id === id) ||
+      next.items.some((entry) => entry.id === id));
+  const addGroup = (spaceId: string, name: string, id: string = nextId('group')) => {
     const created: BookmarkGroup = {
-      id: nextId('group'),
+      id,
       spaceId,
       name,
       color: 'gray',
@@ -264,15 +299,16 @@ export function applyFakeAction(
     next.groups.push(created);
     return created;
   };
-  const addItem = (groupId: string, input: BookmarkItemInput) => {
-    const created = itemFrom(groupId, itemsIn(groupId).length, input);
+  const addItem = (groupId: string, input: BookmarkItemInput, id?: string) => {
+    const created = itemFrom(groupId, itemsIn(groupId).length, input, id);
     next.items.push(created);
     return created;
   };
   switch (action.type) {
     case 'bookmarks/space/create':
+      if (taken(action.id)) break;
       next.spaces.push({
-        id: nextId('space'),
+        id: action.id ?? nextId('space'),
         name: action.name.trim() || 'Untitled space',
         color: 'gray',
         order: next.spaces.length,
@@ -300,7 +336,8 @@ export function applyFakeAction(
       next.lastSpaceId = action.id;
       break;
     case 'bookmarks/group/create':
-      addGroup(action.spaceId, action.name.trim() || 'Untitled group');
+      if (taken(action.id) || !next.spaces.some((entry) => entry.id === action.spaceId)) break;
+      addGroup(action.spaceId, action.name.trim() || 'Untitled group', action.id);
       break;
     case 'bookmarks/group/update': {
       const target = next.groups.find((entry) => entry.id === action.id);
@@ -328,7 +365,8 @@ export function applyFakeAction(
       break;
     }
     case 'bookmarks/item/create': {
-      const created = addItem(action.groupId, action.item);
+      if (taken(action.id) || !next.groups.some((entry) => entry.id === action.groupId)) break;
+      const created = addItem(action.groupId, action.item, action.id);
       insert(itemsIn(action.groupId), created, action.beforeId);
       break;
     }
@@ -360,17 +398,35 @@ export function applyFakeAction(
       break;
     }
     case 'bookmarks/tabs/save': {
-      const target = action.groupId ?? addGroup(action.spaceId, 'Saved tabs').id;
-      for (const tabId of action.tabIds) {
+      const ids = action.ids ?? [];
+      // Tools saves nothing when a client id repeats or is taken.
+      if (new Set(ids).size !== ids.length || ids.some(taken)) break;
+      if (!next.spaces.some((entry) => entry.id === action.spaceId)) break;
+      // A tab that is gone, or a repeat of an earlier one, is skipped and leaves its id slot unused.
+      const seen = new Set<number>();
+      const saved: Array<{ tab: OpenTab; id: string | undefined }> = [];
+      action.tabIds.forEach((tabId, slot) => {
         const tab = tabs.find((entry) => entry.id === tabId);
-        if (tab) {
-          addItem(target, {
-            kind: 'link',
-            url: tab.url,
-            title: tab.title,
-            favIconUrl: tab.favIconUrl,
-          });
-        }
+        if (!tab || seen.has(tabId)) return;
+        seen.add(tabId);
+        saved.push({ tab, id: ids[slot] });
+      });
+      if (saved.length === 0) break;
+      const existing = action.groupId
+        ? next.groups.find(
+            (entry) => entry.id === action.groupId && entry.spaceId === action.spaceId,
+          )
+        : undefined;
+      if (action.groupId !== null && !existing) break;
+      const target = existing ?? addGroup(action.spaceId, 'Saved tabs');
+      for (const { tab, id } of saved) {
+        const created = addItem(
+          target.id,
+          { kind: 'link', url: tab.url, title: tab.title, favIconUrl: tab.favIconUrl },
+          id,
+        );
+        // The run goes in before `beforeId`, in order (a new group has nothing to go before).
+        if (existing) insert(itemsIn(target.id), created, action.beforeId ?? null);
       }
       break;
     }

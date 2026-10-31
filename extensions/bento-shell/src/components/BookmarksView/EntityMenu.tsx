@@ -1,5 +1,6 @@
 // The "..." menu of a space or a group: Rename, Colour (a submenu), Delete, and for a group Open
-// all in panels. The caller owns the open state, so a right-click on a space row can open it too.
+// all in panels and Move left / Move right (the keyboard route to dragging a column). The caller
+// owns the open state, so a right-click on a space row can open it too.
 
 import { Menu } from '@muxui/react';
 import Check from 'lucide-react/dist/esm/icons/check';
@@ -28,6 +29,8 @@ export interface EntityMenuProps {
   onOpenChange: (open: boolean) => void;
   /** Groups only: open every link of the group in panels. */
   openAll?: { count: number; onOpenAll: () => void };
+  /** Groups only: reorder the column. A direction that is not possible is undefined. */
+  move?: { left: (() => void) | undefined; right: (() => void) | undefined };
   onRename: () => void;
   onColor: (color: BookmarkColor) => void;
   onDelete: () => void;
@@ -40,13 +43,19 @@ export function EntityMenu({
   open,
   onOpenChange,
   openAll,
+  move,
   onRename,
   onColor,
   onDelete,
 }: EntityMenuProps) {
   return (
     <Menu.Root open={open} onOpenChange={onOpenChange}>
-      <Menu.Trigger className="bento-bookmarks__more" aria-label={label} data-bm-no-drag>
+      <Menu.Trigger
+        className="bento-bookmarks__more"
+        aria-label={label}
+        data-bm-menu-trigger
+        data-bm-no-drag
+      >
         <BentoIcon icon={Ellipsis} size="sm" />
       </Menu.Trigger>
       <Menu.Popup placement="bottom-end" offset={4}>
@@ -84,6 +93,16 @@ export function EntityMenu({
               </Menu.List>
             </Menu.Popup>
           </Menu.Submenu>
+          {move ? (
+            <Menu.Item id="move-left" disabled={!move.left} onAction={move.left}>
+              Move left
+            </Menu.Item>
+          ) : null}
+          {move ? (
+            <Menu.Item id="move-right" disabled={!move.right} onAction={move.right}>
+              Move right
+            </Menu.Item>
+          ) : null}
           <Menu.Separator />
           <Menu.Item id="delete" onAction={onDelete}>
             {deleteLabel}

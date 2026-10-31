@@ -6,6 +6,10 @@
 // While a drag runs the hook draws imperatively (a clone of the source follows the pointer, the
 // line follows the slot) from one animation frame loop that also scrolls the boards near their
 // edges, so a pointer move costs no React render. React hears only of the start and the end.
+//
+// Once a press has become a drag, the controls under it must not activate when the button is
+// released, however the drag ended (dropped, or cancelled with Esc while the button is still down):
+// the click suppressor stays armed from the start of the drag until that release has passed.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
@@ -22,6 +26,7 @@ import {
   type GroupDrop,
   type ItemDrop,
 } from './drop';
+import { createClickSuppressor } from './clickSuppressor';
 import { recordFlip, type FlipRecord } from './flip';
 import type { BookmarksAction } from './types';
 
@@ -67,8 +72,9 @@ export interface BoardDragConfig {
   /** The current space's groups, in order. */
   groups: readonly BookmarkGroup[];
   send: (action: BookmarksAction) => void;
-  /** A tab was dropped into `groupId` before `beforeId`: the view places what tools saves. */
-  onTabDrop: (drop: { groupId: string; beforeId: string | null }) => void;
+  /** A tab was dropped: into `groupId` before `beforeId` (the end when null), or, with a null
+   * `groupId`, onto the empty-space zone for a new group. The view sends the save. */
+  onTabDrop: (drop: { tabId: number; groupId: string | null; beforeId: string | null }) => void;
   /** Where everything was just before a move, for the settle once the snapshot arrives. */
   onFlip: (record: FlipRecord) => void;
 }
@@ -82,7 +88,7 @@ export function useBoardDrag(config: BoardDragConfig) {
   const configRef = useRef(config);
   configRef.current = config;
   const sessionRef = useRef<Session | null>(null);
-  const suppressRef = useRef(false);
+  const [suppressor] = useState(() => createClickSuppressor(() => window));
   const lineRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<DragSource | null>(null);
 
@@ -217,12 +223,11 @@ export function useBoardDrag(config: BoardDragConfig) {
       send({ type: 'bookmarks/group/move', id: source.id, spaceId, beforeId });
     } else if (source.kind === 'tab' && spaceId) {
       if (target.kind === 'item') {
-        // What tools saves lands at the end; the view moves it to this slot once it has arrived.
         const { groupId, beforeId } = target.drop;
-        onTabDrop({ groupId, beforeId });
-        send({ type: 'bookmarks/tabs/save', spaceId, groupId, tabIds: [source.id] });
+        record();
+        onTabDrop({ tabId: source.id, groupId, beforeId });
       } else if (target.kind === 'empty') {
-        send({ type: 'bookmarks/tabs/save', spaceId, groupId: null, tabIds: [source.id] });
+        onTabDrop({ tabId: source.id, groupId: null, beforeId: null });
       }
     }
   }, []);
@@ -242,14 +247,6 @@ export function useBoardDrag(config: BoardDragConfig) {
         }
       }
       if (session.dragging) {
-        // The press that ends a drag must not also activate what it began on, whether the control
-        // listens for a press or for a click.
-        const swallowClick = (event: Event) => event.stopPropagation();
-        window.addEventListener('click', swallowClick, { capture: true, once: true });
-        setTimeout(() => {
-          window.removeEventListener('click', swallowClick, true);
-          suppressRef.current = false;
-        }, 0);
         const root = configRef.current.rootRef.current;
         root?.removeAttribute('data-bm-dragging');
         root?.querySelector('[data-bm-drop-zone="empty"]')?.removeAttribute('data-bm-drop-active');
@@ -267,7 +264,8 @@ export function useBoardDrag(config: BoardDragConfig) {
       const root = configRef.current.rootRef.current;
       if (!root) return;
       session.dragging = true;
-      suppressRef.current = true;
+      // Armed until the button is released and its click has passed, whatever ends the drag first.
+      suppressor.begin(session.pointerId, false);
       try {
         session.element.setPointerCapture(session.pointerId);
         session.captured = true;
@@ -301,7 +299,7 @@ export function useBoardDrag(config: BoardDragConfig) {
       };
       session.frame = requestAnimationFrame(tick);
     },
-    [autoscroll, draw],
+    [autoscroll, draw, suppressor],
   );
 
   const begin = useCallback(
@@ -374,12 +372,23 @@ export function useBoardDrag(config: BoardDragConfig) {
   );
 
   // A drag does not outlive the view.
-  useEffect(() => () => finish(false), [finish]);
+  useEffect(
+    () => () => {
+      finish(false);
+      suppressor.end();
+    },
+    [finish, suppressor],
+  );
 
-  /** True for the press that just ended a drag: a control checks it before it activates. */
-  const consumeSuppress = useCallback(() => suppressRef.current, []);
+  /** True for the press that began a drag, through its release: a control checks it before it
+   * activates. */
+  const isSuppressed = suppressor.isActive;
 
-  const cancel = useCallback(() => finish(false), [finish]);
+  /** Drops the drag in progress for good: the view is going away, so the release is moot. */
+  const cancel = useCallback(() => {
+    finish(false);
+    suppressor.end();
+  }, [finish, suppressor]);
 
-  return { begin, active, lineRef, consumeSuppress, cancel };
+  return { begin, active, lineRef, isSuppressed, cancel };
 }

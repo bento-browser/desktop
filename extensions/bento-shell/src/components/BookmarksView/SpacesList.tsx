@@ -6,19 +6,22 @@ import { memo, useState } from 'react';
 import { Button, Text } from '@muxui/react';
 import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left';
 import Plus from 'lucide-react/dist/esm/icons/plus';
+import { BOOKMARK_LIMITS } from '@shared/protocol';
 
 import { BentoIcon } from '../primitives';
 import { EntityMenu } from './EntityMenu';
 import { InlineEditor } from './InlineEditor';
 import type { SpaceSummary } from './model';
-import { isEditing, type BookmarksAction, type EditTarget } from './types';
+import { isEditing, type BookmarksAction, type EditHandler, type EditTarget } from './types';
 
 export interface SpacesListProps {
   spaces: SpaceSummary[];
   currentId: string | null;
   editing: EditTarget | null;
   send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
+  /** Adds a space (the caller sends the create and selects it once it exists). */
+  onCreate: (name: string) => void;
   onClose: () => void;
   onDeleteSpace: (summary: SpaceSummary) => void;
 }
@@ -28,7 +31,7 @@ interface SpaceRowProps {
   selected: boolean;
   renaming: boolean;
   send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
   onDeleteSpace: (summary: SpaceSummary) => void;
 }
 
@@ -45,6 +48,7 @@ const SpaceRow = memo(function SpaceRow({
   return (
     <li
       className="bento-bookmarks__space"
+      data-bm-space-id={space.id}
       data-selected={selected ? 'true' : undefined}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -58,14 +62,15 @@ const SpaceRow = memo(function SpaceRow({
             label="Space name"
             initial={space.name}
             selectAll
-            onCommit={(text) => {
+            maxLength={BOOKMARK_LIMITS.name}
+            onCommit={(text, reason) => {
               const name = text.trim();
               if (name && name !== space.name) {
                 send({ type: 'bookmarks/space/update', id: space.id, name });
               }
-              onEdit(null);
+              onEdit(null, reason === 'enter');
             }}
-            onCancel={() => onEdit(null)}
+            onCancel={() => onEdit(null, true)}
           />
         </div>
       ) : (
@@ -106,6 +111,7 @@ export function SpacesList({
   editing,
   send,
   onEdit,
+  onCreate,
   onClose,
   onDeleteSpace,
 }: SpacesListProps) {
@@ -143,12 +149,13 @@ export function SpacesList({
           <InlineEditor
             label="Space name"
             placeholder="Space name"
-            onCommit={(text) => {
+            maxLength={BOOKMARK_LIMITS.name}
+            onCommit={(text, reason) => {
               const name = text.trim();
-              if (name) send({ type: 'bookmarks/space/create', name });
-              onEdit(null);
+              if (name) onCreate(name);
+              onEdit(null, reason === 'enter');
             }}
-            onCancel={() => onEdit(null)}
+            onCancel={() => onEdit(null, true)}
           />
         ) : (
           <Button
@@ -157,6 +164,7 @@ export function SpacesList({
             className="bento-bookmarks__add"
             aria-label="Add space"
             title="Add space"
+            data-bm-add-space
             onActivate={() => onEdit({ kind: 'add-space' })}
           >
             <BentoIcon icon={Plus} size="sm" />

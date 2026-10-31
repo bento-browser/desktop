@@ -95,8 +95,7 @@ other regular browser imports in this flow use Firefox's native migration wizard
 and are separate from the additive Bento backup import flow.
 
 The sidebar footer exposes Firefox's native app menu and Firefox's native
-downloads panel, plus a Bookmarks button that opens the Bookmarks view (regular windows
-only); it has no separate Settings or merge button. The app menu lists
+downloads panel; it has no Bookmarks, Settings or merge button. The app menu lists
 "Bento Settings" directly above Firefox's own Settings item, and the command
 palette has an Open Settings command; both open the Settings palette. Native footer panels are left-edge
 anchored to their trigger buttons so they grow rightward when screen space
@@ -698,22 +697,32 @@ The view has three parts:
 - **Groups and rows.** The selected space's groups are columns that scroll sideways. Each
   column holds links (favicon, title, host), notes and to-dos (with a checkbox). Hovering
   a row shows actions to open the link in a new panel or in a new tab, edit and delete.
-  Rows edit in place; Enter saves and Esc cancels. The "+ Link, note or to-do" row at
+  Rows edit in place; Enter saves and Esc cancels, and the focus goes back to the row (or to
+  the button that began the edit). The "+ Link, note or to-do" row at
   the foot of a column adds one by typing: a web address or bare domain becomes a link, text
   starting with `[]` becomes a to-do, anything else a note. A group's menu renames it,
-  sets its colour, opens all its links in panels, or deletes it. "+ Group" adds a column.
+  sets its colour, moves it left or right, opens all its links in panels, or deletes it.
+  "+ Group" adds a column; a space with no groups has the same "Group" button in its
+  first-steps box. Names, titles and notes stop at the length Bento stores.
 - **Open tabs.** The header's "Open tabs" toggle opens a drawer on the right with the
   tabs and panels of the active workspace. A tab dragged into a column is saved at the
-  spot where it is dropped, and "Save all to new group" saves every tab at once. In a
+  spot where it is dropped, a tab's menu has "Save to group" (a list of the space's
+  groups and "New group"), and "Save all to new group" saves every tab at once. In a
   narrow window the drawer floats over the board.
 
 The header shows the space's name and "N groups, M links", with a search field that finds
 links, notes and to-dos in every space, listed by space and group. Rows and columns reorder
 by dragging: a line shows where the item will land, nothing shifts while dragging, and the
-dropped item glides into place; Esc cancels. Deleting an item removes it at once and offers
-Undo for a few seconds; deleting a group or space asks first. A space with no groups says
+dropped item glides into place; Esc cancels, and letting go afterwards does not open the link
+that was grabbed. Everything dragging does also has a menu for the keyboard: a row's Move
+menu (Move to group, Move up, Move down), a column's Move left and Move right, and an open
+tab's Save to group; each is reached by Tab and keeps the focus on what moved. Deleting an
+item removes it at once and offers Undo for a few seconds (the countdown waits while the
+pointer is over the toast or the focus is on it); deleting a group or space asks first. A space with no groups says
 "Drop tabs here" and offers a new group or saving the open tabs; until it has been used or
 declined once, it also offers to import the Firefox bookmarks into a space of their own.
+If the stored bookmarks cannot be read, the view says "Bookmarks couldn't load" with a
+Retry button instead of showing a board that could not save; nothing is changed meanwhile.
 
 ## Primary user flows
 

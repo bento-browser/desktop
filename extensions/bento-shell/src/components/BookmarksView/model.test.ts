@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { BookmarksSnapshot } from '@shared/protocol';
 
 import { SAMPLE_SNAPSHOT } from '../../state/__fixtures__/bookmarks';
-import { buildBoard, hostnameOf, parseAddInput, searchBookmarks } from './model';
+import {
+  buildBoard,
+  groupChoices,
+  hostnameOf,
+  parseAddInput,
+  searchBookmarks,
+  stableChoices,
+} from './model';
 
 describe('buildBoard', () => {
   it('shows the last space with its groups, items in order, and counts links per space', () => {
@@ -105,5 +112,28 @@ describe('hostnameOf', () => {
   it('drops www and returns the text for a non-URL', () => {
     expect(hostnameOf('https://www.reddit.com/r/bouldering')).toBe('reddit.com');
     expect(hostnameOf('not a url')).toBe('not a url');
+  });
+});
+
+describe('group choices for the menus', () => {
+  const choices = groupChoices(buildBoard(SAMPLE_SNAPSHOT).groups);
+
+  it("lists the current space's groups in order with their colour", () => {
+    expect(choices.map((choice) => [choice.name, choice.color])).toEqual([
+      ['Bouldering apps', 'red'],
+      ['Gyms', 'green'],
+      ['Training', 'orange'],
+      ['Gear', 'gray'],
+    ]);
+  });
+
+  it('keeps the same list across snapshots that did not change the groups', () => {
+    const again = groupChoices(buildBoard({ ...SAMPLE_SNAPSHOT }).groups);
+    expect(stableChoices(choices, again)).toBe(choices);
+    const renamed = again.map((choice, index) =>
+      index === 1 ? { ...choice, name: 'Gym' } : choice,
+    );
+    expect(stableChoices(choices, renamed)).toBe(renamed);
+    expect(stableChoices(choices, again.slice(1))).toEqual(again.slice(1));
   });
 });

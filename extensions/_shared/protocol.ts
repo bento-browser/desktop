@@ -656,7 +656,7 @@ export type Action =
   | { type: 'bookmarks/group/move'; id: string; spaceId: string; beforeId: string | null }
   /** Create an item in `groupId` before the item `beforeId`, or at the end when null. `id` as for
    * `bookmarks/space/create`; undo of a delete passes the old item's fields (a to-do with its
-   * `done`) and a new id. */
+   * `done`) and the deleted item's id, so a second undo is refused instead of duplicating it. */
   | {
       type: 'bookmarks/item/create';
       id?: string;

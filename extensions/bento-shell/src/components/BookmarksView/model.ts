@@ -10,6 +10,8 @@ import type {
 } from '@shared/protocol';
 import { ALLOWED_URL_SCHEMES } from '@shared/export-schema';
 
+import type { GroupChoice } from './types';
+
 export interface SpaceSummary {
   space: BookmarkSpace;
   groupCount: number;
@@ -66,6 +68,25 @@ export function buildBoard(snapshot: BookmarksSnapshot): BoardModel {
     : [];
   const linkCount = spaces.find((entry) => entry.space.id === current?.id)?.linkCount ?? 0;
   return { spaces, current, groups, linkCount };
+}
+
+/** The current space's groups as the menus list them. */
+export function groupChoices(groups: readonly BoardGroup[]): GroupChoice[] {
+  return groups.map(({ group }) => ({ id: group.id, name: group.name, color: group.color }));
+}
+
+/** `previous` when `next` holds the same choices, so memoized rows and columns that receive the
+ * list keep their props across snapshots that did not touch the groups. */
+export function stableChoices(previous: GroupChoice[], next: GroupChoice[]): GroupChoice[] {
+  const same =
+    previous.length === next.length &&
+    previous.every(
+      (choice, index) =>
+        choice.id === next[index]!.id &&
+        choice.name === next[index]!.name &&
+        choice.color === next[index]!.color,
+    );
+  return same ? previous : next;
 }
 
 /** The host of a link without a leading `www.`, or the text itself when it is not a URL. */

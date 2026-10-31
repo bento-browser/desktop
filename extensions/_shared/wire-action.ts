@@ -41,7 +41,8 @@ const MAX_TAB_IDS = 20_000;
 const MAX_ID_LIST = 5_000;
 const MAX_QUERY_LENGTH = MAX_TITLE_LENGTH;
 // Saved panels share the bookmark favicon cap.
-const MAX_FAVICON_URL_LENGTH = BOOKMARK_LIMITS.favIconUrl;
+// Kept literal: scripts/bento-privacy-security.test.mjs reads it. Equals BOOKMARK_LIMITS.favIconUrl.
+const MAX_FAVICON_URL_LENGTH = 262_144;
 const MAX_PIXELS = 100_000;
 const MAX_SCROLL_PIXELS = 10_000_000;
 const MAX_CLOSE_DELAY_MS = 60_000;

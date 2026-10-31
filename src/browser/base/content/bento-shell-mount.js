@@ -2064,8 +2064,12 @@
   // created during a prior full build and changing them now would require
   // a rebuild anyway. New overlays added in dev should go through this
   // factory.
+  //
+  // The host fades on an inline modal transition unless `inlineFade` is false: the Bookmarks view
+  // host takes its enter and exit roles from bento-shell-mount.css, where the colour-mode fade
+  // can twin them (an inline transition loses to the fade's catch-all).
   function ensureOverlayHost(opts) {
-    const { hostId, zIndex, parentId = 'browser' } = opts;
+    const { hostId, zIndex, parentId = 'browser', inlineFade = true } = opts;
     if (document.getElementById(hostId)) return;
     const parent = parentId ? document.getElementById(parentId) : document.documentElement;
     if (!parent) {
@@ -2079,7 +2083,7 @@
       'position: absolute; top: 0; left: 0; width: 100%; height: 100%;' +
       ` z-index: ${zIndex}; background-color: transparent; pointer-events: auto;` +
       ' display: none; opacity: 0;' +
-      ' transition: opacity var(--muxui-semantic-motion-modal-transition);';
+      (inlineFade ? ' transition: opacity var(--muxui-semantic-motion-modal-transition);' : '');
     parent.appendChild(host);
   }
 
@@ -2175,10 +2179,12 @@
   // The Bookmarks view: a full-window view, not a modal. Its host is the lowest overlay of the
   // stack on purpose, so the palettes, the menu, the address bar, confirm and the tooltip still
   // open above it. It fills #browser; the toolbar strip above it stays Firefox's own (the window
-  // controls), see the :root[bento-bookmarks-view] block in bento-shell-mount.css.
+  // controls), see the :root[bento-bookmarks-view] block in bento-shell-mount.css. Its fade is in
+  // that stylesheet too (modal in, modal-dismiss out), so no inline transition.
   ensureOverlayHost({
     hostId: 'bento-bookmarks-host',
     zIndex: 99000,
+    inlineFade: false,
   });
 
   ensureOverlayHost({
@@ -2559,6 +2565,43 @@
   let bookmarksViewReturnFocus = null;
   let bookmarksViewSelectedBrowser = null;
 
+  // The overlays whose hosts stack above the view: all of them but the view and the tooltip, whose
+  // host stays laid out and never takes the focus. scripts/overlay-surfaces.test.mjs keeps this
+  // equal to the overlay table.
+  const BOOKMARKS_VIEW_HIGHER_OVERLAYS = [
+    'palette',
+    'merge-palette',
+    'workspace-palette',
+    'settings-palette',
+    'addrbar',
+    'welcome',
+    'confirm',
+    'edit-workspace',
+    'workspace-switcher',
+    'menu',
+    'embedded-import',
+  ];
+
+  // Whether an overlay above the view is on screen (a host fading out does not count). It has the
+  // focus, or takes it as it reveals, so the view neither takes the focus from it nor gives the
+  // focus to the page under it.
+  function isOverlayAboveBookmarksViewShown() {
+    return BOOKMARKS_VIEW_HIGHER_OVERLAYS.some((id) => {
+      const host = document.getElementById('bento-' + id + '-host');
+      return !!host && host.style.display !== 'none' && host.style.opacity !== '0';
+    });
+  }
+
+  // Whether a tab-modal or content prompt, or a tab dialog, is showing in a tab the window shows:
+  // the selected tab, or the panels of its split view. Firefox's TabDialogBox sets tabDialogShowing
+  // on the browser when its first dialog opens (the prompt is drawn in the page's
+  // .browserSidebarContainer, which the view hides) and removes it with the last; Firefox reads it
+  // the same way. A background tab's dialog does not count: nobody sees it until that tab is selected.
+  function isTabDialogShowing() {
+    const browsers = window.gBrowser?.selectedBrowsers ?? [window.gBrowser?.selectedBrowser];
+    return browsers.some((browser) => browser?.hasAttribute('tabDialogShowing'));
+  }
+
   function showBookmarksView() {
     if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
     const host = document.getElementById('bento-bookmarks-host');
@@ -2566,6 +2609,8 @@
       console.warn('[bento-shell-mount] showBookmarksView: host missing');
       return;
     }
+    // The view would cover a prompt that waits for an answer. Nothing is dismissed or recorded.
+    if (isTabDialogShowing()) return;
     // A request while the view is already open (the command palette over it) shows it again but
     // keeps what the first request recorded.
     if (!isBookmarksViewOpen()) {
@@ -2583,21 +2628,34 @@
     dismissWorkspacePalette();
     dismissSettingsPalette();
     openOverlay('bookmarks', () => {
+      // A dialog can be showing by the time the document is ready (a tab that has one got
+      // selected while it loaded): the open is cancelled, as for a dialog that opens later.
+      if (isTabDialogShowing()) {
+        hideBookmarksView({ immediate: true });
+        return;
+      }
+      // The document can load while another overlay opens above the view (the command palette).
+      // That overlay keeps the focus, and the document is told so its search field does not take
+      // it either.
+      const focus = !isOverlayAboveBookmarksViewShown();
       cancelMotion(host, 'hide');
       host.style.display = 'flex';
       host.removeAttribute('hidden');
       void host.getBoundingClientRect();
+      // The root attribute goes with the opacity, in one style flush: the stylesheet gives the
+      // fade-in the modal role while the attribute is set and the fade-out modal-dismiss when it is
+      // not, and the chrome beneath hides when the fade-in ends (a visibility transition there).
       host.style.opacity = '1';
-      // The chrome beneath hides when the host's fade-in ends (a visibility transition in the
-      // stylesheet), so the view cross-fades over the browser instead of over a blank window.
       document.documentElement.setAttribute(BOOKMARKS_VIEW_ATTR, 'true');
       // The show goes out with the reveal, to a document that is listening.
-      dispatchBookmarksViewShow();
-      focusOverlayFrame(document.getElementById('bento-bookmarks-frame'));
+      dispatchBookmarksViewShow(focus);
+      if (focus) focusOverlayFrame(document.getElementById('bento-bookmarks-frame'));
     });
   }
 
-  function hideBookmarksView() {
+  // `immediate` is for a dialog about to open in the page area under the view: the host goes at
+  // once, with no fade and no focus move (the dialog takes the focus).
+  function hideBookmarksView({ immediate = false } = {}) {
     overlays.cancel('bookmarks');
     const root = document.documentElement;
     // An open that was cancelled before its reveal never set the attribute and moved no focus.
@@ -2606,10 +2664,12 @@
     const host = document.getElementById('bento-bookmarks-host');
     if (!host) return;
     host.style.opacity = '0';
+    // No display, no transition: hideOverlayHostAfterFade hides a host that is already gone now.
+    if (immediate) host.style.display = 'none';
     hideOverlayHostAfterFade(host);
     // The document stays loaded, so it is told: an open inline editor or search is dropped now.
     dispatchBookmarksViewHide();
-    if (wasShown) restoreBookmarksViewFocus();
+    restoreBookmarksViewFocus(wasShown && !immediate);
   }
 
   function toggleBookmarksView() {
@@ -2617,13 +2677,16 @@
     else showBookmarksView();
   }
 
-  // Opening a tab from the view selects it, and that page gets the focus; otherwise the element
-  // that had it before (the sidebar, usually) gets it back.
-  function restoreBookmarksViewFocus() {
+  // Ends the focus record. With `restore` (the view was shown, and no dialog is taking the focus)
+  // the focus goes back: to the selected tab when it changed (a tab opened from the view is what
+  // the user came for), else to the element that had it before (the sidebar, usually). An overlay
+  // above the view that is on screen keeps the focus instead: the view's close must not move it.
+  function restoreBookmarksViewFocus(restore) {
     const target = bookmarksViewReturnFocus;
     const opened = bookmarksViewSelectedBrowser;
     bookmarksViewReturnFocus = null;
     bookmarksViewSelectedBrowser = null;
+    if (!restore || isOverlayAboveBookmarksViewShown()) return;
     try {
       const selected = window.gBrowser?.selectedBrowser;
       if (target?.isConnected && selected === opened) target.focus({ preventScroll: true });
@@ -2631,6 +2694,26 @@
     } catch (err) {
       console.warn('[bento-shell-mount] bookmarks view focus restore failed:', err);
     }
+  }
+
+  // A tab-modal prompt (the Leave page prompt of a tab or window close, an auth prompt) or any
+  // other tab dialog (print preview) is drawn inside the page's .browserSidebarContainer, which
+  // the view hides, so nothing could answer it. The view closes at once when one is about to open
+  // or has opened, and a still pending open is cancelled. DOMWillOpenModalDialog comes first for
+  // page prompts (its target is the prompting <browser>, or its window for a prompt in this
+  // process); dialogopen reaches every tab dialog, with the dialog overlay as the target.
+  function closeBookmarksViewForDialog(event) {
+    if (!isBookmarksViewOpen()) return;
+    const source = event.originalTarget ?? event.target;
+    const container = (source?.docShell?.chromeEventHandler ?? source)?.closest?.(
+      '.browserSidebarContainer',
+    );
+    if (container) hideBookmarksView({ immediate: true });
+  }
+
+  function attachBookmarksViewDialogListener() {
+    window.addEventListener('DOMWillOpenModalDialog', closeBookmarksViewForDialog, true);
+    window.addEventListener('dialogopen', closeBookmarksViewForDialog, true);
   }
 
   // Cmd/Ctrl+Shift+O. Firefox's "Show All Bookmarks" key (Library) toggles the Bookmarks view. The
@@ -9845,12 +9928,15 @@
     encodeURIComponent(SETTINGS_PALETTE_SHOW_FRAME_SCRIPT_SRC);
 
   // The Bookmarks view document stays loaded while hidden, so chrome tells it when it is shown and
-  // when it is hidden with DOM events, the same way (a private window never shows it).
+  // when it is hidden with DOM events, the same way (a private window never shows it). The show's
+  // detail is { focus: boolean }, an object made in the page's realm so the page can read it.
   const BOOKMARKS_VIEW_FRAME_SCRIPT_SRC =
     '"use strict";' +
-    'addMessageListener("BentoBookmarksViewShow", function() {' +
+    'addMessageListener("BentoBookmarksViewShow", function(msg) {' +
     '  try {' +
-    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-show"));' +
+    '    var detail = new content.wrappedJSObject.Object();' +
+    '    detail.focus = !!(msg.data && msg.data.focus);' +
+    '    content.dispatchEvent(new content.CustomEvent("bento-bookmarks-show", { detail: detail }));' +
     '  } catch (e) {}' +
     '});' +
     'addMessageListener("BentoBookmarksViewHide", function() {' +
@@ -10114,12 +10200,17 @@
   // generation, and a retry of an older one is dropped.
   let bookmarksLifecycleSeq = 0;
 
-  function sendBookmarksViewMessage(name, attempt = 0, generation = (bookmarksLifecycleSeq += 1)) {
+  function sendBookmarksViewMessage(
+    name,
+    data,
+    attempt = 0,
+    generation = (bookmarksLifecycleSeq += 1),
+  ) {
     if (generation !== bookmarksLifecycleSeq) return false;
     const frame = document.getElementById('bento-bookmarks-frame');
     if (!frame) return false;
     const retry = () =>
-      setTimeout(() => sendBookmarksViewMessage(name, attempt + 1, generation), 100);
+      setTimeout(() => sendBookmarksViewMessage(name, data, attempt + 1, generation), 100);
     try {
       const mm = frame.messageManager;
       if (!mm || typeof mm.sendAsyncMessage !== 'function') {
@@ -10130,7 +10221,7 @@
         mm.loadFrameScript(BOOKMARKS_VIEW_FRAME_SCRIPT_URL, true);
         frame._bentoBookmarksViewScriptLoaded = true;
       }
-      mm.sendAsyncMessage(name, {});
+      mm.sendAsyncMessage(name, data);
       return true;
     } catch (err) {
       if (attempt < 10) {
@@ -10142,8 +10233,10 @@
     }
   }
 
-  function dispatchBookmarksViewShow() {
-    return sendBookmarksViewMessage('BentoBookmarksViewShow');
+  // `focus`: the document may take the focus (its search field). False when an overlay above the
+  // view is on screen.
+  function dispatchBookmarksViewShow(focus) {
+    return sendBookmarksViewMessage('BentoBookmarksViewShow', { focus: focus === true });
   }
 
   // A document that was never shown has nothing to drop, so that hide is not sent (it would load
@@ -10154,7 +10247,7 @@
       bookmarksLifecycleSeq += 1;
       return false;
     }
-    return sendBookmarksViewMessage('BentoBookmarksViewHide');
+    return sendBookmarksViewMessage('BentoBookmarksViewHide', {});
   }
 
   function setPanelTrailerAddFocus(focused) {
@@ -19525,6 +19618,7 @@
   attachReloadListener();
   attachAddrbarKeybinding();
   retargetLibraryKeyToBookmarksView();
+  attachBookmarksViewDialogListener();
   attachOutsideClickDismissListener();
   attachTopUrlbarModalListener();
   attachSidebarAddressSnapshotListeners();

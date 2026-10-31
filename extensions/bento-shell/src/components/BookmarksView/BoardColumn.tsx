@@ -1,19 +1,33 @@
 // One group of the board: a header with the colour dot, name, count and menu, the rows, and the
-// "+ Link, note or to-do" entry. The header is the handle for ordering columns; a double click
-// renames. `AddGroupColumn` is the trailing "+ Group" column.
+// "+ Link, note or to-do" entry. The header is the handle for ordering columns (the menu has
+// Move left and Move right for the keyboard); a double click renames. `AddGroupColumn` is the
+// trailing "+ Group" column.
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Button, Text } from '@muxui/react';
 import Plus from 'lucide-react/dist/esm/icons/plus';
-import type { BookmarkGroup, BookmarkItem } from '@shared/protocol';
+import {
+  BOOKMARK_LIMITS,
+  type BookmarkGroup,
+  type BookmarkItem,
+  type BookmarkItemInput,
+} from '@shared/protocol';
 
 import { BentoIcon } from '../primitives';
+import { AddGroup } from './AddGroup';
 import { EntityMenu } from './EntityMenu';
+import { neighbourMoves } from './focus';
 import { InlineEditor } from './InlineEditor';
 import { ItemRow } from './ItemRow';
 import { parseAddInput } from './model';
-import { isEditing, type BookmarksAction, type EditTarget } from './types';
+import {
+  isEditing,
+  type BookmarksAction,
+  type EditHandler,
+  type EditTarget,
+  type GroupChoice,
+} from './types';
 import type { DragSource } from './useBoardDrag';
 
 export interface BoardColumnProps {
@@ -24,8 +38,17 @@ export interface BoardColumnProps {
   draggingItemId: string | null;
   /** This whole column is being dragged. */
   dragging: boolean;
+  /** The groups of the current space, for "Move to group". */
+  groups: readonly GroupChoice[];
+  /** The `beforeId` of "Move left" (the column before), undefined for the first column. */
+  moveLeftBefore: string | undefined;
+  /** The `beforeId` of "Move right" (null: the end), undefined for the last column. */
+  moveRightBefore: string | null | undefined;
   send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
+  onCreateItem: (groupId: string, item: BookmarkItemInput) => void;
+  onMoveItem: (id: string, groupId: string, beforeId: string | null) => void;
+  onMoveGroup: (id: string, beforeId: string | null) => void;
   onOpen: (id: string, where: 'panel' | 'tab') => void;
   onDeleteItem: (item: BookmarkItem) => void;
   onOpenAll: (items: BookmarkItem[]) => void;
@@ -40,8 +63,14 @@ function BoardColumnImpl({
   editing,
   draggingItemId,
   dragging,
+  groups,
+  moveLeftBefore,
+  moveRightBefore,
   send,
   onEdit,
+  onCreateItem,
+  onMoveItem,
+  onMoveGroup,
   onOpen,
   onDeleteItem,
   onOpenAll,
@@ -52,20 +81,11 @@ function BoardColumnImpl({
   const [menuOpen, setMenuOpen] = useState(false);
   // Remounts the entry after an Enter so the next one can be typed straight away.
   const [entryKey, setEntryKey] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
   const renaming = isEditing(editing, { kind: 'group', id: group.id });
   const adding = isEditing(editing, { kind: 'add-item', groupId: group.id });
   const links = items.filter((item) => item.kind === 'link');
 
-  // A new row is added at the end: keep it in view.
-  const count = items.length;
-  const previousCount = useRef(count);
-  useEffect(() => {
-    if (adding && count > previousCount.current) {
-      listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-    }
-    previousCount.current = count;
-  }, [adding, count]);
+  const itemIds = items.map((item) => item.id);
 
   return (
     <section
@@ -87,15 +107,16 @@ function BoardColumnImpl({
             label="Group name"
             initial={group.name}
             selectAll
+            maxLength={BOOKMARK_LIMITS.name}
             className="bento-bookmarks__rename"
-            onCommit={(text) => {
+            onCommit={(text, reason) => {
               const name = text.trim();
               if (name && name !== group.name) {
                 send({ type: 'bookmarks/group/update', id: group.id, name });
               }
-              onEdit(null);
+              onEdit(null, reason === 'enter');
             }}
-            onCancel={() => onEdit(null)}
+            onCancel={() => onEdit(null, true)}
           />
         ) : (
           <Text variant="label" size="sm" truncate className="bento-bookmarks__column-name">
@@ -112,26 +133,43 @@ function BoardColumnImpl({
           open={menuOpen}
           onOpenChange={setMenuOpen}
           openAll={{ count: links.length, onOpenAll: () => onOpenAll(links) }}
+          move={{
+            left:
+              moveLeftBefore === undefined
+                ? undefined
+                : () => onMoveGroup(group.id, moveLeftBefore),
+            right:
+              moveRightBefore === undefined
+                ? undefined
+                : () => onMoveGroup(group.id, moveRightBefore),
+          }}
           onRename={() => onEdit({ kind: 'group', id: group.id })}
           onColor={(color) => send({ type: 'bookmarks/group/update', id: group.id, color })}
           onDelete={() => onDeleteGroup(group, items.length)}
         />
       </header>
-      <div ref={listRef} className="bento-bookmarks__list" role="list" data-bm-list>
-        {items.map((item) => (
-          <ItemRow
-            key={item.id}
-            item={item}
-            editing={isEditing(editing, { kind: 'item', id: item.id })}
-            dragging={draggingItemId === item.id}
-            send={send}
-            onEdit={onEdit}
-            onOpen={onOpen}
-            onDelete={onDeleteItem}
-            onPointerDown={onPointerDown}
-            isSuppressed={isSuppressed}
-          />
-        ))}
+      <div className="bento-bookmarks__list" role="list" data-bm-list>
+        {items.map((item, index) => {
+          const { earlier, later } = neighbourMoves(itemIds, index);
+          return (
+            <ItemRow
+              key={item.id}
+              item={item}
+              editing={isEditing(editing, { kind: 'item', id: item.id })}
+              dragging={draggingItemId === item.id}
+              groups={groups}
+              moveUpBefore={earlier}
+              moveDownBefore={later}
+              send={send}
+              onEdit={onEdit}
+              onOpen={onOpen}
+              onDelete={onDeleteItem}
+              onMove={onMoveItem}
+              onPointerDown={onPointerDown}
+              isSuppressed={isSuppressed}
+            />
+          );
+        })}
       </div>
       <footer className="bento-bookmarks__column-foot">
         {adding ? (
@@ -140,6 +178,7 @@ function BoardColumnImpl({
             label="New link, note or to-do"
             placeholder="Paste a link, write a note, or start with []"
             multiline
+            maxLength={BOOKMARK_LIMITS.text}
             hint={
               <>
                 <span>Enter to save</span>
@@ -149,12 +188,11 @@ function BoardColumnImpl({
             }
             onCommit={(text, reason) => {
               const item = parseAddInput(text);
-              if (item)
-                send({ type: 'bookmarks/item/create', groupId: group.id, beforeId: null, item });
+              if (item) onCreateItem(group.id, item);
               if (item && reason === 'enter') setEntryKey((key) => key + 1);
-              else onEdit(null);
+              else onEdit(null, reason === 'enter');
             }}
-            onCancel={() => onEdit(null)}
+            onCancel={() => onEdit(null, true)}
           />
         ) : (
           <Button
@@ -162,6 +200,7 @@ function BoardColumnImpl({
             size="sm"
             className="bento-bookmarks__add"
             aria-label="Add link, note or to-do"
+            data-bm-add-item
             onActivate={() => onEdit({ kind: 'add-item', groupId: group.id })}
           >
             <BentoIcon icon={Plus} size="sm" />
@@ -192,46 +231,27 @@ export const BoardColumn = memo(BoardColumnImpl, (prev, next) => {
 
 /** The trailing "+ Group" column: a button that becomes a name field. */
 export function AddGroupColumn({
-  spaceId,
   editing,
-  send,
   onEdit,
+  onCreate,
 }: {
-  spaceId: string;
   editing: EditTarget | null;
-  send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
+  onCreate: (name: string, viaKeyboard: boolean) => void;
 }) {
-  const adding = isEditing(editing, { kind: 'add-group' });
   return (
     <section
       className="bento-bookmarks__column bento-bookmarks__column--add"
       aria-label="New group"
     >
       <header className="bento-bookmarks__column-head">
-        {adding ? (
-          <InlineEditor
-            label="Group name"
-            placeholder="Group name"
-            onCommit={(text) => {
-              const name = text.trim();
-              if (name) send({ type: 'bookmarks/group/create', spaceId, name });
-              onEdit(null);
-            }}
-            onCancel={() => onEdit(null)}
-          />
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="bento-bookmarks__add"
-            aria-label="Add group"
-            onActivate={() => onEdit({ kind: 'add-group' })}
-          >
-            <BentoIcon icon={Plus} size="sm" />
-            Group
-          </Button>
-        )}
+        <AddGroup
+          editing={editing}
+          onEdit={onEdit}
+          onCreate={onCreate}
+          buttonVariant="ghost"
+          buttonClassName="bento-bookmarks__add"
+        />
       </header>
     </section>
   );

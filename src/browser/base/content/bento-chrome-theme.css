@@ -1450,6 +1450,18 @@
       var(--bento-mode-fade-colours) !important;
   }
 
+  [data-bento-mode-fade] #bento-bookmarks-host {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-dismiss-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #bento-bookmarks-host {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
   [data-bento-mode-fade] #bento-embedded-import-host[data-bento-import-handoff] {
     transition:
       var(--bento-mode-fade-colours) !important;

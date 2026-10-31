@@ -7,6 +7,11 @@
 // a `bookmarks/*` action handed to `send`; the entry (bookmarks/main.tsx) binds those to tools, and
 // stories bind them to a fake. Persistent state lives in tools; what is local here is transient:
 // the search text, the one open inline editor, the drawer, a pending confirmation.
+//
+// Every create carries a client id (actions.ts), and what follows a change (select the new space,
+// scroll to the new row, put the focus back after a keyboard move) waits for that id in a snapshot
+// (followups.ts). Everything a drag does has a menu on the keyboard: Save to group on an open tab,
+// Move on a row, Move left and right on a column.
 
 import {
   useCallback,
@@ -19,27 +24,58 @@ import {
 } from 'react';
 import { Button, Dialog, SearchField, Text, ToggleButton } from '@muxui/react';
 import AppWindow from 'lucide-react/dist/esm/icons/app-window';
-import type { BookmarkGroup, BookmarkItem, BookmarksSnapshot } from '@shared/protocol';
+import type {
+  BookmarkGroup,
+  BookmarkItem,
+  BookmarkItemInput,
+  BookmarksSnapshot,
+} from '@shared/protocol';
 
 import { afterMotion } from '../../motion/afterMotion';
 import { BentoIcon } from '../primitives';
+import {
+  groupCreate,
+  itemCreate,
+  itemRestore,
+  spaceCreate,
+  tabsSave,
+  type TabsTarget,
+} from './actions';
+import { isGroupMoveNoop, isItemMoveNoop } from './drop';
 import { AddGroupColumn, BoardColumn } from './BoardColumn';
 import { EmptySpace } from './EmptySpace';
-import { playFlip, recordFlip, type FlipRecord } from './flip';
-import { buildBoard, itemLabel, searchBookmarks, type SpaceSummary } from './model';
 import {
-  PENDING_CREATE_TTL_MS,
-  itemIdsIn,
-  placeAt,
-  resolvePending,
-  restorePlan,
-  type PendingCreate,
-} from './pending';
+  editReturnSelector,
+  groupAddItemSelector,
+  groupMenuSelector,
+  itemMainSelector,
+  itemMenuSelector,
+  neighbourMoves,
+  revealSelector,
+} from './focus';
+import { exists, groupPlacedAt, itemPlacedAt, settleFollowups, type Followup } from './followups';
+import { playFlip, recordFlip, type FlipRecord } from './flip';
+import { LoadFailed } from './LoadFailed';
+import {
+  buildBoard,
+  groupChoices,
+  itemLabel,
+  searchBookmarks,
+  stableChoices,
+  type SpaceSummary,
+} from './model';
 import { SearchResults } from './SearchResults';
 import { SpacesList } from './SpacesList';
 import { TabsDrawer } from './TabsDrawer';
 import { UndoToasts, type UndoToast } from './UndoToasts';
-import { editingInColumn, type BookmarksAction, type EditTarget, type OpenTab } from './types';
+import {
+  editingInColumn,
+  type BookmarksAction,
+  type EditHandler,
+  type EditTarget,
+  type GroupChoice,
+  type OpenTab,
+} from './types';
 import { useBoardDrag } from './useBoardDrag';
 import './BookmarksView.css';
 
@@ -50,8 +86,12 @@ export interface BookmarksViewProps {
   send: (action: BookmarksAction) => void;
   /** Leaves the view. */
   onClose: () => void;
-  /** Changes on every show: the view starts fresh and puts the focus in the search field. */
+  /** Changes on every show: the view starts fresh and, unless `focusSearchOnOpen` is false, puts
+   * the focus in the search field. */
   openToken?: number;
+  /** Whether a show may take the focus. Chrome says no when something above the view has it (a
+   * prompt, another overlay); default true. Read when `openToken` changes. */
+  focusSearchOnOpen?: boolean;
   /** Changes whenever the view is hidden: an unfinished edit is dropped. */
   hideToken?: number;
   /** Starting state, for stories: the drawer open, search text, an inline editor open. */
@@ -96,9 +136,10 @@ function useDrawerPresence(open: boolean) {
 export default function BookmarksView({
   snapshot,
   openTabs,
-  send: sendToTools,
+  send,
   onClose,
   openToken = 0,
+  focusSearchOnOpen = true,
   hideToken = 0,
   initialDrawerOpen = false,
   initialQuery = '',
@@ -120,30 +161,71 @@ export default function BookmarksView({
   const searching = query.trim() !== '';
   const current = board?.current ?? null;
 
-  // Latest values for handlers that outlive a render (the Esc listener, the undo toast).
-  const live = useRef({ snapshot, editing, confirm, query });
-  live.current = { snapshot, editing, confirm, query };
+  const choicesRef = useRef<GroupChoice[]>([]);
+  choicesRef.current = stableChoices(choicesRef.current, groupChoices(board?.groups ?? []));
+  const groups = choicesRef.current;
 
-  // Follow-ups that need the ids tools assigned: a dropped tab's place, a restored to-do's tick,
-  // the selection of a new space, the scroll to a new group.
-  const pendingRef = useRef<PendingCreate[]>([]);
-  const newSpaceRef = useRef<ReadonlySet<string> | null>(null);
-  const newGroupRef = useRef<ReadonlySet<string> | null>(null);
+  // Latest values for handlers that outlive a render (the Esc listener, the undo toast, the
+  // callbacks handed to memoized rows).
+  const latest = {
+    snapshot,
+    editing,
+    confirm,
+    query,
+    spaceId: current?.id ?? null,
+    emptyBoard: board?.groups.length === 0,
+    focusSearchOnOpen,
+  };
+  const live = useRef(latest);
+  live.current = latest;
+
+  const followupsRef = useRef<Followup[]>([]);
   const flipRef = useRef<FlipRecord | null>(null);
+  const returnFocusRef = useRef<EditTarget | null>(null);
 
-  const send = useCallback(
-    (action: BookmarksAction) => {
-      const state = live.current.snapshot;
-      if (state && action.type === 'bookmarks/space/create') {
-        newSpaceRef.current = new Set(state.spaces.map((space) => space.id));
-      } else if (state && action.type === 'bookmarks/tabs/save' && action.groupId === null) {
-        newGroupRef.current = new Set(state.groups.map((group) => group.id));
-      } else if (state && action.type === 'bookmarks/group/create') {
-        newGroupRef.current = new Set(state.groups.map((group) => group.id));
+  const follow = useCallback((ready: Followup['ready'], run: Followup['run']) => {
+    followupsRef.current.push({ ready, run });
+  }, []);
+
+  /** Scrolls the first of these (a new row or column) into view. */
+  const reveal = useCallback((ids: readonly string[]) => {
+    for (const id of ids) {
+      const element = rootRef.current?.querySelector(revealSelector(id));
+      if (element) {
+        element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        return;
       }
-      sendToTools(action);
+    }
+  }, []);
+
+  const focusOn = useCallback((selector: string) => {
+    rootRef.current?.querySelector<HTMLElement>(selector)?.focus();
+  }, []);
+
+  /** Opens or closes the one inline editor. A close by keyboard hands the focus back to the row
+   * or trigger the editor began on, once the editor is gone. */
+  const edit = useCallback<EditHandler>((target, returnFocus = false) => {
+    if (target === null && returnFocus) returnFocusRef.current = live.current.editing;
+    setEditing(target);
+  }, []);
+
+  useLayoutEffect(() => {
+    const target = returnFocusRef.current;
+    if (editing !== null || !target) return;
+    returnFocusRef.current = null;
+    focusOn(editReturnSelector(target));
+  }, [editing, focusOn]);
+
+  /** Saves tabs as links in one action; the first one that arrives is scrolled into view. */
+  const saveTabs = useCallback(
+    (tabIds: readonly number[], target?: TabsTarget) => {
+      const spaceId = live.current.spaceId;
+      if (!spaceId || tabIds.length === 0) return;
+      const action = tabsSave(spaceId, tabIds, target);
+      follow(exists(action.ids), () => reveal(action.ids));
+      send(action);
     },
-    [sendToTools],
+    [follow, reveal, send],
   );
 
   const drag = useBoardDrag({
@@ -153,14 +235,7 @@ export default function BookmarksView({
     items: snapshot?.items ?? [],
     groups: useMemo(() => board?.groups.map((entry) => entry.group) ?? [], [board]),
     send,
-    onTabDrop: ({ groupId, beforeId }) => {
-      pendingRef.current.push({
-        groupId,
-        knownIds: itemIdsIn(live.current.snapshot?.items ?? [], groupId),
-        then: placeAt(groupId, beforeId),
-        at: Date.now(),
-      });
-    },
+    onTabDrop: ({ tabId, groupId, beforeId }) => saveTabs([tabId], { groupId, beforeId }),
     onFlip: (record) => {
       flipRef.current = record;
     },
@@ -177,47 +252,25 @@ export default function BookmarksView({
   }, [snapshot]);
 
   useEffect(() => {
-    if (!snapshot) return;
-    const known = newSpaceRef.current;
-    if (known) {
-      const created = snapshot.spaces.find((space) => !known.has(space.id));
-      if (created) {
-        newSpaceRef.current = null;
-        sendToTools({ type: 'bookmarks/space/select', id: created.id });
-      }
-    }
-    const knownGroups = newGroupRef.current;
-    if (knownGroups && snapshot.groups.some((group) => !knownGroups.has(group.id))) {
-      newGroupRef.current = null;
-      const boards = boardsRef.current;
-      if (boards) boards.scrollLeft = boards.scrollWidth;
-    }
-    const now = Date.now();
-    pendingRef.current = pendingRef.current.filter((pending) => {
-      if (now - pending.at > PENDING_CREATE_TTL_MS) return false;
-      const actions = resolvePending(pending, snapshot.items);
-      if (!actions) return true;
-      // The rows are in the order tools saved them; they settle into the place they were dropped.
-      if (actions.length > 0 && rootRef.current) flipRef.current = recordFlip(rootRef.current);
-      for (const action of actions) sendToTools(action);
-      return false;
-    });
-  }, [snapshot, sendToTools]);
+    if (snapshot) followupsRef.current = settleFollowups(followupsRef.current, snapshot);
+  }, [snapshot]);
 
   // ---- Shown and hidden by chrome ----------------------------------------------------------
 
   useEffect(() => {
     if (openToken === 0) return;
     cancelDrag();
+    followupsRef.current = [];
     setQuery('');
     setEditing(null);
     setConfirm(null);
-    searchRef.current?.focus();
+    if (live.current.focusSearchOnOpen) searchRef.current?.focus();
   }, [openToken, cancelDrag]);
 
   useEffect(() => {
     if (hideToken === 0) return;
     cancelDrag();
+    followupsRef.current = [];
     setEditing(null);
     setConfirm(null);
     setToasts([]);
@@ -263,24 +316,81 @@ export default function BookmarksView({
     [send, onClose],
   );
 
+  const createSpace = useCallback(
+    (name: string) => {
+      const action = spaceCreate(name);
+      follow(exists([action.id]), () => send({ type: 'bookmarks/space/select', id: action.id }));
+      send(action);
+    },
+    [follow, send],
+  );
+
+  const createGroup = useCallback(
+    (name: string, viaKeyboard: boolean) => {
+      const { spaceId, emptyBoard } = live.current;
+      if (!spaceId) return;
+      const action = groupCreate(spaceId, name);
+      follow(exists([action.id]), () => {
+        reveal([action.id]);
+        // The empty space's "Group" button is gone once the board shows: continue in the new column.
+        if (viaKeyboard && emptyBoard) focusOn(groupAddItemSelector(action.id));
+      });
+      send(action);
+    },
+    [follow, reveal, focusOn, send],
+  );
+
+  const createItem = useCallback(
+    (groupId: string, item: BookmarkItemInput) => {
+      const action = itemCreate(groupId, null, item);
+      follow(exists([action.id]), () => reveal([action.id]));
+      send(action);
+    },
+    [follow, reveal, send],
+  );
+
+  /** The keyboard route to dropping a row: into `groupId` before `beforeId`. The focus follows
+   * the row, which is a new element when it changes column. */
+  const moveItem = useCallback(
+    (id: string, groupId: string, beforeId: string | null) => {
+      const state = live.current.snapshot;
+      if (!state || isItemMoveNoop(state.items, id, groupId, beforeId)) return;
+      if (rootRef.current) flipRef.current = recordFlip(rootRef.current);
+      follow(itemPlacedAt(id, groupId, beforeId), () => focusOn(itemMenuSelector(id)));
+      send({ type: 'bookmarks/item/move', id, groupId, beforeId });
+    },
+    [follow, focusOn, send],
+  );
+
+  const moveGroup = useCallback(
+    (id: string, beforeId: string | null) => {
+      const { snapshot: state, spaceId } = live.current;
+      if (!state || !spaceId) return;
+      const siblings = state.groups.filter((group) => group.spaceId === spaceId);
+      if (isGroupMoveNoop(siblings, id, beforeId)) return;
+      if (rootRef.current) flipRef.current = recordFlip(rootRef.current);
+      follow(groupPlacedAt(id, spaceId, beforeId), () => focusOn(groupMenuSelector(id)));
+      send({ type: 'bookmarks/group/move', id, spaceId, beforeId });
+    },
+    [follow, focusOn, send],
+  );
+
   const deleteItem = useCallback(
     (item: BookmarkItem) => {
       const state = live.current.snapshot;
-      const plan = restorePlan(
+      const restore = itemRestore(
         item,
         (state?.items ?? []).filter((entry) => entry.groupId === item.groupId),
       );
       send({ type: 'bookmarks/item/delete', id: item.id });
       const id = (nextToastId.current += 1);
-      const undo = () => {
-        if (plan.pending) {
-          pendingRef.current.push({
-            ...plan.pending,
-            knownIds: itemIdsIn(live.current.snapshot?.items ?? [], item.groupId),
-            at: Date.now(),
-          });
-        }
-        send(plan.create);
+      const undo = (viaKeyboard: boolean) => {
+        // The Undo button is gone once it has been used: a keyboard user continues on the row.
+        follow(exists([item.id]), () => {
+          reveal([item.id]);
+          if (viaKeyboard) focusOn(itemMainSelector(item.id));
+        });
+        send(restore);
       };
       setToasts((current) =>
         [
@@ -289,7 +399,7 @@ export default function BookmarksView({
         ].slice(-MAX_TOASTS),
       );
     },
-    [send],
+    [follow, reveal, focusOn, send],
   );
 
   const removeToast = useCallback(
@@ -325,16 +435,12 @@ export default function BookmarksView({
     [send],
   );
 
-  const saveTabs = (tabs: readonly OpenTab[]) => {
-    if (current && tabs.length > 0) {
-      send({
-        type: 'bookmarks/tabs/save',
-        spaceId: current.id,
-        groupId: null,
-        tabIds: tabs.map((tab) => tab.id),
-      });
-    }
-  };
+  const saveAllTabs = () => saveTabs(openTabs.map((tab) => tab.id));
+  // Stable, because the drawer's memoized rows take it.
+  const saveTab = useCallback(
+    (tab: OpenTab, groupId: string | null) => saveTabs([tab.id], { groupId, beforeId: null }),
+    [saveTabs],
+  );
 
   // ---- Render ------------------------------------------------------------------------------
 
@@ -348,8 +454,10 @@ export default function BookmarksView({
       <EmptySpace
         tabCount={openTabs.length}
         offerImport={!snapshot.firefoxImportOffered}
-        onAddGroup={() => setEditing({ kind: 'add-group' })}
-        onSaveTabs={() => saveTabs(openTabs)}
+        editing={editing}
+        onEdit={edit}
+        onCreateGroup={createGroup}
+        onSaveTabs={saveAllTabs}
         onImport={() => send({ type: 'bookmarks/import/firefox' })}
         onDismissImport={() => send({ type: 'bookmarks/import/dismiss' })}
       />
@@ -357,29 +465,41 @@ export default function BookmarksView({
   } else {
     main = (
       <div ref={boardsRef} className="bento-bookmarks__boards">
-        {board.groups.map(({ group, items }) => (
-          <BoardColumn
-            key={group.id}
-            group={group}
-            items={items}
-            editing={editingInColumn(
-              editing,
-              group.id,
-              items.map((item) => item.id),
-            )}
-            draggingItemId={drag.active?.kind === 'item' ? drag.active.id : null}
-            dragging={drag.active?.kind === 'group' && drag.active.id === group.id}
-            send={send}
-            onEdit={setEditing}
-            onOpen={open}
-            onDeleteItem={deleteItem}
-            onOpenAll={openAll}
-            onDeleteGroup={deleteGroup}
-            onPointerDown={drag.begin}
-            isSuppressed={drag.consumeSuppress}
-          />
-        ))}
-        <AddGroupColumn spaceId={current.id} editing={editing} send={send} onEdit={setEditing} />
+        {board.groups.map(({ group, items }, index) => {
+          const { earlier, later } = neighbourMoves(
+            board.groups.map((entry) => entry.group.id),
+            index,
+          );
+          return (
+            <BoardColumn
+              key={group.id}
+              group={group}
+              items={items}
+              editing={editingInColumn(
+                editing,
+                group.id,
+                items.map((item) => item.id),
+              )}
+              draggingItemId={drag.active?.kind === 'item' ? drag.active.id : null}
+              dragging={drag.active?.kind === 'group' && drag.active.id === group.id}
+              groups={groups}
+              moveLeftBefore={earlier}
+              moveRightBefore={later}
+              send={send}
+              onEdit={edit}
+              onCreateItem={createItem}
+              onMoveItem={moveItem}
+              onMoveGroup={moveGroup}
+              onOpen={open}
+              onDeleteItem={deleteItem}
+              onOpenAll={openAll}
+              onDeleteGroup={deleteGroup}
+              onPointerDown={drag.begin}
+              isSuppressed={drag.isSuppressed}
+            />
+          );
+        })}
+        <AddGroupColumn editing={editing} onEdit={edit} onCreate={createGroup} />
       </div>
     );
   }
@@ -394,6 +514,18 @@ export default function BookmarksView({
         )
       : `${plural(board.groups.length, 'group', 'groups')}, ${plural(board.linkCount, 'link', 'links')}`;
 
+  if (snapshot?.status === 'loadFailed') {
+    return (
+      <div ref={rootRef} className="bento-bookmarks">
+        <LoadFailed
+          snapshot={snapshot}
+          onRetry={() => send({ type: 'bookmarks/requestSnapshot' })}
+          onClose={onClose}
+        />
+      </div>
+    );
+  }
+
   return (
     <div ref={rootRef} className="bento-bookmarks" aria-busy={snapshot ? undefined : true}>
       <div className="bento-bookmarks__frame" data-drawer={drawer.mounted ? 'open' : 'closed'}>
@@ -402,7 +534,8 @@ export default function BookmarksView({
           currentId={current?.id ?? null}
           editing={editing}
           send={send}
-          onEdit={setEditing}
+          onEdit={edit}
+          onCreate={createSpace}
           onClose={onClose}
           onDeleteSpace={deleteSpace}
         />
@@ -453,8 +586,10 @@ export default function BookmarksView({
             tabs={openTabs}
             exiting={drawer.exiting}
             draggingTabId={drag.active?.kind === 'tab' ? drag.active.id : null}
+            groups={groups}
             onClose={() => setDrawerOpen(false)}
-            onSaveAll={() => saveTabs(openTabs)}
+            onSaveAll={saveAllTabs}
+            onSaveTab={saveTab}
             onPointerDown={drag.begin}
           />
         ) : null}

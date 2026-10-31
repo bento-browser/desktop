@@ -1089,14 +1089,19 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `src/browser/base/content/bento-shell-mount.js` (`bookmarks` overlay entry,
     `ensureOverlayHost` for `bento-bookmarks-host`, `showBookmarksView` /
     `hideBookmarksView` / `toggleBookmarksView`, `restoreBookmarksViewFocus`,
+    `isOverlayAboveBookmarksViewShown`, `isTabDialogShowing`, `attachBookmarksViewDialogListener`
+    and `closeBookmarksViewForDialog`,
     `retargetLibraryKeyToBookmarksView`, `dispatchBookmarksViewShow` / `Hide` and their
     `BOOKMARKS_VIEW_FRAME_SCRIPT_URL`, the `bento-bookmarks-frame` title handler and the
     `BENTO_OPEN_BOOKMARKS` routes of the sidebar and command palette frames, the Esc early
     return in `attachPaletteEscListener`, `canAnchorAddrbarToSidebarRow`)
   - `src/browser/base/content/bento-shell-mount.css` (the `:root[bento-bookmarks-view]`
-    block next to the `:root[inDOMFullscreen]` rules)
-  - `scripts/firefox-compat-registry.mjs` (new entries `manBookmarkKb` and
-    `titlebar-buttonbox-container`), the regenerated table below
+    block next to the `:root[inDOMFullscreen]` rules, and the host's own enter and exit
+    transition rules) and their generated twins in `bento-chrome-theme.css`
+  - `scripts/firefox-compat-registry.mjs` (new entries `manBookmarkKb`,
+    `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
+    `TabDialogBox._containerFor` and `tabDialogShowing`; `gBrowser.selectedBrowsers` gains a
+    site), the regenerated table below
   - `extensions/bento-shell/src/bridge/overlayReady.ts` (`bookmarks` in `OverlayName`)
   - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`
   - No Firefox patch.
@@ -1121,6 +1126,20 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `bookmarksShowAll` menu item, `panelMenu_showAllBookmarks` and the bookmarks toolbar
     button menus are untouched, so the Library stays reachable from the menus; they still show
     the key's accelerator text.
+  - Tab-modal prompts and tab dialogs: Firefox draws them in the page's
+    `.browserSidebarContainer` (`TabDialogBox._containerFor`, `browser.js`), which the view
+    hides. The mount listens on the window, in the capture phase, for `DOMWillOpenModalDialog`
+    (`PromptParent.sys.mjs`, `openPromptWithTabDialogBox`: fired through
+    `PromptUtils.fireDialogEvent` on the prompting `<browser>`, or on its window for a prompt in
+    this process, before the dialog exists; the Leave/Stay prompt of a tab or window close is
+    one) and for `dialogopen` (`SubDialog.sys.mjs`, dispatched on the dialog overlay once the
+    dialog is shown, for every tab dialog). It acts only when the event's browser or overlay
+    has a `.browserSidebarContainer` ancestor and closes the view at once, with no fade.
+  - The `tabDialogShowing` attribute on a `<browser>` (`browser.js`, `TabDialogBox`
+    `_onFirstDialogOpen` / `_onLastDialogClose`): the view refuses to open, and cancels a
+    pending open at its reveal, while any browser in `gBrowser.selectedBrowsers` has it.
+    Firefox reads the attribute for the selected browser itself (`shouldSuppressPopupNotifications`
+    in `browser.js`, `_adjustFocusAfterTabSwitch` in `Tabbrowser.sys.mjs`).
 - Why this cannot stay extension-only: the view must cover the window including the area of
   the toolbox, which only chrome can hide or lay out, and Firefox's key and the chrome DOM are
   not reachable from an extension document.
@@ -1133,15 +1152,25 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `layout/painting/nsDisplayList.cpp`; an empty rect places the lights above the window,
   `widget/cocoa/nsCocoaWindow.mm`). A change of how a `<key>` without a `command`
   attribute dispatches (`dom/events/KeyEventHandler.cpp`, `DispatchXULKeyCommand`) would stop
-  the shortcut, which then does nothing in a regular window. A new top-layer popover in the
+  the shortcut, which then does nothing in a regular window. If Firefox stops firing
+  `DOMWillOpenModalDialog` or `dialogopen` for a prompt, or draws page prompts outside
+  `.browserSidebarContainer`, a Leave/Stay prompt opens under the view and waits invisibly. If
+  `TabDialogBox` stops setting `tabDialogShowing`, the view opens over a prompt that already
+  waits. A new top-layer popover in the
   toolbar would show over the hidden strip (the native urlbar is one today and is hidden).
 - Regression checks for future updates: on macOS, open the Bookmarks view from the sidebar and
   with `Cmd+Shift+O` in a regular window: the traffic lights stay visible, in place and
   clickable, the empty strip drags the window, the Library window does not open, and
   Bookmarks > Manage Bookmarks still does. Close it: the chrome returns without a shift.
   Repeat in light and dark, with the sidebar collapsed, hidden and expanded. In a private
-  window the shortcut still opens the Library. Run `pnpm run firefox:compat:engine` and
-  confirm `manBookmarkKb` and `titlebar-buttonbox-container` are found.
+  window the shortcut still opens the Library. With the view open and the focus in it, close a
+  tab of a page that has an unsaved form (`beforeunload`), and also press `Cmd+P`: the view
+  closes at once and the Leave/Stay prompt or print preview is visible and focused. With a
+  prompt left open in the selected tab, `Cmd+Shift+O` and the sidebar button do nothing. With the
+  command palette open over the view, `Cmd+Shift+O` closes the view and the palette keeps the
+  focus. Run `pnpm run firefox:compat:engine` and confirm `manBookmarkKb`,
+  `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
+  `TabDialogBox._containerFor` and `tabDialogShowing` are found.
 - Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
   entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` leaves
   no persistent change (the key is edited in the window's DOM only).
@@ -3027,7 +3056,7 @@ below is generated; edit the registry, then run
 | `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `openFirefoxSearchSettings` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3682` |
 | `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
-| `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
+| `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. isTabDialogShowing checks each of them for a showing tab dialog (the selected browser alone outside a split view). | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers`, `isTabDialogShowing` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8022` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8044` |
 | `gBrowser.replaceTabWithWindow` | method (runtime) | Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7709` |
@@ -3045,6 +3074,10 @@ below is generated; edit the registry, then run
 | `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |
 | `remote <browser> key events reach the parent first` | source (engine only) | The chrome process sees a key event for a remote <browser> before that browser's document does: EventStateManager dispatches it in the parent, with the <browser> element as event.target, and only then forwards it to the child with SendRealKeyEvent. The capture-phase Esc listener relies on this to skip an Esc aimed at the Settings frame (event.target.id) and leave it to the Settings document; if the order changed, it would either miss the frame or consume Esc for every stage. | `attachPaletteEscListener` | `dom/events/EventStateManager.cpp:2306` |
+| `DOMWillOpenModalDialog` | source (engine only) | Chrome-only bubbling event that PromptParent fires on the prompting <browser> (on its Window for a prompt in this process) just before a prompt opens, the Leave page prompt of a tab or window close included. Tab-modal prompts are drawn inside the page's .browserSidebarContainer, which the Bookmarks view hides, so the window listens in the capture phase and closes the view at once (no fade, no focus move) and cancels a pending open; the event comes before the dialog exists. | `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog` | `browser/actors/PromptParent.sys.mjs:207` |
+| `dialogopen` | source (engine only) | Bubbling event SubDialog dispatches on a dialog's overlay once it is sized and shown. Every tab dialog fires it, also those that fire no DOMWillOpenModalDialog (print preview, share, screenshots), so the Bookmarks view closes for any dialog whose overlay sits in a page's .browserSidebarContainer. A window-level dialog (gDialogBox) is outside that container and leaves the view open. | `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog` | `toolkit/modules/SubDialog.sys.mjs:501` |
+| `tabDialogShowing` | source (engine only) | Attribute on a <browser> while its TabDialogBox has a dialog open, tab-modal prompts and content prompts included: _onFirstDialogOpen sets it when the first dialog opens and _onLastDialogClose removes it with the last. Firefox reads it for the selected browser the same way (popup notification suppression, tab-switch focus). The Bookmarks view refuses to open while a browser the window shows has it, and cancels a pending open at its reveal, because the prompt is drawn in the .browserSidebarContainer that the view hides. | `isTabDialogShowing` | `browser/base/content/browser.js:4594` |
+| `TabDialogBox._containerFor` | source (engine only) | Where a tab dialog is drawn: appended to browser.closest('.browserSidebarContainer, .webextension-popup-stack, .sidebar-browser-stack'). The Bookmarks view hides every .browserSidebarContainer under its host, so a dialog there is invisible; closeBookmarksViewForDialog tells that container from a window-level dialog by the same selector. If Firefox draws page prompts elsewhere, the view would stay open over them or close for dialogs it does not hide. | `closeBookmarksViewForDialog` | `browser/base/content/browser.js:4466` |
 | `gFissionBrowser` | source (engine only) | A window runs with Fission or without; swapBrowsersAndCloseOther refuses to swap a tab between the two, so a window in another mode is not chosen to take tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:689` |
 | `gDialogBox.isOpen` | member (runtime) | A window-modal dialog is up in the candidate window (the closing-tabs warning is one): the window may be about to close, so it takes no tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:4770` |
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |

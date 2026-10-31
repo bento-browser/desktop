@@ -1,6 +1,7 @@
 // One row of a column: a link, a note or a to-do, with its hover actions and its inline editor.
 // The row starts a drag (useBoardDrag) from anywhere but its own controls; a press that ended a
-// drag must not also open the link, so the open checks `isSuppressed` first.
+// drag must not also open the link, so the open checks `isSuppressed` first. The actions are
+// reachable by Tab (they show on focus), and the Move menu is the keyboard route to dragging.
 
 import { memo, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
@@ -10,12 +11,14 @@ import Globe from 'lucide-react/dist/esm/icons/globe';
 import PanelRightOpen from 'lucide-react/dist/esm/icons/panel-right-open';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
-import type { BookmarkItem } from '@shared/protocol';
+import { BOOKMARK_LIMITS, type BookmarkItem } from '@shared/protocol';
+import { MAX_URL_LENGTH } from '@shared/export-schema';
 
 import { BentoIcon } from '../primitives';
 import { InlineEditor } from './InlineEditor';
+import { ItemMenu } from './ItemMenu';
 import { hostnameOf, normalizeUrl } from './model';
-import type { BookmarksAction, EditTarget } from './types';
+import type { BookmarksAction, EditHandler, GroupChoice } from './types';
 import type { DragSource } from './useBoardDrag';
 
 export interface ItemRowProps {
@@ -24,11 +27,19 @@ export interface ItemRowProps {
   /** This row is the source of the drag in progress. */
   dragging: boolean;
   send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
   /** Opens the link and leaves the view. */
   onOpen: (id: string, where: 'panel' | 'tab') => void;
   /** Deletes the item and offers the undo. */
   onDelete: (item: BookmarkItem) => void;
+  /** The groups of the current space, for "Move to group". */
+  groups: readonly GroupChoice[];
+  /** The `beforeId` of "Move up" (the item above), undefined for the first row. */
+  moveUpBefore: string | undefined;
+  /** The `beforeId` of "Move down" (null: the end), undefined for the last row. */
+  moveDownBefore: string | null | undefined;
+  /** Moves the item into `groupId` before `beforeId` (the end when null). */
+  onMove: (id: string, groupId: string, beforeId: string | null) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, source: DragSource) => void;
   /** True for the press that just ended a drag. */
   isSuppressed: () => boolean;
@@ -65,13 +76,13 @@ function LinkEditor({
 }: {
   item: Extract<BookmarkItem, { kind: 'link' }>;
   send: (action: BookmarksAction) => void;
-  onEdit: (target: EditTarget | null) => void;
+  onEdit: EditHandler;
 }) {
   const [title, setTitle] = useState(item.title);
   const [url, setUrl] = useState(item.url);
   const [done, setDone] = useState(false);
 
-  const commit = () => {
+  const commit = (viaKeyboard: boolean) => {
     if (done) return;
     setDone(true);
     const nextUrl = normalizeUrl(url);
@@ -81,19 +92,19 @@ function LinkEditor({
       ...(title !== item.title ? { title } : {}),
       ...(nextUrl && nextUrl !== item.url ? { url: nextUrl } : {}),
     });
-    onEdit(null);
+    onEdit(null, viaKeyboard);
   };
   const cancel = () => {
     if (done) return;
     setDone(true);
-    onEdit(null);
+    onEdit(null, true);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       event.stopPropagation();
-      commit();
+      commit(true);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -106,13 +117,14 @@ function LinkEditor({
       className="bento-bookmarks__editor bento-bookmarks__link-editor"
       data-bm-no-drag
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) commit();
+        if (!event.currentTarget.contains(event.relatedTarget)) commit(false);
       }}
     >
       <Input.Input
         className="bento-bookmarks__field"
         aria-label="Title"
         value={title}
+        maxLength={BOOKMARK_LIMITS.linkTitle}
         autoFocus
         onFocus={(event) => event.currentTarget.select()}
         onChange={(event) => setTitle(event.currentTarget.value)}
@@ -122,6 +134,7 @@ function LinkEditor({
         className="bento-bookmarks__field"
         aria-label="Address"
         value={url}
+        maxLength={MAX_URL_LENGTH}
         aria-invalid={normalizeUrl(url) === null ? true : undefined}
         onChange={(event) => setUrl(event.currentTarget.value)}
         onKeyDown={onKeyDown}
@@ -139,7 +152,21 @@ function RowActions({
   onOpen,
   onEdit,
   onDelete,
-}: Pick<ItemRowProps, 'item' | 'onOpen' | 'onEdit' | 'onDelete'>) {
+  groups,
+  moveUpBefore,
+  moveDownBefore,
+  onMove,
+}: Pick<
+  ItemRowProps,
+  | 'item'
+  | 'onOpen'
+  | 'onEdit'
+  | 'onDelete'
+  | 'groups'
+  | 'moveUpBefore'
+  | 'moveDownBefore'
+  | 'onMove'
+>) {
   return (
     <div className="bento-bookmarks__row-actions" data-bm-no-drag>
       {item.kind === 'link' ? (
@@ -173,6 +200,13 @@ function RowActions({
       >
         <BentoIcon icon={Pencil} size="sm" />
       </IconButton>
+      <ItemMenu
+        groups={groups}
+        groupId={item.groupId}
+        moveUpBefore={moveUpBefore}
+        moveDownBefore={moveDownBefore}
+        onMove={(groupId, beforeId) => onMove(item.id, groupId, beforeId)}
+      />
       <IconButton
         variant="ghost"
         size="sm"
@@ -193,6 +227,8 @@ function ItemRowImpl(props: ItemRowProps) {
     role: 'listitem',
     className: 'bento-bookmarks__row',
     'data-kind': item.kind,
+    // How many hover actions the row has: the stylesheet makes room for them in the text mask.
+    'data-bm-actions': item.kind === 'link' ? 5 : 3,
     'data-bm-item-id': item.id,
     'data-bm-flip': `item:${item.id}`,
     'data-dragging': dragging ? 'true' : undefined,
@@ -214,20 +250,21 @@ function ItemRowImpl(props: ItemRowProps) {
           label={item.kind === 'note' ? 'Note' : 'To-do'}
           initial={item.text}
           multiline={item.kind === 'note'}
+          maxLength={BOOKMARK_LIMITS.text}
           hint={
             <>
               <span>Enter to save</span>
               <span>Esc to cancel</span>
             </>
           }
-          onCommit={(text) => {
+          onCommit={(text, reason) => {
             const next = text.trim();
             if (next && next !== item.text) {
               send({ type: 'bookmarks/item/update', id: item.id, text: next });
             }
-            onEdit(null);
+            onEdit(null, reason === 'enter');
           }}
-          onCancel={() => onEdit(null)}
+          onCancel={() => onEdit(null, true)}
         />
       </div>
     );

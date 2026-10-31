@@ -1,16 +1,20 @@
 // A space with no groups: a drop zone for tabs, the first steps, and the one-time Firefox import
-// offer. Dropping a tab here saves it into a new "Saved tabs" group (useBoardDrag).
+// offer. Dropping a tab here saves it into a new "Saved tabs" group (useBoardDrag). The "Group"
+// button becomes the name field right here, because the board's own "+ Group" column does not
+// exist until the space has a group.
 
 import { Button, Text } from '@muxui/react';
-import Plus from 'lucide-react/dist/esm/icons/plus';
 
-import { BentoIcon } from '../primitives';
+import { AddGroup } from './AddGroup';
+import type { EditHandler, EditTarget } from './types';
 
 export interface EmptySpaceProps {
   tabCount: number;
   /** Offer the Firefox import (it has not been taken or declined). */
   offerImport: boolean;
-  onAddGroup: () => void;
+  editing: EditTarget | null;
+  onEdit: EditHandler;
+  onCreateGroup: (name: string, viaKeyboard: boolean) => void;
   onSaveTabs: () => void;
   onImport: () => void;
   onDismissImport: () => void;
@@ -19,7 +23,9 @@ export interface EmptySpaceProps {
 export function EmptySpace({
   tabCount,
   offerImport,
-  onAddGroup,
+  editing,
+  onEdit,
+  onCreateGroup,
   onSaveTabs,
   onImport,
   onDismissImport,
@@ -34,10 +40,12 @@ export function EmptySpace({
           or start with a group
         </Text>
         <div className="bento-bookmarks__empty-actions">
-          <Button variant="neutral" size="sm" onActivate={onAddGroup}>
-            <BentoIcon icon={Plus} size="sm" />
-            Group
-          </Button>
+          <AddGroup
+            editing={editing}
+            onEdit={onEdit}
+            onCreate={onCreateGroup}
+            buttonVariant="neutral"
+          />
           {tabCount > 0 ? (
             <Button variant="neutral" size="sm" onActivate={onSaveTabs}>
               {`Save ${tabCount} open ${tabCount === 1 ? 'tab' : 'tabs'}`}

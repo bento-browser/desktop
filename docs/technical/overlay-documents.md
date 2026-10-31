@@ -22,7 +22,7 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                                        | first use                  | Nothing                                                                                                                                                                                |
 | `merge-palette`                         | `merge-palette.html`                                 | Command palette, Settings button, sidebar merge card (`BENTO_OPEN_MERGE_PALETTE`)                                         | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                                                         |
 | `settings-palette`                      | `settings-palette.html`                              | App menu "Bento Settings", command palette `BENTO_OPEN_SETTINGS` and `BENTO_OPEN_SETTINGS_PRIVACY`, welcome Open Settings | first use                  | A `bento-settings-show` DOM event (stage for the privacy link) through the `BentoSettingsPaletteShow` frame script; requests and results travel the BentoShellBus relay, not a channel |
-| `bookmarks`                             | `bookmarks.html`                                     | Sidebar and command palette `BENTO_OPEN_BOOKMARKS`, `Cmd/Ctrl+Shift+O` (Firefox's Library key, retargeted)                | first use                  | A `bento-bookmarks-show` DOM event through the `BentoBookmarksViewShow` frame script; never opened in a private window                                                                 |
+| `bookmarks`                             | `bookmarks.html`                                     | Sidebar and command palette `BENTO_OPEN_BOOKMARKS`, `Cmd/Ctrl+Shift+O` (Firefox's Library key, retargeted)                | first use                  | A `bento-bookmarks-show` DOM event (detail `{ focus }`) through the `BentoBookmarksViewShow` frame script; never opened in a private window                                                                 |
 | `welcome`                               | `welcome.html`                                       | `BENTO_OPEN_WELCOME` from the sidebar and from the welcome document                                                       | first use (first run only) | Resume step hash, read from the environment at window startup; the import handoff messages through the `BentoWelcomeHandoff` frame script (see below)                                  |
 | `embedded-import`                       | `chrome://browser/content/bento-migration-host.html` | Welcome import step                                                                                                       | first use                  | None: a non-remote chrome page with no handshake, src set on every open (its `BENTO_EMBEDDED_IMPORT_READY` title only gates the onboarding handoff)                                    |
 | `panel-navigator-tooltip`               | `panel-navigator-tooltip.html`                       | Hover or focus on a panel navigator button                                                                                | first hover                | Label payload through the `BentoPanelNavigatorTooltip` frame script (`content.postMessage` into this frame's own window), sent again on readiness                                      |
@@ -217,6 +217,26 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   that dispatches `bento-bookmarks-show` in the document, as Settings does) and focuses the
   frame. A repeated request while it is open shows it again and keeps the first request's
   focus record.
+- **Refused under a prompt.** `showBookmarksView` returns, before it dismisses or records
+  anything, while `isTabDialogShowing`: a browser the window shows (`gBrowser.selectedBrowsers`,
+  so every panel of a split view) has the `tabDialogShowing` attribute, which Firefox's
+  `TabDialogBox` sets when its first dialog (tab-modal prompt, content prompt, any tab dialog)
+  opens and removes with the last. The view would cover a prompt that waits for an answer. A
+  background tab's dialog does not count. The same check runs first in the reveal, so an open
+  that waited for its document is cancelled (`hideBookmarksView({ immediate: true })`: the
+  document gets no show and its presentation is taken back) when a tab with an open prompt got
+  selected meanwhile. The command palette and the other overlays stay as they are on a refusal.
+- **Focus against the overlays above it.** The view's document can finish loading after
+  another overlay opened over it (the command palette, a menu, the address bar). The reveal
+  asks `isOverlayAboveBookmarksViewShown`, which looks at the hosts in
+  `BOOKMARKS_VIEW_HIGHER_OVERLAYS` (every overlay but the view and the always-laid-out
+  tooltip; a test keeps the list equal to the overlay table): a host with `display` not
+  `none` and `opacity` not `0` is on screen, and a host fading out is not. If one is, the
+  reveal still shows the view but leaves the focus where it is, and the show goes out with
+  `focus: false`. The `bento-bookmarks-show` event carries `detail: { focus: boolean }`,
+  made in the page's realm (`content.wrappedJSObject.Object`, since a chrome object is not
+  readable by the page): the document focuses its search field only for `focus: true`. A
+  pending overlay does not count; it takes the focus itself when it reveals.
 - **Closing.** `BENTO_CLOSE_BOOKMARKS_<ts>` from the bookmarks frame, `Cmd/Ctrl+Shift+O`
   again, or Esc (below). `hideBookmarksView` removes the attribute at once, so the chrome is
   visible under the host's fade-out, sends `BentoBookmarksViewHide` (`bento-bookmarks-hide`;
@@ -224,7 +244,25 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   Settings), fades the host out with `hideOverlayHostAfterFade`, and returns the focus: to the
   element that had it when the view opened, or to the selected tab when that changed (a tab
   opened from the view) or when the opener was an overlay frame (the command palette, which
-  the open closed). Titles carry a timestamp because chrome drops a repeated title.
+  the open closed). The focus moves only if no overlay above the view is on screen
+  (`restoreBookmarksViewFocus`): with the command palette open over the view,
+  `Cmd/Ctrl+Shift+O` closes the view and leaves the palette focused. The record of where to
+  return is cleared either way, so it cannot go stale. Titles carry a timestamp because chrome
+  drops a repeated title.
+- **Tab dialogs.** Firefox draws a tab-modal prompt (the Leave/Stay prompt of a tab or
+  window close, an auth prompt) and any other tab dialog (print preview) inside the page's
+  `.browserSidebarContainer`, which the view hides, so nothing could answer it.
+  `attachBookmarksViewDialogListener` listens on the window in the capture phase for
+  `DOMWillOpenModalDialog` (PromptParent fires it before a prompt opens, on the prompting
+  `<browser>` or on its window for a prompt in this process) and `dialogopen` (SubDialog fires
+  it on the dialog overlay once the dialog is shown, for every tab dialog, also those without
+  the first event). `closeBookmarksViewForDialog` acts only while the view is open (shown or
+  waiting for its document) and only if the event's browser or overlay is inside a
+  `.browserSidebarContainer`; a window-level dialog (`gDialogBox`) or a prompt of an overlay
+  frame is left alone. It calls `hideBookmarksView({ immediate: true })`: a pending open is
+  cancelled, the root attribute goes, the host is set `display: none` with no fade (so
+  `hideOverlayHostAfterFade` finishes at once and the document is told it is no longer
+  presented), the document gets its hide, and no focus moves (the dialog takes it).
 - **Esc.** The document owns it (an inline editor closes before the view). Like Settings,
   `attachPaletteEscListener` returns for a key whose target is `bento-bookmarks-frame` (or a
   delivered menu above it, which handles its own), and consumes Esc only for an open that
@@ -248,6 +286,16 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   browser. Entering the view fades the strip's left half with it; leaving it does not (the
   attribute and the transition go together). Dragging the window in the strip is Firefox's
   own nav-bar drag, because only the top-level chrome document computes drag regions.
+- **Host motion.** The host has no inline transition (`ensureOverlayHost` with
+  `inlineFade: false`): `bento-shell-mount.css` gives `#bento-bookmarks-host` an `opacity`
+  transition on the `modal-dismiss` role and `:root[bento-bookmarks-view] #bento-bookmarks-host`
+  one on the `modal` role. The reveal sets the opacity and the attribute in one style flush, and
+  a hide removes the attribute and sets the opacity in one, so the style a change arrives at
+  picks the role: modal in, modal-dismiss out. Both rules have generated twins in
+  `bento-chrome-theme.css` (`node scripts/fade-twins.mjs`), so opening or closing during a
+  colour-mode fade keeps its opacity transition (an inline transition would lose to the fade's
+  `!important` catch-all and jump). `scripts/mount-fade-css.test.mjs` checks the rules and
+  both twins.
 - **Address bar.** While the view is open the sidebar is hidden, so `Cmd+L` opens the centered
   address bar (`canAnchorAddrbarToSidebarRow`) instead of anchoring it to an invisible row.
 - **Dev reload.** `overlayEntry`'s `suspend` removes the attribute for `bookmarks`, so the
@@ -273,6 +321,22 @@ Pitfalls:
   of the overlay entries.
 - Do not close the view from the other overlays' stack rules. Only the open dismisses the
   palettes; the reverse would close the view under a command palette that was opened over it.
+- The view hides the page area, where Firefox draws tab-modal prompts and tab dialogs. A
+  Leave/Stay prompt that opened under the view made a tab or window close wait on an invisible
+  prompt. The view closes for them (see Tab dialogs above); a new Firefox mechanism that draws
+  page-level dialogs elsewhere, or outside `.browserSidebarContainer`, needs the same check.
+- Opening the view over a prompt that already waits hides it: the check is `tabDialogShowing`
+  on the shown browsers, which `TabDialogBox` owns. Its dialogs queue per browser, so a second
+  prompt of the same tab keeps the attribute until the last one closes. A system print dialog
+  hides the Firefox dialog on purpose (`hideDialog` removes the attribute), so the view may open
+  then.
+- A reveal and a close do not own the focus when another overlay is on screen above the view.
+  The reveal of a view that was requested while loading stole it from a command palette opened
+  meanwhile, and a `Cmd+Shift+O` close gave it to the page under a visible palette. Any new
+  overlay joins `BOOKMARKS_VIEW_HIGHER_OVERLAYS`.
+- An inline `transition` on a host loses to the colour-mode fade's `!important` catch-all, so an
+  open or close during a flip jumps. The view's host fades from the stylesheet, where the twins
+  generator can see the rules; do not add `transition` to its `ensureOverlayHost` call.
 - A page can still intercept Cmd+Shift+O (the key is not reserved), as it could the Library.
 
 Manual verification (macOS, regular window, `--jsdebugger` for the Browser Toolbox): open the
@@ -285,6 +349,21 @@ their overlays above it, and Esc closes only those. Close it: the sidebar, panel
 bookmarks toolbar return without a shift, and the focus is back where it was. Repeat in light
 and dark, with the sidebar collapsed and hidden, with several panels, with reduced motion, and
 confirm a private window never opens it and keeps the stock `Cmd+Shift+O`.
+
+Dialogs and focus (same window, then repeat the first with the window close button): with a
+`beforeunload` prompt showing in the selected tab (close the tab and leave the prompt open),
+`Cmd+Shift+O`, the sidebar button and the command palette's Open Bookmarks do nothing. Open a page
+with a `beforeunload` handler (type into a form on it so Firefox asks), open the view, and press
+`Cmd+W` with the focus in the view: the view closes at once, the Leave/Stay prompt shows and
+takes the focus. Repeat with the view requested from a cold start (first use of the session) so
+the open is still waiting for its document when `Cmd+W` runs: the view never appears.
+`Cmd+P` with the view open closes it and shows the print preview. Request the view (first use)
+and press `Cmd+Alt+P` before it appears: the palette keeps the focus and the view appears
+under it. With the palette open over the view, press `Cmd+Shift+O`: the view closes and the
+palette stays focused; Esc then closes the palette and the page keeps working. The view's
+search field is focused when it opens with nothing over it, and is not when it appeared under
+the palette (the show event's `detail.focus` is `true` and `false`; if the field is never
+focused, the frame script's `content.wrappedJSObject.Object` detail is not reaching the page).
 
 ## Onboarding import handoff
 

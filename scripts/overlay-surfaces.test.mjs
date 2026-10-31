@@ -148,7 +148,11 @@ const FUNCTIONS = [
   'showBookmarksView',
   'hideBookmarksView',
   'toggleBookmarksView',
+  'isOverlayAboveBookmarksViewShown',
+  'isTabDialogShowing',
   'restoreBookmarksViewFocus',
+  'closeBookmarksViewForDialog',
+  'attachBookmarksViewDialogListener',
   'retargetLibraryKeyToBookmarksView',
   'setAddrbarOverSidebarRow',
   'syncAddrbarOverSidebarRow',
@@ -218,6 +222,7 @@ const CONSTANTS = [
   'BOOKMARKS_OPEN_PREFIX',
   'BOOKMARKS_CLOSE_PREFIX',
   'BOOKMARKS_VIEW_ATTR',
+  'BOOKMARKS_VIEW_HIGHER_OVERLAYS',
   'OVERLAY_READY_PREFIX',
   'ADDON_ID',
   'BENTO_EMBEDDED_IMPORT_URL',
@@ -258,6 +263,7 @@ const EXPORTED = [
   'hideBookmarksView',
   'toggleBookmarksView',
   'retargetLibraryKeyToBookmarksView',
+  'attachBookmarksViewDialogListener',
   'attachPaletteCloseListener',
   'showAddrbar',
   'requestAddrbarOpen',
@@ -296,6 +302,8 @@ class FakeElement {
     this.style = {};
     this.attrs = new Map();
     this.focusCount = 0;
+    /** Whether it sits in a page's .browserSidebarContainer, where tab dialogs are drawn. */
+    this.inPageContainer = false;
     if (tag === 'browser') {
       this.messageManager = {
         loadFrameScript: () => {},
@@ -331,6 +339,11 @@ class FakeElement {
 
   focus() {
     this.focusCount += 1;
+    this.registry.focusLog.push(this.id);
+  }
+
+  closest(selector) {
+    return selector === '.browserSidebarContainer' && this.inPageContainer ? this : null;
   }
 
   addEventListener(type, handler) {
@@ -381,6 +394,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
   const timers = new Map();
   const idle = [];
   const registry = new Map();
+  /** The ids of the elements that took the focus, in order. */
+  registry.focusLog = [];
   let currentFadeMs = fadeMs;
   registry.ownerDocument = {
     defaultView: {
@@ -452,6 +467,9 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
   };
   // The tab that is selected: opening a tab from a view selects another one.
   let selectedBrowser = new FakeElement(registry, 'browser', sent);
+  selectedBrowser.id = 'selected-browser';
+  selectedBrowser.inPageContainer = true;
+  let splitBrowsers = null;
 
   function setTimeout(callback, ms = 0) {
     const id = nextTimer++;
@@ -469,6 +487,10 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     gBrowser: {
       get selectedBrowser() {
         return selectedBrowser;
+      },
+      // The browsers the window shows: the selected one, or those of a split view.
+      get selectedBrowsers() {
+        return splitBrowsers ?? [selectedBrowser];
       },
     },
   };
@@ -584,6 +606,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     documentElement,
     /** The tab the window shows: a view that opens a tab leaves another one selected. */
     selectBrowser: (browser) => { selectedBrowser = browser; },
+    /** The browsers of a split view (the panels the window shows), or null outside one. */
+    setSplitBrowsers: (browsers) => { splitBrowsers = browsers; },
     get selectedBrowser() { return selectedBrowser; },
     /** Firefox's Library key, as browser-sets.inc.xhtml declares it. */
     addLibraryKey: () => {
@@ -664,6 +688,26 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
       };
       handler(event);
       return event.consumed;
+    },
+    /**
+     * A dialog event as Firefox dispatches it on the chrome window: the listeners the mount
+     * attached (installed on first use) get `init`, with `type` added.
+     */
+    dialogEvent(type, init) {
+      if (!listeners.some((entry) => entry.type === type)) api.attachBookmarksViewDialogListener();
+      for (const entry of listeners.filter((candidate) => candidate.type === type)) {
+        entry.handler({ type, ...init });
+      }
+    },
+    /** The ids of the elements that took the focus, in order. */
+    focusLog: () => [...registry.focusLog],
+    /** The event types the mount listens for on the window. */
+    windowListenerTypes: () => [...new Set(listeners.map((entry) => entry.type))],
+    /** An element of the chrome document; `inPageContainer`: drawn inside a page's container. */
+    makeElement: (inPageContainer) => {
+      const element = new FakeElement(registry, 'vbox', sent);
+      element.inPageContainer = inPageContainer;
+      return element;
     },
     pointerDownOutside() {
       api.attachOutsideClickDismissListener();
@@ -1774,6 +1818,7 @@ test('a cold Bookmarks view open waits for its document, then reveals, hides the
   assert.equal(world.host('bookmarks').style.opacity, '1');
   assert.equal(world.documentElement.getAttribute(BOOKMARKS_ATTR), 'true');
   assert.equal(world.bookmarksShows().length, 1);
+  assert.deepEqual(world.bookmarksShows()[0].data, { focus: true }, 'the document may take the focus');
   assert.deepEqual([...world.events.scrim], [], 'a view, not a modal: no toolbar scrim');
   assert.deepEqual(world.events.navigations, ['bookmarks']);
   world.advance(1);
@@ -1992,6 +2037,345 @@ test('a cancelled open sends no hide, sets no attribute and moves no focus', () 
   assert.equal(world.selectedBrowser.focusCount, 0);
 });
 
+// ─── Focus against the overlays above the view ──────────────────────────────
+
+test('a reveal that waited for the document leaves the focus with a palette opened meanwhile', () => {
+  // The view was requested while its document loaded, and the palette (ready) opened before it.
+  const world = warmWorld();
+  world.showBookmarksView();
+  world.showPalette();
+  world.advance(1);
+  world.setNativeFocus(world.frame('palette'));
+  assert.deepEqual(world.focusLog(), ['bento-palette-frame']);
+
+  world.ready('bookmarks');
+  world.advance(1);
+  assert.equal(world.isShown('bookmarks'), true, 'the view still opens, under the palette');
+  assert.equal(hasBookmarksAttr(world), true);
+  assert.deepEqual(world.focusLog(), ['bento-palette-frame'], 'and does not take the focus');
+  assert.deepEqual(
+    world.bookmarksShows().map((message) => message.data),
+    [{ focus: false }],
+    'the document is told, so its search field stays out of it too',
+  );
+});
+
+test('a palette that waits for its document opens over the view and takes the focus last', () => {
+  // The other readiness order: the view's document is ready first and reveals with the focus.
+  const world = makeWorld();
+  world.showBookmarksView();
+  world.showPalette();
+  world.ready('bookmarks');
+  world.advance(1);
+  assert.deepEqual(world.focusLog(), ['bento-bookmarks-frame']);
+  assert.deepEqual(world.bookmarksShows().map((message) => message.data), [{ focus: true }]);
+
+  world.ready('palette');
+  world.advance(1);
+  assert.deepEqual(world.focusLog(), ['bento-bookmarks-frame', 'bento-palette-frame']);
+  assert.equal(world.isShown('palette'), true);
+  assert.equal(world.isShown('bookmarks'), true);
+});
+
+test('every overlay above the view keeps the focus; a hidden or fading host does not', () => {
+  const higher = [...MOUNT.matchAll(/overlayEntry\(\{\s*id: '([a-z-]+)'/g)]
+    .map((match) => match[1])
+    .filter((id) => id !== 'bookmarks' && id !== 'panel-navigator-tooltip');
+  assert.deepEqual(
+    higher.sort(),
+    plain(
+      vm.runInNewContext(
+        extractConst('BOOKMARKS_VIEW_HIGHER_OVERLAYS').replace('const ', 'var ') +
+          '\nBOOKMARKS_VIEW_HIGHER_OVERLAYS',
+      ),
+    ).sort(),
+    'the list in the mount script is every overlay but the view and the tooltip',
+  );
+
+  for (const id of higher) {
+    const world = bookmarksWorld();
+    const sidebar = world.registry.get('bento-shell-frame');
+    world.setNativeFocus(sidebar);
+    world.showBookmarksView();
+    // The overlay is on screen: shown and not fading out.
+    world.host(id).style.display = 'flex';
+    world.host(id).style.opacity = '1';
+    world.hideBookmarksView();
+    assert.equal(sidebar.focusCount, 0, `${id} keeps the focus on close`);
+    assert.equal(world.selectedBrowser.focusCount, 0, `${id} keeps the focus on close`);
+  }
+
+  // The tooltip host is always laid out and shown; a host that is fading out is on its way.
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.host('panel-navigator-tooltip').style.display = 'flex';
+  world.host('panel-navigator-tooltip').style.opacity = '1';
+  world.host('palette').style.display = 'flex';
+  world.host('palette').style.opacity = '0';
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 1, 'neither the tooltip nor a fading palette holds the focus');
+});
+
+test('closing the view under a palette leaves the palette focused and forgets where to return', () => {
+  const world = bookmarksWorld();
+  world.ready('palette');
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.advance(1);
+  world.showPalette();
+  world.advance(1);
+  world.setNativeFocus(world.frame('palette'));
+  const log = world.focusLog();
+
+  // Cmd+Shift+O with the palette on screen.
+  world.toggleBookmarksView();
+  world.advance(1);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(world.bookmarksHides().length, 1);
+  assert.deepEqual(world.focusLog(), log, 'nothing took the focus from the palette');
+  assert.equal(sidebar.focusCount, 0);
+  assert.equal(world.selectedBrowser.focusCount, 0);
+  assert.equal(world.isShown('palette'), true);
+
+  // The record is gone: a later close does not return to the old sidebar.
+  world.hidePalette();
+  world.advance(1000);
+  world.setNativeFocus(null);
+  world.showBookmarksView();
+  world.hideBookmarksView();
+  assert.equal(sidebar.focusCount, 0, 'the stale return target was forgotten');
+  assert.equal(world.selectedBrowser.focusCount, 1);
+});
+
+// ─── Tab dialogs under the view ─────────────────────────────────────────────
+
+test('a before-unload prompt closes the view at once, with no fade and no focus move', () => {
+  const world = bookmarksWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.advance(1);
+  world.setNativeFocus(world.frame('bookmarks'));
+  const log = world.focusLog();
+  world.events.presentation.length = 0;
+
+  // Leave/Stay of a tab close: the event names the prompting <browser> and carries tabPrompt.
+  world.dialogEvent('DOMWillOpenModalDialog', {
+    target: world.selectedBrowser,
+    detail: { tabPrompt: true, inPermitUnload: true },
+  });
+
+  assert.equal(hasBookmarksAttr(world), false, 'the chrome is back for the prompt');
+  assert.equal(world.isShown('bookmarks'), false, 'the host is gone now, not after a fade');
+  assert.equal(world.host('bookmarks').style.opacity, '0');
+  assert.equal(world.host('bookmarks').hasAttribute('hidden'), true);
+  assert.equal(world.bookmarksHides().length, 1, 'the document drops an open editor or search');
+  assert.deepEqual(world.focusLog(), log, 'the prompt takes the focus; the view does not move it');
+  assert.deepEqual(
+    world.events.presentation.map(({ frameId, presented }) => [frameId, presented]),
+    [['bento-bookmarks-frame', false]],
+    'the document is told it is no longer presented',
+  );
+
+  // Answering the prompt leaves a closed view that opens again as usual.
+  world.advance(10_000);
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(world.host('bookmarks').style.opacity, '1');
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('the view stays closed whether the Leave/Stay prompt is answered Leave or Stay', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  world.advance(1);
+  world.dialogEvent('DOMWillOpenModalDialog', {
+    target: world.selectedBrowser,
+    detail: { tabPrompt: true, inPermitUnload: true },
+  });
+  // Nothing listens for the prompt closing, so no answer brings the view back.
+  assert.equal(world.windowListenerTypes().includes('DOMModalDialogClosed'), false);
+  const log = world.focusLog();
+
+  // Stay: the page is still there. Leave: the tab closed and another one is selected.
+  world.advance(10_000);
+  assert.equal(world.isShown('bookmarks'), false);
+  world.selectBrowser({ focusCount: 0, isConnected: true, focus() { this.focusCount += 1; } });
+  world.advance(10_000);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.focusLog(), log, 'and the view moved no focus');
+});
+
+test('a prompt cancels a Bookmarks view open that still waits for its document', () => {
+  const world = makeWorld();
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), true);
+
+  world.dialogEvent('DOMWillOpenModalDialog', {
+    target: world.selectedBrowser,
+    detail: { tabPrompt: true, inPermitUnload: true },
+  });
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+
+  world.ready('bookmarks');
+  world.advance(10_000);
+  assert.equal(world.isShown('bookmarks'), false, 'the late announcement reveals nothing');
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.bookmarksShows(), []);
+  assert.deepEqual(world.focusLog(), []);
+});
+
+test('a prompt in this process names its window, which leads to the browser', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  world.dialogEvent('DOMWillOpenModalDialog', {
+    target: { docShell: { chromeEventHandler: world.selectedBrowser } },
+    detail: { tabPrompt: true, inPermitUnload: false },
+  });
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('a tab dialog that opens without that event also closes the view', () => {
+  // Print preview, share and screenshots use the tab dialog box without DOMWillOpenModalDialog.
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  // The target is the dialog overlay, drawn in the page's container.
+  world.dialogEvent('dialogopen', { target: world.makeElement(true) });
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('a dialog outside the page area, or with no view open, leaves things alone', () => {
+  const world = bookmarksWorld();
+  world.showBookmarksView();
+  world.advance(1);
+  // A window-level dialog (gDialogBox) and a prompt of an overlay frame are not under the view.
+  world.dialogEvent('dialogopen', { target: world.makeElement(false) });
+  world.dialogEvent('DOMWillOpenModalDialog', { target: world.registry.get('bento-palette-frame') });
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+  assert.deepEqual(world.bookmarksHides(), []);
+
+  // With the view closed there is nothing to close and nothing is sent.
+  world.hideBookmarksView();
+  world.advance(1000);
+  const hides = world.bookmarksHides().length;
+  world.dialogEvent('DOMWillOpenModalDialog', { target: world.selectedBrowser });
+  world.dialogEvent('dialogopen', { target: world.selectedBrowser });
+  assert.equal(world.bookmarksHides().length, hides);
+  assert.equal(world.events.errors.length, 0);
+});
+
+test('the Bookmarks view host takes no inline fade; the other created hosts keep theirs', () => {
+  const made = [];
+  const parent = { appendChild: (host) => made.push(host) };
+  const ensure = vm.runInNewContext(
+    `"use strict";${extractFunction('ensureOverlayHost')}\nensureOverlayHost`,
+    {
+      console,
+      document: {
+        documentElement: parent,
+        getElementById: (id) => (id === 'browser' ? parent : null),
+        createXULElement: () => ({ style: {}, setAttribute() {} }),
+      },
+    },
+  );
+  ensure({ hostId: 'bento-bookmarks-host', zIndex: 99000, inlineFade: false });
+  ensure({ hostId: 'bento-settings-palette-host', zIndex: 99997 });
+  const [bookmarks, settings] = made.map((host) => host.style.cssText);
+  assert.doesNotMatch(bookmarks, /transition/, 'the stylesheet owns the fade (modal in, modal-dismiss out)');
+  assert.match(settings, /transition: opacity var\(--muxui-semantic-motion-modal-transition\)/);
+  assert.match(MOUNT, /hostId: 'bento-bookmarks-host',\s*zIndex: 99000,\s*inlineFade: false,/);
+});
+
+// ─── A dialog that is already showing ───────────────────────────────────────
+
+const DIALOG_ATTR = 'tabDialogShowing';
+
+test('the view refuses to open while the selected tab shows a prompt, and dismisses nothing', () => {
+  const world = bookmarksWorld();
+  world.ready('palette');
+  world.showPalette();
+  world.advance(1);
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  // The TabDialogBox of the selected tab has a Leave/Stay prompt open.
+  world.selectedBrowser.setAttribute(DIALOG_ATTR, 'true');
+
+  world.showBookmarksView();
+  world.toggleBookmarksView();
+  world.titleChanged('bento-palette-frame', 'BENTO_OPEN_BOOKMARKS_1');
+  world.advance(1000);
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(world.isShown('palette'), true, 'a refused open does not close the palette');
+  assert.deepEqual(world.bookmarksShows(), []);
+
+  // The prompt is answered: the same request opens the view, with the focus recorded afresh.
+  world.selectedBrowser.removeAttribute(DIALOG_ATTR);
+  world.hidePalette();
+  world.advance(1000);
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('a prompt in any panel of the split view refuses the view, one in a background tab does not', () => {
+  const world = bookmarksWorld();
+  const second = world.makeElement(true);
+  const background = world.makeElement(true);
+  world.setSplitBrowsers([world.selectedBrowser, second]);
+
+  background.setAttribute(DIALOG_ATTR, 'true');
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), true, 'nobody sees a background tab\'s dialog');
+  world.hideBookmarksView();
+  world.advance(1000);
+
+  second.setAttribute(DIALOG_ATTR, 'true');
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), false, 'a visible panel\'s prompt would be covered');
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+});
+
+test('an open that waited for its document is cancelled at the reveal if a dialog is showing then', () => {
+  const world = makeWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), true);
+
+  // A tab with an open prompt got selected while the document loaded; no dialog event came.
+  world.selectedBrowser.setAttribute(DIALOG_ATTR, 'true');
+  world.ready('bookmarks');
+  world.advance(10_000);
+
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(world.host('bookmarks').style.opacity, '0');
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.bookmarksShows(), [], 'the document is never told to show');
+  assert.deepEqual(world.focusLog(), [], 'and no focus moved');
+  assert.equal(sidebar.focusCount, 0);
+  assert.equal(
+    world.events.presentation.at(-1)?.presented,
+    false,
+    'the presentation the open began is taken back',
+  );
+
+  // Once the prompt is gone the view opens again.
+  world.selectedBrowser.removeAttribute(DIALOG_ATTR);
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
 test('a Bookmarks view whose document reloads gives the chrome back and hides it again on the replay', () => {
   const world = bookmarksWorld();
   world.showBookmarksView();
@@ -2040,20 +2424,38 @@ test('a Bookmarks view Show that waited for the frame does not land after the Hi
 test('the Bookmarks frame script turns the messages into the document events', () => {
   const listeners = new Map();
   const events = [];
+  // Objects made through wrappedJSObject belong to the page's realm; here a marker stands for it.
+  class PageObject {
+    constructor() {
+      this.realm = 'page';
+    }
+  }
   vm.runInNewContext(BOOKMARKS_FRAME_SCRIPT_SRC, {
     addMessageListener: (name, handler) => listeners.set(name, handler),
     content: {
+      wrappedJSObject: { Object: PageObject },
       CustomEvent: class {
-        constructor(type) {
+        constructor(type, init) {
           this.type = type;
+          this.detail = init?.detail;
         }
       },
-      dispatchEvent: (event) => events.push(event.type),
+      dispatchEvent: (event) => events.push(event),
     },
   });
-  listeners.get('BentoBookmarksViewShow')({ data: {} });
+  listeners.get('BentoBookmarksViewShow')({ data: { focus: true } });
+  listeners.get('BentoBookmarksViewShow')({ data: { focus: false } });
   listeners.get('BentoBookmarksViewHide')({ data: {} });
-  assert.deepEqual(events, ['bento-bookmarks-show', 'bento-bookmarks-hide']);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ['bento-bookmarks-show', 'bento-bookmarks-show', 'bento-bookmarks-hide'],
+  );
+  assert.deepEqual(
+    events.slice(0, 2).map((event) => [event.detail.realm, event.detail.focus]),
+    [['page', true], ['page', false]],
+    'the show detail is { focus } in the page realm, so the page can read it',
+  );
+  assert.equal(events[2].detail, undefined);
 });
 
 test('the Library key toggles the Bookmarks view, and the Library stays on its command', () => {

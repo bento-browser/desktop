@@ -22,8 +22,9 @@ layer is `extensions/bento-tools/src/bookmarks/`.
   boot replay. `bridge/useToolsPort.ts` applies the event with the `bookmarks/snapshot` case.
 - **Actions.** The UI dispatches `bookmarks/*` actions only (`space/create|update|delete|select`,
   `group/create|update|delete|move`, `item/create|update|delete|move|open`, `tabs/save`,
-  `import/firefox|dismiss`). A change shows on screen when the next snapshot arrives; there is
-  no optimistic state, so a rejected action leaves the screen as it was.
+  `import/firefox|dismiss`, `requestSnapshot`). A change shows on screen when the next snapshot
+  arrives; there is no optimistic state, so a rejected action leaves the screen as it was. Every
+  create carries a client id ([Follow-ups](#follow-ups-for-created-items)).
 - **Open tabs.** The drawer's tabs come from the shell's tabs store, not from tools:
   `useOpenTabs` (`src/bookmarks/useOpenTabs.ts`) lists the active workspace's tabs of the
   document's own window (panels included, in tab-strip order, `customTitle || title`),
@@ -104,7 +105,7 @@ to-do in one action.
 `bookmarks.html` is the `bookmarks` entry in `vite.config.ts` and `OVERLAY_ENTRIES`
 (`entries.test.ts`); `main.tsx` calls `useOverlayReadySignal('bookmarks')` after its
 visibility subscription is in place. It listens for `bento-bookmarks-show` and
-`bento-bookmarks-hide` (`src/bookmarks/visibility.ts`) and closes the view by sending
+`bento-bookmarks-hide` (`src/bookmarks/visibility.ts`, below) and closes the view by sending
 `BENTO_CLOSE_BOOKMARKS_<ts>` through `sendChromeTitle` (`src/bookmarks/titles.ts`; a test keeps
 the open and close prefixes equal to the mount script's). The document background is opaque,
 `var(--bento-toolbar-main-bg)`, set by a rule keyed on `html[data-bento-document='bookmarks']`
@@ -119,19 +120,44 @@ in `state/__fixtures__/bookmarks.ts` (`applyFakeAction`, `useFakeBookmarks`).
 | --- | --- |
 | `model.ts` | Snapshot to board: space summaries, the selected space's groups, search across all spaces, and `parseAddInput` (URL or bare domain becomes a link, `[] text` a to-do, anything else a note). |
 | `drop.ts` | Drop slot from measured boxes (`itemDrop`, `groupDrop`) and the no-op checks. Pure. |
-| `pending.ts` | The pending-create follow-ups (below). Pure. |
+| `actions.ts` | Builders for the actions that create: client ids (`crypto.randomUUID()`), `tabsSave` (ids and a placed run in one action), `itemRestore` (undo). Pure. |
+| `followups.ts` | What to do once a snapshot holds an id the view sent (`exists`, `itemPlacedAt`, `groupPlacedAt`, `settleFollowups`). Pure. |
+| `focus.ts` | Selectors for the elements the focus returns to, and `neighbourMoves` (the slots of Move up/down/left/right). Pure. |
+| `clickSuppressor.ts` | Keeps a drag from activating its source, through the release (below). |
+| `dismissTimer.ts` | The undo toast's countdown with separate pointer and focus holds. |
 | `flip.ts` | Records element positions before a snapshot and plays the settle after it. |
 | `useBoardDrag.ts` | Pointer drag for items, open tabs and groups. |
-| `InlineEditor.tsx` | The one inline text field: Enter commits, Shift+Enter breaks a line in a multiline field, Esc cancels, blur commits. |
-| `SpacesList`, `BoardColumn`, `ItemRow`, `TabsDrawer`, `SearchResults`, `EmptySpace`, `EntityMenu`, `UndoToasts` | The parts of the screen. |
+| `InlineEditor.tsx` | The one inline text field: Enter commits, Shift+Enter breaks a line in a multiline field, Esc cancels, blur commits; `maxLength` caps it at the stored field's limit. |
+| `ItemMenu`, `GroupSubmenu`, `EntityMenu`, `TabMenu` (in `TabsDrawer.tsx`) | The keyboard menus (below). |
+| `AddGroup.tsx` | The "+ Group" button that becomes a name field; used by the board's trailing column and by the empty space. |
+| `LoadFailed.tsx` | The notice for a failed load (below). |
+| `SpacesList`, `BoardColumn`, `ItemRow`, `TabsDrawer`, `SearchResults`, `EmptySpace`, `UndoToasts` | The parts of the screen. |
 
 ### Transient state
 
 Local to the view: the search text, one `editing` target (a space or group name, an item, an
-add row, "+ Space", "+ Group"), the drawer, one pending confirmation and the undo toasts. A
-show resets all of it; a hide also drops an unfinished edit and the toasts. The selected space
+add row, "+ Space", "+ Group"), the drawer, one pending confirmation, the undo toasts and the
+waiting follow-ups. A show resets all of it (and puts the focus in the search field only when
+chrome allows, below); a hide also drops an unfinished edit and the toasts. The selected space
 is not local: `bookmarks/space/select` records `lastSpaceId` in tools, and the view shows
 `lastSpaceId`, else the first space.
+
+### Show and hide events
+
+Chrome dispatches `bento-bookmarks-show` with `detail: { focus: boolean }`: `focus: false`
+when something above the view (a prompt, another overlay) holds the focus. `showMayFocus`
+reads it (an event with no usable detail, as a story or a test sends, may focus), `useVisibilityTokens`
+returns it as `focusOnOpen` together with the show and hide counters, and `BookmarksView` takes
+it as `focusSearchOnOpen`: the show still resets the view, but the search field takes the focus
+only when it is true.
+
+### Load failure
+
+`snapshot.status === 'loadFailed'` renders `LoadFailed` instead of the frame: "Bookmarks couldn't
+load", a Retry button and Back to browser. Tools refuses every change and writes nothing in that
+state, so an editable board would look like it saves and not. Retry sends `bookmarks/requestSnapshot`,
+which makes tools read the storage again; the button reads "Retrying" until the next snapshot,
+which either replaces the notice or is a new failed one. Esc still closes the view.
 
 ### Esc order
 
@@ -147,8 +173,8 @@ board is left alone.
 headers. React Aria's `usePress` stops `pointerdown` from bubbling, so a bubble-phase handler
 never sees a press that starts on a Mux Button. Nothing happens until the pointer has moved
 4 px; only then does the hook take pointer capture, so a click, a double-click and a press on
-a hover action behave as before. A drag that crosses the threshold swallows the click that
-follows and sets a suppress flag that `consumeSuppress` reads.
+a hover action behave as before. A drag that crosses the threshold arms the click suppressor, which
+`isSuppressed` reads; see "Cancelled drags" below.
 
 While a drag is active, a `requestAnimationFrame` loop draws everything imperatively: a clone
 of the row follows the pointer, a one-pixel insertion line is placed from the measured column
@@ -158,7 +184,21 @@ move commits on release. Esc, window blur, and a hide cancel without a commit.
 
 Targets: an item or tab goes into any column at a slot, or onto the empty-space zone; a group
 goes between columns of the same space. A drop that would leave the order unchanged sends
-nothing (`isItemMoveNoop`, `isGroupMoveNoop`).
+nothing (`isItemMoveNoop`, `isGroupMoveNoop`). A tab dropped at a slot is one `tabs/save` with
+`beforeId` and a client id, not a save followed by a move.
+
+### Cancelled drags
+
+A Mux `Button` does not activate on the pointer release. React Aria's `usePress` waits for the
+click that follows and calls `onPress` from it; when that click never reaches its capture
+listener, it clicks the button itself 80 ms later. So the click is never swallowed (the earlier
+`stopPropagation` on it made that late click, which opened the link after a drop onto the
+source's own place), and the controls ask the suppressor instead: `ItemRow` checks
+`isSuppressed()` in `onActivate`. `clickSuppressor.ts` is armed when the drag starts, with the
+button still down, and stays armed whatever ends the drag. Esc, a lost window focus and a drop
+all leave it on through the release of that pointer (`pointerup` or `pointercancel` with its id)
+and a `RELEASE_GRACE_MS` (120 ms) after it, which covers the click and the fallback click. A
+new `pointerdown`, the window `blur`, `cancel()` (a show or hide) and unmount end it at once.
 
 Reorder settle: `recordFlip` stores the rects of `[data-bm-flip]` elements (the dragged row's
 start comes from the ghost) before the action goes out, and `playFlip` runs in a layout effect
@@ -168,23 +208,68 @@ nothing under reduced motion and ends an unfinished settle before starting anoth
 
 ### Follow-ups for created items
 
-Create actions return no ids. `pending.ts` holds a short list of intents (`PendingCreate`,
-live for `PENDING_CREATE_TTL_MS`, 5 s) and the view resolves them against the next snapshots by
-finding items in that group that were not there before the action:
+The view never works out what it created from a snapshot diff. Every create carries a client id
+(`actions.ts`: `spaceCreate`, `groupCreate`, `itemCreate`, `tabsSave`, all `crypto.randomUUID()`;
+tools refuses an id that exists), and a follow-up is a `{ ready(snapshot), run() }` pair in a
+ref list that waits for that id (`followups.ts`, `settleFollowups` in an effect on the snapshot):
 
-- a tab dropped at a slot is saved at the end of the group (`tabs/save`), then moved to the
-  slot with `item/move`, so a tab drop shows briefly at the end before the settle;
-- deleting a to-do that was done and undoing it creates it open (`item/create`) and then ticks
-  it (`item/update`), because the create input has no `done` field;
-- creating a space selects it; creating a group scrolls it into view.
+- creating a space selects it once its id is in a snapshot (`bookmarks/space/select`);
+- a new group, a new row and the first saved tab (`tabs/save` takes `ids`, one per `tabIds`
+  entry) are scrolled into view; creating the first group of an empty space by keyboard
+  also focuses the new column's "Link, note or to-do" button, because the empty space's
+  "Group" button is gone by then;
+- a tab drop is one `tabs/save` with `beforeId` and `ids`; there is no follow-up move, so the
+  row never shows at the end first;
+- undo of a delete is one `item/create` with the item's own id and `done` for a to-do;
+- a keyboard move (below) waits for `itemPlacedAt` / `groupPlacedAt` and then focuses the
+  moved row's or column's menu trigger.
+
+A change another window or an import makes never matches an id the view generated, and
+a follow-up whose action was refused simply never fires. Show and hide clear the list.
+
+### Keyboard alternatives to dragging
+
+Each pointer drag has a menu built from public Mux `Menu` parts, reached by Tab (the row
+actions and the column menu show on `:focus-within`, and stay while their menu is open through
+`:has([aria-expanded='true'], [data-muxui-state-open])`):
+
+| Surface | Menu | Action sent |
+| --- | --- | --- |
+| Open tab in the drawer (`TabMenu`, "Save <title>") | Save to group: a submenu of the current space's groups, then "New group" | `tabs/save` at the end of the group (or `groupId: null`) |
+| Item row (`ItemMenu`, a "Move" trigger among the hover actions) | Move to group (the other groups), Move up, Move down | `item/move` with `beforeId` from `neighbourMoves` |
+| Column header (`EntityMenu`, `move`) | Move left, Move right | `group/move` with `beforeId` from `neighbourMoves` |
+
+A direction that is not possible (the first row up, the last column right) is a disabled item,
+and Mux skips disabled items when arrowing. `GroupSubmenu` shows a disabled item instead of an empty
+submenu when there is no other group. The groups handed to the menus are `groupChoices`, kept
+reference-stable by `stableChoices` so memoized rows and columns do not re-render on every
+snapshot. After a move the view records a FLIP like a drag does, and the follow-up refocuses the
+moved element, which is a new DOM node when it changed column.
+
+### Inline editors
+
+Every editor caps its field with `maxLength` from `BOOKMARK_LIMITS` (names 1,024, link title
+4,096, note and to-do text 32,768) and the link address with `MAX_URL_LENGTH`, so a value the
+editor accepts is one tools stores and undo can send back.
+
+`EditHandler` is `onEdit(target | null, returnFocus?)`. An editor that ends by Enter or Esc closes
+with `returnFocus: true`: the view remembers which editor closed and, in a layout effect once it is
+gone, focuses `editReturnSelector(target)`: the row's first control, a column's "..." trigger, the
+space's button, the "Link, note or to-do", "+ Group" or "+ Space" button. An editor that ends because
+it lost focus (the user clicked or tabbed elsewhere) passes nothing and the focus stays
+where the user put it. The Enter that adds an item keeps the entry open, so the focus stays there.
 
 ## Undo toasts
 
-Deleting an item removes it at once and offers Undo for 6 s (`UNDO_TOAST_MS`). Undo re-creates
-the item with `bookmarks/item/create` in its old slot (`restorePlan`), so it comes back with a
-new id and creation time. The toasts are the Bento composite `UndoToasts` on Mux `Button`,
-`IconButton` and `Text`, not Mux `Toast`: Mux Toast added about 7 KB gzip to the cold start of
-every overlay document. A toast pauses on hover and focus, leaves through `afterMotion` on the
+Deleting an item removes it at once and offers Undo for 6 s (`UNDO_TOAST_MS`). Undo is one
+`bookmarks/item/create` from `itemRestore`: the item's fields in its old slot (before the
+sibling that followed it), a to-do with its `done`, and the item's own id (it no longer exists), so
+a second Undo is refused and cannot make a copy. It gets a new creation time. A keyboard Undo
+refocuses the restored row, because the button that had the focus is gone. The toasts are the
+Bento composite `UndoToasts` on Mux `Button`, `IconButton` and `Text`, not Mux `Toast`: Mux Toast
+added about 7 KB gzip to the cold start of every overlay document. The countdown is
+`createDismissTimer`: the pointer over the toast and the focus inside it are separate holds, and the
+countdown restarts in full only when neither holds. A toast leaves through `afterMotion` on the
 `dismiss` role, and at most three show; a fourth removes the oldest. Deleting a group or space
 asks first, in a Mux `Dialog`, and is not undoable.
 
@@ -212,6 +297,18 @@ asks first, in a Mux `Dialog`, and is not undoable.
 5. Search with text: results span all spaces; Esc clears the field.
 6. Open a private window: no palette command, and `Cmd+Shift+O` opens Firefox's Library.
 7. Light and dark colour mode and a non-default workspace theme.
+8. Keyboard only: Tab to a row (its actions show), open its Move menu with Enter, pick Move down
+   and Move to group; the focus stays on the moved row's Move button. Open an open tab's menu in
+   the drawer and Save to group; open a column's "..." menu and Move left and Move right.
+9. Drag a row, press Esc while holding the button, then release over the same row: the link must
+   not open. Do the same by dropping a row onto its own place.
+10. Rename a group with Enter, and with Esc: the focus returns to its "..." button. Start an
+    edit and click the search field: the field keeps the focus.
+11. Delete a to-do that is ticked and Undo: it returns ticked in its place. Tab to Undo and
+    wait 10 s: the toast stays until the focus leaves it.
+12. In a space with no groups, click "Group", type a name and press Enter.
+13. With a prompt or another overlay holding the focus, open the view: the search field does not
+    take it.
 
 ## Pitfalls
 
@@ -227,6 +324,16 @@ asks first, in a Mux `Dialog`, and is not undoable.
   `scripts/mount-fade-css.test.mjs` (a to-do checkbox under the pointer only).
 - The four hover action buttons use the small control size (24 px): at 32 px they covered most
   of a narrow row and left little to grab.
-- A pending create finds its items by group and by the ids the group held when the action was
-  sent, not by URL or text. A create that another window or an import puts into the same group
-  inside the 5 s window is taken as the follow-up's own item.
+- Never `stopPropagation` the click that follows a drag. React Aria fires `onPress` from that
+  click, and when it does not see one it clicks the target itself 80 ms later, after the
+  suppression has ended (see "Cancelled drags").
+- Find what a create made by its client id, never by diffing the snapshot (the earlier pending
+  create took any new item in the group, so a concurrent create or an import was mistaken for the
+  follow-up's own item, and an undo could tick or move an unrelated row).
+- The hover-action text mask belongs to rows that say they have actions (`data-bm-actions`); a
+  search result row has none, so its title is not faded under buttons that do not exist.
+- A row's actions are hidden until hover or focus inside the row. An open menu moves the focus
+  into its popup, so the actions (and the mask) also stay while `:has([aria-expanded='true'])`
+  matches, or the trigger would vanish under its own menu.
+- Reordering rows in the DOM drops the focus from the moved element; a keyboard move refocuses it
+  once the snapshot shows it placed.

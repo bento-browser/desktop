@@ -35,6 +35,34 @@ test('the fade twins in both stylesheets are current', () => {
   }
 });
 
+test('the Bookmarks view host fades in on modal and out on modal-dismiss, and keeps both through a flip', () => {
+  // The host takes no inline transition (it would lose to the fade's catch-all, which is !important),
+  // so the fade lives in the mount stylesheet: the exit role on the host, the enter role while the
+  // root attribute is set. Each rule has a generated twin in the chrome theme's fade layer.
+  const mount = readRepo('src/browser/base/content/bento-shell-mount.js');
+  assert.match(mount, /hostId: 'bento-bookmarks-host',\s*zIndex: \d+,\s*inlineFade: false,/);
+
+  const transition = (path, selector) => {
+    const rule = [...rules(readRepo(path))].find((candidate) => candidate.selector === selector);
+    assert.ok(rule, `${path}: no rule for ${selector}`);
+    return /transition:\s*([^;]*)/.exec(rule.body)[1].replace(/\s+/g, ' ').trim();
+  };
+  const exit = 'opacity var(--muxui-semantic-motion-modal-dismiss-transition)';
+  const enter = 'opacity var(--muxui-semantic-motion-modal-transition)';
+  const mountSheet = 'src/browser/base/content/bento-shell-mount.css';
+  assert.equal(transition(mountSheet, '#bento-bookmarks-host'), exit);
+  assert.equal(transition(mountSheet, ':root[bento-bookmarks-view] #bento-bookmarks-host'), enter);
+
+  const chrome = 'src/browser/base/content/bento-chrome-theme.css';
+  const colours = 'var(--bento-mode-fade-colours) !important';
+  assert.equal(transition(chrome, '[data-bento-mode-fade] #bento-bookmarks-host'), `${exit}, ${colours}`);
+  // The enter twin is more specific than the exit twin, as the sources are.
+  assert.equal(
+    transition(chrome, ':root[data-bento-mode-fade][bento-bookmarks-view] #bento-bookmarks-host'),
+    `${enter}, ${colours}`,
+  );
+});
+
 test('settle zeros explicit colour/carrier duration and delay without replacing retained motion', () => {
   const zero = 'calc(var(--muxui-semantic-motion-state-transition-duration) * 0)';
   for (const target of TARGETS) {

@@ -44,7 +44,7 @@ function BookmarksApp() {
   const windowId = useCurrentWindowId();
   const workspaceId = useActiveWorkspaceIdForWindow(windowId);
   const openTabs = useOpenTabs(workspaceId, windowId);
-  const { openToken, hideToken } = useVisibilityTokens(
+  const { openToken, focusOnOpen, hideToken } = useVisibilityTokens(
     useCallback(() => {
       if (!isPrivate) requestSnapshot();
     }, [isPrivate]),
@@ -76,6 +76,7 @@ function BookmarksApp() {
       send={dispatch}
       onClose={closeBookmarksView}
       openToken={openToken}
+      focusSearchOnOpen={focusOnOpen}
       hideToken={hideToken}
     />
   );

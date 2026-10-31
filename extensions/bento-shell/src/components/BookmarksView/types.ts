@@ -1,4 +1,4 @@
-import type { Action } from '@shared/protocol';
+import type { Action, BookmarkColor } from '@shared/protocol';
 
 /** The shell actions the Bookmarks view sends to bento-tools. */
 export type BookmarksAction = Extract<Action, { type: `bookmarks/${string}` }>;
@@ -11,6 +11,13 @@ export interface OpenTab {
   favIconUrl?: string;
 }
 
+/** A group of the current space as a menu offers it: "Move to group", "Save to group". */
+export interface GroupChoice {
+  id: string;
+  name: string;
+  color: BookmarkColor;
+}
+
 /** The one inline editor that is open, if any. */
 export type EditTarget =
   | { kind: 'item'; id: string }
@@ -19,6 +26,12 @@ export type EditTarget =
   | { kind: 'add-item'; groupId: string }
   | { kind: 'add-group' }
   | { kind: 'add-space' };
+
+/** Opens an editor (a target) or closes the open one (null). A close by keyboard (Enter or Esc)
+ * passes `returnFocus`, so the focus goes back to the row or trigger the editor began on; a close
+ * by the field losing focus must not move the focus, because the user has already chosen where it
+ * goes. */
+export type EditHandler = (target: EditTarget | null, returnFocus?: boolean) => void;
 
 export function isEditing(current: EditTarget | null, target: EditTarget): boolean {
   if (!current || current.kind !== target.kind) return false;

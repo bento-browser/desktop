@@ -1,16 +1,19 @@
 // The right drawer: the open tabs of the window's active workspace. Each row is a drag source for
-// a column; "Save all to new group" saves every tab into a group of its own. Presentational: the
-// view owns whether it is open (it plays its own enter and exit), the tabs and the drag.
+// a column and has a menu (reached by Tab) with "Save to group" for the keyboard; "Save all to new
+// group" saves every tab into a group of its own. Presentational: the view owns whether it is
+// open (it plays its own enter and exit), the tabs and the drag.
 
 import { forwardRef, memo } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { Button, IconButton, Text } from '@muxui/react';
+import { Button, IconButton, Menu, Text } from '@muxui/react';
+import Ellipsis from 'lucide-react/dist/esm/icons/ellipsis';
 import X from 'lucide-react/dist/esm/icons/x';
 
 import { BentoIcon } from '../primitives';
+import { GroupSubmenu } from './GroupSubmenu';
 import { Favicon } from './ItemRow';
 import { hostnameOf } from './model';
-import type { OpenTab } from './types';
+import type { GroupChoice, OpenTab } from './types';
 import type { DragSource } from './useBoardDrag';
 
 export interface TabsDrawerProps {
@@ -18,23 +21,70 @@ export interface TabsDrawerProps {
   exiting: boolean;
   /** The tab being dragged, if any, so its row can dim. */
   draggingTabId: number | null;
+  /** The groups of the current space, for "Save to group". */
+  groups: readonly GroupChoice[];
   onClose: () => void;
   onSaveAll: () => void;
+  /** Saves one tab at the end of `groupId`, or into a new group when null. */
+  onSaveTab: (tab: OpenTab, groupId: string | null) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, source: DragSource) => void;
+}
+
+/** The "..." menu of an open tab: the keyboard route to dropping it into a column. */
+export function TabMenu({
+  label,
+  groups,
+  onSave,
+  defaultOpen,
+}: {
+  /** The tab's title, to name the trigger: "Save Moon Board". */
+  label: string;
+  groups: readonly GroupChoice[];
+  onSave: (groupId: string | null) => void;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <Menu.Root defaultOpen={defaultOpen}>
+      <Menu.Trigger
+        className="bento-bookmarks__more"
+        aria-label={`Save ${label}`}
+        title="Save to group"
+        data-bm-no-drag
+      >
+        <BentoIcon icon={Ellipsis} size="sm" />
+      </Menu.Trigger>
+      <Menu.Popup placement="bottom-end" offset={4}>
+        <Menu.List aria-label={`Save ${label}`}>
+          <GroupSubmenu
+            id="save-to-group"
+            label="Save to group"
+            groups={groups}
+            onPick={onSave}
+            onNewGroup={() => onSave(null)}
+          />
+        </Menu.List>
+      </Menu.Popup>
+    </Menu.Root>
+  );
 }
 
 const TabRow = memo(function TabRow({
   tab,
   dragging,
+  groups,
+  onSaveTab,
   onPointerDown,
 }: {
   tab: OpenTab;
   dragging: boolean;
+  groups: readonly GroupChoice[];
+  onSaveTab: TabsDrawerProps['onSaveTab'];
   onPointerDown: TabsDrawerProps['onPointerDown'];
 }) {
   return (
     <li
       className="bento-bookmarks__row bento-bookmarks__tab"
+      data-bm-actions="1"
       data-bm-tab-id={tab.id}
       data-dragging={dragging ? 'true' : undefined}
       title={tab.url}
@@ -49,12 +99,19 @@ const TabRow = memo(function TabRow({
           {hostnameOf(tab.url)}
         </Text>
       </span>
+      <div className="bento-bookmarks__row-actions" data-bm-no-drag>
+        <TabMenu
+          label={tab.title || hostnameOf(tab.url)}
+          groups={groups}
+          onSave={(groupId) => onSaveTab(tab, groupId)}
+        />
+      </div>
     </li>
   );
 });
 
 export const TabsDrawer = forwardRef<HTMLElement, TabsDrawerProps>(function TabsDrawer(
-  { tabs, exiting, draggingTabId, onClose, onSaveAll, onPointerDown },
+  { tabs, exiting, draggingTabId, groups, onClose, onSaveAll, onSaveTab, onPointerDown },
   ref,
 ) {
   return (
@@ -89,6 +146,8 @@ export const TabsDrawer = forwardRef<HTMLElement, TabsDrawerProps>(function Tabs
               key={tab.id}
               tab={tab}
               dragging={draggingTabId === tab.id}
+              groups={groups}
+              onSaveTab={onSaveTab}
               onPointerDown={onPointerDown}
             />
           ))}

@@ -412,9 +412,11 @@ html[data-bento-document='bookmarks'] #root {
 
   /* Hover actions sit over the row's right end and paint no background: the text under them is
      masked out (below) so a long title does not run behind the buttons, and the row's hover
-     surface shows through. A link has four actions, a note or a to-do two. */
+     surface shows through. A row says how many actions it has in data-bm-actions (a link five, a
+     note or a to-do three, an open tab one); a row without actions (a search result) has no
+     attribute and no mask. */
   .bento-bookmarks__row {
-    --bento-bookmarks-action-count: 4;
+    --bento-bookmarks-action-count: 5;
     --bento-bookmarks-actions-fade: var(--muxui-semantic-layout-inset-medium);
     --bento-bookmarks-actions-offset: calc(
       var(--bento-bookmarks-action-count) * var(--bento-control-size-sm)
@@ -424,20 +426,25 @@ html[data-bento-document='bookmarks'] #root {
     );
   }
 
-  .bento-bookmarks__row:not([data-kind='link']) {
-    --bento-bookmarks-action-count: 2;
+  .bento-bookmarks__row[data-bm-actions='3'] {
+    --bento-bookmarks-action-count: 3;
+  }
+
+  .bento-bookmarks__row[data-bm-actions='1'] {
+    --bento-bookmarks-action-count: 1;
   }
 
   /* Three layers, from the right: nothing over the buttons, a ramp of the fade's width, and the
      rest opaque. The sizes and places carry the lengths so the gradients hold no custom property
      (the fade check reads every gradient stop). Only the alpha matters; 'canvas' is an opaque
-     system colour keyword. */
-  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__row-text,
-  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__row-text,
-  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__note-text,
-  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__note-text,
-  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__todo-text,
-  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__todo-text {
+     system colour keyword. The actions show on hover, on focus inside the row and while one of
+     their menus is open, and so does the mask. */
+  .bento-bookmarks__row[data-bm-actions]:not([data-editing]):is(
+      :hover,
+      :focus-within,
+      :has([aria-expanded='true'], [data-muxui-state-open])
+    )
+    :is(.bento-bookmarks__row-text, .bento-bookmarks__note-text, .bento-bookmarks__todo-text) {
     mask-image: linear-gradient(canvas, canvas), linear-gradient(to left, transparent, canvas);
     mask-repeat: no-repeat;
     mask-size:
@@ -462,9 +469,17 @@ html[data-bento-document='bookmarks'] #root {
   }
 
   .bento-bookmarks__row:hover .bento-bookmarks__row-actions,
-  .bento-bookmarks__row:focus-within .bento-bookmarks__row-actions {
+  .bento-bookmarks__row:focus-within .bento-bookmarks__row-actions,
+  .bento-bookmarks__row-actions:has([aria-expanded='true'], [data-muxui-state-open]) {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* A menu trigger among the actions is as big as the buttons and shows with them. */
+  .bento-bookmarks__row-actions .bento-bookmarks__more {
+    width: var(--bento-control-size-sm);
+    height: var(--bento-control-size-sm);
+    opacity: 1;
   }
 
   /* ---- Inline editors ---------------------------------------------------------------- */
@@ -659,6 +674,24 @@ html[data-bento-document='bookmarks'] #root {
     flex-wrap: wrap;
     justify-content: center;
     gap: var(--muxui-semantic-layout-inset-small);
+  }
+
+  /* The first group's name field takes the place of the "Group" button. */
+  .bento-bookmarks__empty-actions .bento-bookmarks__editor {
+    flex: none;
+    width: var(--bento-bookmarks-column-width);
+    max-width: 100%;
+    margin-block: 0;
+  }
+
+  /* The load failure is a notice, not a drop zone: solid border, filling the view. */
+  .bento-bookmarks__failed {
+    height: 100%;
+  }
+
+  .bento-bookmarks__empty-box--notice {
+    border-style: solid;
+    border-color: var(--muxui-semantic-border-default);
   }
 
   .bento-bookmarks__empty-import {

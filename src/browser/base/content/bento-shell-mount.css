@@ -429,11 +429,24 @@
 }
 /* Fade of the overlay hosts declared in browser-box.inc.xhtml (palette, merge
    palette, confirm). The hosts the mount script creates carry the same
-   transition inline. The show and hide functions read the computed value to
-   time their display:none cleanup, so no duration is repeated in script. */
+   transition inline, except the Bookmarks view host (below). The show and hide
+   functions read the computed value to time their display:none cleanup, so no
+   duration is repeated in script. */
 #bento-palette-host,
 #bento-merge-palette-host,
 #bento-confirm-host {
+  transition: opacity var(--muxui-semantic-motion-modal-transition);
+}
+/* The Bookmarks view host fades in on the modal role and out on modal-dismiss. A transition is
+   taken from the style a change arrives at, so the root attribute (set with the opacity that
+   shows the host, removed with the one that hides it, in the same style flush) picks the role.
+   Not inline: the colour-mode fade's catch-all would override an inline transition, and these two
+   rules have generated twins in bento-chrome-theme.css that keep the opacity fade through a
+   flip (scripts/fade-twins.mjs). */
+#bento-bookmarks-host {
+  transition: opacity var(--muxui-semantic-motion-modal-dismiss-transition);
+}
+:root[bento-bookmarks-view] #bento-bookmarks-host {
   transition: opacity var(--muxui-semantic-motion-modal-transition);
 }
 /* While the onboarding handoff owns the import host, its opacity changes are instant: the
