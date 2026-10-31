@@ -44,6 +44,7 @@ beforeEach(() => {
     muted: false,
     url: failedUrl,
     favIconUrl: blockedIcon,
+    pageError: 'blocked',
   };
 });
 
@@ -76,9 +77,17 @@ describe('tab appearance preferences', () => {
   });
 
   it('keeps real website favicons with both controls On', () => {
-    state.tab = { ...state.tab!, favIconUrl: favicon };
+    state.tab = { ...state.tab!, pageError: undefined, favIconUrl: favicon };
     const markup = render();
     expect(markup).toContain(`src="${favicon}"`);
+    expect(stateIcon(markup)).toBeUndefined();
+    expect(rowTag(markup)).not.toContain('data-tab-state');
+  });
+
+  it('keeps the favicon of a website that declares a Firefox error icon', () => {
+    state.tab = { ...state.tab!, pageError: undefined, favIconUrl: blockedIcon };
+    const markup = render();
+    expect(markup).toContain(`src="${blockedIcon}"`);
     expect(stateIcon(markup)).toBeUndefined();
     expect(rowTag(markup)).not.toContain('data-tab-state');
   });
@@ -87,15 +96,16 @@ describe('tab appearance preferences', () => {
     const cases = [
       [{ favIconUrl: undefined }, 'default', false],
       [{ discarded: true }, 'sleeping', false],
-      [{ crashed: true }, 'crashed', true],
-      [{ crashed: true, loading: true }, 'crashed', true],
+      [{ pageError: 'crashed' }, 'crashed', true],
+      [{ pageError: 'crashed', loading: true }, 'crashed', true],
       [{ url: 'about:preferences#privacy', favIconUrl: favicon }, 'internal-settings', true],
-      [{ favIconUrl: 'chrome://global/skin/icons/info.svg' }, 'unavailable', true],
-      [{ favIconUrl: 'chrome://global/skin/icons/warning.svg' }, 'certificate-warning', true],
+      [{ pageError: 'unavailable' }, 'unavailable', true],
+      [{ pageError: 'certificate-warning' }, 'certificate-warning', true],
+      [{ pageError: 'blocked' }, 'blocked', true],
     ] as const;
     const base = state.tab!;
     for (const [changes, expected, tinted] of cases) {
-      state.tab = { ...base, ...changes };
+      state.tab = { ...base, pageError: undefined, ...changes };
       const markup = render();
       expect(stateIcon(markup), expected).toContain(`data-tab-state="${expected}"`);
       expect(stateIcon(markup), expected).toMatch(/src="[^"]*tab-state-[^"]*\.svg/);

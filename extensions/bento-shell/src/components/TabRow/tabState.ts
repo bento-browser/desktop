@@ -13,40 +13,26 @@ export const TAB_STATES = {
 
 export type TabState = keyof typeof TAB_STATES;
 
-/** The stand-in icons Firefox sets on its net error, certificate error, HTTPS-Only error and
- * blocked-site pages (`nsIFaviconService.idl` FAVICON_ERRORPAGE_URL and
- * FAVICON_CERTERRORPAGE_URL, `blockedSite.xhtml`). Other internal pages that use the same files
- * (`about:sessionrestore`, `about:restartrequired`, `about:restricted`) are told apart by URL. */
-const ERROR_PAGE_ICONS: ReadonlyMap<string, TabState> = new Map([
-  ['chrome://global/skin/icons/info.svg', 'unavailable'],
-  ['chrome://global/skin/icons/warning.svg', 'certificate-warning'],
-  ['chrome://global/skin/icons/blocked.svg', 'blocked'],
-]);
-
 const parseUrl = (url: string | undefined) => (url && URL.canParse(url) ? new URL(url) : null);
-
-/** Firefox keeps the failed address as the tab URL on an error page, so only a tab that still
- * shows a website address can be one. `about:`, `chrome:`, `moz-extension:` and similar internal
- * pages never are, even when they borrow an error icon. */
-const WEBSITE_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
 
 /** `about:config` and `about:preferences`, with any `#section` or query. */
 const INTERNAL_SETTINGS_PAGES = new Set(['config', 'preferences']);
 
 /**
  * The state a tab row presents, or null to show the website favicon (or the loading indicator).
- * A loading tab is null so the native loading cue stays; a crash outranks it because the tab is
- * no longer loading anything.
+ * `pageError` comes from the document the browser shows, read by bento-tools. Neither the favicon
+ * nor the URL can stand in for it: a website can declare any `chrome://global/skin/` favicon, and
+ * an error page keeps the failed address as its URL. A loading tab is null so the native loading
+ * cue stays; a crash outranks it because the tab is no longer loading anything.
  */
 export function tabStateOf(
-  tab: Pick<TabSnapshot, 'url' | 'loading' | 'discarded' | 'favIconUrl' | 'crashed'>,
+  tab: Pick<TabSnapshot, 'url' | 'loading' | 'discarded' | 'favIconUrl' | 'pageError'>,
 ): TabState | null {
-  if (tab.crashed === true) return 'crashed';
+  if (tab.pageError === 'crashed') return 'crashed';
   if (tab.loading) return null;
   if (tab.discarded) return 'sleeping';
+  if (tab.pageError) return tab.pageError;
   const url = parseUrl(tab.url);
-  const errorState = tab.favIconUrl ? ERROR_PAGE_ICONS.get(tab.favIconUrl) : undefined;
-  if (errorState && url && WEBSITE_PROTOCOLS.has(url.protocol)) return errorState;
   if (url?.protocol === 'about:' && INTERNAL_SETTINGS_PAGES.has(url.pathname.toLowerCase())) {
     return 'internal-settings';
   }

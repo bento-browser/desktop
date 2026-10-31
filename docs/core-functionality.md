@@ -381,11 +381,15 @@ A sidebar tab keeps its website favicon. When there is none to show, or the tab 
 in one of these states, its row shows a state icon instead and, for the failures, a
 faint status background: Default (the page has no favicon), Sleeping (unloaded), Unavailable
 (a site that cannot be reached, including an HTTPS-Only error page), Certificate
-warning, Blocked (a blocked site), Crashed (the tab's content has crashed, until it is
-reloaded or restored) and Internal settings (`about:config` and `about:preferences`,
+warning, Blocked (a site blocked by Safe Browsing, parental controls or an organization's
+policy), Crashed (the tab's content has crashed, until it is reloaded or restored) and
+Internal settings (`about:config` and `about:preferences`,
 whatever the section). Unavailable, Certificate warning, Blocked, Crashed and Internal
 settings tint the row; Default and Sleeping do not, and the current and selected
-tab fills cover a tint. A loading tab keeps the progress circle and has no tint.
+tab fills cover a tint. A loading tab keeps the progress circle and has no tint. These
+states describe the page Firefox is actually showing, so a website that happens to use a
+Firefox warning icon as its favicon still shows its own favicon, and a crashed tab keeps
+its Crashed state when it is moved to another window.
 Settings, under Tab appearance, turns the tints and the icons off separately.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.

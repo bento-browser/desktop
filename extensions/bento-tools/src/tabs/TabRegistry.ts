@@ -146,6 +146,8 @@ export class TabRegistry {
   // shell-side "tab briefly orphaned" frame.
   #pendingWorkspaceAssignments = new Map<number, string>();
   #pendingFolderAssignments = new Map<number, string>();
+  // Page errors the experiment reported for a tab that onCreated has not delivered yet.
+  #pendingPageErrors = new Map<number, NonNullable<TabSnapshot['pageError']>>();
   #privateTabIds = new Set<number>();
   #privateWindowByDelta = new WeakMap<TabDelta, number>();
   // Tabs `clearWorkspace` detached on purpose. SessionStore can copy the old
@@ -172,7 +174,7 @@ export class TabRegistry {
     // post-move snapshot would still show the old windowId and would
     // re-move the tabs forever.
     browser.tabs.onAttached.addListener(this.#onAttached);
-    this.#watchCrashed();
+    this.#watchPageErrors();
 
     const all = await browser.tabs.query({});
     // Privacy first: an event for one of these tabs can arrive while the session values
@@ -211,7 +213,7 @@ export class TabRegistry {
       const url = tabUrl(tab);
       if (url) this.#urlByTabId.set(tab.id, url);
     }
-    await this.#readCrashed();
+    await this.#readPageErrors();
   }
 
   /** Read `bento.workspaceId` session value for every tab and apply it to
@@ -677,7 +679,12 @@ export class TabRegistry {
     if (existing?.url && !snap.url) {
       snap.url = existing.url;
     }
-    if (existing?.crashed) snap.crashed = true;
+    // The page state is not part of the tabs API tab, so carry over what the experiment told us,
+    // and apply an event that arrived before this one (see #onPageErrorChanged).
+    const pendingPageError = this.#pendingPageErrors.get(snap.id);
+    const pageError = pendingPageError ?? existing?.pageError;
+    if (pageError) snap.pageError = pageError;
+    this.#pendingPageErrors.delete(snap.id);
     const url = snap.url;
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
@@ -826,6 +833,7 @@ export class TabRegistry {
     const privateWindowId = this.#privateTabIds.has(id) ? this.#tabs.get(id)?.windowId : undefined;
     this.#pendingWorkspaceAssignments.delete(id);
     this.#pendingFolderAssignments.delete(id);
+    this.#pendingPageErrors.delete(id);
     this.#closingTabIds.delete(id);
     this.#unmarkedClosingTabIds.delete(id);
     this.#urlByTabId.delete(id);
@@ -836,35 +844,49 @@ export class TabRegistry {
     this.#enqueue({ kind: 'removed', id }, privateWindowId);
   };
 
-  // The tabs API has no crashed field. Firefox marks a tab with the `crashed` attribute while it
-  // shows its crashed-tab page, and the bentoTabState experiment reports that attribute. The
-  // flag clears when the tab is revived, reloaded or restored. Cosmetic state: a missing or
-  // failing experiment is logged and never blocks the registry.
-  #watchCrashed(): void {
+  // The tabs API says nothing about the page a tab shows. The bentoTabState experiment reports,
+  // from the browser's actual document, when it is Firefox's crashed-tab page or an error page
+  // (`pageError`). Cosmetic state: a missing or failing experiment is logged and never blocks
+  // the registry.
+  #watchPageErrors(): void {
     try {
-      browser.bentoTabState.onCrashedChanged.addListener(this.#onCrashedChanged);
+      browser.bentoTabState.onPageErrorChanged.addListener(this.#onPageErrorChanged);
     } catch (err) {
-      console.warn('[bento-tools] crashed-tab events unavailable:', err);
+      console.warn('[bento-tools] page-error events unavailable:', err);
     }
   }
 
-  // Sets every known tab's flag from the live tab strip. Used at init and after an attach: Firefox
-  // does not carry the attribute to the tab element an adopted tab gets, and the observer sees
-  // no change on that new element.
-  async #readCrashed(): Promise<void> {
+  // Sets every known tab's state from the live tab strips. Used at init and after an attach:
+  // Firefox does not carry the `crashed` attribute to the tab element an adopted tab gets, and no
+  // event follows the move, so the state is read again from the adopted document.
+  async #readPageErrors(): Promise<void> {
     try {
-      const crashed = new Set(await browser.bentoTabState.getCrashedTabIds());
-      for (const id of [...this.#tabs.keys()]) this.#onCrashedChanged(id, crashed.has(id));
+      const live = new Map(
+        (await browser.bentoTabState.getPageErrors()).map((e) => [e.tabId, e.pageError] as const),
+      );
+      for (const id of new Set([...this.#tabs.keys(), ...live.keys()])) {
+        this.#onPageErrorChanged(id, live.get(id) ?? null);
+      }
     } catch (err) {
-      console.warn('[bento-tools] crashed-tab read failed:', err);
+      console.warn('[bento-tools] page-error read failed:', err);
     }
   }
 
-  #onCrashedChanged = (id: number, crashed: boolean) => {
+  #onPageErrorChanged = (id: number, pageError: TabSnapshot['pageError'] | null) => {
     const tab = this.#tabs.get(id);
-    if (!tab || (tab.crashed ?? false) === crashed) return;
-    tab.crashed = crashed;
-    this.#enqueue({ kind: 'updated', id, changes: { crashed } });
+    if (!tab) {
+      // The tab's onCreated has not arrived yet (or this is a stray event for a closed tab):
+      // keep the state for #onCreated, as for an eager workspace assignment.
+      if (pageError) this.#pendingPageErrors.set(id, pageError);
+      else this.#pendingPageErrors.delete(id);
+      return;
+    }
+    // A state kept from before the tab was known is older than this one.
+    this.#pendingPageErrors.delete(id);
+    if (tab.pageError === (pageError ?? undefined)) return;
+    if (pageError) tab.pageError = pageError;
+    else delete tab.pageError;
+    this.#enqueue({ kind: 'updated', id, changes: { pageError: pageError ?? undefined } });
   };
 
   #onActivated = (info: browser.tabs._OnActivatedActiveInfo) => {
@@ -937,7 +959,7 @@ export class TabRegistry {
       });
     }
     void this.#syncActive(id);
-    void this.#readCrashed();
+    void this.#readPageErrors();
   };
 
   // An adopted tab is not selected in its new window and no activation event follows, so a tab

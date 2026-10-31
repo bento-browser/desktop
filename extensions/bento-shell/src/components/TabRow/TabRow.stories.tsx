@@ -305,7 +305,6 @@ export const DraggingActive = () => {
 DraggingActive.storyName = 'Dragging — active tab';
 
 // One tab per presented state, then the same states under the active and selected fills.
-const STATE_ICON_URL = 'chrome://global/skin/icons';
 const STATE_TABS: TabSnapshot[] = [
   makeTab({
     id: 20,
@@ -330,21 +329,21 @@ const STATE_TABS: TabSnapshot[] = [
     id: 24,
     title: 'Unavailable',
     url: 'https://example.invalid/',
-    favIconUrl: `${STATE_ICON_URL}/info.svg`,
+    pageError: 'unavailable',
   }),
   makeTab({
     id: 25,
     title: 'Certificate warning',
     url: 'https://expired.example.org/',
-    favIconUrl: `${STATE_ICON_URL}/warning.svg`,
+    pageError: 'certificate-warning',
   }),
   makeTab({
     id: 26,
     title: 'Blocked',
     url: 'https://blocked.example.org/',
-    favIconUrl: `${STATE_ICON_URL}/blocked.svg`,
+    pageError: 'blocked',
   }),
-  makeTab({ id: 27, title: 'Crashed', url: 'https://example.org/', crashed: true }),
+  makeTab({ id: 27, title: 'Crashed', url: 'https://example.org/', pageError: 'crashed' }),
   makeTab({
     id: 28,
     title: 'Internal settings',

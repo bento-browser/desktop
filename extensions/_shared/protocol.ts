@@ -33,9 +33,15 @@ export interface TabSnapshot {
    * Sidebar dims the favicon so users can see at a glance which tabs are
    * sleeping vs. resident in memory. */
   discarded?: boolean;
-  /** True while the tab's content process has crashed and Firefox shows its
-   * crashed-tab page. Cleared when the tab is reloaded or restored. */
-  crashed?: boolean;
+  /** Set while the tab's top-level document is one of Firefox's own pages for a failure:
+   * `crashed` (the crashed-tab page, `about:tabcrashed`, after a content process crash),
+   * `unavailable` (a site that cannot be reached, `about:neterror` and `about:httpsonlyerror`),
+   * `certificate-warning` (`about:certerror` and the TLS failures of `about:neterror`) or
+   * `blocked` (`about:blocked` for Safe Browsing, `about:restricted` for parental controls,
+   * and a site blocked by enterprise policy). Read by bento-tools from the browser's actual
+   * document, never inferred from the favicon or URL, which a website controls. Absent
+   * otherwise, and cleared by delta (`pageError: undefined`) when the page ends. */
+  pageError?: 'crashed' | 'unavailable' | 'certificate-warning' | 'blocked';
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;

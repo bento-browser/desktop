@@ -9,17 +9,17 @@ const SITE_ICON = 'https://example.org/favicon.svg';
 
 describe('tabStateOf precedence', () => {
   it('lets a crash outrank loading, sleeping and every other signal', () => {
-    expect(
-      tabStateOf({ crashed: true, loading: true, discarded: true, url: SITE, favIconUrl: INFO }),
-    ).toBe('crashed');
-    expect(tabStateOf({ crashed: true, url: 'about:preferences' })).toBe('crashed');
-    expect(tabStateOf({ crashed: false, url: SITE, favIconUrl: SITE_ICON })).toBeNull();
+    expect(tabStateOf({ pageError: 'crashed', loading: true, discarded: true, url: SITE })).toBe(
+      'crashed',
+    );
+    expect(tabStateOf({ pageError: 'crashed', url: 'about:preferences' })).toBe('crashed');
+    expect(tabStateOf({ url: SITE, favIconUrl: SITE_ICON })).toBeNull();
   });
 
   it('leaves a loading tab to the native loading cue', () => {
     for (const tab of [
       { url: SITE },
-      { url: SITE, favIconUrl: INFO },
+      { url: SITE, pageError: 'unavailable' as const },
       { url: 'about:config', favIconUrl: SITE_ICON },
       { url: SITE, discarded: true },
     ]) {
@@ -29,44 +29,34 @@ describe('tabStateOf precedence', () => {
 
   it('shows a discarded tab as sleeping before page-specific states', () => {
     expect(tabStateOf({ discarded: true })).toBe('sleeping');
-    expect(tabStateOf({ discarded: true, url: SITE, favIconUrl: WARNING })).toBe('sleeping');
+    expect(tabStateOf({ discarded: true, url: SITE, pageError: 'certificate-warning' })).toBe(
+      'sleeping',
+    );
     expect(tabStateOf({ discarded: true, url: 'about:config' })).toBe('sleeping');
   });
 });
 
-describe('error page stand-in icons', () => {
-  it.each([
-    [INFO, 'unavailable'],
-    [WARNING, 'certificate-warning'],
-    [BLOCKED, 'blocked'],
-  ] as const)('maps %s on a failed website address to %s', (favIconUrl, state) => {
-    for (const url of ['https://example.org/page?x=1', 'http://example.org', 'file:///missing']) {
-      expect(tabStateOf({ url, favIconUrl }), url).toBe(state);
-    }
-  });
+describe('error pages', () => {
+  it.each(['unavailable', 'certificate-warning', 'blocked'] as const)(
+    'presents pageError %s as that state, whatever the favicon and URL',
+    (pageError) => {
+      for (const tab of [
+        { url: 'https://example.org/page?x=1', favIconUrl: INFO },
+        { url: 'http://example.org' },
+        { url: 'file:///missing', favIconUrl: SITE_ICON },
+        { url: 'about:config' },
+        { url: undefined },
+      ]) {
+        expect(tabStateOf({ ...tab, pageError }), JSON.stringify(tab)).toBe(pageError);
+      }
+    },
+  );
 
-  // Each of these pages sets one of the three icons; none is a failed website load.
-  it.each([
-    ['about:sessionrestore', INFO],
-    ['about:restartrequired', INFO],
-    ['about:restricted?e=x', WARNING],
-    ['about:neterror?e=dnsNotFound', INFO],
-    ['about:certerror?e=x', WARNING],
-    ['about:blocked?e=malwareBlocked', BLOCKED],
-    ['about:httpsonlyerror?e=x', INFO],
-    ['chrome://browser/content/blockedSite.xhtml', BLOCKED],
-    ['moz-extension://abc/page.html', INFO],
-    ['resource://app/page.html', WARNING],
-    ['view-source:https://example.org/', INFO],
-    [undefined, INFO],
-    ['not a url', WARNING],
-  ])('keeps %s with %s as an ordinary page', (url, favIconUrl) => {
-    expect(tabStateOf({ url, favIconUrl })).toBeNull();
-  });
-
-  it('matches the icon URL exactly', () => {
-    for (const favIconUrl of [`${INFO}?x`, `${INFO}#x`, 'https://example.org/info.svg', '']) {
-      expect(tabStateOf({ url: SITE, favIconUrl }), favIconUrl).toBe(favIconUrl ? null : 'default');
+  // A website can declare any content-accessible chrome favicon, so none of these says anything
+  // about the page; only `pageError`, read from the browser's document, does.
+  it.each([INFO, WARNING, BLOCKED])('shows a website favicon of %s as an ordinary page', (icon) => {
+    for (const url of [SITE, 'http://example.org', 'file:///page.html', undefined]) {
+      expect(tabStateOf({ url, favIconUrl: icon }), String(url)).toBeNull();
     }
   });
 });

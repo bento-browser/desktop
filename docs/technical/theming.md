@@ -844,15 +844,13 @@ Every build exposes the Tab appearance category between Appearance and Performan
 including its command-palette search targets, in regular and private windows. The two
 preferences are independent. `TabRow` resolves the row's state with `tabStateOf`
 (`components/TabRow/tabState.ts`), a pure function of the tools-owned
-`TabSnapshot` fields `url`, `loading`, `discarded`, `favIconUrl` and `crashed`. First
+`TabSnapshot` fields `url`, `loading`, `discarded`, `favIconUrl` and `pageError`. First
 match wins:
 
-1. `crashed === true`: `crashed`.
+1. `pageError === 'crashed'`: `crashed`.
 2. `loading`: no state (the Mux progress circle stays, with no tint).
 3. `discarded`: `sleeping`.
-4. `favIconUrl` exactly `chrome://global/skin/icons/info.svg`, `warning.svg` or
-   `blocked.svg` on an `http:`, `https:` or `file:` tab URL: `unavailable`,
-   `certificate-warning` or `blocked`.
+4. Any other `pageError` (`unavailable`, `certificate-warning`, `blocked`): that state.
 5. `about:config` or `about:preferences`, with any `#section` or query:
    `internal-settings`.
 6. No `favIconUrl`: `default`.
@@ -865,15 +863,18 @@ slot for any state. With custom icons off, the loading indicator, real favicon a
 placeholder branch is today's. Actual discarded styling and loading/sleeping titles
 remain tools-driven.
 
-The three icons in step 4 are the stand-ins Firefox sets on its net error, certificate
-error, HTTPS-Only error and blocked-site pages (`FAVICON_ERRORPAGE_URL` and
-`FAVICON_CERTERRORPAGE_URL` in `nsIFaviconService.idl`, `blockedSite.xhtml`). An error
-page keeps the failed address as the tab URL, which is why the URL check exists:
-`about:sessionrestore` and `about:restartrequired` also set `info.svg`, and
-`about:restricted` sets `warning.svg`, and none of them is an unreachable site. Web
-content cannot set a `chrome:` favicon, so a website URL with one of these icons is
-an error page. A Firefox update that moves another internal page onto these icons
-needs a case in `tabState.test.ts`.
+`pageError` is read by `bento-tools` from the document the tab's browser shows (the
+`bentoTabState` experiment; the mapping, the events and the pitfalls are in
+[shell-chrome-bridge.md](shell-chrome-bridge.md#page-error-signal-chrome-to-tools)). The
+shell never infers an error page from the favicon or the URL. Pitfall: a website can
+declare a `chrome://global/skin/icons/warning.svg`, `info.svg` or `blocked.svg` favicon
+(the `global` package is content accessible and `FaviconLoader.sys.mjs` accepts it), so a
+favicon matching Firefox's error stand-ins proves nothing, and a heuristic that trusted
+it showed a normal HTTPS page as a certificate warning. An error page also keeps the
+failed address as the tab URL, and `about:restricted` keeps the website URL and uses
+`warning.svg`, so the URL alone cannot identify one either. States come from the document.
+A website with such a favicon shows it as an ordinary favicon (covered in `tabState.test.ts`
+and `TabRow.test.tsx`).
 
 Quiet status backgrounds are `color-mix` of one Mux color token at 10% in light mode
 and 14% in resolved dark mode (`--bento-tab-row-state-tint`). They sit at one-class
@@ -891,8 +892,9 @@ imports them with `?no-inline`, so the ordinary build emits each as
 Verify in a built app: switch each control separately in Settings, compare all four
 combinations on tabs in each state (a site that does not resolve, an expired
 certificate, a blocked-site test page, a crashed tab, `about:preferences#privacy`,
-`about:config`, a sleeping tab and a page with a favicon), and relaunch the same
-profile to confirm persistence. Reset restores both to On.
+`about:config`, a sleeping tab and a page with a favicon, including one that declares
+`chrome://global/skin/icons/warning.svg`, which must keep that favicon), and relaunch the
+same profile to confirm persistence. Reset restores both to On.
 
 ## Theme pitfalls
 

@@ -1211,7 +1211,7 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}` user prefs stay
   in old profiles and are ignored.
 
-### Crashed Tab State (bento-tab-state Experiment)
+### Page Error State (bento-tab-state Experiment)
 
 - Status: Active
 - Last updated: 2026-11-01
@@ -1219,41 +1219,78 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   app. Run the checks below on the first build.
 - Files or patches:
   - `extensions/bento-tools/experiments/bento-tab-state/api.js` and `schema.json`
-    (`browser.bentoTabState.getCrashedTabIds`, `onCrashedChanged`)
+    (`browser.bentoTabState.getPageErrors`, `onPageErrorChanged`)
   - `extensions/bento-tools/manifest.json` (the `bentoTabState` experiment; version
     bumped because the experiment schema is cached by version)
-  - `extensions/bento-tools/src/tabs/TabRegistry.ts` (`crashed` on snapshots and deltas)
+  - `extensions/bento-tools/src/tabs/TabRegistry.ts` (`pageError` on snapshots and deltas)
   - No Firefox patch and no mount script change.
-- Bento functionality: the sidebar shows a Crashed icon and tint on a tab whose content
-  process died. `TabSnapshot.crashed` is true while Firefox shows the crashed-tab page.
-- Vanilla Firefox surface touched or depended on: the `crashed` attribute on the `<tab>` element,
-  set by `TabCrashHandler.sendToTabCrashedPage` (and `sendToRestartRequiredPage`) when the
-  crashed-tab page is shown and removed by `SessionStore.reviveCrashedTab`, the tab's progress
-  listener when a load starts, and `updateBrowserRemoteness` when the tab gets a new content
-  process; a `MutationObserver` on `gBrowser.tabContainer` (subtree, attribute filter `crashed`)
-  per window, started through `EveryWindow.registerCallback`; and
-  `extension.tabManager.getWrapper(nativeTab).id` for the WebExtension tab id. The WebExtension
-  tabs API has no crashed field, and the attribute changes fire no tab event (no
-  `TabAttrModified`), so neither `tabs.onUpdated` nor `oop-browser-crashed` (which comes before
-  the page and says nothing about the clear) can replace the observer.
-- Why this cannot stay extension-only: the state lives on a chrome DOM attribute that only
-  parent-process code can read. It needs no Firefox patch: an experiment in the existing
-  `bento-tools` experiment surface is the reader.
-- Firefox update risk: `tab.setAttribute("crashed", ...)` renamed or replaced by a tab event
-  makes the flag stay false (a quiet failure, not an error); the observer seeing the attribute
-  on tab children (a tab copies it onto `.tab-icon-stack`, `.tab-icon-image`,
+- Bento functionality: the sidebar shows a state icon and tint on a tab whose top-level
+  document is the crashed-tab page or an error page (unreachable site, certificate warning,
+  blocked site). `TabSnapshot.pageError` is `crashed`, `unavailable`, `certificate-warning` or
+  `blocked` while Firefox shows the matching page. The mapping is in
+  [shell-chrome-bridge.md](technical/shell-chrome-bridge.md#page-error-signal-chrome-to-tools).
+- Vanilla Firefox surface touched or depended on:
+  - The document a tab shows: `browser.documentURI` (for a remote browser the URI saved by
+    `updateForLocationChange`, for a non-remote one the live document) and the error pages it
+    names, `about:tabcrashed`, `about:restartrequired`, `about:certerror`, `about:blocked`,
+    `about:restricted`, `about:httpsonlyerror` and `about:neterror` with its `e` parameter
+    (`nssBadCert`, `nssFailure2`, `blockedByPolicy`). The docshell builds these URLs in
+    `nsDocShell::LoadErrorPage`; on an error page the tab URL is the failed address and
+    `document.documentURI` is the about: page (`nsIWebProgressListener.idl`).
+  - `gBrowser.addTabsProgressListener` / `removeTabsProgressListener` and the tabs-listener
+    `onLocationChange(browser, webProgress, request, location, flags)` that `TabProgressListener`
+    forwards for every tab, per window.
+  - The `crashed` attribute on the `<tab>` element, set by `TabCrashHandler.sendToTabCrashedPage`
+    (and `sendToRestartRequiredPage`) and removed by `SessionStore.reviveCrashedTab`, the tab's
+    progress listener when a load starts, and `updateBrowserRemoteness`; a `MutationObserver` on
+    `gBrowser.tabContainer` (subtree, attribute filter `crashed`) per window.
+  - `EveryWindow.registerCallback` / `readyWindows`, `gBrowser.getTabForBrowser` / `isTab`, and
+    `extension.tabManager.getWrapper(nativeTab).id` for the WebExtension tab id.
+  - The WebExtension tabs API has no page-error field. The `crashed` attribute fires no tab event
+    (no `TabAttrModified`), so neither `tabs.onUpdated` nor `oop-browser-crashed` (which comes
+    before the page and says nothing about the clear) can replace the observer, and the favicon
+    and URL cannot identify an error page: a website can declare any `chrome://global/skin/`
+    favicon (`global` is a content-accessible package, `FaviconLoader.sys.mjs` accepts it), and
+    `about:restricted` keeps the website URL with the `warning.svg` favicon.
+- Why this cannot stay extension-only: the document and the attribute live on chrome objects
+  that only parent-process code can read. It needs no Firefox patch: an experiment in the
+  existing `bento-tools` experiment surface is the reader.
+- Firefox update risk: `documentURI` renamed or no longer set before the listeners run, or an
+  error page renamed or moved to another about: name, makes the state stay empty (a quiet
+  failure, not an error); `addTabsProgressListener` removed or its argument order changed stops
+  the clears; `tab.setAttribute("crashed", ...)` replaced by a tab event misses the moment the
+  crashed page is requested (the location change still catches it); the observer seeing the
+  attribute on tab children (a tab copies it onto `.tab-icon-stack`, `.tab-icon-image`,
   `.tab-icon-overlay` and `.tab-audio-button` by attribute inheritance) would give those
   elements tab ids if the `Tabbrowser.isTab` filter were dropped; `EveryWindow` removed or
-  changed would leave windows unobserved.
+  changed would leave windows unobserved; a new error page (or a new `e` value that Firefox
+  treats as a certificate or block case) needs a row in `ABOUT_PAGE_ERRORS` or the `e` sets in
+  `api.js` and a registry entry.
 - Regression checks for future updates: run `pnpm run firefox:compat:engine`; in a built app
-  open `about:crashcontent` in a tab (never `about:crashparent`), confirm the tab shows the
-  crashed page and its sidebar row shows the crashed state; click Restore Tab on the crashed
-  page and confirm the row clears; repeat in a second window, a private window and a
-  split-view panel; crash a background tab, select it and confirm the row flips when the
-  crashed page appears; in the bento-tools background console run
-  `await browser.bentoTabState.getCrashedTabIds()` and confirm it lists the crashed tabs.
+  (run in a regular and a private window, and a split-view panel where noted):
+  - Crash: open `about:crashcontent` in a tab (never `about:crashparent`), confirm the tab shows
+    the crashed page and its sidebar row shows Crashed; click Restore Tab and confirm the row
+    clears when the page reloads. Crash a background tab, select it, and confirm the row flips
+    when the crashed page appears.
+  - Moved crash: with a crashed tab showing, move it to another window (drag it, and use "Move to
+    New Window"); the crashed page is still shown and the row keeps Crashed, with at most a
+    brief gap in the new-window case.
+  - Error pages: load a name that does not resolve (Unavailable), `https://expired.badssl.com/`
+    (Certificate warning) and a site with an HTTPS-Only failure (Unavailable); a Safe Browsing
+    test page such as `https://itisatrap.org/firefox/its-an-attack.html` with Safe Browsing on
+    (Blocked); navigate each tab to a normal page and confirm the row clears.
+  - A website with a favicon of `chrome://global/skin/icons/warning.svg` (a local page with
+    `<link rel="icon" href="chrome://global/skin/icons/warning.svg">`) must show its favicon, not
+    a certificate warning.
+  - `about:restricted?e=restrictedcontent` typed by hand shows Blocked. The real path is a page with
+    `<meta name="rating" content="adult">` in a browsing context with OS parental controls on
+    (`Document::ProcessMETATag` then `nsDocShell::DisplayRestrictedContentError`), which keeps the
+    website URL on the tab; it is not reproducible without those controls.
+  - In the bento-tools background console run `await browser.bentoTabState.getPageErrors()` and
+    confirm it lists exactly the tabs showing such a page.
 - Rollback or migration notes: removing the experiment makes `TabRegistry` log
-  `crashed-tab events unavailable` once and report no crashed tabs; nothing else depends on it.
+  `page-error events unavailable` once and report no page errors; nothing else depends on it.
+  The experiment replaced an earlier `crashed` boolean API (manifest 0.1.13) before release.
 
 ### Core UI And Window Sync Patch Stack
 
@@ -2911,7 +2948,7 @@ below is generated; edit the registry, then run
 | `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
 | `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `openFirefoxSearchSettings` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3682` |
-| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, and a page's window.close() uses it to name the tab that asked. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
+| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
 | `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8022` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8044` |
@@ -3042,13 +3079,28 @@ below is generated; edit the registry, then run
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
-| `extension.tabManager.getWrapper` | source (engine only) | Maps a chrome tab element to the WebExtension tab wrapper (its id), and to nothing for a tab the extension may not see, so bento-tab-state reports crashed state by tab id. | `extensions/bento-tools/experiments/bento-tab-state/api.js#getWrapper` | `toolkit/components/extensions/parent/ext-tabs-base.js:2269` |
-| `EveryWindow.registerCallback` | source (engine only) | Runs the crashed-attribute observer in every browser window once its startup is done, including windows opened later, and disconnects it when a window closes or the listener goes away. | `extensions/bento-tools/experiments/bento-tab-state/api.js#registerCallback` | `browser/modules/EveryWindow.sys.mjs:60` |
-| `EveryWindow.readyWindows` | source (engine only) | Lists the browser windows whose startup is done when bento-tab-state reads which tabs are crashed. | `extensions/bento-tools/experiments/bento-tab-state/api.js#readyWindows` | `browser/modules/EveryWindow.sys.mjs:43` |
+| `extension.tabManager.getWrapper` | source (engine only) | Maps a chrome tab element to the WebExtension tab wrapper (its id), and to nothing for a tab the extension may not see, so bento-tab-state reports page errors by tab id. | `extensions/bento-tools/experiments/bento-tab-state/api.js#getWrapper` | `toolkit/components/extensions/parent/ext-tabs-base.js:2269` |
+| `EveryWindow.registerCallback` | source (engine only) | Runs the page-error observer and progress listener in every browser window once its startup is done, including windows opened later, and removes them when a window closes or the listener goes away. | `extensions/bento-tools/experiments/bento-tab-state/api.js#registerCallback` | `browser/modules/EveryWindow.sys.mjs:60` |
+| `EveryWindow.readyWindows` | source (engine only) | Lists the browser windows whose startup is done when bento-tab-state reads which tabs show a failure page. | `extensions/bento-tools/experiments/bento-tab-state/api.js#readyWindows` | `browser/modules/EveryWindow.sys.mjs:43` |
 | `Tabbrowser.isTab` | source (engine only) | Keeps only <tab> elements from the crashed-attribute records: a tab copies the attribute onto its icon children, which would otherwise be given tab ids. | `extensions/bento-tools/experiments/bento-tab-state/api.js#isTab` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7895` |
-| `tab[crashed] set` | source (engine only) | TabCrashHandler.sendToTabCrashedPage sets the crashed attribute on a tab element while its crashed-tab page shows (no tab event fires); bento-tab-state reports it as the tab crashed flag. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/modules/ContentCrashHandlers.sys.mjs:554` |
-| `tab[crashed] cleared by a new load` | source (engine only) | TabProgressListener removes the crashed attribute when the tab starts a load; updateBrowserRemoteness removes it when the tab gets a new content process. bento-tab-state reports the clear. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:10501` |
-| `tab[crashed] cleared by a revive` | source (engine only) | SessionStore.reviveCrashedTab (the crashed page buttons, Restore All, a background crash) removes the crashed attribute; bento-tab-state reports the clear. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/sessionstore/SessionStore.sys.mjs:5331` |
+| `tab[crashed] set` | source (engine only) | TabCrashHandler.sendToTabCrashedPage sets the crashed attribute on a tab element while its crashed-tab page shows (no tab event fires), before the page document exists; bento-tab-state reports it as pageError crashed. The attribute is not copied to the tab element an adopted tab gets, so the document counts first. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/modules/ContentCrashHandlers.sys.mjs:554` |
+| `tab[crashed] cleared by a new load` | source (engine only) | TabProgressListener removes the crashed attribute when the tab starts a load; updateBrowserRemoteness removes it when the tab gets a new content process. bento-tab-state re-reads the tab on the attribute change. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:10501` |
+| `tab[crashed] cleared by a revive` | source (engine only) | SessionStore.reviveCrashedTab (the crashed page buttons, Restore All, a background crash) removes the crashed attribute; bento-tab-state re-reads the tab on the attribute change. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/sessionstore/SessionStore.sys.mjs:5331` |
+| `MozBrowser.documentURI` | source (engine only) | The URI of the document a tab's browser shows: the about: page of an error or of the crashed-tab page, where the tab URL stays the failed address. A remote browser holds it from its last location change; a non-remote one reads it live. bento-tab-state derives pageError from it. | `extensions/bento-tools/experiments/bento-tab-state/api.js#documentURI` | `toolkit/content/widgets/browser-custom-element.mjs:475` |
+| `gBrowser.addTabsProgressListener` | source (engine only) | Registers a plain-object listener that hears every tab, selected or not, so bento-tab-state notices a tab show or leave an error page. | `extensions/bento-tools/experiments/bento-tab-state/api.js#addTabsProgressListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7594` |
+| `gBrowser.removeTabsProgressListener` | source (engine only) | Removes that listener when its window closes or the experiment shuts down. | `extensions/bento-tools/experiments/bento-tab-state/api.js#removeTabsProgressListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7604` |
+| `tabsProgressListener.onLocationChange` | source (engine only) | TabProgressListener forwards a tab's onLocationChange to tabs listeners as (browser, webProgress, request, location, flags), after the remote browser has updated its documentURI. bento-tab-state reads the new document there. Firefox withholds it only while the tab's listener still treats the tab as its initial about:blank; the first request of a crashed-tab page or an error page ends that. | `extensions/bento-tools/experiments/bento-tab-state/api.js#onLocationChange` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:10814` |
+| `error page documentURI` | source (engine only) | On an error page the location change carries the failed address while document.documentURI is the redirected about: page, whose path names the page and whose `e` query parameter names a net error. | `extensions/bento-tools/experiments/bento-tab-state/api.js#aboutPageError` | `uriloader/base/nsIWebProgressListener.idl:496` |
+| `about:tabcrashed` | source (engine only) | The crashed-tab page; the document of a crashed tab, also after the tab moves to another window. | `extensions/bento-tools/experiments/bento-tab-state/api.js#tabcrashed` | `browser/components/about/AboutRedirector.cpp:156` |
+| `about:restartrequired` | source (engine only) | Shown in place of the crashed-tab page after a build-ID mismatch; it sets the same crashed attribute, so it counts as crashed. | `extensions/bento-tools/experiments/bento-tab-state/api.js#restartrequired` | `browser/components/about/AboutRedirector.cpp:126` |
+| `about:certerror` | source (engine only) | The page for a bad certificate (nsDocShell sends NS_ERROR class BAD_CERT here); reported as certificate-warning. | `extensions/bento-tools/experiments/bento-tab-state/api.js#certerror` | `browser/components/about/AboutRedirector.cpp:64` |
+| `about:blocked` | source (engine only) | The Safe Browsing page (urlclassifier.alternate_error_page defaults to blocked); reported as blocked. | `extensions/bento-tools/experiments/bento-tab-state/api.js#blocked` | `browser/components/about/AboutRedirector.cpp:60` |
+| `about:neterror` | source (engine only) | The page for every other load failure, with the error name in its `e` parameter; reported as unavailable unless that name is listed below. | `extensions/bento-tools/experiments/bento-tab-state/api.js#neterror` | `docshell/base/nsAboutRedirector.cpp:162` |
+| `about:neterror e=nssBadCert` | source (engine only) | aboutNetErrorHelpers treats this error name as a certificate error (gIsCertError) and the page uses the warning favicon for it; reported as certificate-warning. | `extensions/bento-tools/experiments/bento-tab-state/api.js#nssBadCert` | `toolkit/content/aboutNetErrorHelpers.mjs:34` |
+| `about:neterror e=nssFailure2` | source (engine only) | A TLS failure that is not a bad certificate; the page and the identity panel (_isCertErrorPage) treat it like one, so it is reported as certificate-warning. | `extensions/bento-tools/experiments/bento-tab-state/api.js#nssFailure2` | `toolkit/content/aboutNetError.mjs:87` |
+| `about:neterror e=blockedByPolicy` | source (engine only) | A site an enterprise policy blocks; the page is titled Blocked Page, so it is reported as blocked. | `extensions/bento-tools/experiments/bento-tab-state/api.js#blockedByPolicy` | `docshell/base/nsDocShell.cpp:3639` |
+| `about:httpsonlyerror` | source (engine only) | The HTTPS-Only Mode failure page; reported as unavailable. | `extensions/bento-tools/experiments/bento-tab-state/api.js#httpsonlyerror` | `docshell/base/nsAboutRedirector.cpp:133` |
+| `about:restricted` | source (engine only) | The parental-controls block page (NS_ERROR_RESTRICTED_CONTENT). The tab keeps the website address and the page borrows the warning favicon, which is why the document, not the favicon, decides; reported as blocked. | `extensions/bento-tools/experiments/bento-tab-state/api.js#restricted` | `docshell/base/nsAboutRedirector.cpp:181` |
 | `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
 | `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:137` |
