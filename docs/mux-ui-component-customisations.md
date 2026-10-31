@@ -1008,6 +1008,14 @@ property and `background-color: inherit` on a pseudo-element does not follow a t
 through a real-time fade. The workspace slide
 (`TabList.css`), the main panel width one-shot and the panel enter are `reveal` too.
 
+The settled sidebar footer keeps a transparent 1 px top border for layout and paints
+its separator with a pointer-transparent `::after` background over that border (`app.css`).
+It reads the same `--bento-sidebar-divider-color` and takes the shared mode-fade transition;
+a native footer border held and jumped in isolated window capture while this background
+updated with the fill. During collapse and expand, hide that separator while the existing
+choreography owns the separate `::before` rising backdrop and border. Keep these colour roles
+separate so a concurrent mode fade cannot interpolate divider colour into the full backdrop.
+
 The sidebar collapse and expand choreography (`extensions/bento-shell/src/sidebar/railTransition.css`,
 the "Cascade" direction) runs inside that push while the shell document stays put and
 the strip's edge wipes over it. It animates only `translate` and `opacity`, keyed on

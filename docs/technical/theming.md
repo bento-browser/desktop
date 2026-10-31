@@ -151,7 +151,7 @@ Theme authoring and import workflow is documented in [themes.md](../themes.md).
 ## Mode flip fade
 
 A light/dark flip fades every colour of every Bento-owned document together on the `state` motion
-pair (`--muxui-semantic-motion-state-transition`, 120 ms `ease`). The pair is forced on every
+pair (`--muxui-semantic-motion-state-transition`, a 250 ms spring in RC4). The pair is forced on every
 element whatever timing it had (Mux components on `interaction`, Bento surfaces on `state`, and
 the many that had no colour transition and used to snap), and every document starts it at one
 scheduled instant (`flipAt`), whenever it received the mode. A workspace theme id change is not a
@@ -206,8 +206,9 @@ How it fits together, in the order a flip travels:
   and flushed its passive effects (a frame or more, longer in a heavy document). The first effect
   run applies the initial pref (boot hydration is unchanged), the subscription skips a pref the hook
   has already applied, so a later render neither applies, announces nor fades it again, and the
-  Auto listeners (OS change, `BroadcastChannel`, `storage`) stay in an effect keyed on the pref. The
-  style read that waits for the end of the motion is deferred to the next animation frame: read
+  Auto listeners (OS change, `BroadcastChannel`, `storage`) follow the pref through their own store
+  subscription. The style read that waits for the end of the motion is deferred to the next
+  animation frame: read
   inside the message handler it made every document wait for the style flush of the documents
   handled before it in the same process. `panel-newtab` runs no script and always shows the
   Default light look. The rule is in `theme/document-base.css`, which every entry imports.
@@ -289,11 +290,10 @@ is not affected.
   (`applyModeWithFade(resolve, write, flipAt, announce)`), asked on receipt to decide whether to
   prepare and again when the flip is prepared; `write` and `announce` get the mode it applied, and
   the resolved mode that is stored (`resolved-color-mode`) and published to the window's overlays is
-  that one. A value captured on receipt could go stale: the OS appearance listeners of an Auto
-  choice are installed by an effect that only runs after React has rendered the Auto pref, so an OS
-  change in that gap is never heard. Chrome registers its `matchMedia` listener at load and a heard
-  OS change replaces or joins the waiting flip (below). Not covered: an OS change inside the same
-  render gap (one React render long, older than the scheduled flip).
+  that one. Auto listeners attach and detach inside the settings store subscription, without a root
+  React render. Re-reading at preparation also covers a changed OS value whose media-query event
+  has not been delivered. Chrome registers its `matchMedia` listener at load and a heard OS change
+  replaces or joins the waiting flip (below).
 
 ### Requests: identity, deadline and supersession
 
@@ -479,8 +479,16 @@ is by definition the producer's present) and writes it into every payload it bui
   from the settings store re-renders the whole sidebar at every flip, in the very frame the fade starts,
   and the cost grows with the tab rows. The three places that did are isolated: `useWorkspaceTheme`
   re-applies the root theme from a `subscribeColorScheme` listener, not from state; `useFirefoxTheme`
-  selects only `isAuto` (`uiColorMode === 'system'`), not the mode, for its OS listeners; and the footer's
+  manages Auto listeners from a settings-store subscription, without a React selector; and the footer's
   colour mode button is its own component (`FooterColorModeCycle` in `App.tsx`) that holds the pref.
+  A boolean `isAuto` selector still re-rendered the root when the footer entered or left Auto. In a
+  synthetic 408-tab native profile with Forest and Settings visible, Auto-to-Light delayed the
+  Settings fill's painted midpoint by 85 to 96 ms relative to the sidebar. Removing that selector
+  reduced the difference to less than 1 ms; restoring the original shell after restart brought back
+  delays of 30 and 95 ms. These are window-only uncompressed compositor samples, not CSS-clock
+  equality. This isolates the root-render cost; it does not establish the cause of every reported
+  whole-window border/background difference. Thin Settings edge pixels still differed by about
+  22 to 26 ms after the change, and no timing compensation was added.
 - The delay is not reset at `flipAt`. It stays on `<html>` until the fade ends, so a hover or focus
   change that starts during the fade (from prepare to the end, about 120 + 120 ms) waits as long as the
   flip did. Resetting it at `flipAt` was built and rejected: the property is inherited, so every element
@@ -552,6 +560,19 @@ gradient in the shell and chrome sheets that reads a custom property found no ot
   `background-color` fading through the catch-all like everything else the footer and the sidebar start
   together. A flip that lands inside the rail choreography, whose backdrop reads the fill, snaps that
   backdrop.
+- The settled sidebar footer separator paints `--bento-sidebar-divider-color` as a 1 px
+  `::after` background over a transparent 1 px layout border (`app.css`). An isolated
+  ScreenCaptureKit recording with a real footer click showed the native border holding and
+  jumping while a same-token background over its right half updated with the adjacent fill;
+  the replacement preserved both settled endpoints, and restoring the native border restored
+  the holds. This implicates that local paint representation in the captured result, not all
+  native borders or a separate CSS clock. The background uses the existing shared mode-fade
+  transition. During collapse/expand the separator is hidden while `railTransition.css`
+  owns the separate `::before` rising backdrop and border. Keeping each pseudo-element's
+  colour role stable avoids transitioning divider colour into a full backdrop during an
+  overlapping mode fade; the backdrop's geometry and registered fill remain unchanged.
+  This local remedy does not establish a whole-window fix or distinguish app paint from
+  selective capture staleness.
 - The Settings row that holds the preference being changed. The value of a non-switch row
   (`.bento-settings-palette__item[data-pending]:not([data-switch]) .bento-settings-palette__value`) dims
   to neutral-50 while a write is in flight. Choosing the colour mode is such a write and it settles inside the lead or the fade, so the value
@@ -1067,9 +1088,9 @@ What a flip still does outside the fade, with the reason and the measurement beh
 - Other clock and ordering cases: an OS appearance change under Auto is never scheduled, so the
   documents apply it when they hear it (14 to 45 ms apart); reduced motion snaps in each document's own
   rendering update (up to a frame apart, 12 ms for dark and 2 ms for light measured); documents that hear
-  of a change on either side of a system clock step agree only as far as their receipt times do; an
-  OS change inside the render gap before the Auto listeners exist is not heard; a message of the
-  previous tools run that arrives after the first message of a restarted run can show the old mode until
+  of a change on either side of a system clock step agree only as far as their receipt times do; a
+  message of the previous tools run that arrives after the first message of a restarted run can show
+  the old mode until
   the next message; a private window's flips are not scheduled with the other windows'; a same-mode
   request keeps the earlier deadline by design.
 - A write that is still pending when the fade ends dims the Settings value at that moment (one step,
