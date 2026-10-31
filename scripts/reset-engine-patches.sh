@@ -13,6 +13,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+node "$REPO_ROOT/scripts/bento-build.mjs" preflight
 ENGINE_DIR="$REPO_ROOT/engine"
 
 if [ ! -d "$ENGINE_DIR/.git" ]; then

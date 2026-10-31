@@ -1,0 +1,24 @@
+From 14273d43d6838fbafa2a5d46b3486efab90c3f80 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Sun, 1 Nov 2026 00:25:19 +1100
+Subject: [PATCH] Package the shared native mode presenter actor resource
+
+---
+ browser/actors/moz.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/browser/actors/moz.build b/browser/actors/moz.build
+index 7678dfa4daf1b5600779a8107c26811aaf9c3182..a04a1a84234786346a22c486eec776d00d78d613 100644
+--- a/browser/actors/moz.build
++++ b/browser/actors/moz.build
+@@ -102,6 +102,7 @@ FINAL_TARGET_FILES.actors += [
+     "AboutTabCrashedParent.sys.mjs",
+     "BentoKeyChild.sys.mjs",
+     "BentoKeyParent.sys.mjs",
++    "BentoModePresentation.sys.mjs",
+     "BlockedSiteChild.sys.mjs",
+     "BlockedSiteParent.sys.mjs",
+     "BrowserProcessChild.sys.mjs",
+-- 
+2.54.0 (Apple Git-157)
+

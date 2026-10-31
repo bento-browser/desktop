@@ -9,6 +9,7 @@ import { Readable } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import tinyGlob from 'tiny-glob';
 import { completeArchiveExtraction } from './archive-members.mjs';
+import { assertLocalBuildPaths } from './bento-build.mjs';
 
 export const FIREFOX_PATCH_APPLY_ARGS = [
   '--ignore-space-change',
@@ -453,6 +454,7 @@ function assertExpectedBase(ctx, ref, expectedTree, expectedContentTree) {
 }
 
 async function ensureBaseRef(ctx, version, expectedTree, expectedContentTree) {
+  assertLocalBuildPaths(ctx.repoRoot);
   ensureEngineGit(ctx);
   const ref = baseRef(version);
   if (hasRef(ctx, ref)) {

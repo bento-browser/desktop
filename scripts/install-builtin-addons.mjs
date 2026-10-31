@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { assertLocalBuildPaths } from './bento-build.mjs';
 import { isReleaseBuild } from './build-mode.mjs';
 import { releaseManifest } from './dev-reload.mjs';
 import { copyFileIfChanged, pruneTree, writeFileIfChanged } from './write-if-changed.mjs';
@@ -97,6 +98,29 @@ function manifestId(manifest) {
   return manifest?.applications?.gecko?.id ?? manifest?.browser_specific_settings?.gecko?.id;
 }
 
+/** Read-only discovery shared with native-import verification. */
+export function builtinAddonSources(repoRoot) {
+  const extensionsRoot = path.join(repoRoot, 'extensions');
+  return fs.readdirSync(extensionsRoot, { withFileTypes: true })
+    .sort((a, b) => compareNames(a.name, b.name))
+    .flatMap((entry) => {
+      if (!entry.isDirectory() || entry.name.startsWith('_')) return [];
+      const source = path.join(extensionsRoot, entry.name);
+      const manifestPath = path.join(source, 'manifest.json');
+      if (!fs.existsSync(manifestPath)) return [];
+      const id = manifestId(readJson(manifestPath));
+      if (typeof id !== 'string' || id.length === 0) {
+        throw new Error(`install-builtin-addons: extensions/${entry.name}/manifest.json has no Gecko add-on ID`);
+      }
+      return [{ name: entry.name, id, source }];
+    });
+}
+
+export function builtinAddonBuildBlock(names) {
+  const dirs = names.map((name) => `"${name}"`).join(', ');
+  return `${BEGIN_MARKER}\nDIRS += [${dirs}]\n${END_MARKER}`;
+}
+
 function addonBuildFiles(name, id, files) {
   const jar = [
     'browser.jar:',
@@ -136,17 +160,15 @@ function replaceMarkerBlock(file, names) {
   base = base.replace(/^DIRS \+= \["bento-shell", "bento-tools", "ublock-origin"\]\r?\n?/m, '');
   base = base.trimEnd();
 
-  const dirs = names.map((name) => `"${name}"`).join(', ');
-  const block = `${BEGIN_MARKER}\nDIRS += [${dirs}]\n${END_MARKER}`;
-  writeFileIfChanged(file, `${base}\n\n${block}\n`);
+  writeFileIfChanged(file, `${base}\n\n${builtinAddonBuildBlock(names)}\n`);
 }
 
 export function installBuiltinAddons(options = {}) {
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
   );
+  assertLocalBuildPaths(repoRoot);
   const release = options.release ?? isReleaseBuild(repoRoot);
-  const extensionsRoot = path.join(repoRoot, 'extensions');
   const engineExtensionsRoot = path.join(repoRoot, 'engine', 'browser', 'extensions');
   const engineMozBuild = path.join(engineExtensionsRoot, 'moz.build');
   if (!fs.existsSync(engineMozBuild)) {
@@ -154,30 +176,15 @@ export function installBuiltinAddons(options = {}) {
   }
 
   const addons = [];
-  for (const entry of fs
-    .readdirSync(extensionsRoot, { withFileTypes: true })
-    .sort((a, b) => compareNames(a.name, b.name))) {
-    if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
-    const source = path.join(extensionsRoot, entry.name);
-    const manifestPath = path.join(source, 'manifest.json');
-    if (!fs.existsSync(manifestPath)) continue;
-
-    const manifest = readJson(manifestPath);
-    const id = manifestId(manifest);
-    if (typeof id !== 'string' || id.length === 0) {
-      throw new Error(
-        `install-builtin-addons: extensions/${entry.name}/manifest.json has no Gecko add-on ID`,
-      );
-    }
-
-    const destination = path.join(engineExtensionsRoot, entry.name);
+  for (const { name, id, source } of builtinAddonSources(repoRoot)) {
+    const destination = path.join(engineExtensionsRoot, name);
     const sources = new Map();
     for (const runtimeEntry of runtimeEntries(source)) {
       const runtimeSource = path.join(source, runtimeEntry);
       if (fs.existsSync(runtimeSource)) collectEntry(runtimeSource, runtimeEntry, sources);
     }
     const files = [...sources.keys()].sort(compareNames);
-    const generated = addonBuildFiles(entry.name, id, files);
+    const generated = addonBuildFiles(name, id, files);
 
     // Sync in place instead of recreating the tree: unchanged files keep their
     // mtimes, so mach does not reconfigure or rebuild unchanged add-on inputs.
@@ -191,7 +198,7 @@ export function installBuiltinAddons(options = {}) {
     }
     writeFileIfChanged(path.join(destination, 'jar.mn'), generated.jar);
     writeFileIfChanged(path.join(destination, 'moz.build'), generated.mozBuild);
-    addons.push({ name: entry.name, id, fileCount: files.length, destination });
+    addons.push({ name, id, fileCount: files.length, destination });
   }
 
   replaceMarkerBlock(

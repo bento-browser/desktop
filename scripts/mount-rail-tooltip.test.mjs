@@ -164,7 +164,8 @@ function setupWithTimer() {
         return nextTimer++;
       },
       clearTimeout: (id) => timers.delete(id),
-      overlays: { ensure: () => ({}) },
+      overlays: { ensure: () => ({}), cancel() {}, setPresented() {} },
+      bentoModePresenter: { activity() {} },
       ensurePanelNavigatorTooltipFrameScript() {},
       recordShown: (label) => shownLabels.push(label),
     },

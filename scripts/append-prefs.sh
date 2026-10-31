@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+node "$REPO_ROOT/scripts/bento-build.mjs" preflight
 
 CONFIG_FILE="bento.json"
 if [ ! -f "$CONFIG_FILE" ]; then

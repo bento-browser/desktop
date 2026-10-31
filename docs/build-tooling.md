@@ -23,7 +23,9 @@ commands exposed through [`scripts/bento-env.sh`](../scripts/bento-env.sh):
 - `updates-browser` and `updates-addons` regenerate update metadata from an
   existing package; they refuse to run while the updater is disabled;
 - `license-check` checks source-overlay headers; `verify` and `record` protect
-  generated engine state.
+  generated engine state;
+- `native-check` verifies the full-native-build receipt and prints its exact
+  executable path for default dev launch, without writing state.
 
 The corresponding package commands are:
 
@@ -330,7 +332,7 @@ the platform mozconfig or the root `mozconfig` (when the mozconfig is written), 
 `build` or `package` run mach).
 
 `package`, `updates-browser` and `build-release.sh` use only that directory and fail
-if it does not exist. The launch and sync scripts (`dev-launch.sh`, `sync-shell.sh`,
+if it does not exist. The sync scripts (`sync-shell.sh`,
 `sync-builtin-addon-symlinks.sh`) call `node scripts/bento-build.mjs objdir
 --allow-legacy`: while the configured directory does not exist they accept a single
 legacy platform-named `engine/obj-*` build from an older checkout (or an existing
@@ -342,6 +344,106 @@ directory's `mozinfo.json` (`processor`), because `obj-bento` carries no target
 triple in its name. A checkout built before this change keeps its old directory
 untouched; the first build compiles from scratch into `obj-bento`, and the old
 directory can be deleted by hand.
+
+Default `dev-launch.sh` selection instead uses canonical build intent and
+`native-check`: `BENTO_OBJDIR` or `obj-bento`, with the current resolved build
+mode. The executable and XUL use the same configured output location, including
+`build.macosBundleName`; the launcher consumes the verified executable directly
+and preserves its logical app-bundle path through owned build symlinks. Both
+outputs must resolve inside the object directory. Use the same mode and
+`BENTO_OBJDIR` as the full build. It does not silently
+launch a legacy object directory or trust a mutable `engine/mozconfig` to choose
+another output. Read-only `objdir` retains its existing behavior.
+
+## Native build freshness
+
+Each object directory has one `.bento-native-build.json` receipt. The full native
+`bento-build build` path issues it only after successful `mach build`.
+`pnpm run build` is the normal entry point: extension build, import, full native
+build, then resource-link sync. `dev` and `dev:mux` refresh UI resources without
+compiling XUL, so their default launch now verifies this receipt first. A missing
+or changed component fails with its name and `pnpm run build` guidance.
+
+The receipt fingerprints the Firefox source/base identity, the whole ordered
+patch manifest and patch files, compiled native source/build-definition overlays,
+native branding definitions, the canonical common/platform/local mozconfig
+inputs, resolved mode/object directory/host target, Rust pin and explicitly
+declared compiler/toolchain environment. Every patch change requires a full
+build, including patches that only affect runtime resources; there is no patch
+hunk classifier. Ordinary source and extension JS/CSS, themes, images, generated
+timestamps, version files and application metadata are excluded, so a normal
+UI refresh does not require another native compilation.
+
+Declared native environment inputs include Firefox's explicit compile/link
+flags (`ASFLAGS`, `AR_FLAGS`, `LIBS`, `MOZ_OPTIMIZE_FLAGS` and host compiler flags),
+SDK selections such as `MACOS_SDK_DIR`, compiler/wrapper choices and the named
+native hardening/coverage options. Runtime-only variables such as `MOZ_LOG`
+remain excluded; the guard does not fingerprint every `MOZ_*` variable.
+
+Before compiling, the driver compares current mapped native engine files with
+the current patch replay and native source overlays. This checks the current
+repository inputs even when an older import was recorded as valid engine state.
+Tracked native edits left by a removed patch are compared with the Firefox base.
+The old receipt is removed before `mach`; failure leaves no valid replacement.
+After success, the driver requires unchanged native inputs and mapped engine
+bytes, reads configured compiler and target evidence from `config.status` and
+`mozinfo.json`, binds the produced XUL library's actual digest, and writes the
+receipt atomically. Launch recomputes canonical mozconfig intent and checks the
+receipt, mapped engine bytes, configured compiler/target evidence and actual XUL
+without running installers or compiler discovery.
+
+Import, `record`, `build:ui`, resource sync and app copies never issue or repair
+the receipt. API presence or a refreshed BuildID does not certify native code.
+An existing build made before this receipt was introduced needs one successful
+full build; there is no retroactive certification command. An explicit
+`BENTO_BIN` still launches the requested external binary and bypasses freshness
+selection, while granting no permission to share build outputs. Older checkouts
+whose tooling predates this guard do not enforce it.
+
+This is a maintained-build freshness check, not comprehensive provenance for
+arbitrary ignored/manual engine edits, external files sourced by a custom
+mozconfig, or compiler/SDK binaries changed in place. It records configured
+compiler evidence and declared toolchain inputs; it does not hash the entire
+Firefox checkout or installed toolchain at launch. Keep native changes in the
+protected patch/source workflow.
+
+## Checkout output isolation
+
+Each checkout must keep its own `engine/` and `.bento/` inside its canonical
+source root. Mutating build commands, import, patch-stack operations, installers,
+and app-resource sync reject either directory if it resolves outside that root.
+The preflight resolves symlinks, accepts a symlink alias for the checkout itself,
+allows missing local output directories and local patch-stack worktrees, and
+rejects dangling or unresolvable output links. It does not create paths, remove
+links, or offer a sharing override. Run `node scripts/bento-build.mjs preflight`
+to check the paths without writing them.
+
+On failure, the message names the canonical checkout and each offending
+requested path and resolved target. Preserve existing shared outputs and links;
+use independent `engine/` and `.bento/` directories for the checkout, then use
+the normal download, bootstrap, and build workflow. For UI-only work, use
+`pnpm run shell:ladle` or `pnpm run shell:dev` without a native engine.
+Read-only `objdir`, engine status, and context inspection remain available.
+Verification checks isolation when it needs to adopt source state or create a
+temporary Git worktree. Default `dev-launch.sh` selection checks isolation;
+an explicit `BENTO_BIN` can still launch an external executable, but grants no
+permission to write shared outputs through any build or sync command. An
+extension build may finish in its own checkout before the import preflight
+rejects foreign outputs.
+
+This prevents a deployment overwrite that can look like a source regression.
+In the 2026-10-31 incident, a feature checkout based on older source borrowed
+the primary checkout's `engine/` and `.bento/` through symlinks. Its import
+replaced the running app's footer CSS and Auto-button React root with older
+versions while the primary source and extension build stayed current; app
+resource links also pointed through the feature checkout. The earlier dev and
+local-Mux captures preceded that later import, so their separate native
+background-compositor finding remains valid. The isolation guard prevents
+cross-checkout writes through updated tooling. Older checkouts with unguarded
+scripts can still overwrite shared outputs; do not import or sync from them
+through borrowed `engine/` or `.bento/` links. The guard does not restore
+previously overwritten resources or change CSS painting. The shared native presentation and remaining
+synchronization validation are recorded in [theming.md](technical/theming.md#native-browser-background-paint-policy).
 
 ## Import cost and mtimes
 

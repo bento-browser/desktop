@@ -9,6 +9,7 @@
 
 import { useEffect } from 'react';
 import { sendChromeTitle } from './chromeTitle';
+import { nativeModeHosted, whenModePresentationReady } from '../theme/modePresentation';
 
 export const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
 
@@ -29,7 +30,9 @@ export type OverlayName =
 /** Announces that this overlay document is subscribed and can receive an open. */
 export function signalOverlayReady(overlay: OverlayName): void {
   // The timestamp keeps successive titles distinct; chrome drops a repeated one.
-  sendChromeTitle(`${OVERLAY_READY_PREFIX}:${overlay}_${Date.now()}`);
+  const announce = () => sendChromeTitle(`${OVERLAY_READY_PREFIX}:${overlay}_${Date.now()}`);
+  if (nativeModeHosted) void whenModePresentationReady().then(announce);
+  else announce();
 }
 
 /** Call from the overlay's top-level component, after the effects that subscribe. */

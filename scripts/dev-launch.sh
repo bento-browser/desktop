@@ -7,13 +7,10 @@ set -u
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit
 
-# Launch the app in the object directory mach builds into (engine/obj-bento unless
-# BENTO_OBJDIR chose another name). Before it exists, a single old engine/obj-*
-# build is launched and the driver says so; several old ones is an error. With no
-# object directory at all, the missing-executable check below reports it.
+# Default launches require a full native build of the current native inputs.
+# Explicit BENTO_BIN remains an external-binary launch and grants no write access.
 if [ -z "${BENTO_BIN:-}" ]; then
-  OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-legacy --allow-missing)" || exit 1
-  BENTO_BIN="${OBJ_DIR:+$OBJ_DIR/dist/Bento.app/Contents/MacOS/bento}"
+  BENTO_BIN="$(node "$REPO_ROOT/scripts/bento-build.mjs" native-check)" || exit 1
 fi
 PROFILE="${1:-${BENTO_DEV_PROFILE:-.bento-dev-profile}}"
 if [ "$#" -gt 0 ]; then

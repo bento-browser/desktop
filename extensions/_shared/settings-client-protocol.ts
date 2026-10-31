@@ -11,6 +11,8 @@
 
 import type {
   BentoSettings,
+  ColorStamp,
+  UiColorModePref,
   ImportOptions,
   ImportSummary,
   BackupListEntry,
@@ -339,6 +341,8 @@ export interface BackupContext {
 export interface SettingsSnapshot {
   revision: number;
   settings?: EditableSettings;
+  /** Sampled synchronously with settings.uiColorMode by its owner. */
+  colorStamp?: ColorStamp;
   privacy?: SettingsPrivacy;
   search?: SettingsSearch;
   /** Omitted for private callers. */
@@ -348,6 +352,11 @@ export interface SettingsSnapshot {
   /** Lets a reloaded document resume polling `operation/status`. */
   pendingOperations: PendingOperation[];
 }
+
+/** Reply to the chrome hub's native-only, window-bound owner read. */
+export type NativeModeStateReply =
+  | { ok: true; pref: UiColorModePref; stamp: ColorStamp }
+  | { ok: false; error: string };
 
 export interface SettingsUpdateResult {
   settings: BentoSettings;

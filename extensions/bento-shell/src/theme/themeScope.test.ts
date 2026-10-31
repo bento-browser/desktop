@@ -169,6 +169,16 @@ describe('subscribeColorScheme', () => {
 });
 
 describe('useResolvedColorScheme', () => {
+  it('a native final writer synchronizes nested scopes before an observer checkpoint', async () => {
+    const { useResolvedColorScheme, synchronizeDocumentColorScheme } = await loadScope();
+    const nested = mount(() => ({ 'data-muxui-color-scheme': useResolvedColorScheme() }));
+    colorMode = 'dark';
+    // Deliberately do not deliver the MutationObserver. The commit barrier
+    // calls this notification inside ReactDOM.flushSync while settle is active.
+    synchronizeDocumentColorScheme();
+    expect(nested.value['data-muxui-color-scheme']).toBe('dark');
+    nested.stop();
+  });
   it('re-renders a mounted consumer when the root mode changes, and stops when it unmounts', async () => {
     const { useResolvedColorScheme } = await loadScope();
     const consumer = mount(useResolvedColorScheme);

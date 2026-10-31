@@ -14,6 +14,24 @@ import {
 
 const TOKEN = 'var(--muxui-semantic-motion-state-transition)';
 
+test('only the exact native old-image paused unit hold bypasses raw timing, in its file and root context', () => {
+  const file = 'src/browser/base/content/bento-chrome-theme.css';
+  const css = ":root[data-bento-mode-presentation='theme']::view-transition-old(root) {\n" +
+    'animation: bento-mode-presentation-old calc(var(--muxui-semantic-motion-state-transition-duration) * 0 + 1ms) linear both paused !important;\n}\n' +
+    '@keyframes bento-mode-presentation-old { from { opacity: 1; } to { opacity: 0; } }';
+  assert.deepEqual(cssViolations(css, file), []);
+  const animation = /animation:[^;]+;/.exec(css)[0];
+  const sameLine = css.replace(';\n}\n', `; } .ordinary { ${animation} }\n`);
+  assert.equal(cssViolations(sameLine, file).length, 1, 'ordinary declarations on the approved physical line stay checked');
+  for (const [source, location] of [
+    [css.replace(' paused', ''), file], [css.replace('old(root)', 'old(control)'), file],
+    [css, 'extensions/bento-shell/src/theme/document-base.css'],
+    [css.replace('1ms', '250ms'), file], [css.replace('to { opacity: 0;', 'to { opacity: 1;'), file],
+    [css + '\n.ordinary { animation: anything 1ms linear paused; }', file],
+    [css + '\n.ordinary { animation: bento-mode-presentation-old 1ms linear; }', file],
+  ]) assert.ok(cssViolations(source, location).length > 0, location + source);
+});
+
 test('shorthand values pass with Mux motion tokens, property names, keywords and resets', () => {
   for (const value of [
     'none',

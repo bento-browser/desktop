@@ -1,0 +1,473 @@
+From c51bab22161feb77fb9730c2946a3299d20007bf Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Sat, 31 Oct 2026 23:38:29 +1100
+Subject: [PATCH] Preserve input for owned native theme capture transitions
+
+---
+ dom/view-transitions/ViewTransition.cpp       |  45 ++++
+ dom/view-transitions/ViewTransition.h         |   7 +
+ .../test/browser/browser.toml                 |   2 +
+ .../browser_bento_native_theme_input.js       | 223 ++++++++++++++++++
+ layout/base/PresShell.cpp                     |   8 +-
+ layout/base/TouchManager.cpp                  |   9 +-
+ 6 files changed, 290 insertions(+), 4 deletions(-)
+ create mode 100644 dom/view-transitions/test/browser/browser_bento_native_theme_input.js
+
+diff --git a/dom/view-transitions/ViewTransition.cpp b/dom/view-transitions/ViewTransition.cpp
+index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf2359a9a0 100644
+--- a/dom/view-transitions/ViewTransition.cpp
++++ b/dom/view-transitions/ViewTransition.cpp
+@@ -25,6 +25,7 @@
+ #include "mozilla/layers/WebRenderBridgeChild.h"
+ #include "mozilla/layers/WebRenderLayerManager.h"
+ #include "mozilla/webrender/WebRenderAPI.h"
++#include "nsCSSFrameConstructor.h"
+ #include "nsCanvasFrame.h"
+ #include "nsDisplayList.h"
+ #include "nsFrameState.h"
+@@ -289,6 +290,7 @@ already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument(
+   MOZ_ASSERT(aInboundParams);
+   RefPtr<ViewTransition> vt =
+       new ViewTransition(aDocument, nullptr, std::move(aResolvedRule));
++  vt->mIsCrossDocument = true;
+   vt->mNamedElements = std::move(aInboundParams->namedElements);
+   vt->mNames = std::move(aInboundParams->names);
+   vt->mInitialSnapshotContainingBlockSize =
+@@ -303,6 +305,13 @@ already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument(
+   return vt.forget();
+ }
+ 
++bool ViewTransition::PreservesNativeThemeInput() const {
++  return mPreservesNativeThemeInput &&
++         (mPhase == Phase::PendingCapture ||
++          mPhase == Phase::UpdateCallbackCalled) &&
++         mDocument && mDocument->GetActiveViewTransition() == this;
++}
++
+ Element* ViewTransition::GetViewTransitionTreeRoot() const {
+   return mSnapshotContainingBlock
+              ? mSnapshotContainingBlock->GetFirstElementChild()
+@@ -1102,6 +1111,7 @@ void ViewTransition::Activate() {
+     // If failure is returned, then skip the view transition for transition...
+     return SkipTransition(*skipReason);
+   }
++  mPreservesNativeThemeInput = false;
+ 
+   // Step 6: Setup transition pseudo-elements for transition.
+   SetupTransitionPseudoElements();
+@@ -1351,6 +1361,7 @@ static void ForEachFrameWithViewTransitionName(Document* aDoc,
+ // https://drafts.csswg.org/css-view-transitions/#capture-the-old-state
+ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
+   MOZ_ASSERT(mNamedElements.IsEmpty());
++  mPreservesNativeThemeInput = false;
+ 
+   // Steps 1/2 are variable declarations.
+   // Step 3: Let usedTransitionNames be a new set of strings.
+@@ -1443,6 +1454,21 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
+   for (auto& [f, name] : captureElements) {
+     SetCaptured(f, false, nullptr);
+   }
++  // Latch only after a successful old capture. A cross-document transition
++  // also has a null callback, so it must be excluded explicitly.
++  if (!mIsCrossDocument && !mUpdateCallback && captureElements.Length() == 1) {
++    auto* root = mDocument->GetRootElement();
++    auto* ps = mDocument->GetPresShell();
++    RefPtr<nsAtom> marker = NS_Atomize("data-bento-mode-presentation");
++    mPreservesNativeThemeInput =
++        root && ps && mDocument->NodePrincipal()->IsSystemPrincipal() &&
++        root->AttrValueIs(kNameSpaceID_None, nsGkAtoms::windowtype,
++                          u"navigator:browser"_ns, eCaseMatters) &&
++        root->AttrValueIs(kNameSpaceID_None, marker, u"theme"_ns,
++                          eCaseMatters) &&
++        captureElements[0].first ==
++            ps->FrameConstructor()->GetRootElementStyleFrame();
++  }
+   return result;
+ }
+ 
+@@ -1450,6 +1476,11 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
+ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
+   nsTHashSet<nsAtom*> usedTransitionNames;
+   Maybe<SkipTransitionReason> result;
++  auto* ps = mDocument->GetPresShell();
++  nsIFrame* nativeThemeRoot =
++      mPreservesNativeThemeInput && ps
++          ? ps->FrameConstructor()->GetRootElementStyleFrame()
++          : nullptr;
+   ForEachFrameWithViewTransitionName(mDocument, [&](nsIFrame* aFrame) {
+     // As a fast path we check for v-t-n first.
+     RefPtr<nsAtom> name = DocumentScopedTransitionNameFor(aFrame);
+@@ -1473,6 +1504,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
+           SkipTransitionReason::DuplicateTransitionNameCapturingNewState);
+       return false;
+     }
++    if (mPreservesNativeThemeInput && aFrame != nativeThemeRoot) {
++      result.emplace(SkipTransitionReason::NativeThemeContractViolation);
++      return false;
++    }
+     bool wasPresent = true;
+     auto& capturedElement = mNamedElements.LookupOrInsertWith(name, [&] {
+       wasPresent = false;
+@@ -1501,6 +1536,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
+     SetCaptured(aFrame, true, name);
+     return true;
+   });
++  if (mPreservesNativeThemeInput &&
++      (usedTransitionNames.Count() != 1 || mNamedElements.Count() != 1)) {
++    result.emplace(SkipTransitionReason::NativeThemeContractViolation);
++  }
+   return result;
+ }
+ 
+@@ -1687,6 +1726,7 @@ bool ViewTransition::CheckForActiveAnimations() const {
+ }
+ 
+ void ViewTransition::ClearNamedElements() {
++  mPreservesNativeThemeInput = false;
+   for (auto& entry : mNamedElements) {
+     if (auto* element = entry.GetData()->mNewElement.get()) {
+       if (nsIFrame* f = element->GetPrimaryFrame()) {
+@@ -1769,6 +1809,7 @@ void ViewTransition::SkipTransition(
+   VT_LOG("ViewTransition::SkipTransition(%d, %d)\n", int(mPhase), int(aReason));
+   AUTO_PROFILER_TERMINATING_FLOW_MARKER("ViewTransition::SkipTransition",
+                                         LAYOUT, Flow::FromPointer(this));
++  mPreservesNativeThemeInput = false;
+   if (mPhase == Phase::Done) {
+     return;
+   }
+@@ -1822,6 +1863,10 @@ void ViewTransition::SkipTransition(
+         readyPromise->MaybeRejectWithInvalidStateError(
+             "Skipped view transition due to root element going away");
+         break;
++      case SkipTransitionReason::NativeThemeContractViolation:
++        readyPromise->MaybeRejectWithInvalidStateError(
++            "Native theme transition must capture only the document root");
++        break;
+       case SkipTransitionReason::PageSwap:
+         readyPromise->MaybeRejectWithInvalidStateError(
+             "Skipped view transition due to page swap");
+diff --git a/dom/view-transitions/ViewTransition.h b/dom/view-transitions/ViewTransition.h
+index 4159f711a25f90f3a3b077cd071985293175f41e..8ad039aa92edb5e0d2c810a4f6b26f3e429d973a 100644
+--- a/dom/view-transitions/ViewTransition.h
++++ b/dom/view-transitions/ViewTransition.h
+@@ -62,6 +62,7 @@ enum class SkipTransitionReason : uint8_t {
+   UpdateCallbackRejected,
+   DuplicateTransitionNameCapturingOldState,
+   DuplicateTransitionNameCapturingNewState,
++  NativeThemeContractViolation,
+   PseudoUpdateFailure,
+   Resize,
+   PageSwap,
+@@ -179,6 +180,10 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
+ 
+   void Activate();
+ 
++  // Only the owned root-only native theme transaction preserves hit testing
++  // while its old capture is held. This does not change rendering suppression.
++  bool PreservesNativeThemeInput() const;
++
+  private:
+   using CapturedElement = ViewTransitionCapturedElement;
+ 
+@@ -247,6 +252,8 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
+   RefPtr<nsITimer> mTimeoutTimer;
+ 
+   Phase mPhase = Phase::PendingCapture;
++  bool mIsCrossDocument = false;
++  bool mPreservesNativeThemeInput = false;
+   // The wrapper of the pseudo-elements tree, to make sure it is always
+   // out-of-flow. This is the top-layer for rendering the view transition tree.
+   // So in general, its child (and only one) is the transition root
+diff --git a/dom/view-transitions/test/browser/browser.toml b/dom/view-transitions/test/browser/browser.toml
+index 8aa8d2871dba1e4b151840e54a247971ce9f2804..226ccb36d9fa4735be64c3723e7b5d1eea0457ad 100644
+--- a/dom/view-transitions/test/browser/browser.toml
++++ b/dom/view-transitions/test/browser/browser.toml
+@@ -1 +1,3 @@
++["browser_bento_native_theme_input.js"]
++
+ ["browser_tab_detach_vt.js"]
+diff --git a/dom/view-transitions/test/browser/browser_bento_native_theme_input.js b/dom/view-transitions/test/browser/browser_bento_native_theme_input.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..78762e382d1ed217a6cfc1057c35c80466d34550
+--- /dev/null
++++ b/dom/view-transitions/test/browser/browser_bento_native_theme_input.js
+@@ -0,0 +1,223 @@
++/* Any copyright is dedicated to the Public Domain.
++   https://creativecommons.org/publicdomain/zero/1.0/ */
++
++"use strict";
++
++// Also serialized into a SpecialPowers.spawn sandbox for the ordinary-page
++// control. No await is allowed between the refresh and suppressed input probe.
++async function probeThemeInput(options, win = content) {
++  const doc = win.document;
++  const root = doc.documentElement;
++  const attrs = ["windowtype", "data-bento-mode-presentation", "style"];
++  const saved = attrs.map(name => [name, root.getAttribute(name)]);
++  const style = doc.createElementNS("http://www.w3.org/1999/xhtml", "style");
++  style.textContent = `
++    :root { view-transition-name: ${options.noOldRoot ? "none" : "root"} !important; }
++    :root * { view-transition-name: none !important; }
++    :root::view-transition, :root::view-transition-group(*),
++    :root::view-transition-image-pair(*), :root::view-transition-old(*),
++    :root::view-transition-new(*) { pointer-events: none !important; }
++    :root::view-transition-group(*) {
++      animation-duration: 100s !important;
++      animation-play-state: paused !important;
++    }
++  `;
++  const probe = doc.createElementNS("http://www.w3.org/1999/xhtml", "button");
++  probe.style.cssText =
++    "position: fixed; left: 120px; top: 120px; width: 100px; height: 40px; z-index: 2147483647; pointer-events: auto";
++  probe.textContent = "Owned input probe";
++  doc.body.append(style, probe);
++  const transitions = [];
++  function input() {
++    let result = null;
++    const observe = event => {
++      result = {
++        owned: event.target === probe,
++        root: event.target === root,
++        trusted: event.isTrusted,
++      };
++      event.preventDefault();
++      event.stopPropagation();
++    };
++    doc.addEventListener("mousedown", observe, { capture: true, once: true });
++    try {
++      const rect = probe.getBoundingClientRect();
++      const flags = {
++        toWindow: true,
++        isAsyncEnabled: false,
++        isDOMEventSynthesized: true,
++        isWidgetEventSynthesized: false,
++      };
++      win.synthesizeMouseEvent(
++        "mousedown",
++        rect.x + 20,
++        rect.y + 20,
++        {},
++        flags
++      );
++      win.synthesizeMouseEvent("mouseup", rect.x + 20, rect.y + 20, {}, flags);
++    } finally {
++      doc.removeEventListener("mousedown", observe, true);
++    }
++    return result;
++  }
++  function start(callback = false) {
++    const transition = callback
++      ? doc.startViewTransition(() => {})
++      : doc.startViewTransition();
++    const ready = transition.ready.then(
++      () => "ready",
++      error => error.name
++    );
++    transitions.push(transition);
++    return { transition, ready };
++  }
++  try {
++    if (options.marker === undefined)
++      root.removeAttribute("data-bento-mode-presentation");
++    else root.setAttribute("data-bento-mode-presentation", options.marker);
++    if (options.windowtype !== undefined)
++      root.setAttribute("windowtype", options.windowtype);
++    if (options.additionalOld)
++      probe.style.setProperty(
++        "view-transition-name",
++        "old_control",
++        "important"
++      );
++    const before = input();
++    const { transition, ready } = start(options.callback);
++    win.windowUtils.advanceTimeAndRefresh(0);
++    if (options.removeMarker)
++      root.removeAttribute("data-bento-mode-presentation");
++    const captured = input();
++    const result = { before, captured };
++    if (options.additionalNew)
++      probe.style.setProperty(
++        "view-transition-name",
++        "new_control",
++        "important"
++      );
++    if (options.noNewRoot)
++      root.style.setProperty("view-transition-name", "none", "important");
++    if (options.renameNewRoot)
++      root.style.setProperty("view-transition-name", "new_root", "important");
++    if (options.replace || options.skipThenReplace) {
++      if (options.skipThenReplace) {
++        transition.skipTransition();
++        result.afterSkip = input();
++      }
++      root.removeAttribute("data-bento-mode-presentation");
++      const replacement = start();
++      win.windowUtils.advanceTimeAndRefresh(0);
++      result.replacement = input();
++      replacement.transition.skipTransition();
++    }
++    result.ready = await ready;
++    result.afterReady = input();
++    return result;
++  } finally {
++    for (const transition of transitions) transition.skipTransition();
++    win.windowUtils.restoreNormalRefresh();
++    for (const [name, value] of saved) {
++      if (value === null) root.removeAttribute(name);
++      else root.setAttribute(name, value);
++    }
++    probe.remove();
++    style.remove();
++    await Promise.allSettled(
++      transitions.map(transition => transition.finished)
++    );
++  }
++}
++
++function checkInput(state, owned, description) {
++  ok(state, `${description}: an event was dispatched`);
++  ok(state.trusted, `${description}: trusted PresShell dispatch`);
++  is(state.owned, owned, `${description}: owned target`);
++  is(state.root, !owned, `${description}: document-root suppression`);
++}
++
++add_task(async function test_native_theme_capture_input() {
++  const win = await BrowserTestUtils.openNewBrowserWindow();
++  try {
++    await SimpleTest.promiseFocus(win);
++    for (const [description, options, owned] of [
++      ["missing marker control", {}, false],
++      ["wrong marker", { marker: "other" }, false],
++      ["wrong own identity", { marker: "theme", windowtype: "other" }, false],
++      [
++        "synchronous update callback",
++        { marker: "theme", callback: true },
++        false,
++      ],
++      [
++        "additional old capture",
++        { marker: "theme", additionalOld: true },
++        false,
++      ],
++      ["missing old root", { marker: "theme", noOldRoot: true }, false],
++      ["eligible root-only theme", { marker: "theme" }, true],
++      [
++        "marker removal remains latched",
++        { marker: "theme", removeMarker: true },
++        true,
++      ],
++    ]) {
++      const state = await probeThemeInput(options, win);
++      checkInput(state.before, true, `${description} before capture`);
++      checkInput(state.captured, owned, description);
++      is(state.ready, "ready", `${description}: retains ordinary lifecycle`);
++      // Named controls retain upstream event-list behavior during animation.
++      if (!options.additionalOld)
++        checkInput(state.afterReady, true, `${description} after activation`);
++    }
++    for (const options of [
++      { additionalNew: true },
++      { noNewRoot: true },
++      { renameNewRoot: true },
++    ]) {
++      const state = await probeThemeInput({ marker: "theme", ...options }, win);
++      checkInput(state.captured, true, "old capture opted in");
++      is(
++        state.ready,
++        "InvalidStateError",
++        "new membership violation skips before animation"
++      );
++      checkInput(state.afterReady, true, "violation releases suppression");
++    }
++    for (const options of [{ replace: true }, { skipThenReplace: true }]) {
++      const state = await probeThemeInput({ marker: "theme", ...options }, win);
++      checkInput(state.captured, true, "original theme opted in");
++      if (state.afterSkip)
++        checkInput(state.afterSkip, true, "skip releases suppression");
++      checkInput(
++        state.replacement,
++        false,
++        "unmarked replacement does not inherit latch"
++      );
++      is(state.ready, "AbortError", "replacement/skip aborts the original");
++    }
++    for (const [url, options] of [
++      [
++        "data:text/html,<body>ordinary page</body>",
++        { marker: "theme", windowtype: "navigator:browser" },
++      ],
++      ["about:config", { marker: "theme" }],
++    ]) {
++      await BrowserTestUtils.withNewTab(
++        { gBrowser: win.gBrowser, url },
++        async browser => {
++          const state = await SpecialPowers.spawn(
++            browser,
++            [options],
++            probeThemeInput
++          );
++          checkInput(state.before, true, `${url} before capture`);
++          checkInput(state.captured, false, `${url} cannot opt in`);
++        }
++      );
++    }
++  } finally {
++    await BrowserTestUtils.closeWindow(win);
++  }
++});
+diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
+index c88f6f63f05043dd4f22761f446b5843ac0a5b40..e763491006000db888f0ce16442ab2ec19a7e2c2 100644
+--- a/layout/base/PresShell.cpp
++++ b/layout/base/PresShell.cpp
+@@ -124,6 +124,7 @@
+ #include "mozilla/dom/Touch.h"
+ #include "mozilla/dom/TouchEvent.h"
+ #include "mozilla/dom/UserActivation.h"
++#include "mozilla/dom/ViewTransition.h"
+ #include "mozilla/gfx/2D.h"
+ #include "mozilla/gfx/Types.h"
+ #include "mozilla/glean/GfxMetrics.h"
+@@ -8085,8 +8086,11 @@ nsIFrame* PresShell::EventHandler::GetFrameToHandleNonTouchEvent(
+ 
+   Document* doc = GetDocument();
+   if (MOZ_UNLIKELY(doc && doc->RenderingSuppressedForViewTransitions())) {
+-    Element* root = doc->GetRootElement();
+-    return root ? root->GetPrimaryFrame() : nullptr;
++    const auto* transition = doc->GetActiveViewTransition();
++    if (!transition || !transition->PreservesNativeThemeInput()) {
++      Element* root = doc->GetRootElement();
++      return root ? root->GetPrimaryFrame() : nullptr;
++    }
+   }
+ 
+   ViewportType viewportType = ViewportType::Layout;
+diff --git a/layout/base/TouchManager.cpp b/layout/base/TouchManager.cpp
+index f74a666e3596205da8808b7fe0f96b07d6111866..55888e1e7738f0d039bb27240e908936fac24ea2 100644
+--- a/layout/base/TouchManager.cpp
++++ b/layout/base/TouchManager.cpp
+@@ -15,6 +15,7 @@
+ #include "mozilla/dom/Document.h"
+ #include "mozilla/dom/EventTarget.h"
+ #include "mozilla/dom/PointerEventHandler.h"
++#include "mozilla/dom/ViewTransition.h"
+ #include "mozilla/layers/InputAPZContext.h"
+ #include "nsIContent.h"
+ #include "nsIFrame.h"
+@@ -117,8 +118,12 @@ nsIFrame* TouchManager::SetupTarget(WidgetTouchEvent* aEvent,
+   }
+ 
+   Document* doc = aFrame->PresShell()->GetDocument();
+-  const bool renderBlocked =
+-      doc && doc->RenderingSuppressedForViewTransitions();
++  bool renderBlocked = doc && doc->RenderingSuppressedForViewTransitions();
++  if (MOZ_UNLIKELY(renderBlocked)) {
++    if (const auto* transition = doc->GetActiveViewTransition()) {
++      renderBlocked = !transition->PreservesNativeThemeInput();
++    }
++  }
+ 
+   nsIFrame* target = aFrame;
+   const bool isNewTouchSession = aEvent->mTouches.Length() == 1;
+-- 
+2.54.0 (Apple Git-157)
+

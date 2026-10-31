@@ -567,7 +567,11 @@ export class SettingsDomainService {
       revision: this.#revision,
       pendingOperations: this.#pendingOperations(caller),
     };
-    if (domains.has('settings')) snapshot.settings = this.editableSettings();
+    if (domains.has('settings')) {
+      // No await between these reads: the mode and stamp name one owner state.
+      snapshot.settings = this.editableSettings();
+      snapshot.colorStamp = this.#ctx.settings.colorStamp();
+    }
     if (domains.has('privacy')) snapshot.privacy = settingsPrivacy(await readPrivacySnapshot());
     if (domains.has('search')) snapshot.search = settingsSearch(await readSearchEnginesSnapshot());
     if (!caller.isPrivate) {
