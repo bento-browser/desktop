@@ -830,7 +830,7 @@ What a flip still does outside the fade, with the reason and the measurement beh
 - Known limit: the dev server (`pnpm --filter @bento/shell dev`) does not
   serve `assets/panel-newtab.css`; preview the page from a built `dist/`.
 
-## Demo tab appearance preferences
+## Tab appearance preferences
 
 `bento-tools` owns `BentoSettings.tabStateTintsEnabled` and
 `customTabStateIconsEnabled`, both defaulting to `true` in `SettingsStore`.
@@ -840,24 +840,59 @@ settings rules accept booleans; reset, backup export/import and Settings snapsho
 use the same store. The existing settings transport and shell mirror deliver updates;
 no chrome bridge or Firefox state is added.
 
-Only `BENTO_SOFTCAST_DEMO=1` developer builds expose the Tab appearance category
-between Appearance and Performance, including command-palette search targets.
-The schema, defaults and catalog remain available in every build. `TabRow` resolves
-`softcastPresentation` under that build capability independently of both preferences.
-`tabStateTintsEnabled` controls only the row's `data-softcast-state` tint attribute;
-`customTabStateIconsEnabled` controls only `SoftcastIcon`. With custom icons off,
-the existing loading indicator, real favicon and placeholder branch is unchanged.
-Actual discarded styling and loading/sleeping titles remain tools-driven.
+Every build exposes the Tab appearance category between Appearance and Performance,
+including its command-palette search targets, in regular and private windows. The two
+preferences are independent. `TabRow` resolves the row's state with `tabStateOf`
+(`components/TabRow/tabState.ts`), a pure function of the tools-owned
+`TabSnapshot` fields `url`, `loading`, `discarded`, `favIconUrl` and `crashed`. First
+match wins:
 
-Quiet status backgrounds retain the existing Mux token mixes (10% light, 14% dark),
-with active and selected fills taking precedence. Default, loading and sleeping
-remain untinted. Simulated failures still require the exact owned fixture URLs;
-real website favicons and native state detection are unchanged.
+1. `crashed === true`: `crashed`.
+2. `loading`: no state (the Mux progress circle stays, with no tint).
+3. `discarded`: `sleeping`.
+4. `favIconUrl` exactly `chrome://global/skin/icons/info.svg`, `warning.svg` or
+   `blocked.svg` on an `http:`, `https:` or `file:` tab URL: `unavailable`,
+   `certificate-warning` or `blocked`.
+5. `about:config` or `about:preferences`, with any `#section` or query:
+   `internal-settings`.
+6. No `favIconUrl`: `default`.
+7. Otherwise no state, and the website favicon shows.
 
-Verify in an isolated demo app: open Bento Settings, switch each control separately,
-compare all four combinations on the local fixtures and a website with a favicon,
-and relaunch the same profile to confirm persistence. Reset restores both to On.
-Ordinary builds must have neither the section nor its command search entries.
+`tabStateTintsEnabled` controls only the row's `data-tab-state` attribute, set for
+`unavailable`, `certificate-warning`, `blocked`, `crashed` and `internal-settings`.
+`customTabStateIconsEnabled` controls only `TabStateIcon`, which replaces the favicon
+slot for any state. With custom icons off, the loading indicator, real favicon and
+placeholder branch is today's. Actual discarded styling and loading/sleeping titles
+remain tools-driven.
+
+The three icons in step 4 are the stand-ins Firefox sets on its net error, certificate
+error, HTTPS-Only error and blocked-site pages (`FAVICON_ERRORPAGE_URL` and
+`FAVICON_CERTERRORPAGE_URL` in `nsIFaviconService.idl`, `blockedSite.xhtml`). An error
+page keeps the failed address as the tab URL, which is why the URL check exists:
+`about:sessionrestore` and `about:restartrequired` also set `info.svg`, and
+`about:restricted` sets `warning.svg`, and none of them is an unreachable site. Web
+content cannot set a `chrome:` favicon, so a website URL with one of these icons is
+an error page. A Firefox update that moves another internal page onto these icons
+needs a case in `tabState.test.ts`.
+
+Quiet status backgrounds are `color-mix` of one Mux color token at 10% in light mode
+and 14% in resolved dark mode (`--bento-tab-row-state-tint`). They sit at one-class
+specificity before the active and selected rules, which therefore win. Default and
+sleeping are untinted.
+
+The state icons are the SVG masters in `components/TabRow/assets/`. `TabStateIcon`
+imports them with `?no-inline`, so the ordinary build emits each as
+`dist/assets/tab-state-<state>.svg` and the shell chunk refers to it with
+`new URL(..., import.meta.url)`; Vite would otherwise inline those under its 4 KB limit as
+`data:` URIs. The extension CSP (`script-src 'self'; object-src 'none'; frame-ancestors
+'none'`) sets no `img-src`, so the files load as same-extension images with no
+`web_accessible_resources` entry. Keep the SVG files byte-identical to the masters.
+
+Verify in a built app: switch each control separately in Settings, compare all four
+combinations on tabs in each state (a site that does not resolve, an expired
+certificate, a blocked-site test page, a crashed tab, `about:preferences#privacy`,
+`about:config`, a sleeping tab and a page with a favicon), and relaunch the same
+profile to confirm persistence. Reset restores both to On.
 
 ## Theme pitfalls
 

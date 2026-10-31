@@ -172,6 +172,7 @@ export class TabRegistry {
     // post-move snapshot would still show the old windowId and would
     // re-move the tabs forever.
     browser.tabs.onAttached.addListener(this.#onAttached);
+    this.#watchCrashed();
 
     const all = await browser.tabs.query({});
     // Privacy first: an event for one of these tabs can arrive while the session values
@@ -210,6 +211,7 @@ export class TabRegistry {
       const url = tabUrl(tab);
       if (url) this.#urlByTabId.set(tab.id, url);
     }
+    await this.#readCrashed();
   }
 
   /** Read `bento.workspaceId` session value for every tab and apply it to
@@ -675,6 +677,7 @@ export class TabRegistry {
     if (existing?.url && !snap.url) {
       snap.url = existing.url;
     }
+    if (existing?.crashed) snap.crashed = true;
     const url = snap.url;
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
@@ -833,6 +836,37 @@ export class TabRegistry {
     this.#enqueue({ kind: 'removed', id }, privateWindowId);
   };
 
+  // The tabs API has no crashed field. Firefox marks a tab with the `crashed` attribute while it
+  // shows its crashed-tab page, and the bentoTabState experiment reports that attribute. The
+  // flag clears when the tab is revived, reloaded or restored. Cosmetic state: a missing or
+  // failing experiment is logged and never blocks the registry.
+  #watchCrashed(): void {
+    try {
+      browser.bentoTabState.onCrashedChanged.addListener(this.#onCrashedChanged);
+    } catch (err) {
+      console.warn('[bento-tools] crashed-tab events unavailable:', err);
+    }
+  }
+
+  // Sets every known tab's flag from the live tab strip. Used at init and after an attach: Firefox
+  // does not carry the attribute to the tab element an adopted tab gets, and the observer sees
+  // no change on that new element.
+  async #readCrashed(): Promise<void> {
+    try {
+      const crashed = new Set(await browser.bentoTabState.getCrashedTabIds());
+      for (const id of [...this.#tabs.keys()]) this.#onCrashedChanged(id, crashed.has(id));
+    } catch (err) {
+      console.warn('[bento-tools] crashed-tab read failed:', err);
+    }
+  }
+
+  #onCrashedChanged = (id: number, crashed: boolean) => {
+    const tab = this.#tabs.get(id);
+    if (!tab || (tab.crashed ?? false) === crashed) return;
+    tab.crashed = crashed;
+    this.#enqueue({ kind: 'updated', id, changes: { crashed } });
+  };
+
   #onActivated = (info: browser.tabs._OnActivatedActiveInfo) => {
     for (const t of this.#tabs.values()) {
       if (t.windowId !== info.windowId) continue;
@@ -903,6 +937,7 @@ export class TabRegistry {
       });
     }
     void this.#syncActive(id);
+    void this.#readCrashed();
   };
 
   // An adopted tab is not selected in its new window and no activation event follows, so a tab

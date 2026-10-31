@@ -1211,6 +1211,50 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `privacy.sanitize.clearOnShutdown.{cache,cookies,offlineApps}` user prefs stay
   in old profiles and are ignored.
 
+### Crashed Tab State (bento-tab-state Experiment)
+
+- Status: Active
+- Last updated: 2026-11-01
+- Firefox 158.0 review (2026-11-01): read from source only; not yet run against a built
+  app. Run the checks below on the first build.
+- Files or patches:
+  - `extensions/bento-tools/experiments/bento-tab-state/api.js` and `schema.json`
+    (`browser.bentoTabState.getCrashedTabIds`, `onCrashedChanged`)
+  - `extensions/bento-tools/manifest.json` (the `bentoTabState` experiment; version
+    bumped because the experiment schema is cached by version)
+  - `extensions/bento-tools/src/tabs/TabRegistry.ts` (`crashed` on snapshots and deltas)
+  - No Firefox patch and no mount script change.
+- Bento functionality: the sidebar shows a Crashed icon and tint on a tab whose content
+  process died. `TabSnapshot.crashed` is true while Firefox shows the crashed-tab page.
+- Vanilla Firefox surface touched or depended on: the `crashed` attribute on the `<tab>` element,
+  set by `TabCrashHandler.sendToTabCrashedPage` (and `sendToRestartRequiredPage`) when the
+  crashed-tab page is shown and removed by `SessionStore.reviveCrashedTab`, the tab's progress
+  listener when a load starts, and `updateBrowserRemoteness` when the tab gets a new content
+  process; a `MutationObserver` on `gBrowser.tabContainer` (subtree, attribute filter `crashed`)
+  per window, started through `EveryWindow.registerCallback`; and
+  `extension.tabManager.getWrapper(nativeTab).id` for the WebExtension tab id. The WebExtension
+  tabs API has no crashed field, and the attribute changes fire no tab event (no
+  `TabAttrModified`), so neither `tabs.onUpdated` nor `oop-browser-crashed` (which comes before
+  the page and says nothing about the clear) can replace the observer.
+- Why this cannot stay extension-only: the state lives on a chrome DOM attribute that only
+  parent-process code can read. It needs no Firefox patch: an experiment in the existing
+  `bento-tools` experiment surface is the reader.
+- Firefox update risk: `tab.setAttribute("crashed", ...)` renamed or replaced by a tab event
+  makes the flag stay false (a quiet failure, not an error); the observer seeing the attribute
+  on tab children (a tab copies it onto `.tab-icon-stack`, `.tab-icon-image`,
+  `.tab-icon-overlay` and `.tab-audio-button` by attribute inheritance) would give those
+  elements tab ids if the `Tabbrowser.isTab` filter were dropped; `EveryWindow` removed or
+  changed would leave windows unobserved.
+- Regression checks for future updates: run `pnpm run firefox:compat:engine`; in a built app
+  open `about:crashcontent` in a tab (never `about:crashparent`), confirm the tab shows the
+  crashed page and its sidebar row shows the crashed state; click Restore Tab on the crashed
+  page and confirm the row clears; repeat in a second window, a private window and a
+  split-view panel; crash a background tab, select it and confirm the row flips when the
+  crashed page appears; in the bento-tools background console run
+  `await browser.bentoTabState.getCrashedTabIds()` and confirm it lists the crashed tabs.
+- Rollback or migration notes: removing the experiment makes `TabRegistry` log
+  `crashed-tab events unavailable` once and report no crashed tabs; nothing else depends on it.
+
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
@@ -2860,7 +2904,7 @@ below is generated; edit the registry, then run
 | `#tabbrowser-arrowscrollbox` | source (engine only) | The native tab strip's arrowscrollbox, whose shadow-tree overflow arrows take their icon fill from the inherited --toolbarbutton-icon-fill. Bento sets that property from the registered --bento-arrow-fill on this element so the arrows fade with the mode flip (a profile that shows the strip). | `src/browser/base/content/bento-chrome-theme.css#tabbrowser-arrowscrollbox` | `browser/base/content/navigator-toolbox.inc.xhtml:60` |
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3116` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:241` |
-| `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:237` |
+| `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. bento-tab-state observes its subtree for the crashed attribute. | `attachTabSelectListener`, `extensions/bento-tools/experiments/bento-tab-state/api.js#tabContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:237` |
 | `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `toolkit/content/widgets/tabbox.js:831` |
 | `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
 | `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:428` |
@@ -2998,6 +3042,13 @@ below is generated; edit the registry, then run
 | `tabTracker.getTab` | source (engine only) | Resolves a WebExtension tab id to a chrome tab element. | `getTrackedTabById`, `getBentoTabTracker` | `browser/components/extensions/parent/ext-browser.js:470` |
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:364` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
+| `extension.tabManager.getWrapper` | source (engine only) | Maps a chrome tab element to the WebExtension tab wrapper (its id), and to nothing for a tab the extension may not see, so bento-tab-state reports crashed state by tab id. | `extensions/bento-tools/experiments/bento-tab-state/api.js#getWrapper` | `toolkit/components/extensions/parent/ext-tabs-base.js:2269` |
+| `EveryWindow.registerCallback` | source (engine only) | Runs the crashed-attribute observer in every browser window once its startup is done, including windows opened later, and disconnects it when a window closes or the listener goes away. | `extensions/bento-tools/experiments/bento-tab-state/api.js#registerCallback` | `browser/modules/EveryWindow.sys.mjs:60` |
+| `EveryWindow.readyWindows` | source (engine only) | Lists the browser windows whose startup is done when bento-tab-state reads which tabs are crashed. | `extensions/bento-tools/experiments/bento-tab-state/api.js#readyWindows` | `browser/modules/EveryWindow.sys.mjs:43` |
+| `Tabbrowser.isTab` | source (engine only) | Keeps only <tab> elements from the crashed-attribute records: a tab copies the attribute onto its icon children, which would otherwise be given tab ids. | `extensions/bento-tools/experiments/bento-tab-state/api.js#isTab` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7895` |
+| `tab[crashed] set` | source (engine only) | TabCrashHandler.sendToTabCrashedPage sets the crashed attribute on a tab element while its crashed-tab page shows (no tab event fires); bento-tab-state reports it as the tab crashed flag. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/modules/ContentCrashHandlers.sys.mjs:554` |
+| `tab[crashed] cleared by a new load` | source (engine only) | TabProgressListener removes the crashed attribute when the tab starts a load; updateBrowserRemoteness removes it when the tab gets a new content process. bento-tab-state reports the clear. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:10501` |
+| `tab[crashed] cleared by a revive` | source (engine only) | SessionStore.reviveCrashedTab (the crashed page buttons, Restore All, a background crash) removes the crashed attribute; bento-tab-state reports the clear. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/components/sessionstore/SessionStore.sys.mjs:5331` |
 | `chrome://devtools-startup/content/DevToolsShim.sys.mjs` | module (runtime) | Entry point to the devtools toolbox list for Inspect in Panel. | `getDevToolsShim` | `devtools/startup/DevToolsShim.sys.mjs:41` |
 | `DevToolsShim.getToolboxes` | source (engine only) | Finds the page-hosted toolbox already inspecting a panel browser. | `matchingLivePageToolbox` | `devtools/startup/DevToolsShim.sys.mjs:88` |
 | `DevToolsShim.on` | source (engine only) | Waits for the toolbox-ready event of the toolbox opened in a panel. | `openDevtoolsPanelFor` | `devtools/startup/DevToolsShim.sys.mjs:137` |

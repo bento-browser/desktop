@@ -377,6 +377,16 @@ or a restored session. The pinned tab that was selected at quit and pinned tabs 
 as panels in the workspace load at launch. If Firefox's restore-on-demand
 settings for pinned tabs are turned off, pinned tabs load at launch and none is
 shown as unloaded.
+A sidebar tab keeps its website favicon. When there is none to show, or the tab is
+in one of these states, its row shows a state icon instead and, for the failures, a
+faint status background: Default (the page has no favicon), Sleeping (unloaded), Unavailable
+(a site that cannot be reached, including an HTTPS-Only error page), Certificate
+warning, Blocked (a blocked site), Crashed (the tab's content has crashed, until it is
+reloaded or restored) and Internal settings (`about:config` and `about:preferences`,
+whatever the section). Unavailable, Certificate warning, Blocked, Crashed and Internal
+settings tint the row; Default and Sleeping do not, and the current and selected
+tab fills cover a tint. A loading tab keeps the progress circle and has no tint.
+Settings, under Tab appearance, turns the tints and the icons off separately.
 Recently closed regular tabs should reopen with Firefox's standard
 `Cmd+Shift+T` flow or the sidebar "Reopen closed tab" menu item.
 Bento replaces Firefox's native horizontal tab strip with its workspace/sidebar
@@ -831,12 +841,11 @@ or a click on the track and follows the pointer exactly while dragged), Page key
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 
-Developer builds with the Softcast demo enabled add a Tab appearance category after
-Appearance. Show tab state tints and Use custom tab state icons are independent
-switches, both On by default and saved for the whole profile. Turning tints off
-removes the status backgrounds; turning custom icons off restores Bento's loading
-indicator, website favicon or empty placeholder. Sleeping-tab styling and titles
-keep following the actual tab state. These controls are absent from ordinary builds.
+Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
+are independent switches, both On by default and saved for the whole profile. Turning
+tints off removes the status backgrounds; turning custom icons off restores Bento's
+loading indicator, website favicon or empty placeholder. Sleeping-tab styling and
+titles keep following the actual tab state.
 
 Every list where a value or choice changes (each number, the choices,
 protection level, default search engine, custom panel sizes and their actions, Advanced

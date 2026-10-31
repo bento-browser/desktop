@@ -9,7 +9,7 @@ persistent state itself.
 - `src/` holds the background script and its stores; tests run with
   `pnpm --filter @bento/tools test`.
 - `experiments/` holds the privileged WebExtension experiment APIs
-  (`bentoPrivacy`, `bentoExternalSessions`).
+  (`bentoPrivacy`, `bentoExternalSessions`, `bentoTabState`).
 
 Build with `pnpm --filter @bento/tools build`, then `pnpm run import`; see
 [docs/build-tooling.md](../../docs/build-tooling.md).

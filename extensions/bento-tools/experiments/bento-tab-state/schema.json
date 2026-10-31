@@ -1,0 +1,23 @@
+[
+  {
+    "namespace": "bentoTabState",
+    "events": [
+      {
+        "name": "onCrashedChanged",
+        "type": "function",
+        "parameters": [
+          { "name": "tabId", "type": "integer" },
+          { "name": "crashed", "type": "boolean" }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "getCrashedTabIds",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      }
+    ]
+  }
+]

@@ -8,14 +8,10 @@ import { SETTINGS_INDEX } from './settingsIndex';
 const NOT_INDEXED = new Set(['reset:open', 'backup:merge']);
 
 describe('settings index of the command palette', () => {
-  it('offers tab appearance search targets only in demo builds', () => {
+  it('offers both tab appearance switches as search targets', () => {
     expect(
       SETTINGS_INDEX.filter((entry) => entry.group === 'Tab appearance').map(({ id }) => id),
-    ).toEqual(
-      __BENTO_SOFTCAST_DEMO__
-        ? ['setting:tabStateTintsEnabled', 'setting:customTabStateIconsEnabled']
-        : [],
-    );
+    ).toEqual(['setting:tabStateTintsEnabled', 'setting:customTabStateIconsEnabled']);
   });
 
   it('lists the flat controls of the Settings palette, with their labels and groups', () => {

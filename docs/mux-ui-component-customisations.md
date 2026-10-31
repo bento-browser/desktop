@@ -179,6 +179,12 @@ actions width. The label foreground rules (default, selected, sleeping, active)
 stay unlayered because Mux text utilities are unlayered. A sleeping (discarded)
 label uses `--muxui-semantic-color-neutral-60`; keep any dark-mode value at or
 above 4.5:1 against the sidebar.
+A tab row's status tint (`data-tab-state`, set only for the failure and settings states)
+is a `color-mix` of one Mux color token (`--muxui-semantic-color-neutral-60`,
+`--muxui-semantic-status-warning`, `--muxui-reference-color-error-60` or
+`--muxui-reference-color-teal-60`) at `--bento-tab-row-state-tint`, 10% in light mode
+and 14% in dark. It keeps one-class specificity so the active and selected fills that
+follow it win. State icons are `<img>` files, not Mux parts.
 
 Single-line sidebar text that ellipsizes (`overflow: hidden`) at `line-height: 1`
 (tab and folder titles, search result titles, the switcher's name, the New label)

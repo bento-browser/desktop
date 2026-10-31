@@ -558,6 +558,67 @@ documents, not chrome windows, and a chrome window is not a registered document.
   root takes `data-color-mode` and a single `data-bento-mode-fade` set; the private window's
   `bento-ui-color-mode-set` listener sees each event and its root stays as it was.
 
+## Crashed tab signal (chrome to tools)
+
+`TabSnapshot.crashed` is true while a tab's content process has crashed and Firefox shows its
+crashed-tab page. The WebExtension tabs API has no such field, and Firefox sets the state without
+firing a tab event: `TabCrashHandler.sendToTabCrashedPage` calls `tab.setAttribute("crashed", true)`,
+and `SessionStore.reviveCrashedTab`, the tab progress listener (a load starts) and
+`updateBrowserRemoteness` (a new content process) remove it, none of them through
+`_tabAttrModified`, so `TabAttrModified` never reports it. `oop-browser-crashed` arrives before the
+page and says nothing about the clear.
+
+Path, with `bento-tools` the producer and no mount script or Firefox patch involved:
+
+- `extensions/bento-tools/experiments/bento-tab-state/api.js` (the `bentoTabState` experiment, schema
+  next to it) registers a callback with `EveryWindow` (`resource:///modules/EveryWindow.sys.mjs`),
+  which runs it in each browser window once its startup is done and in every window opened later. The
+  callback puts one `MutationObserver` on `gBrowser.tabContainer` (subtree, `crashed` attribute only).
+  That one container holds every tab of the window: pinned and unpinned tabs, tabs in groups and the
+  panel tabs of a split view. Each record is turned into the WebExtension tab id with
+  `extension.tabManager.getWrapper(tab).id` and fired as `onCrashedChanged(tabId, crashed)`, with
+  `crashed` read from the attribute at that moment. No timer and no per-tab listener.
+- `TabRegistry` (`tabs/TabRegistry.ts`) subscribes first in `init()` (before `tabs.query`), then calls
+  `getCrashedTabIds()` once the tabs are stored and sets every tab's flag from it (a tools restart
+  while a tab is crashed still shows it). `#onCrashedChanged` ignores an event for an unknown tab or
+  one that repeats the flag, sets `crashed` on the snapshot and queues an `updated` delta
+  `{ crashed }` (`true` when it starts, `false` when it clears; a tab that never crashed has no
+  `crashed` field). The delta goes to the audience of its tab, so a private tab's flag reaches only its
+  private window's documents. `onCreated` for a tab the registry already tracks keeps the flag.
+- The flag is cosmetic. If the experiment is missing or throws, `TabRegistry` logs
+  `crashed-tab events unavailable` or `crashed-tab read failed` and goes on without it.
+- Manifest: the experiment adds a schema, which Firefox caches per add-on version, so
+  `extensions/bento-tools/manifest.json` was bumped to 0.1.13. Edits to `api.js` alone are read fresh.
+
+What flips it and what clears it:
+
+- Flips when Firefox puts the crashed-tab page in the tab: a selected tab whose content process dies
+  (`about:crashcontent`), or a tab that crashed in the background once it is selected (a background
+  crash revives the tab as an unloaded `about:blank` tab and defers the page until
+  `SessionStore.#maybeRestoreTabContent` runs for it on selection or split-view activation, so a
+  background crash does not set the flag until then). A build-ID mismatch page
+  (`sendToRestartRequiredPage`) sets the same attribute and so the flag.
+- Clears on Restore Tab or Restore All Crashed Tabs (`reviveCrashedTab`), on any new load of the tab
+  (reload, navigation, URL typed), on a switch to a new content process, and when the tab closes
+  (`tabs.onRemoved`).
+
+Pitfalls:
+
+- A tab copies `crashed` onto its own children by attribute inheritance (`.tab-icon-stack`,
+  `.tab-icon-image`, `.tab-icon-overlay`, `.tab-audio-button`, `tab.js` `inheritedAttributes`), so the
+  subtree observer also sees records for those elements. The callback keeps only records whose target
+  `gBrowser.isTab()`; without that filter `getWrapper` would mint a tab id for an icon element.
+- Firefox does not copy the attribute to the tab element a moved tab gets in the other window
+  (`swapBrowsersAndCloseOther`), and the observer sees no change on that new element. `TabRegistry.#onAttached`
+  therefore re-reads the whole set with `getCrashedTabIds()`, which is also why the read sets or clears
+  every known tab.
+- `getWrapper` returns nothing for a tab mid-adoption and for one the extension may not access; both are
+  skipped, never given an id.
+- `getCrashedTabIds` and `onCrashedChanged` use the same tab ids as the tabs API and `TabSnapshot.id`.
+
+Verify (built app, tools background console or the sidebar): see the checks in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md#crashed-tab-state-bento-tab-state-experiment).
+
 ## Title IPC pitfalls
 
 - Title writes coalesce: a title replaced before the content process reports it

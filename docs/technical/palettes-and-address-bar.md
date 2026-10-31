@@ -54,7 +54,7 @@ category, the privacy rows and shortcuts their lists, and a switch or the search
 link its category with the label typed in. `SettingsPalette/categories.ts` supplies the
 same ancestry for root-search drilldowns. An id the document does not know opens the
 category-only first list. Once a ready snapshot arrives, Settings checks that every
-ancestor has a visible opener; a target hidden by build, private-window or privacy/search
+ancestor has a visible opener; a target hidden by private-window or privacy/search
 hydration gates also falls back to that root. A show received before the first snapshot
 keeps its requested target until that validation. Readiness validates the current path
 and query, preserving search, Back and breadcrumb actions taken while loading. Stable control ids and title IPC are unchanged.

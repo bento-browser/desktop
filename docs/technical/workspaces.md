@@ -263,6 +263,10 @@ win.
 Tab and folder label line boxes are centered by their row layout. The old
 `top: 2px` text offset shifted Mux labels below the favicon center; keep that
 offset removed and verify alignment in the isolated TabList Ladle story.
+A tab that shows Firefox's crashed-tab page reports `TabSnapshot.crashed`, set and cleared
+by `TabRegistry` from the `bentoTabState` experiment (the tabs API has no such field). The
+path, what flips and clears it, and its pitfalls are in
+[shell-chrome-bridge.md](shell-chrome-bridge.md#crashed-tab-signal-chrome-to-tools).
 Sidebar audio controls are driven by `TabSnapshot.audible` and
 `TabSnapshot.muted` from `extensions/bento-tools/src/tabs/TabRegistry.ts`.
 `TabRow` renders the speaker button when either flag is true and dispatches

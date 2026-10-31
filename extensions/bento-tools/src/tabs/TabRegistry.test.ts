@@ -13,6 +13,7 @@ interface TabListeners {
   removed?: (id: number, info: browser.tabs._OnRemovedRemoveInfo) => void;
   attached?: (id: number, info: browser.tabs._OnAttachedAttachInfo) => void;
   activated?: (info: browser.tabs._OnActivatedActiveInfo) => void;
+  crashedChanged?: (tabId: number, crashed: boolean) => void;
 }
 
 function makeTab(overrides: Partial<browser.tabs.Tab> & { id: number }): browser.tabs.Tab {
@@ -49,6 +50,10 @@ function stubTabsBrowser(initialTabs: browser.tabs.Tab[] = []): TabListeners {
       onMoved: { addListener: vi.fn() },
       onAttached: { addListener: vi.fn((listener) => (listeners.attached = listener)) },
       get: vi.fn(),
+    },
+    bentoTabState: {
+      getCrashedTabIds: vi.fn(async (): Promise<number[]> => []),
+      onCrashedChanged: { addListener: vi.fn((listener) => (listeners.crashedChanged = listener)) },
     },
   });
   return listeners;
@@ -912,5 +917,108 @@ describe('TabRegistry explicit restore hydration', () => {
     });
     expect(tabs.isClosing(42)).toBe(false);
     expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+});
+
+describe('TabRegistry crashed tabs', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function registryWithTabs(crashedAtStart: number[] = []) {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 1, windowId: 1 }),
+      makeTab({ id: 2, windowId: 1 }),
+      makeTab({ id: 900, windowId: 9, incognito: true }),
+    ]);
+    vi.mocked(browser.bentoTabState.getCrashedTabIds).mockResolvedValue(crashedAtStart);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    const batches: TabDelta[][] = [];
+    tabs.onDeltas((deltas) => batches.push(deltas));
+    return { listeners, tabs, batches };
+  }
+
+  const crashedOf = (tabs: TabRegistry) =>
+    tabs
+      .snapshot()
+      .filter((tab) => tab.crashed === true)
+      .map((tab) => tab.id);
+
+  it('marks tabs that are already showing the crashed page in the initial snapshot', async () => {
+    const { tabs } = await registryWithTabs([2]);
+
+    expect(crashedOf(tabs)).toEqual([2]);
+  });
+
+  it('emits a delta when a tab crashes and another when it clears', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.crashedChanged?.(1, true);
+    expect(crashedOf(tabs)).toEqual([1]);
+    listeners.crashedChanged?.(1, false);
+    expect(crashedOf(tabs)).toEqual([]);
+
+    expect(batches.flat()).toEqual([
+      { kind: 'updated', id: 1, changes: { crashed: true } },
+      { kind: 'updated', id: 1, changes: { crashed: false } },
+    ]);
+  });
+
+  it('ignores a repeat of the state a tab already has and tabs it does not know', async () => {
+    const { listeners, batches } = await registryWithTabs();
+
+    listeners.crashedChanged?.(1, false);
+    listeners.crashedChanged?.(1, true);
+    listeners.crashedChanged?.(1, true);
+    listeners.crashedChanged?.(404, true);
+
+    expect(batches.flat()).toEqual([{ kind: 'updated', id: 1, changes: { crashed: true } }]);
+  });
+
+  it('keeps a crashed tab out of the regular audience when it is private', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.crashedChanged?.(900, true);
+
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, batches.flat());
+    expect(regular).toEqual([]);
+    expect(privateByWindow.get(9)).toEqual([
+      { kind: 'updated', id: 900, changes: { crashed: true } },
+    ]);
+  });
+
+  it('keeps the flag when onCreated reports a tab it already tracks', async () => {
+    const { listeners, tabs } = await registryWithTabs([2]);
+
+    listeners.created?.(makeTab({ id: 2, windowId: 1 }));
+
+    expect(crashedOf(tabs)).toEqual([2]);
+  });
+
+  it('reads the flag again for an adopted tab: Firefox does not carry the attribute over', async () => {
+    const { listeners, tabs } = await registryWithTabs([2]);
+    vi.mocked(browser.bentoTabState.getCrashedTabIds).mockResolvedValue([]);
+    vi.mocked(browser.tabs.get).mockResolvedValue(makeTab({ id: 2, windowId: 5 }));
+
+    listeners.attached?.(2, { newWindowId: 5, newPosition: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(crashedOf(tabs)).toEqual([]);
+  });
+
+  it('still starts when the experiment is unavailable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    stubTabsBrowser([makeTab({ id: 1 })]);
+    vi.mocked(browser.bentoTabState.onCrashedChanged.addListener).mockImplementation(() => {
+      throw new Error('no experiment');
+    });
+    vi.mocked(browser.bentoTabState.getCrashedTabIds).mockRejectedValue(new Error('no experiment'));
+    const tabs = new TabRegistry();
+
+    await tabs.init();
+
+    expect(tabs.snapshot().map((tab) => tab.id)).toEqual([1]);
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });
