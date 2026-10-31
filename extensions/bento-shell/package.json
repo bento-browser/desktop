@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Bento Browser UI shell — privileged built-in extension. Vertical tabs, workspaces, panel layouts, command palette.",
+  "description": "Bento Browser UI shell \u2014 privileged built-in extension. Vertical tabs, workspaces, panel layouts, command palette.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b --noEmit && vite build && pnpm run build:background",
@@ -16,7 +16,7 @@
     "ladle:build": "ladle build"
   },
   "dependencies": {
-    "@muxui/react": "0.1.0-rc.1",
+    "@muxui/react": "0.1.0-rc.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.0",

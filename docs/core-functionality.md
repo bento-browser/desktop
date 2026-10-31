@@ -426,7 +426,8 @@ that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback: one
 highlight slides between rows, and the pointer and the arrow keys move that same
-highlight, so there is never a second one. Rows
+highlight, so there is never a second one. The command palette, address bar and Settings
+palette use a darker row highlight in both colour modes. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an

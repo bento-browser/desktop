@@ -88,8 +88,8 @@ export function WorkspaceSwitcher() {
         'muxui-button bento-workspace-switcher__trigger' +
         (isOpen ? ' bento-workspace-switcher__trigger--open' : '')
       }
-      data-variant="neutral"
-      data-size="md"
+      data-muxui-variant="neutral"
+      data-muxui-size="md"
       aria-label={active ? `Workspace ${active.name} — switch workspace` : 'Switch workspace'}
       aria-expanded={isOpen}
       onActivate={onActivate}

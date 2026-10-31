@@ -263,9 +263,9 @@ or in the relevant feature section before closing the task.
 The chrome menu overlay (`extensions/bento-shell/src/menu/ChromeMenu.tsx`)
 composes public Mux `Menu.Submenu`, `Menu.Item`, `Menu.Popup`, and `Menu.List`
 parts from serialized chrome menu payloads. Nested popups explicitly use
-`placement="end-top"`. In `@muxui/react@0.1.0-rc.1`, relying on the submenu
-default can resolve to a bottom popup anchored to the correct item, overlapping
-subsequent root rows. Keep placement explicit when changing menu composition.
+`placement="end-top"`, also the public submenu default in `@muxui/react@0.1.0-rc.4`.
+Keep placement explicit: the former RC1 default could resolve below the item and
+overlap subsequent root rows.
 Verify in the `menu.html` overlay that pointer travel from a submenu trigger
 reaches visible child rows, keyboard ArrowRight opens the child, and selection
 preserves `BENTO_MENU_SELECT:<context>:<id>` for the chrome title handler.

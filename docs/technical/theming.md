@@ -533,7 +533,7 @@ gradient in the shell and chrome sheets that reads a custom property found no ot
   compares the percentages with the installed Mux stylesheet and scans it for gradient rules over
   unregistered custom properties on components the shell imports: a new one fails until it has a carrier
   or an entry in the residual list. Rendered, not carried: a selected standalone `ToggleButton` hovered
-  (Welcome only); the icon picker's `Tabs` overflow edge buttons (`.muxui-tabs-motion-edge`, hovered or
+  (Welcome only); the icon picker's `Tabs` overflow edge buttons (`.muxui-tabs__motion-edge`, hovered or
   pressed); `ColorSwatch` two-tone gradients are fixed theme metadata colours and do not depend on the
   mode. Mux components Bento does not render (Checkbox, Radio, Tag, GridList, date pickers, text editor)
   have the same pattern and are not reached.

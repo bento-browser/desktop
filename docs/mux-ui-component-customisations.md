@@ -22,11 +22,18 @@ icon/layout adaptation.
 
 ## Consumer migration status
 
-Bento consumes the exact published `@muxui/react@0.1.0-rc.1` npm release in both
-frozen dependency graphs. All React documents, the Settings palette included,
+Bento consumes the exact published `@muxui/react@0.1.0-rc.4` npm release in
+the single frozen dependency graph. All React documents, the Settings palette included,
 use public Mux controls, the shared stylesheet boundary, and Bento layout/icon
 primitives. Native chrome and the remaining Firefox pages consume the generated
 Mux token projection.
+
+RC4 states use `data-muxui-state-*`, variants `data-muxui-variant`, and sizes
+`data-muxui-size`; its public part classes use `__` (Button's label is
+`.muxui-button__label`). The old state and part selectors have no aliases.
+Bento-owned attributes on native elements keep their names. The Mux CSS reader
+extracts root/mode tokens from `muxui.tokens` and the compatibility closure from
+`muxui.components`; generated theme sheets retain Bento's lower-precedence `muxui` boundary.
 
 Text uses the public `xs`, `sm`, `md`, and `lg` size values. There is no
 Bento compatibility wrapper for the old Text API. React Aria is an internal Mux
@@ -40,7 +47,13 @@ is bundled from two install paths, which is how the original
 published version and npm integrity and retains the approved shell runtime
 dependency policy.
 
-On 2026-10-05, isolated Node 24.21 validation passed both frozen installs,
+The RC4 release build measures shell cold-start JavaScript at 304.44 KB gzipped,
+the command palette at 254.56 KB, and shell CSS at 88.98 KB. The size baseline records
+the measured upgrade, including seven explicit growth entries; advisory ceilings
+remain unchanged. The shell decreases 81.88 KB while the palette increases 53.94 KB
+and CSS increases 14.37 KB relative to the prior baseline.
+
+For the prior RC1 migration, on 2026-10-05 isolated Node 24.21 validation passed both frozen installs,
 normal shell typecheck/lint/build, the Settings Ladle build and
 provider/config typecheck, 64 shell tests, 154 tools tests, six release-security tests, and four
 theme-selector tests. Theme regeneration is deterministic and chrome tokens were generated to a
@@ -99,14 +112,14 @@ put Mux text below the centered favicon and folder count.
 
 The sidebar action bar's New and Search `Button`s (ghost, `sm`; Search was an
 `IconButton` before it gained a peek label) are hovered by a second sliding
-highlight behind them, so they paint no hover fill of their own. Mux paints `:hover` and `[data-hovered]` from
+highlight behind them, so they paint no hover fill of their own. Mux paints `:hover` and `[data-muxui-state-hovered]` from
 `--muxui-button-background-hover` (the ghost variant sets it to a 10%
-`surface-contrast` mix) and `:active`/`[data-pressed]` from
+`surface-contrast` mix) and `:active`/`[data-muxui-state-pressed]` from
 `--muxui-button-background-pressed`. Bento sets only the hover property to
 `transparent` on `.bento-tab-list__new-action-button` and
 `.bento-tab-list__search-button`, in unlayered CSS after the `muxui` layer, so
 the pressed feedback and the focus ring stay Mux's. Do not restyle the `:hover`
-or `[data-hovered]` selectors for this. After a Mux upgrade, recheck that the
+or `[data-muxui-state-hovered]` selectors for this. After a Mux upgrade, recheck that the
 ghost variant still reads `--muxui-button-background-hover` for both states, or
 the buttons stack a second fill over the highlight (about twice a hovered
 row's darkening).
@@ -127,7 +140,7 @@ painting is not clipped by its own overflow (the focus ring is a `box-shadow`, t
 pressed fill is its background). `padding-block: 0` keeps the content box the full
 row height: Mux's block padding (about 9.35px) would shrink it below the 1rem icon
 and clip the icon top and bottom. The published package lays the icon and
-label out inline in `.muxui-button-content`, which is not a flex container, so
+label out inline in `.muxui-button__label`, which is not a flex container, so
 the gap between them is a `margin-inline-start` on the label, not a `gap`. A newer
 Mux's wrapper (`.muxui-button__label`) is an inline-flex with `gap: inherit`, so
 the Search `Button` sets its own `gap: 0` (the wrapper inherits it) and the margin is
@@ -137,7 +150,7 @@ margin, which pushes the label 5.2px right and cuts its end at the peek's clip
 edge ("Searc"). The New `Button` has no label margin, so it shows whatever spacing its Mux gives:
 the published package sits "New" flush against the plus (no gap), a newer Mux puts
 the Button's gap between them. The peeked state uses native `:focus-visible` (the selector Mux's own ring uses);
-React Aria also sets `data-focus-visible` on the button.
+Mux also sets `data-muxui-state-focus-visible` on the button.
 
 In the search field, Bento sets `opacity` and its transition on the public
 `Input.Input` leaf (replacing Mux's 0.15s outline, shadow and background
@@ -228,7 +241,7 @@ is `flex: 1 0 100%` with Mux's muted colour (one step lighter on the focused and
 row) and wrapping instead of Mux's one-line ellipsis, and it is indented past the leading
 mark by `--bento-settings-palette-lead-size` (the 1.25rem Mux gives `.muxui-command-palette__item-icon`)
 plus the row gap. A protection level carries its benefits and caveats inside the item and
-shows them in two columns under `[data-focused]`. The search field is the command palette's stock one: no
+shows them in two columns under `[data-muxui-state-focused]`. The search field is the command palette's stock one: no
 leading icon, and the Input keeps Mux's own padding in every stage. A number stage gives it one fixed width,
 `--bento-settings-palette-number-input-width` (the longest `NUMBER_SPECS` bound in digits,
 half a digit for the caret, and Mux's inline padding; `ch` resolves against the input's own
@@ -252,11 +265,17 @@ one row highlight (`components/primitives/useRowHighlight.ts`, `RowHighlight.css
 no fill (focused, hovered, pressed and selected rows are transparent under
 `.bento-row-highlight`) and one slab, the list's `::before`, moves to the focused row. Its
 box is written into `--bento-row-highlight-*` properties by the hook; it transitions
-`transform`, block and inline size, colour and opacity on the Mux `state` pair (120 ms, the
-speed of the sidebar's hover highlight; the
-first placement and a stage change are instant, since the list is new), and its colour is
-`--bento-palette-highlight-bg` (neutral-26, pressed neutral-30; Mux's own item focus fill is
-neutral-14) in `bento-tokens.css`.
+`transform`, block and inline size at half the Mux `state` duration with the same spring
+easing (125 ms in RC4). Colour and opacity retain the full state pair (250 ms in RC4),
+including during coordinated mode fades. First placement and a stage change are instant,
+and reduced motion disables the transition. Its colour is
+`--bento-palette-highlight-bg` (light neutral-30, pressed neutral-40; dark neutral-14,
+pressed neutral-18) in `bento-tokens.css`, for a darker fill in both modes. Higher semantic
+neutral steps darken light mode but lighten dark mode. The tokens resolve at each explicit theme
+scope to use its local palette. The hook observes `data-muxui-state-focused` and
+`data-muxui-state-current`, and row transparency and pressed fill use the same public
+state names. Selecting only the former React Aria attributes hides the slab and leaves
+Mux's own pale row fill visible. Verify real rendered palette rows when upgrading Mux.
 
 Recorded exceptions to the public-API rule. Each reaches React Aria only because the Mux
 part forwards its props to it, is passed as a plain props object (the declarations do not
@@ -476,7 +495,7 @@ on `dismiss`. Each card is drawn in the opposite colour scheme to the sidebar, i
 own theme scope (see "Inverted scope for floating cards" below), so the raised surface
 is dark on a light sidebar and light on a dark one. The merge card's primary control is
 a Mux `Button` filling
-the surface, with its content part (`.muxui-button-content`) as the flex row; the
+the surface, with its content part (`.muxui-button__label`) as the flex row; the
 dismiss `IconButton` is its sibling. Text lines are Mux `Text`: the title is the
 default role, the detail and the hostname `color="muted"` (the faint role is 4.3:1 on
 the light card). The ring is `ProgressCircle` with a
@@ -688,7 +707,7 @@ so hover, pressed and focus-ring states stay Mux's. The border is Mux's own outl
 the class sets `--muxui-button-border` (`border-strong`, `border-emphasis` on hover),
 which wins over the variant's value because Bento's layer sits above `muxui`. The
 body is three spans (logo or glyph, name and sub-label, chevron) laid out as a grid
-on `> .muxui-button-content`, with `padding-block: 0` and a `--bento-welcome-source-*`
+on `> .muxui-button__label`, with `padding-block: 0` and a `--bento-welcome-source-*`
 height; `Row` and `Column` are not used inside it because they render divs, which
 a button cannot contain. Logos are Mux `Image`s (`fit="contain"`), and a tile whose
 logo could not be read shows a `BentoIcon` globe. The placeholder tiles use
@@ -949,11 +968,11 @@ Rules:
    the time from the element's computed style after the styles that start the motion
    are applied.
 
-Roles (values are the installed Mux rc.1 defaults; they change with Mux, not in Bento):
+Roles (values are the installed Mux RC4 defaults; they change with Mux, not in Bento):
 
 | Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Default                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the anchored address bar's result list, which fades in after the grow's visual duration; the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css` in the first bento layer, `bento.mode-fade`, so a layered `transition: none !important` such as the rail choreography's does not switch it off; `bento-chrome-theme.css` in `bento.chrome-theme`, which out-ranks the unlayered `transition: none !important` rules of the chrome; each entry also reads `var(--bento-mode-fade-delay)`, the one non-Mux value allowed in a transition, which holds a prepared flip until its time; see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 120 ms, `ease`                                                   |
+| `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the anchored address bar's result list, which fades in after the grow's visual duration; the light/dark mode flip, which forces this pair on every colour property of every element in every Bento document while `data-bento-mode-fade` is set (`theme/document-base.css` in the first bento layer, `bento.mode-fade`, so a layered `transition: none !important` such as the rail choreography's does not switch it off; `bento-chrome-theme.css` in `bento.chrome-theme`, which out-ranks the unlayered `transition: none !important` rules of the chrome; each entry also reads `var(--bento-mode-fade-delay)`, the one non-Mux value allowed in a transition, which holds a prepared flip until its time; see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows at half duration (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 250 ms spring; palette geometry 125 ms                                                   |
 | `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 150 ms, `ease`                                                   |
 | `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, the onboarding-to-import card morph and the address palette's grow from the sidebar row (`clip-path`, with its elevation's `transform` and `opacity`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
 | `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 120 ms, `ease-in`                                                |

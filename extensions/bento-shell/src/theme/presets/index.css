@@ -8,8 +8,8 @@
  * Default theme only; every other theme is a sheet in public/themes/ that
  * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
  *
- * @muxui/react/styles.css sha256:2f83e5d84de03a69bbba224d206436504bc6a267cb8dd3ad96b348514c23feb3
- * @muxui/react/themes.css sha256:8beb3598389f46d389e2f644f508f049becaa46569ab945f548093245ee2d460
+ * @muxui/react/styles.css sha256:64d28531195c5ab45a9ee651157c218ffffc5fff14a6418bac505a235b3dea8c
+ * @muxui/react/themes.css sha256:379bf26b22ad95160e0f4feec729571e8fc2922129ad17109ab6cfa81656257e
  */
 
 /* ─── Bento theme: default ───────────────────────────── */
@@ -1247,6 +1247,26 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-checkbox-selected-foreground: var(--muxui-semantic-action-foreground);
   --muxui-component-checkbox-selected-foreground-hover: var(--muxui-semantic-color-color-60-fg);
   --muxui-component-checkbox-selected-invalid-border: var(--muxui-semantic-feedback-invalid-border);
+  --muxui-component-codeblock-added-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-status-success) 10%,
+    #00000000
+  );
+  --muxui-component-codeblock-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
+  --muxui-component-datadiff-added-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-status-success) 10%,
+    #00000000
+  );
+  --muxui-component-datadiff-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
   --muxui-component-datepicker-popover-shadow-color: color-mix(
     in srgb,
     var(--muxui-semantic-color-neutral-100) 10%,
@@ -1262,14 +1282,14 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-disclosuregroup-motion-duration: 268ms;
   --muxui-component-disclosuregroup-radius: var(--muxui-reference-dimension-radius-2xl);
   --muxui-component-disclosuregroup-transition: var(
-      --muxui-component-disclosuregroup-motion-duration
+      --muxui-component-disclosuregroup-transition-duration
     )
-    var(--muxui-semantic-motion-interaction-easing);
+    var(--muxui-component-disclosuregroup-transition-easing);
   --muxui-component-disclosuregroup-transition-duration: var(
-    --muxui-component-disclosuregroup-motion-duration
+    --muxui-component-disclosuregroup-transition-spring-duration
   );
   --muxui-component-disclosuregroup-transition-easing: var(
-    --muxui-semantic-motion-interaction-easing
+    --muxui-component-disclosuregroup-transition-spring-easing
   );
   --muxui-component-disclosuregroup-transition-spring-visual-duration: var(
     --muxui-component-disclosuregroup-motion-duration
@@ -1324,10 +1344,333 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-content-default);
   --muxui-component-tabs-tab-foreground: var(--muxui-semantic-content-muted);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-border-subtle);
+  --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-50);
+  --muxui-component-taggroup-amber-foreground: var(--muxui-reference-color-amber-90);
+  --muxui-component-taggroup-amber-selected-background: var(--muxui-reference-color-amber-60);
+  --muxui-component-taggroup-amber-selected-foreground: var(--muxui-reference-color-amber-100);
+  --muxui-component-taggroup-amber-strong-foreground: var(--muxui-reference-color-amber-90);
+  --muxui-component-taggroup-amber-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-amber-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-dot: var(--muxui-reference-color-bluegreen-50);
+  --muxui-component-taggroup-bluegreen-foreground: var(--muxui-reference-color-bluegreen-90);
+  --muxui-component-taggroup-bluegreen-selected-background: var(
+    --muxui-reference-color-bluegreen-60
+  );
+  --muxui-component-taggroup-bluegreen-selected-foreground: var(
+    --muxui-reference-color-bluegreen-5
+  );
+  --muxui-component-taggroup-bluegreen-strong-foreground: var(--muxui-reference-color-bluegreen-90);
+  --muxui-component-taggroup-bluegreen-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-dot: var(--muxui-semantic-color-color-50);
+  --muxui-component-taggroup-brand-foreground: var(--muxui-semantic-color-color-90);
+  --muxui-component-taggroup-brand-selected-background: var(--muxui-semantic-selection-track);
+  --muxui-component-taggroup-brand-selected-foreground: var(--muxui-semantic-action-foreground);
+  --muxui-component-taggroup-brand-strong-foreground: var(--muxui-semantic-color-color-90);
+  --muxui-component-taggroup-brand-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-dot: var(--muxui-reference-color-cyan-50);
+  --muxui-component-taggroup-cyan-foreground: var(--muxui-reference-color-cyan-90);
+  --muxui-component-taggroup-cyan-selected-background: var(--muxui-reference-color-cyan-60);
+  --muxui-component-taggroup-cyan-selected-foreground: var(--muxui-reference-color-cyan-100);
+  --muxui-component-taggroup-cyan-strong-foreground: var(--muxui-reference-color-cyan-90);
+  --muxui-component-taggroup-cyan-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-dot: var(--muxui-reference-color-emerald-50);
+  --muxui-component-taggroup-emerald-foreground: var(--muxui-reference-color-emerald-90);
+  --muxui-component-taggroup-emerald-selected-background: var(--muxui-reference-color-emerald-60);
+  --muxui-component-taggroup-emerald-selected-foreground: var(--muxui-reference-color-emerald-100);
+  --muxui-component-taggroup-emerald-strong-foreground: var(--muxui-reference-color-emerald-90);
+  --muxui-component-taggroup-emerald-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-dot: var(--muxui-reference-color-error-50);
+  --muxui-component-taggroup-error-foreground: var(--muxui-reference-color-error-90);
+  --muxui-component-taggroup-error-selected-background: var(--muxui-reference-color-error-60);
+  --muxui-component-taggroup-error-selected-foreground: var(--muxui-semantic-color-error-60-fg);
+  --muxui-component-taggroup-error-strong-foreground: var(--muxui-reference-color-error-90);
+  --muxui-component-taggroup-error-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-dot: var(--muxui-reference-color-fuchsia-50);
+  --muxui-component-taggroup-fuchsia-foreground: var(--muxui-reference-color-fuchsia-90);
+  --muxui-component-taggroup-fuchsia-selected-background: var(--muxui-reference-color-fuchsia-60);
+  --muxui-component-taggroup-fuchsia-selected-foreground: var(--muxui-reference-color-fuchsia-5);
+  --muxui-component-taggroup-fuchsia-strong-foreground: var(--muxui-reference-color-fuchsia-90);
+  --muxui-component-taggroup-fuchsia-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-dot: var(--muxui-reference-color-green-50);
+  --muxui-component-taggroup-green-foreground: var(--muxui-reference-color-green-90);
+  --muxui-component-taggroup-green-selected-background: var(--muxui-reference-color-green-60);
+  --muxui-component-taggroup-green-selected-foreground: var(--muxui-reference-color-green-100);
+  --muxui-component-taggroup-green-strong-foreground: var(--muxui-reference-color-green-90);
+  --muxui-component-taggroup-green-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-dot: var(--muxui-reference-color-indigo-50);
+  --muxui-component-taggroup-indigo-foreground: var(--muxui-reference-color-indigo-90);
+  --muxui-component-taggroup-indigo-selected-background: var(--muxui-reference-color-indigo-60);
+  --muxui-component-taggroup-indigo-selected-foreground: var(--muxui-reference-color-indigo-5);
+  --muxui-component-taggroup-indigo-strong-foreground: var(--muxui-reference-color-indigo-90);
+  --muxui-component-taggroup-indigo-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 10%,
+    #00000000
+  );
   --muxui-component-taggroup-label: var(--muxui-semantic-content-default);
-  --muxui-component-taggroup-selected-foreground-hover: var(--muxui-semantic-color-color-60-fg);
-  --muxui-component-taggroup-tag-background: var(--muxui-semantic-surface-subtle);
+  --muxui-component-taggroup-lime-dot: var(--muxui-reference-color-lime-50);
+  --muxui-component-taggroup-lime-foreground: var(--muxui-reference-color-lime-90);
+  --muxui-component-taggroup-lime-selected-background: var(--muxui-reference-color-lime-60);
+  --muxui-component-taggroup-lime-selected-foreground: var(--muxui-reference-color-lime-100);
+  --muxui-component-taggroup-lime-strong-foreground: var(--muxui-reference-color-lime-90);
+  --muxui-component-taggroup-lime-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-lime-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-neutral-dot: var(--muxui-semantic-content-muted);
+  --muxui-component-taggroup-neutral-selected-background: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-neutral-selected-foreground: var(--muxui-semantic-content-on-solid);
+  --muxui-component-taggroup-orange-dot: var(--muxui-reference-color-orange-50);
+  --muxui-component-taggroup-orange-foreground: var(--muxui-reference-color-orange-90);
+  --muxui-component-taggroup-orange-selected-background: var(--muxui-reference-color-orange-60);
+  --muxui-component-taggroup-orange-selected-foreground: var(--muxui-reference-color-orange-100);
+  --muxui-component-taggroup-orange-strong-foreground: var(--muxui-reference-color-orange-90);
+  --muxui-component-taggroup-orange-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-orange-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-dot: var(--muxui-reference-color-pink-50);
+  --muxui-component-taggroup-pink-foreground: var(--muxui-reference-color-pink-90);
+  --muxui-component-taggroup-pink-selected-background: var(--muxui-reference-color-pink-60);
+  --muxui-component-taggroup-pink-selected-foreground: var(--muxui-reference-color-pink-5);
+  --muxui-component-taggroup-pink-strong-foreground: var(--muxui-reference-color-pink-90);
+  --muxui-component-taggroup-pink-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-dot: var(--muxui-reference-color-purple-50);
+  --muxui-component-taggroup-purple-foreground: var(--muxui-reference-color-purple-90);
+  --muxui-component-taggroup-purple-selected-background: var(--muxui-reference-color-purple-60);
+  --muxui-component-taggroup-purple-selected-foreground: var(--muxui-reference-color-purple-5);
+  --muxui-component-taggroup-purple-strong-foreground: var(--muxui-reference-color-purple-90);
+  --muxui-component-taggroup-purple-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-dot: var(--muxui-reference-color-red-50);
+  --muxui-component-taggroup-red-foreground: var(--muxui-reference-color-red-90);
+  --muxui-component-taggroup-red-selected-background: var(--muxui-reference-color-red-60);
+  --muxui-component-taggroup-red-selected-foreground: var(--muxui-reference-color-red-5);
+  --muxui-component-taggroup-red-strong-foreground: var(--muxui-reference-color-red-90);
+  --muxui-component-taggroup-red-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-dot: var(--muxui-reference-color-rose-50);
+  --muxui-component-taggroup-rose-foreground: var(--muxui-reference-color-rose-90);
+  --muxui-component-taggroup-rose-selected-background: var(--muxui-reference-color-rose-60);
+  --muxui-component-taggroup-rose-selected-foreground: var(--muxui-reference-color-rose-5);
+  --muxui-component-taggroup-rose-strong-foreground: var(--muxui-reference-color-rose-90);
+  --muxui-component-taggroup-rose-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-selected-overlay-light: var(--muxui-reference-color-neutral-5);
+  --muxui-component-taggroup-selected-overlay-scheme: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-sky-dot: var(--muxui-reference-color-sky-50);
+  --muxui-component-taggroup-sky-foreground: var(--muxui-reference-color-sky-90);
+  --muxui-component-taggroup-sky-selected-background: var(--muxui-reference-color-sky-60);
+  --muxui-component-taggroup-sky-selected-foreground: var(--muxui-reference-color-sky-100);
+  --muxui-component-taggroup-sky-strong-foreground: var(--muxui-reference-color-sky-90);
+  --muxui-component-taggroup-sky-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-sky-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-dot: var(--muxui-reference-color-success-50);
+  --muxui-component-taggroup-success-foreground: var(--muxui-reference-color-success-90);
+  --muxui-component-taggroup-success-selected-background: var(--muxui-reference-color-success-60);
+  --muxui-component-taggroup-success-selected-foreground: var(--muxui-semantic-color-success-60-fg);
+  --muxui-component-taggroup-success-strong-foreground: var(--muxui-reference-color-success-90);
+  --muxui-component-taggroup-success-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-tag-background: var(--muxui-semantic-action-neutral-background);
   --muxui-component-taggroup-tag-foreground: var(--muxui-semantic-content-default);
+  --muxui-component-taggroup-teal-dot: var(--muxui-reference-color-teal-50);
+  --muxui-component-taggroup-teal-foreground: var(--muxui-reference-color-teal-90);
+  --muxui-component-taggroup-teal-selected-background: var(--muxui-reference-color-teal-60);
+  --muxui-component-taggroup-teal-selected-foreground: var(--muxui-reference-color-teal-100);
+  --muxui-component-taggroup-teal-strong-foreground: var(--muxui-reference-color-teal-90);
+  --muxui-component-taggroup-teal-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-teal-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-dot: var(--muxui-reference-color-violet-50);
+  --muxui-component-taggroup-violet-foreground: var(--muxui-reference-color-violet-90);
+  --muxui-component-taggroup-violet-selected-background: var(--muxui-reference-color-violet-60);
+  --muxui-component-taggroup-violet-selected-foreground: var(--muxui-reference-color-violet-5);
+  --muxui-component-taggroup-violet-strong-foreground: var(--muxui-reference-color-violet-90);
+  --muxui-component-taggroup-violet-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-dot: var(--muxui-reference-color-warning-50);
+  --muxui-component-taggroup-warning-foreground: var(--muxui-reference-color-warning-90);
+  --muxui-component-taggroup-warning-selected-background: var(--muxui-reference-color-warning-60);
+  --muxui-component-taggroup-warning-selected-foreground: var(--muxui-semantic-color-warning-60-fg);
+  --muxui-component-taggroup-warning-strong-foreground: var(--muxui-reference-color-warning-90);
+  --muxui-component-taggroup-warning-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-dot: var(--muxui-reference-color-yellow-50);
+  --muxui-component-taggroup-yellow-foreground: var(--muxui-reference-color-yellow-90);
+  --muxui-component-taggroup-yellow-selected-background: var(--muxui-reference-color-yellow-60);
+  --muxui-component-taggroup-yellow-selected-foreground: var(--muxui-reference-color-yellow-100);
+  --muxui-component-taggroup-yellow-strong-foreground: var(--muxui-reference-color-yellow-90);
+  --muxui-component-taggroup-yellow-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 10%,
+    #00000000
+  );
   --muxui-component-textfield-label: var(--muxui-semantic-content-default);
   --muxui-reference-color-amber-10: #f9e8d5;
   --muxui-reference-color-amber-100: #612300;
@@ -2120,14 +2463,14 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-semantic-motion-constant-easing: var(--muxui-reference-motion-easing-linear);
   --muxui-semantic-motion-content-resize-duration: 600ms;
   --muxui-semantic-motion-content-resize-transition: var(
-      --muxui-semantic-motion-content-resize-duration
+      --muxui-semantic-motion-content-resize-transition-duration
     )
-    var(--muxui-semantic-motion-interaction-easing);
+    var(--muxui-semantic-motion-content-resize-transition-easing);
   --muxui-semantic-motion-content-resize-transition-duration: var(
-    --muxui-semantic-motion-content-resize-duration
+    --muxui-semantic-motion-content-resize-transition-spring-duration
   );
   --muxui-semantic-motion-content-resize-transition-easing: var(
-    --muxui-semantic-motion-interaction-easing
+    --muxui-semantic-motion-content-resize-transition-spring-easing
   );
   --muxui-semantic-motion-content-resize-transition-spring-visual-duration: var(
     --muxui-semantic-motion-content-resize-duration
@@ -2171,11 +2514,16 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
     1
   );
   --muxui-semantic-motion-content-resize-transition-spring-bounce: 0;
-  --muxui-semantic-motion-dismiss-easing: ease-in;
-  --muxui-semantic-motion-dismiss-transition: var(--muxui-semantic-motion-exit-duration)
-    var(--muxui-semantic-motion-dismiss-easing);
-  --muxui-semantic-motion-dismiss-transition-duration: var(--muxui-semantic-motion-exit-duration);
-  --muxui-semantic-motion-dismiss-transition-easing: var(--muxui-semantic-motion-dismiss-easing);
+  --muxui-semantic-motion-dismiss-transition: var(
+      --muxui-semantic-motion-dismiss-transition-duration
+    )
+    var(--muxui-semantic-motion-dismiss-transition-easing);
+  --muxui-semantic-motion-dismiss-transition-duration: var(
+    --muxui-semantic-motion-dismiss-transition-spring-duration
+  );
+  --muxui-semantic-motion-dismiss-transition-easing: var(
+    --muxui-semantic-motion-dismiss-transition-spring-easing
+  );
   --muxui-semantic-motion-dismiss-transition-spring-visual-duration: var(
     --muxui-semantic-motion-exit-duration
   );
@@ -2195,13 +2543,15 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-semantic-motion-feedback-duration: var(--muxui-reference-motion-duration-fast);
   --muxui-semantic-motion-interaction-duration: 150ms;
   --muxui-semantic-motion-interaction-easing: ease;
-  --muxui-semantic-motion-interaction-transition: var(--muxui-semantic-motion-interaction-duration)
-    var(--muxui-semantic-motion-interaction-easing);
+  --muxui-semantic-motion-interaction-transition: var(
+      --muxui-semantic-motion-interaction-transition-duration
+    )
+    var(--muxui-semantic-motion-interaction-transition-easing);
   --muxui-semantic-motion-interaction-transition-duration: var(
-    --muxui-semantic-motion-interaction-duration
+    --muxui-semantic-motion-interaction-transition-spring-duration
   );
   --muxui-semantic-motion-interaction-transition-easing: var(
-    --muxui-semantic-motion-interaction-easing
+    --muxui-semantic-motion-interaction-transition-spring-easing
   );
   --muxui-semantic-motion-interaction-transition-spring-visual-duration: var(
     --muxui-semantic-motion-interaction-duration
@@ -2222,22 +2572,60 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
     1
   );
   --muxui-semantic-motion-interaction-transition-spring-bounce: 0;
-  --muxui-semantic-motion-modal-dismiss-transition: var(--muxui-semantic-motion-exit-duration)
-    var(--muxui-semantic-motion-modal-easing);
+  --muxui-semantic-motion-modal-dismiss-transition: var(
+      --muxui-semantic-motion-modal-dismiss-transition-duration
+    )
+    var(--muxui-semantic-motion-modal-dismiss-transition-easing);
   --muxui-semantic-motion-modal-dismiss-transition-duration: var(
-    --muxui-semantic-motion-exit-duration
+    --muxui-semantic-motion-modal-dismiss-transition-spring-duration
   );
   --muxui-semantic-motion-modal-dismiss-transition-easing: var(
-    --muxui-semantic-motion-modal-easing
+    --muxui-semantic-motion-modal-dismiss-transition-spring-easing
   );
-  --muxui-semantic-motion-modal-easing: cubic-bezier(0.16, 1, 0.3, 1);
+  --muxui-semantic-motion-modal-dismiss-transition-spring-visual-duration: var(
+    --muxui-semantic-motion-exit-duration
+  );
+  --muxui-semantic-motion-modal-dismiss-transition-spring-duration: 250ms;
+  --muxui-semantic-motion-modal-dismiss-transition-spring-easing: linear(
+    0,
+    0.4615,
+    0.8176,
+    0.9471,
+    0.9858,
+    0.9964,
+    0.9991,
+    1
+  );
+  --muxui-semantic-motion-modal-dismiss-transition-spring-bounce: 0;
   --muxui-semantic-motion-modal-enter-duration: var(--muxui-reference-motion-duration-moderate);
-  --muxui-semantic-motion-modal-transition: var(--muxui-semantic-motion-modal-enter-duration)
-    var(--muxui-semantic-motion-modal-easing);
+  --muxui-semantic-motion-modal-transition: var(--muxui-semantic-motion-modal-transition-duration)
+    var(--muxui-semantic-motion-modal-transition-easing);
   --muxui-semantic-motion-modal-transition-duration: var(
+    --muxui-semantic-motion-modal-transition-spring-duration
+  );
+  --muxui-semantic-motion-modal-transition-easing: var(
+    --muxui-semantic-motion-modal-transition-spring-easing
+  );
+  --muxui-semantic-motion-modal-transition-spring-visual-duration: var(
     --muxui-semantic-motion-modal-enter-duration
   );
-  --muxui-semantic-motion-modal-transition-easing: var(--muxui-semantic-motion-modal-easing);
+  --muxui-semantic-motion-modal-transition-spring-duration: 400ms;
+  --muxui-semantic-motion-modal-transition-spring-easing: linear(
+    0,
+    0.2531,
+    0.5773,
+    0.7868,
+    0.8991,
+    0.9541,
+    0.9797,
+    0.9912,
+    0.9963,
+    0.9984,
+    0.9993,
+    1,
+    1
+  );
+  --muxui-semantic-motion-modal-transition-spring-bounce: 0;
   --muxui-semantic-motion-mode-toggle-duration: var(--muxui-reference-motion-duration-deliberate);
   --muxui-semantic-motion-panel-enter-duration: var(--muxui-reference-motion-duration-moderate);
   --muxui-semantic-motion-progress-easing: ease-in-out;
@@ -2252,11 +2640,14 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-semantic-motion-progress-travel-duration: 1500ms;
   --muxui-semantic-motion-progress-update-duration: var(--muxui-reference-motion-duration-slow);
   --muxui-semantic-motion-reveal-duration: 200ms;
-  --muxui-semantic-motion-reveal-easing: ease-out;
-  --muxui-semantic-motion-reveal-transition: var(--muxui-semantic-motion-reveal-duration)
-    var(--muxui-semantic-motion-reveal-easing);
-  --muxui-semantic-motion-reveal-transition-duration: var(--muxui-semantic-motion-reveal-duration);
-  --muxui-semantic-motion-reveal-transition-easing: var(--muxui-semantic-motion-reveal-easing);
+  --muxui-semantic-motion-reveal-transition: var(--muxui-semantic-motion-reveal-transition-duration)
+    var(--muxui-semantic-motion-reveal-transition-easing);
+  --muxui-semantic-motion-reveal-transition-duration: var(
+    --muxui-semantic-motion-reveal-transition-spring-duration
+  );
+  --muxui-semantic-motion-reveal-transition-easing: var(
+    --muxui-semantic-motion-reveal-transition-spring-easing
+  );
   --muxui-semantic-motion-reveal-transition-spring-visual-duration: var(
     --muxui-semantic-motion-reveal-duration
   );
@@ -2279,10 +2670,14 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-semantic-motion-reveal-transition-spring-bounce: 0;
   --muxui-semantic-motion-selection-enter-duration: var(--muxui-reference-motion-duration-fast);
   --muxui-semantic-motion-state-duration: var(--muxui-reference-motion-duration-fast);
-  --muxui-semantic-motion-state-transition: var(--muxui-semantic-motion-state-duration)
-    var(--muxui-semantic-motion-interaction-easing);
-  --muxui-semantic-motion-state-transition-duration: var(--muxui-semantic-motion-state-duration);
-  --muxui-semantic-motion-state-transition-easing: var(--muxui-semantic-motion-interaction-easing);
+  --muxui-semantic-motion-state-transition: var(--muxui-semantic-motion-state-transition-duration)
+    var(--muxui-semantic-motion-state-transition-easing);
+  --muxui-semantic-motion-state-transition-duration: var(
+    --muxui-semantic-motion-state-transition-spring-duration
+  );
+  --muxui-semantic-motion-state-transition-easing: var(
+    --muxui-semantic-motion-state-transition-spring-easing
+  );
   --muxui-semantic-motion-state-transition-spring-visual-duration: var(
     --muxui-semantic-motion-state-duration
   );
@@ -2495,6 +2890,16 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-checkbox-selected-background: var(--muxui-semantic-selection-track);
   --muxui-component-checkbox-selected-foreground: var(--muxui-semantic-action-foreground);
   --muxui-component-checkbox-selected-foreground-hover: var(--muxui-semantic-color-color-60-fg);
+  --muxui-component-codeblock-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
+  --muxui-component-datadiff-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
   --muxui-component-datepicker-popover-shadow-color: color-mix(
     in srgb,
     var(--muxui-semantic-color-neutral-100) 10%,
@@ -2519,10 +2924,323 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-content-default);
   --muxui-component-tabs-tab-foreground: var(--muxui-semantic-content-muted);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-border-subtle);
+  --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-50);
+  --muxui-component-taggroup-amber-foreground: var(--muxui-reference-color-amber-90);
+  --muxui-component-taggroup-amber-selected-background: var(--muxui-reference-color-amber-60);
+  --muxui-component-taggroup-amber-strong-foreground: var(--muxui-reference-color-amber-90);
+  --muxui-component-taggroup-amber-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-amber-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-dot: var(--muxui-reference-color-bluegreen-50);
+  --muxui-component-taggroup-bluegreen-foreground: var(--muxui-reference-color-bluegreen-90);
+  --muxui-component-taggroup-bluegreen-selected-background: var(
+    --muxui-reference-color-bluegreen-60
+  );
+  --muxui-component-taggroup-bluegreen-selected-foreground: var(
+    --muxui-reference-color-bluegreen-5
+  );
+  --muxui-component-taggroup-bluegreen-strong-foreground: var(--muxui-reference-color-bluegreen-90);
+  --muxui-component-taggroup-bluegreen-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-dot: var(--muxui-semantic-color-color-50);
+  --muxui-component-taggroup-brand-foreground: var(--muxui-semantic-color-color-90);
+  --muxui-component-taggroup-brand-selected-background: var(--muxui-semantic-selection-track);
+  --muxui-component-taggroup-brand-selected-foreground: var(--muxui-semantic-action-foreground);
+  --muxui-component-taggroup-brand-strong-foreground: var(--muxui-semantic-color-color-90);
+  --muxui-component-taggroup-brand-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-dot: var(--muxui-reference-color-cyan-50);
+  --muxui-component-taggroup-cyan-foreground: var(--muxui-reference-color-cyan-90);
+  --muxui-component-taggroup-cyan-selected-background: var(--muxui-reference-color-cyan-60);
+  --muxui-component-taggroup-cyan-strong-foreground: var(--muxui-reference-color-cyan-90);
+  --muxui-component-taggroup-cyan-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-dot: var(--muxui-reference-color-emerald-50);
+  --muxui-component-taggroup-emerald-foreground: var(--muxui-reference-color-emerald-90);
+  --muxui-component-taggroup-emerald-selected-background: var(--muxui-reference-color-emerald-60);
+  --muxui-component-taggroup-emerald-strong-foreground: var(--muxui-reference-color-emerald-90);
+  --muxui-component-taggroup-emerald-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-dot: var(--muxui-reference-color-error-50);
+  --muxui-component-taggroup-error-foreground: var(--muxui-reference-color-error-90);
+  --muxui-component-taggroup-error-selected-background: var(--muxui-reference-color-error-60);
+  --muxui-component-taggroup-error-selected-foreground: var(--muxui-semantic-color-error-60-fg);
+  --muxui-component-taggroup-error-strong-foreground: var(--muxui-reference-color-error-90);
+  --muxui-component-taggroup-error-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-dot: var(--muxui-reference-color-fuchsia-50);
+  --muxui-component-taggroup-fuchsia-foreground: var(--muxui-reference-color-fuchsia-90);
+  --muxui-component-taggroup-fuchsia-selected-background: var(--muxui-reference-color-fuchsia-60);
+  --muxui-component-taggroup-fuchsia-selected-foreground: var(--muxui-reference-color-fuchsia-5);
+  --muxui-component-taggroup-fuchsia-strong-foreground: var(--muxui-reference-color-fuchsia-90);
+  --muxui-component-taggroup-fuchsia-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-dot: var(--muxui-reference-color-green-50);
+  --muxui-component-taggroup-green-foreground: var(--muxui-reference-color-green-90);
+  --muxui-component-taggroup-green-selected-background: var(--muxui-reference-color-green-60);
+  --muxui-component-taggroup-green-strong-foreground: var(--muxui-reference-color-green-90);
+  --muxui-component-taggroup-green-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-dot: var(--muxui-reference-color-indigo-50);
+  --muxui-component-taggroup-indigo-foreground: var(--muxui-reference-color-indigo-90);
+  --muxui-component-taggroup-indigo-selected-background: var(--muxui-reference-color-indigo-60);
+  --muxui-component-taggroup-indigo-selected-foreground: var(--muxui-reference-color-indigo-5);
+  --muxui-component-taggroup-indigo-strong-foreground: var(--muxui-reference-color-indigo-90);
+  --muxui-component-taggroup-indigo-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 10%,
+    #00000000
+  );
   --muxui-component-taggroup-label: var(--muxui-semantic-content-default);
-  --muxui-component-taggroup-selected-foreground-hover: var(--muxui-semantic-color-color-60-fg);
-  --muxui-component-taggroup-tag-background: var(--muxui-semantic-surface-subtle);
+  --muxui-component-taggroup-lime-dot: var(--muxui-reference-color-lime-50);
+  --muxui-component-taggroup-lime-foreground: var(--muxui-reference-color-lime-90);
+  --muxui-component-taggroup-lime-selected-background: var(--muxui-reference-color-lime-60);
+  --muxui-component-taggroup-lime-strong-foreground: var(--muxui-reference-color-lime-90);
+  --muxui-component-taggroup-lime-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-lime-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-neutral-dot: var(--muxui-semantic-content-muted);
+  --muxui-component-taggroup-neutral-selected-background: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-neutral-selected-foreground: var(--muxui-semantic-content-on-solid);
+  --muxui-component-taggroup-orange-dot: var(--muxui-reference-color-orange-50);
+  --muxui-component-taggroup-orange-foreground: var(--muxui-reference-color-orange-90);
+  --muxui-component-taggroup-orange-selected-background: var(--muxui-reference-color-orange-60);
+  --muxui-component-taggroup-orange-strong-foreground: var(--muxui-reference-color-orange-90);
+  --muxui-component-taggroup-orange-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-orange-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-dot: var(--muxui-reference-color-pink-50);
+  --muxui-component-taggroup-pink-foreground: var(--muxui-reference-color-pink-90);
+  --muxui-component-taggroup-pink-selected-background: var(--muxui-reference-color-pink-60);
+  --muxui-component-taggroup-pink-selected-foreground: var(--muxui-reference-color-pink-5);
+  --muxui-component-taggroup-pink-strong-foreground: var(--muxui-reference-color-pink-90);
+  --muxui-component-taggroup-pink-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-dot: var(--muxui-reference-color-purple-50);
+  --muxui-component-taggroup-purple-foreground: var(--muxui-reference-color-purple-90);
+  --muxui-component-taggroup-purple-selected-background: var(--muxui-reference-color-purple-60);
+  --muxui-component-taggroup-purple-selected-foreground: var(--muxui-reference-color-purple-5);
+  --muxui-component-taggroup-purple-strong-foreground: var(--muxui-reference-color-purple-90);
+  --muxui-component-taggroup-purple-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-dot: var(--muxui-reference-color-red-50);
+  --muxui-component-taggroup-red-foreground: var(--muxui-reference-color-red-90);
+  --muxui-component-taggroup-red-selected-background: var(--muxui-reference-color-red-60);
+  --muxui-component-taggroup-red-selected-foreground: var(--muxui-reference-color-red-5);
+  --muxui-component-taggroup-red-strong-foreground: var(--muxui-reference-color-red-90);
+  --muxui-component-taggroup-red-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-dot: var(--muxui-reference-color-rose-50);
+  --muxui-component-taggroup-rose-foreground: var(--muxui-reference-color-rose-90);
+  --muxui-component-taggroup-rose-selected-background: var(--muxui-reference-color-rose-60);
+  --muxui-component-taggroup-rose-selected-foreground: var(--muxui-reference-color-rose-5);
+  --muxui-component-taggroup-rose-strong-foreground: var(--muxui-reference-color-rose-90);
+  --muxui-component-taggroup-rose-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-selected-overlay-scheme: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-sky-dot: var(--muxui-reference-color-sky-50);
+  --muxui-component-taggroup-sky-foreground: var(--muxui-reference-color-sky-90);
+  --muxui-component-taggroup-sky-selected-background: var(--muxui-reference-color-sky-60);
+  --muxui-component-taggroup-sky-strong-foreground: var(--muxui-reference-color-sky-90);
+  --muxui-component-taggroup-sky-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-sky-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-dot: var(--muxui-reference-color-success-50);
+  --muxui-component-taggroup-success-foreground: var(--muxui-reference-color-success-90);
+  --muxui-component-taggroup-success-selected-background: var(--muxui-reference-color-success-60);
+  --muxui-component-taggroup-success-selected-foreground: var(--muxui-semantic-color-success-60-fg);
+  --muxui-component-taggroup-success-strong-foreground: var(--muxui-reference-color-success-90);
+  --muxui-component-taggroup-success-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-tag-background: var(--muxui-semantic-action-neutral-background);
   --muxui-component-taggroup-tag-foreground: var(--muxui-semantic-content-default);
+  --muxui-component-taggroup-teal-dot: var(--muxui-reference-color-teal-50);
+  --muxui-component-taggroup-teal-foreground: var(--muxui-reference-color-teal-90);
+  --muxui-component-taggroup-teal-selected-background: var(--muxui-reference-color-teal-60);
+  --muxui-component-taggroup-teal-strong-foreground: var(--muxui-reference-color-teal-90);
+  --muxui-component-taggroup-teal-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-teal-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-dot: var(--muxui-reference-color-violet-50);
+  --muxui-component-taggroup-violet-foreground: var(--muxui-reference-color-violet-90);
+  --muxui-component-taggroup-violet-selected-background: var(--muxui-reference-color-violet-60);
+  --muxui-component-taggroup-violet-selected-foreground: var(--muxui-reference-color-violet-5);
+  --muxui-component-taggroup-violet-strong-foreground: var(--muxui-reference-color-violet-90);
+  --muxui-component-taggroup-violet-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-dot: var(--muxui-reference-color-warning-50);
+  --muxui-component-taggroup-warning-foreground: var(--muxui-reference-color-warning-90);
+  --muxui-component-taggroup-warning-selected-background: var(--muxui-reference-color-warning-60);
+  --muxui-component-taggroup-warning-selected-foreground: var(--muxui-semantic-color-warning-60-fg);
+  --muxui-component-taggroup-warning-strong-foreground: var(--muxui-reference-color-warning-90);
+  --muxui-component-taggroup-warning-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 10%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-dot: var(--muxui-reference-color-yellow-50);
+  --muxui-component-taggroup-yellow-foreground: var(--muxui-reference-color-yellow-90);
+  --muxui-component-taggroup-yellow-selected-background: var(--muxui-reference-color-yellow-60);
+  --muxui-component-taggroup-yellow-strong-foreground: var(--muxui-reference-color-yellow-90);
+  --muxui-component-taggroup-yellow-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 40%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 10%,
+    #00000000
+  );
   --muxui-component-textfield-label: var(--muxui-semantic-content-default);
   --muxui-semantic-action-background: var(--muxui-semantic-color-color-60);
   --muxui-semantic-action-background-hover: var(--muxui-semantic-color-color-70);
@@ -2734,6 +3452,16 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-checkbox-selected-background: var(--muxui-semantic-action-selection-background);
   --muxui-component-checkbox-selected-foreground: var(--muxui-semantic-action-selection-foreground);
   --muxui-component-checkbox-selected-foreground-hover: var(--muxui-semantic-color-color-50-fg);
+  --muxui-component-codeblock-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
+  --muxui-component-datadiff-removed-background: color-mix(
+    in srgb,
+    var(--muxui-semantic-feedback-invalid) 10%,
+    #00000000
+  );
   --muxui-component-datepicker-popover-shadow-color: color-mix(
     in srgb,
     var(--muxui-semantic-color-neutral-100) 10%,
@@ -2762,10 +3490,323 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-color-neutral-default-30);
   --muxui-component-tabs-tab-foreground: var(--muxui-semantic-color-neutral-default-50);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-color-neutral-default-92);
+  --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-40);
+  --muxui-component-taggroup-amber-foreground: var(--muxui-reference-color-amber-20);
+  --muxui-component-taggroup-amber-selected-background: var(--muxui-reference-color-amber-40);
+  --muxui-component-taggroup-amber-strong-foreground: var(--muxui-reference-color-amber-5);
+  --muxui-component-taggroup-amber-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-amber-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-amber-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-dot: var(--muxui-reference-color-bluegreen-40);
+  --muxui-component-taggroup-bluegreen-foreground: var(--muxui-reference-color-bluegreen-20);
+  --muxui-component-taggroup-bluegreen-selected-background: var(
+    --muxui-reference-color-bluegreen-40
+  );
+  --muxui-component-taggroup-bluegreen-selected-foreground: var(
+    --muxui-reference-color-bluegreen-100
+  );
+  --muxui-component-taggroup-bluegreen-strong-foreground: var(--muxui-reference-color-bluegreen-5);
+  --muxui-component-taggroup-bluegreen-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-bluegreen-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-bluegreen-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-dot: var(--muxui-semantic-color-color-60);
+  --muxui-component-taggroup-brand-foreground: var(--muxui-semantic-color-color-80);
+  --muxui-component-taggroup-brand-selected-background: var(--muxui-semantic-selection-track);
+  --muxui-component-taggroup-brand-selected-foreground: var(--muxui-semantic-action-foreground);
+  --muxui-component-taggroup-brand-strong-foreground: var(--muxui-semantic-color-color-100);
+  --muxui-component-taggroup-brand-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-brand-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-color-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-dot: var(--muxui-reference-color-cyan-40);
+  --muxui-component-taggroup-cyan-foreground: var(--muxui-reference-color-cyan-20);
+  --muxui-component-taggroup-cyan-selected-background: var(--muxui-reference-color-cyan-40);
+  --muxui-component-taggroup-cyan-strong-foreground: var(--muxui-reference-color-cyan-5);
+  --muxui-component-taggroup-cyan-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-cyan-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-cyan-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-dot: var(--muxui-reference-color-emerald-40);
+  --muxui-component-taggroup-emerald-foreground: var(--muxui-reference-color-emerald-20);
+  --muxui-component-taggroup-emerald-selected-background: var(--muxui-reference-color-emerald-40);
+  --muxui-component-taggroup-emerald-strong-foreground: var(--muxui-reference-color-emerald-5);
+  --muxui-component-taggroup-emerald-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-emerald-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-emerald-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-dot: var(--muxui-reference-color-error-40);
+  --muxui-component-taggroup-error-foreground: var(--muxui-reference-color-error-20);
+  --muxui-component-taggroup-error-selected-background: var(--muxui-reference-color-error-40);
+  --muxui-component-taggroup-error-selected-foreground: var(--muxui-semantic-color-error-40-fg);
+  --muxui-component-taggroup-error-strong-foreground: var(--muxui-reference-color-error-5);
+  --muxui-component-taggroup-error-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-error-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-error-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-dot: var(--muxui-reference-color-fuchsia-40);
+  --muxui-component-taggroup-fuchsia-foreground: var(--muxui-reference-color-fuchsia-20);
+  --muxui-component-taggroup-fuchsia-selected-background: var(--muxui-reference-color-fuchsia-40);
+  --muxui-component-taggroup-fuchsia-selected-foreground: var(--muxui-reference-color-fuchsia-100);
+  --muxui-component-taggroup-fuchsia-strong-foreground: var(--muxui-reference-color-fuchsia-5);
+  --muxui-component-taggroup-fuchsia-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-fuchsia-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-fuchsia-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-dot: var(--muxui-reference-color-green-40);
+  --muxui-component-taggroup-green-foreground: var(--muxui-reference-color-green-20);
+  --muxui-component-taggroup-green-selected-background: var(--muxui-reference-color-green-40);
+  --muxui-component-taggroup-green-strong-foreground: var(--muxui-reference-color-green-5);
+  --muxui-component-taggroup-green-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-green-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-green-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-dot: var(--muxui-reference-color-indigo-40);
+  --muxui-component-taggroup-indigo-foreground: var(--muxui-reference-color-indigo-20);
+  --muxui-component-taggroup-indigo-selected-background: var(--muxui-reference-color-indigo-40);
+  --muxui-component-taggroup-indigo-selected-foreground: var(--muxui-reference-color-indigo-100);
+  --muxui-component-taggroup-indigo-strong-foreground: var(--muxui-reference-color-indigo-5);
+  --muxui-component-taggroup-indigo-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-indigo-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-indigo-50) 25%,
+    #00000000
+  );
   --muxui-component-taggroup-label: var(--muxui-semantic-color-neutral-default-24);
-  --muxui-component-taggroup-selected-foreground-hover: var(--muxui-semantic-color-color-50-fg);
-  --muxui-component-taggroup-tag-background: var(--muxui-semantic-color-neutral-default-96);
+  --muxui-component-taggroup-lime-dot: var(--muxui-reference-color-lime-40);
+  --muxui-component-taggroup-lime-foreground: var(--muxui-reference-color-lime-20);
+  --muxui-component-taggroup-lime-selected-background: var(--muxui-reference-color-lime-40);
+  --muxui-component-taggroup-lime-strong-foreground: var(--muxui-reference-color-lime-5);
+  --muxui-component-taggroup-lime-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-lime-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-lime-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-neutral-dot: var(--muxui-semantic-content-muted);
+  --muxui-component-taggroup-neutral-selected-background: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-neutral-selected-foreground: var(--muxui-semantic-content-on-solid);
+  --muxui-component-taggroup-orange-dot: var(--muxui-reference-color-orange-40);
+  --muxui-component-taggroup-orange-foreground: var(--muxui-reference-color-orange-20);
+  --muxui-component-taggroup-orange-selected-background: var(--muxui-reference-color-orange-40);
+  --muxui-component-taggroup-orange-strong-foreground: var(--muxui-reference-color-orange-5);
+  --muxui-component-taggroup-orange-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-orange-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-orange-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-dot: var(--muxui-reference-color-pink-40);
+  --muxui-component-taggroup-pink-foreground: var(--muxui-reference-color-pink-20);
+  --muxui-component-taggroup-pink-selected-background: var(--muxui-reference-color-pink-40);
+  --muxui-component-taggroup-pink-selected-foreground: var(--muxui-reference-color-pink-100);
+  --muxui-component-taggroup-pink-strong-foreground: var(--muxui-reference-color-pink-5);
+  --muxui-component-taggroup-pink-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-pink-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-pink-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-dot: var(--muxui-reference-color-purple-40);
+  --muxui-component-taggroup-purple-foreground: var(--muxui-reference-color-purple-20);
+  --muxui-component-taggroup-purple-selected-background: var(--muxui-reference-color-purple-40);
+  --muxui-component-taggroup-purple-selected-foreground: var(--muxui-reference-color-purple-100);
+  --muxui-component-taggroup-purple-strong-foreground: var(--muxui-reference-color-purple-5);
+  --muxui-component-taggroup-purple-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-purple-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-purple-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-dot: var(--muxui-reference-color-red-40);
+  --muxui-component-taggroup-red-foreground: var(--muxui-reference-color-red-20);
+  --muxui-component-taggroup-red-selected-background: var(--muxui-reference-color-red-40);
+  --muxui-component-taggroup-red-selected-foreground: var(--muxui-reference-color-red-100);
+  --muxui-component-taggroup-red-strong-foreground: var(--muxui-reference-color-red-5);
+  --muxui-component-taggroup-red-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-red-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-red-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-dot: var(--muxui-reference-color-rose-40);
+  --muxui-component-taggroup-rose-foreground: var(--muxui-reference-color-rose-20);
+  --muxui-component-taggroup-rose-selected-background: var(--muxui-reference-color-rose-40);
+  --muxui-component-taggroup-rose-selected-foreground: var(--muxui-reference-color-rose-100);
+  --muxui-component-taggroup-rose-strong-foreground: var(--muxui-reference-color-rose-5);
+  --muxui-component-taggroup-rose-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-rose-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-rose-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-selected-overlay-scheme: var(--muxui-semantic-surface-strong);
+  --muxui-component-taggroup-sky-dot: var(--muxui-reference-color-sky-40);
+  --muxui-component-taggroup-sky-foreground: var(--muxui-reference-color-sky-20);
+  --muxui-component-taggroup-sky-selected-background: var(--muxui-reference-color-sky-40);
+  --muxui-component-taggroup-sky-strong-foreground: var(--muxui-reference-color-sky-5);
+  --muxui-component-taggroup-sky-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-sky-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-sky-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-dot: var(--muxui-reference-color-success-40);
+  --muxui-component-taggroup-success-foreground: var(--muxui-reference-color-success-20);
+  --muxui-component-taggroup-success-selected-background: var(--muxui-reference-color-success-40);
+  --muxui-component-taggroup-success-selected-foreground: var(--muxui-semantic-color-success-40-fg);
+  --muxui-component-taggroup-success-strong-foreground: var(--muxui-reference-color-success-5);
+  --muxui-component-taggroup-success-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-success-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-success-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-tag-background: var(--muxui-semantic-action-neutral-background);
   --muxui-component-taggroup-tag-foreground: var(--muxui-semantic-color-neutral-default-28);
+  --muxui-component-taggroup-teal-dot: var(--muxui-reference-color-teal-40);
+  --muxui-component-taggroup-teal-foreground: var(--muxui-reference-color-teal-20);
+  --muxui-component-taggroup-teal-selected-background: var(--muxui-reference-color-teal-40);
+  --muxui-component-taggroup-teal-strong-foreground: var(--muxui-reference-color-teal-5);
+  --muxui-component-taggroup-teal-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-teal-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-teal-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-dot: var(--muxui-reference-color-violet-40);
+  --muxui-component-taggroup-violet-foreground: var(--muxui-reference-color-violet-20);
+  --muxui-component-taggroup-violet-selected-background: var(--muxui-reference-color-violet-40);
+  --muxui-component-taggroup-violet-selected-foreground: var(--muxui-reference-color-violet-100);
+  --muxui-component-taggroup-violet-strong-foreground: var(--muxui-reference-color-violet-5);
+  --muxui-component-taggroup-violet-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-violet-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-violet-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-dot: var(--muxui-reference-color-warning-40);
+  --muxui-component-taggroup-warning-foreground: var(--muxui-reference-color-warning-20);
+  --muxui-component-taggroup-warning-selected-background: var(--muxui-reference-color-warning-40);
+  --muxui-component-taggroup-warning-selected-foreground: var(--muxui-semantic-color-warning-40-fg);
+  --muxui-component-taggroup-warning-strong-foreground: var(--muxui-reference-color-warning-5);
+  --muxui-component-taggroup-warning-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-warning-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-warning-50) 25%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-dot: var(--muxui-reference-color-yellow-40);
+  --muxui-component-taggroup-yellow-foreground: var(--muxui-reference-color-yellow-20);
+  --muxui-component-taggroup-yellow-selected-background: var(--muxui-reference-color-yellow-40);
+  --muxui-component-taggroup-yellow-strong-foreground: var(--muxui-reference-color-yellow-5);
+  --muxui-component-taggroup-yellow-tint-heavy: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 50%,
+    #00000000
+  );
+  --muxui-component-taggroup-yellow-tint-weak: color-mix(
+    in srgb,
+    var(--muxui-reference-color-yellow-50) 25%,
+    #00000000
+  );
   --muxui-component-textfield-label: var(--muxui-semantic-color-neutral-default-40);
   --muxui-semantic-action-background: var(--muxui-semantic-color-color-60);
   --muxui-semantic-action-background-hover: var(--muxui-semantic-color-color-70);
@@ -3048,8 +4089,8 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-popup-border-color: var(--muxui-semantic-border-popup);
   --muxui-popup-radius: var(--muxui-semantic-control-radius);
   --muxui-popup-shadow: var(--muxui-semantic-elevation-overlay);
-  --muxui-popup-transition-duration: var(--muxui-semantic-motion-interaction-duration);
-  --muxui-popup-transition-easing: var(--muxui-semantic-motion-interaction-easing);
+  --muxui-popup-transition-duration: var(--muxui-semantic-motion-interaction-transition-duration);
+  --muxui-popup-transition-easing: var(--muxui-semantic-motion-interaction-transition-easing);
   --muxui-item-padding-block: var(--muxui-semantic-layout-inset-tight);
   --muxui-item-padding-inline: var(--muxui-semantic-layout-inset-small);
   --muxui-item-gap: var(--muxui-semantic-layout-group-gap);

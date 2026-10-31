@@ -38,7 +38,7 @@
     text-align: start;
   }
 
-  .bento-merge-card__main .muxui-button-content {
+  .bento-merge-card__main .muxui-button__label {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
@@ -150,7 +150,7 @@
     justify-content: center;
   }
 
-  html[data-bento-collapsed='true'] .bento-merge-card__main .muxui-button-content {
+  html[data-bento-collapsed='true'] .bento-merge-card__main .muxui-button__label {
     justify-content: center;
   }
 
