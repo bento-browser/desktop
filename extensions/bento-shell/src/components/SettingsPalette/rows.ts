@@ -269,12 +269,8 @@ function searchLabel(model: SettingsPaletteModel): string {
 export function controlRows(model: SettingsPaletteModel): PaletteRow[] {
   const rows: PaletteRow[] = [
     enumRow(model, 'Appearance', 'uiColorMode'),
-    ...(typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
-      ? [
-          toggleRow(model, 'Tab appearance', 'tabStateTintsEnabled'),
-          toggleRow(model, 'Tab appearance', 'customTabStateIconsEnabled'),
-        ]
-      : []),
+    toggleRow(model, 'Tab appearance', 'tabStateTintsEnabled'),
+    toggleRow(model, 'Tab appearance', 'customTabStateIconsEnabled'),
     toggleRow(model, 'Performance', 'tabSleepEnabled'),
     numberRow(model, 'Performance', 'tabSleepAfterMinutes'),
     numberRow(model, 'Performance', 'tabSleepKeepAlivePerWorkspace'),

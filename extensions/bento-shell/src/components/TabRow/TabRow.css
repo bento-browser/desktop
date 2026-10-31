@@ -75,42 +75,42 @@
 
   /* A Quiet: translucent status paint sits over TabList's neutral hover.
      Keep one-class specificity so the active/selected fills below win. */
-  .bento-tab-row:where([data-softcast-state]) {
-    --bento-tab-row-softcast-tint: 10%;
+  .bento-tab-row:where([data-tab-state]) {
+    --bento-tab-row-state-tint: 10%;
   }
 
-  :where([data-muxui-color-scheme='dark']) .bento-tab-row:where([data-softcast-state]) {
-    --bento-tab-row-softcast-tint: 14%;
+  :where([data-muxui-color-scheme='dark']) .bento-tab-row:where([data-tab-state]) {
+    --bento-tab-row-state-tint: 14%;
   }
 
-  .bento-tab-row:where([data-softcast-state='unavailable']) {
+  .bento-tab-row:where([data-tab-state='unavailable']) {
     background-color: color-mix(
       in oklab,
-      var(--muxui-semantic-color-neutral-60) var(--bento-tab-row-softcast-tint),
+      var(--muxui-semantic-color-neutral-60) var(--bento-tab-row-state-tint),
       transparent
     );
   }
 
-  .bento-tab-row:where([data-softcast-state='certificate-warning']) {
+  .bento-tab-row:where([data-tab-state='certificate-warning']) {
     background-color: color-mix(
       in oklab,
-      var(--muxui-semantic-status-warning) var(--bento-tab-row-softcast-tint),
+      var(--muxui-semantic-status-warning) var(--bento-tab-row-state-tint),
       transparent
     );
   }
 
-  .bento-tab-row:where([data-softcast-state='blocked'], [data-softcast-state='crashed']) {
+  .bento-tab-row:where([data-tab-state='blocked'], [data-tab-state='crashed']) {
     background-color: color-mix(
       in oklab,
-      var(--muxui-reference-color-error-60) var(--bento-tab-row-softcast-tint),
+      var(--muxui-reference-color-error-60) var(--bento-tab-row-state-tint),
       transparent
     );
   }
 
-  .bento-tab-row:where([data-softcast-state='internal-settings']) {
+  .bento-tab-row:where([data-tab-state='internal-settings']) {
     background-color: color-mix(
       in oklab,
-      var(--muxui-reference-color-teal-60) var(--bento-tab-row-softcast-tint),
+      var(--muxui-reference-color-teal-60) var(--bento-tab-row-state-tint),
       transparent
     );
   }
@@ -192,36 +192,10 @@
     filter: grayscale(1);
   }
 
-  /* Sleeping art already includes its muted treatment. */
-  .bento-tab-row--discarded .bento-tab-row__softcast[data-softcast-state='sleeping'] {
+  /* State icons carry their own muted treatment, so the discarded dim does not stack on them. */
+  .bento-tab-row--discarded .bento-tab-row__state-icon {
     opacity: 1;
     filter: none;
-  }
-
-  .bento-tab-row__softcast--spin {
-    animation: bento-softcast-spin var(--muxui-semantic-motion-progress-spin-duration)
-      var(--muxui-semantic-motion-constant-easing) infinite;
-    animation-play-state: paused;
-  }
-
-  .bento-tab-row__softcast--spin[data-running='true'] {
-    animation-play-state: running;
-  }
-
-  :where([data-reduced-motion], [data-muxui-motion='reduced']) .bento-tab-row__softcast--spin {
-    animation: none;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .bento-tab-row__softcast--spin {
-      animation: none;
-    }
-  }
-
-  @keyframes bento-softcast-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .bento-tab-row--has-audio-control {

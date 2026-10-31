@@ -249,7 +249,7 @@ parts, and it is split so each piece is testable without the browser:
   `rootRows` contains only described category openers; `controlRows` retains the flat
   controls for global search and command-index parity. Category stages filter those
   controls by stable category ids. Shortcuts opens its existing reference directly.
-  Tab appearance retains its demo-build gate, Backup and Reset their private-window gate,
+  Tab appearance shows in regular and private windows, Backup and Reset keep their private-window gate,
   and Privacy and search requires both hydrated models. `categories.ts` shares category
   ancestry between command targets and root-search drilldowns, adding Advanced privacy
   before its enum pages. Its opener map seeds return focus for inserted ancestors and deep
