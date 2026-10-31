@@ -164,6 +164,10 @@ side panels are open.
 - Do not call Places APIs from shell or chrome UI for saved panels. The
   `SavedPanelsStore` owns bookmarks interaction.
 - Do not persist pinned panels by tab id only. Use URL and panel key remapping.
+- Keep the trailer's `split-view-panel-active` paint class, but omit its host
+  from `modePageFrames()`'s live page holes. Its saved-panel grid and interior
+  fill must remain under the [shared mode fade](theming.md#mode-flip-fade);
+  otherwise they jump to final colours before the surrounding chrome finishes.
 - Pinned-panel rail clicks dispatch `pinnedPanel/open`, which focuses the
   specific pinned panel if it still exists and recreates/rebinds it from the
   stored URL only when it does not. Do not activate the pinned tab directly;

@@ -4236,8 +4236,10 @@
   }
   function modePageFrames() {
     const deck = document.getElementById('tabbrowser-tabpanels');
+    // The trailer needs the split-view paint class, but is Bento UI that must
+    // stay under the shared old-image fade rather than become a live page hole.
     const slots = Array.from(deck?.children || []).filter((node) =>
-      node.classList?.contains('split-view-panel-active'));
+      node.id !== 'bento-add-panel-trailer' && node.classList?.contains('split-view-panel-active'));
     const pages = slots.length ? slots.map(getPanelTargetBrowser) : [window.gBrowser?.selectedBrowser];
     // Firefox's native docked toolbox is another live remote surface. Bento's
     // DevTools panels already arrive through the selected/rendered slot list.
