@@ -7,11 +7,16 @@ import {
   type BookmarkSpace,
   type BookmarksSnapshot,
 } from '@shared/protocol';
+import { normalizeName, normalizeText, normalizeTitle } from './fields';
 import { cleanFavIconUrl, isLinkUrl } from './links';
+
+/** What is stored: the snapshot without its load `status`. */
+export type BookmarksData = Omit<BookmarksSnapshot, 'status'>;
 
 /** The version is part of the key, so a future schema reads and migrates from this one. */
 export const STORAGE_KEY = 'bento.bookmarks.v1';
-const DEBOUNCE_MS = 500;
+const RETRY_BASE_MS = 1_000;
+const RETRY_MAX_MS = 30_000;
 
 const isString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -49,15 +54,17 @@ function parseItem(value: unknown): BookmarkItem | null {
         ...base,
         kind: 'link',
         url: value.url,
-        title: typeof value.title === 'string' ? value.title : value.url,
+        title: normalizeTitle(typeof value.title === 'string' ? value.title : '', value.url),
         ...(favIconUrl ? { favIconUrl } : {}),
       };
     }
     case 'note':
-      return typeof value.text === 'string' ? { ...base, kind: 'note', text: value.text } : null;
+      return typeof value.text === 'string'
+        ? { ...base, kind: 'note', text: normalizeText(value.text) }
+        : null;
     case 'todo':
       return typeof value.text === 'string'
-        ? { ...base, kind: 'todo', text: value.text, done: value.done === true }
+        ? { ...base, kind: 'todo', text: normalizeText(value.text), done: value.done === true }
         : null;
     default:
       return null;
@@ -66,17 +73,17 @@ function parseItem(value: unknown): BookmarkItem | null {
 
 /**
  * Reads a stored snapshot defensively: drops malformed records and anything whose parent
- * is gone, then restores the invariants (unique ids, dense order, a valid `lastSpaceId`).
- * Null when nothing usable is stored.
+ * is gone, then restores the invariants (unique ids, field caps, dense order, a valid
+ * `lastSpaceId`). Null when nothing usable is stored.
  */
-export function parseStored(raw: unknown): BookmarksSnapshot | null {
+export function parseStored(raw: unknown): BookmarksData | null {
   if (!isRecord(raw)) return null;
   const spaces: BookmarkSpace[] = [];
   for (const value of asArray(raw.spaces)) {
     if (!isRecord(value) || !isString(value.id) || spaces.some((s) => s.id === value.id)) continue;
     spaces.push({
       id: value.id,
-      name: typeof value.name === 'string' ? value.name : '',
+      name: typeof value.name === 'string' ? normalizeName(value.name, '') : '',
       color: asColor(value.color),
       order: isNumber(value.order) ? value.order : 0,
     });
@@ -91,7 +98,7 @@ export function parseStored(raw: unknown): BookmarksSnapshot | null {
     groups.push({
       id: value.id,
       spaceId: value.spaceId,
-      name: typeof value.name === 'string' ? value.name : '',
+      name: typeof value.name === 'string' ? normalizeName(value.name, '') : '',
       color: asColor(value.color),
       order: isNumber(value.order) ? value.order : 0,
     });
@@ -119,38 +126,71 @@ export function parseStored(raw: unknown): BookmarksSnapshot | null {
 }
 
 /** Throws when storage cannot be read, so the caller does not overwrite what it could not see. */
-export async function load(): Promise<BookmarksSnapshot | null> {
+export async function load(): Promise<BookmarksData | null> {
   const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
   return parseStored(raw[STORAGE_KEY]);
 }
 
-/** Debounced writer: the latest scheduled state wins. */
+/**
+ * Writes the latest state to storage as soon as it changes, one write in flight at a time. State
+ * scheduled during a write waits as a single dirty slot (newer replaces older) and is written
+ * right after, so a burst of changes costs two writes. A failed write keeps its state dirty
+ * unless newer state arrived, and retries with exponential backoff; changes that arrive during
+ * the backoff are written by that retry.
+ */
 export class Persistence {
-  #timer: ReturnType<typeof setTimeout> | null = null;
-  #pending: BookmarksSnapshot | null = null;
+  #dirty: BookmarksData | null = null;
+  /** Set when a write starts and cleared when the loop ends, so no change is left unwritten. */
+  #busy = false;
+  /** The current write loop; never rejects. */
+  #settled: Promise<void> = Promise.resolve();
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
+  #failures = 0;
 
-  schedule(state: BookmarksSnapshot): void {
-    this.#pending = state;
-    if (this.#timer) return;
-    this.#timer = setTimeout(() => {
-      this.#timer = null;
-      void this.flush();
-    }, DEBOUNCE_MS);
+  schedule(state: BookmarksData): void {
+    this.#dirty = state;
+    this.#start();
   }
 
-  /** Writes the pending state now. */
-  async flush(): Promise<void> {
-    if (this.#timer) {
-      clearTimeout(this.#timer);
-      this.#timer = null;
+  /** Writes any unwritten state now, skipping a backoff wait, and resolves when the write ends. A
+   * write that fails again stays dirty and re-arms the backoff; this does not reject. */
+  flush(): Promise<void> {
+    if (this.#retryTimer) {
+      clearTimeout(this.#retryTimer);
+      this.#retryTimer = null;
     }
-    const state = this.#pending;
-    this.#pending = null;
-    if (!state) return;
+    this.#start();
+    return this.#settled;
+  }
+
+  #start(): void {
+    if (this.#busy || this.#retryTimer || !this.#dirty) return;
+    this.#busy = true;
+    this.#settled = this.#writeLoop();
+  }
+
+  async #writeLoop(): Promise<void> {
     try {
-      await browser.storage.local.set({ [STORAGE_KEY]: state });
-    } catch (err) {
-      console.error('[bento-tools] bookmarks: save failed', err);
+      while (this.#dirty) {
+        const state = this.#dirty;
+        this.#dirty = null;
+        try {
+          await browser.storage.local.set({ [STORAGE_KEY]: state });
+          this.#failures = 0;
+        } catch (err) {
+          this.#dirty ??= state;
+          this.#failures += 1;
+          const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (this.#failures - 1));
+          console.error(`[bento-tools] bookmarks: save failed, retrying in ${delay} ms`, err);
+          this.#retryTimer = setTimeout(() => {
+            this.#retryTimer = null;
+            this.#start();
+          }, delay);
+          return;
+        }
+      }
+    } finally {
+      this.#busy = false;
     }
   }
 }

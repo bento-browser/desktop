@@ -1,5 +1,7 @@
 // Routes the `bookmarks/` shell actions to BookmarksStore. The protocol handler calls this
-// after its private-window check, so nothing here runs for a private window.
+// after its private-window check, so nothing here runs for a private window. Every action goes
+// through `afterInit`: one that arrives while the stored data is still loading waits for it, in
+// arrival order, instead of editing (and then overwriting) a state that has not been read.
 import type { Action, Event } from '@shared/protocol';
 import type { BookmarksStore } from './BookmarksStore';
 
@@ -17,16 +19,26 @@ export interface BookmarksActionContext {
   run: (action: Action) => void;
 }
 
-export function handleBookmarksAction(
-  action: BookmarksAction,
-  { bookmarks, reply, run }: BookmarksActionContext,
+export function handleBookmarksAction(action: BookmarksAction, context: BookmarksActionContext) {
+  const { bookmarks, reply } = context;
+  if (action.type === 'bookmarks/requestSnapshot') {
+    // Retries a failed load (a no-op once loaded), and replies when the load has settled.
+    void bookmarks.init();
+    bookmarks.afterInit(() =>
+      reply({ type: 'bookmarks/snapshot', snapshot: bookmarks.snapshot() }),
+    );
+    return;
+  }
+  bookmarks.afterInit(() => applyAction(action, context));
+}
+
+function applyAction(
+  action: Exclude<BookmarksAction, { type: 'bookmarks/requestSnapshot' }>,
+  { bookmarks, run }: BookmarksActionContext,
 ): void {
   switch (action.type) {
-    case 'bookmarks/requestSnapshot':
-      reply({ type: 'bookmarks/snapshot', snapshot: bookmarks.snapshot() });
-      return;
     case 'bookmarks/space/create':
-      bookmarks.createSpace(action.name);
+      bookmarks.createSpace(action.name, action.id);
       return;
     case 'bookmarks/space/update':
       bookmarks.updateSpace(action.id, { name: action.name, color: action.color });
@@ -38,7 +50,7 @@ export function handleBookmarksAction(
       bookmarks.selectSpace(action.id);
       return;
     case 'bookmarks/group/create':
-      bookmarks.createGroup(action.spaceId, action.name);
+      bookmarks.createGroup(action.spaceId, action.name, action.id);
       return;
     case 'bookmarks/group/update':
       bookmarks.updateGroup(action.id, { name: action.name, color: action.color });
@@ -50,7 +62,7 @@ export function handleBookmarksAction(
       bookmarks.moveGroup(action.id, action.spaceId, action.beforeId);
       return;
     case 'bookmarks/item/create':
-      bookmarks.createItem(action.groupId, action.beforeId, action.item);
+      bookmarks.createItem(action.groupId, action.beforeId, action.item, action.id);
       return;
     case 'bookmarks/item/update':
       bookmarks.updateItem(action.id, {
@@ -78,7 +90,10 @@ export function handleBookmarksAction(
       return;
     }
     case 'bookmarks/tabs/save':
-      void bookmarks.saveTabs(action.spaceId, action.groupId, action.tabIds);
+      void bookmarks.saveTabs(action.spaceId, action.groupId, action.tabIds, {
+        beforeId: action.beforeId,
+        ids: action.ids,
+      });
       return;
     case 'bookmarks/import/firefox':
       void bookmarks.importFirefox();

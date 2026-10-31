@@ -14,7 +14,7 @@ layer is `extensions/bento-tools/src/bookmarks/`.
   the extension's storage. The shell never writes it. `useBookmarksStore`
   (`extensions/bento-shell/src/state/bookmarks.ts`) is a downstream mirror with one setter,
   `apply(snapshot)`; the whole snapshot (spaces, groups and items, each sorted by `order`,
-  plus `lastSpaceId` and `firefoxImportOffered`) replaces the previous one.
+  plus `lastSpaceId`, `firefoxImportOffered` and the load `status`) replaces the previous one.
 - **Snapshot.** Tools broadcasts `bookmarks/snapshot` to the documents of regular windows on
   shell connect and after every change. The Bookmarks document is created lazily, so it
   sends `bookmarks/requestSnapshot` once when its port is ready and again on every
@@ -33,6 +33,71 @@ layer is `extensions/bento-tools/src/bookmarks/`.
 - **Private windows.** Chrome refuses to open the view and tools refuses `bookmarks/*` actions
   there. The command palette entry is not rendered in a private window, `Cmd/Ctrl+Shift+O`
   keeps opening Firefox's Library there, and the document shows a "not available" notice if it is ever shown in one.
+
+## Data layer
+
+`BookmarksStore.ts` holds the state and applies every mutation; `Persistence.ts` loads and
+writes `storage.local` key `bento.bookmarks.v1`; `bookmarksActions.ts` routes the `bookmarks/*`
+actions after the protocol handler's private-window check; `fields.ts` applies the field caps.
+The wire validator (`_shared/wire-action.ts`) rejects malformed actions before any of them run.
+
+### Load, status and action order
+
+- The store starts `loading`. `init()` reads storage and settles as `ready` (loaded, or seeded
+  with one empty "Personal" space on first run) or `loadFailed`. It never rejects.
+- Every `bookmarks/*` action goes through `afterInit`: one that arrives while the load is
+  pending is queued and runs, in arrival order, right after the loaded state has been announced.
+  Without that, an action received during startup would build on an empty state and its write
+  would replace the stored data. A direct store call while loading is refused, not queued.
+- `loadFailed` (storage could not be read) means: the snapshot has `status: 'loadFailed'` and
+  empty arrays, every mutation is refused, nothing is written, and no "Personal" space is
+  seeded. `bookmarks/requestSnapshot` calls `init()` again, which retries the read, and replies
+  once it settles; a successful retry announces the loaded state to every window.
+  The UI shows a notice with Retry (a `requestSnapshot`) while `status` is `loadFailed`.
+- Stored data that is present but unusable (no valid space) is treated as first run and replaced
+  by the seeded space.
+
+### Writes
+
+Writes are immediate and serialized: every change calls `Persistence.schedule(data)`, which
+starts a `storage.local.set` unless one is in flight. Changes made during a write replace one
+dirty slot (newest wins) and a single follow-up write carries them, so a burst costs two writes
+and quitting loses nothing beyond the write in flight. A failed write keeps its state dirty
+(unless newer state arrived), logs, and retries after 1 s, doubling to a 30 s ceiling; changes
+made during the backoff wait for that retry, and success resets it. `flush()` skips the wait
+(tests). The stored object is the snapshot without `status`.
+
+### Field caps
+
+One cap per stored field (`BOOKMARK_LIMITS` in `_shared/protocol.ts`, UTF-16 code units):
+names 1,024, link title 4,096, note and to-do text 32,768, favicon URL 262,144, link URL
+`MAX_URL_LENGTH`. Create, update, Firefox import, `tabs/save` and storage load all go through
+`fields.ts`, which trims names and titles, truncates to the cap and trims the end again, so
+normalizing a stored value returns it unchanged: delete + undo (a `item/create` of the old
+fields) reproduces the item. The wire validator rejects longer input on create and update with
+the same constants. Imported and tab-derived text is truncated rather than refused; a favicon
+URL over the cap or with a scheme the wire does not accept (`page-icon:`, `blob:`) is dropped; a
+blank link title falls back to the (capped) URL.
+
+### Client ids
+
+`space/create`, `group/create` and `item/create` take an optional `id`: a lowercase UUID
+(`crypto.randomUUID()`, validated by the wire guard). The create is refused, with no change and
+no event, when the id already exists among spaces, groups or items (one namespace). Tools
+generates an id when it is absent. A to-do's `done` can be set on create, so undo restores a done
+to-do in one action.
+
+### tabs/save placement and ids
+
+`bookmarks/tabs/save` saves every savable tab in one change (one renumber, one snapshot).
+
+- `beforeId`: the run goes before that item of the target group, in `tabIds` order; at the end
+  when it is absent, null or not in the group; ignored when `groupId` is null (a new group).
+- `ids`: client ids matched to `tabIds` by index. The link saved from `tabIds[i]` gets
+  `ids[i]`. A tab that is skipped (closed, private, unsavable URL, or a repeat of an earlier
+  `tabIds` entry) leaves its slot unused and does not shift later ones. A tab with no slot
+  (`ids` shorter than `tabIds`) gets a generated id. If any entry of `ids` already exists or
+  repeats, nothing is saved and no "Saved tabs" group is created.
 
 ## Document
 

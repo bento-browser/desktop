@@ -23,6 +23,7 @@ import {
 import { ADVANCED_KEY_TO_BROWSER_PRIVACY, ADVANCED_KEY_TO_PREF } from './privacy-levels';
 import {
   BOOKMARK_COLORS,
+  BOOKMARK_LIMITS,
   type Action,
   type BentoSettings,
   type BookmarkItemInput,
@@ -39,8 +40,8 @@ type Guards<T> = { [K in keyof T]-?: Guard<T[K]> };
 const MAX_TAB_IDS = 20_000;
 const MAX_ID_LIST = 5_000;
 const MAX_QUERY_LENGTH = MAX_TITLE_LENGTH;
-const MAX_NOTE_LENGTH = 32_768;
-const MAX_FAVICON_URL_LENGTH = 262_144;
+// Saved panels share the bookmark favicon cap.
+const MAX_FAVICON_URL_LENGTH = BOOKMARK_LIMITS.favIconUrl;
 const MAX_PIXELS = 100_000;
 const MAX_SCROLL_PIXELS = 10_000_000;
 const MAX_CLOSE_DELAY_MS = 60_000;
@@ -113,7 +114,14 @@ const favIconUrl: Guard<string> = (v): v is string =>
 const bookmarkUrl: Guard<string> = (v): v is string =>
   typeof v === 'string' && hasScheme(v, ALLOWED_URL_SCHEMES);
 const bookmarkColor = oneOf(...BOOKMARK_COLORS);
-const noteText = text(MAX_NOTE_LENGTH);
+// One cap per stored field: create and update use the same guard, so an item tools stored can
+// always be sent back by undo.
+const bookmarkName = text(BOOKMARK_LIMITS.name);
+const linkTitle = text(BOOKMARK_LIMITS.linkTitle);
+const bookmarkText = text(BOOKMARK_LIMITS.text);
+/** A client-chosen id (`crypto.randomUUID()`): lowercase RFC 9562 UUID, versions 1 to 8. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const uuid: Guard<string> = (v): v is string => typeof v === 'string' && UUID.test(v);
 
 const BOOKMARK_ITEM_INPUTS: {
   [K in BookmarkItemInput['kind']]: Guard<BookmarkItemInput>;
@@ -121,16 +129,17 @@ const BOOKMARK_ITEM_INPUTS: {
   link: shape<Extract<BookmarkItemInput, { kind: 'link' }>>({
     kind: oneOf('link'),
     url: bookmarkUrl,
-    title,
+    title: linkTitle,
     favIconUrl: optional(favIconUrl),
   }),
   note: shape<Extract<BookmarkItemInput, { kind: 'note' }>>({
     kind: oneOf('note'),
-    text: noteText,
+    text: bookmarkText,
   }),
   todo: shape<Extract<BookmarkItemInput, { kind: 'todo' }>>({
     kind: oneOf('todo'),
-    text: title,
+    text: bookmarkText,
+    done: optional(bool),
   }),
 };
 
@@ -142,6 +151,7 @@ const bookmarkItemInput: Guard<BookmarkItemInput> = (v): v is BookmarkItemInput 
 
 const ids = list(nat, MAX_TAB_IDS);
 const idStrings = list(id, MAX_ID_LIST);
+const clientIds = list(uuid, MAX_TAB_IDS);
 const bypassCache = optional(bool);
 const widthPx = bounded(MAX_PIXELS);
 const pinKey = { workspaceId: id, tabId: int };
@@ -285,26 +295,45 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'savedPanels/save': { url: navUrl(), title, favIconUrl: optional(favIconUrl) },
   'savedPanels/requestSnapshot': {},
   'bookmarks/requestSnapshot': {},
-  'bookmarks/space/create': { name },
-  'bookmarks/space/update': { id, name: optional(name), color: optional(bookmarkColor) },
+  'bookmarks/space/create': { id: optional(uuid), name: bookmarkName },
+  'bookmarks/space/update': {
+    id,
+    name: optional(bookmarkName),
+    color: optional(bookmarkColor),
+  },
   'bookmarks/space/delete': { id },
   'bookmarks/space/select': { id },
-  'bookmarks/group/create': { spaceId: id, name },
-  'bookmarks/group/update': { id, name: optional(name), color: optional(bookmarkColor) },
+  'bookmarks/group/create': { id: optional(uuid), spaceId: id, name: bookmarkName },
+  'bookmarks/group/update': {
+    id,
+    name: optional(bookmarkName),
+    color: optional(bookmarkColor),
+  },
   'bookmarks/group/delete': { id },
   'bookmarks/group/move': { id, spaceId: id, beforeId: nullable(id) },
-  'bookmarks/item/create': { groupId: id, beforeId: nullable(id), item: bookmarkItemInput },
+  'bookmarks/item/create': {
+    id: optional(uuid),
+    groupId: id,
+    beforeId: nullable(id),
+    item: bookmarkItemInput,
+  },
   'bookmarks/item/update': {
     id,
-    title: optional(title),
+    title: optional(linkTitle),
     url: optional(bookmarkUrl),
-    text: optional(noteText),
+    text: optional(bookmarkText),
     done: optional(bool),
   },
   'bookmarks/item/delete': { id },
   'bookmarks/item/move': { id, groupId: id, beforeId: nullable(id) },
   'bookmarks/item/open': { id, where: oneOf('panel', 'tab') },
-  'bookmarks/tabs/save': { spaceId: id, groupId: nullable(id), tabIds: ids },
+  'bookmarks/tabs/save': {
+    spaceId: id,
+    groupId: nullable(id),
+    tabIds: ids,
+    beforeId: optional(nullable(id)),
+    ids: optional(clientIds),
+  },
   'bookmarks/import/firefox': {},
   'bookmarks/import/dismiss': {},
   'externalMerge/requestSources': { requestId: id },

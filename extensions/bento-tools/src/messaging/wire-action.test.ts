@@ -400,6 +400,9 @@ describe('parseWireAction: malformed messages', () => {
       { kind: 'link', url: 'about:config', title: 'Config' },
       { kind: 'note', text: 'n'.repeat(32_768) },
       { kind: 'todo', text: 'Ship it' },
+      { kind: 'todo', text: 'Ship it', done: true },
+      { kind: 'todo', text: 't'.repeat(32_768), done: false },
+      { kind: 'link', url: 'https://example.com/', title: 't'.repeat(4_096) },
     ]) {
       expect(parse(create(item))).not.toBeNull();
     }
@@ -419,8 +422,9 @@ describe('parseWireAction: malformed messages', () => {
       { kind: 'link', url: 'https://example.com/', title: 'x', extra: true },
       { kind: 'note', text: 'n'.repeat(32_769) },
       { kind: 'note', text: 5 },
-      { kind: 'todo', text: 'x', done: true },
-      { kind: 'todo', text: 't'.repeat(4_097) },
+      { kind: 'todo', text: 'x', done: 'yes' },
+      { kind: 'todo', text: 't'.repeat(32_769) },
+      { kind: 'link', url: 'https://example.com/', title: 't'.repeat(4_097) },
     ]) {
       expect(parse(create(item))).toBeNull();
     }
@@ -449,12 +453,60 @@ describe('parseWireAction: malformed messages', () => {
     expect(parse(withFields('bookmarks/item/update', { title: 't'.repeat(4_097) }))).toBeNull();
     expect(parse(withFields('bookmarks/item/update', { done: 'yes' }))).toBeNull();
 
+    // One cap per field: whatever update accepts, create accepts, so undo is never refused.
+    expect(parse(withFields('bookmarks/item/update', { text: 't'.repeat(32_768) }))).not.toBeNull();
+    expect(parse(withFields('bookmarks/item/update', { text: 't'.repeat(32_769) }))).toBeNull();
+    expect(parse(withFields('bookmarks/space/create', { name: 'n'.repeat(1_024) }))).not.toBeNull();
+    expect(parse(withFields('bookmarks/space/update', { name: 'n'.repeat(1_025) }))).toBeNull();
+    expect(parse(withFields('bookmarks/group/create', { name: 'n'.repeat(1_025) }))).toBeNull();
+
     // tabs/save: tab ids are non-negative integers, groupId may be null.
     expect(parse(withFields('bookmarks/tabs/save', { tabIds: [1, -1] }))).toBeNull();
     expect(parse(withFields('bookmarks/tabs/save', { tabIds: 'all' }))).toBeNull();
     expect(parse(withFields('bookmarks/tabs/save', { groupId: undefined }))).toBeNull();
     expect(parse(withFields('bookmarks/tabs/save', { groupId: 'g-1', tabIds: [] }))).not.toBeNull();
     expect(parse(withFields('bookmarks/import/firefox', { force: true }))).toBeNull();
+  });
+
+  it('validates client ids on the create actions as lowercase UUIDs', () => {
+    const uuid = crypto.randomUUID();
+    for (const type of [
+      'bookmarks/space/create',
+      'bookmarks/group/create',
+      'bookmarks/item/create',
+    ] as const) {
+      expect(parse(VALID[type])).not.toBeNull(); // optional
+      expect(parse(withFields(type, { id: uuid }))).not.toBeNull();
+      expect(parse(withFields(type, { id: undefined }))).not.toBeNull();
+      for (const bad of ['', 'g-1', uuid.toUpperCase(), `${uuid}0`, uuid.slice(1), 7, null]) {
+        expect(parse(withFields(type, { id: bad }))).toBeNull();
+      }
+    }
+  });
+
+  it('validates the tabs/save drop position and client ids', () => {
+    const uuid = crypto.randomUUID();
+    const save = (fields: Record<string, unknown>) => withFields('bookmarks/tabs/save', fields);
+    for (const fields of [
+      { beforeId: 'i-1' },
+      { beforeId: null },
+      { beforeId: undefined },
+      { ids: [] },
+      { ids: [uuid, crypto.randomUUID()], tabIds: [1, 2] },
+      { beforeId: 'i-1', ids: [uuid], tabIds: [5] },
+    ]) {
+      expect(parse(save(fields))).not.toBeNull();
+    }
+    for (const fields of [
+      { beforeId: '' },
+      { beforeId: 4 },
+      { ids: 'x' },
+      { ids: ['not-a-uuid'] },
+      { ids: [uuid, 7] },
+      { ids: Array.from({ length: 20_001 }, () => uuid) },
+    ]) {
+      expect(parse(save(fields))).toBeNull();
+    }
   });
 
   it('validates settings patches, workspace changes, move targets, and advanced keys', () => {

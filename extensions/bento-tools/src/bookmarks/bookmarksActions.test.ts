@@ -3,6 +3,7 @@ import type { Action, Event } from '@shared/protocol';
 import { handle, type HandlerContext } from '../messaging/protocol-handler';
 import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import { BookmarksStore } from './BookmarksStore';
+import { STORAGE_KEY } from './Persistence';
 
 const REGULAR_WINDOW = 1;
 const PRIVATE_WINDOW = 9;
@@ -96,6 +97,138 @@ describe('bookmarks actions through the protocol handler', () => {
       snapshot: bookmarks.snapshot(),
     });
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('holds actions that arrive before the stored data has loaded', async () => {
+    const stored = new Map<string, unknown>();
+    const read = vi.fn(async (key: string) => ({ [key]: stored.get(key) }));
+    vi.mocked(browser.storage.local.get).mockImplementation(read as never);
+    vi.mocked(browser.storage.local.set).mockImplementation((async (
+      values: Record<string, unknown>,
+    ) => {
+      for (const [key, value] of Object.entries(values)) stored.set(key, value);
+    }) as never);
+    const first = await createBookmarks();
+    first.createGroup(first.snapshot().spaces[0]!.id, 'Stored');
+    await first.flush();
+
+    let releaseRead = () => {};
+    const gate = new Promise<void>((resolve) => (releaseRead = resolve));
+    read.mockImplementationOnce(async (key) => {
+      await gate;
+      return { [key]: stored.get(key) };
+    });
+    const bookmarks = new BookmarksStore();
+    const init = bookmarks.init();
+    const { ctx, sendAudience } = createContext(bookmarks, REGULAR_WINDOW);
+
+    // The shell may act before the store has read anything.
+    const spaceId = crypto.randomUUID();
+    handle({ type: 'bookmarks/space/create', id: spaceId, name: 'Early' }, ctx);
+    handle({ type: 'bookmarks/requestSnapshot' }, ctx);
+    expect(bookmarks.snapshot().spaces).toEqual([]);
+    expect(sendAudience).not.toHaveBeenCalled();
+
+    releaseRead();
+    await init;
+    await bookmarks.flush();
+
+    const snapshot = bookmarks.snapshot();
+    expect(snapshot.groups.map((group) => group.name)).toEqual(['Stored']);
+    expect(snapshot.spaces.map((space) => space.name)).toEqual(['Personal', 'Early']);
+    // The reply carries the state after the queued create.
+    expect(sendAudience).toHaveBeenCalledWith('regular', {
+      type: 'bookmarks/snapshot',
+      snapshot,
+    });
+    const written = stored.get(STORAGE_KEY) as { groups: unknown[]; spaces: unknown[] };
+    expect(written.groups).toHaveLength(1);
+    expect(written.spaces).toHaveLength(2);
+  });
+
+  it('refuses mutations after a failed load and retries it on requestSnapshot', async () => {
+    const stored = new Map<string, unknown>();
+    vi.mocked(browser.storage.local.get).mockImplementation((async (key: string) => ({
+      [key]: stored.get(key),
+    })) as never);
+    const first = await createBookmarks();
+    first.createGroup(first.snapshot().spaces[0]!.id, 'Stored');
+    await first.flush();
+    const writes = vi.mocked(browser.storage.local.set);
+    writes.mockClear();
+
+    vi.mocked(browser.storage.local.get).mockRejectedValueOnce(new Error('disk'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const bookmarks = new BookmarksStore();
+    await bookmarks.init();
+    const { ctx, sendAudience } = createContext(bookmarks, REGULAR_WINDOW);
+
+    handle({ type: 'bookmarks/space/create', name: 'Refused' }, ctx);
+    handle({ type: 'bookmarks/import/dismiss' }, ctx);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(bookmarks.snapshot()).toMatchObject({ status: 'loadFailed', spaces: [] });
+    expect(writes).not.toHaveBeenCalled();
+
+    // Retry: the reply is the loaded state, and edits work again.
+    stored.set(STORAGE_KEY, {
+      spaces: [{ id: 's1', name: 'Back', order: 0 }],
+      groups: [],
+      items: [],
+    });
+    handle({ type: 'bookmarks/requestSnapshot' }, ctx);
+    await vi.waitFor(() => expect(sendAudience).toHaveBeenCalled());
+    const reply = sendAudience.mock.calls.at(-1)![1] as Extract<
+      Event,
+      { type: 'bookmarks/snapshot' }
+    >;
+    expect(reply.snapshot.status).toBe('ready');
+    expect(reply.snapshot.spaces.map((space) => space.name)).toEqual(['Back']);
+    handle({ type: 'bookmarks/space/create', name: 'Accepted' }, ctx);
+    expect(bookmarks.snapshot().spaces.map((space) => space.name)).toEqual(['Back', 'Accepted']);
+  });
+
+  it('passes client ids, to-do state and the tabs/save placement through', async () => {
+    const bookmarks = await createBookmarks();
+    const { ctx } = createContext(bookmarks, REGULAR_WINDOW);
+    const [spaceId, groupId, todoId, tabItemId] = Array.from({ length: 4 }, () =>
+      crypto.randomUUID(),
+    );
+    vi.mocked(browser.tabs.get).mockImplementation((async (id: number) => ({
+      id,
+      url: `https://tab${id}.example/`,
+      title: `Tab ${id}`,
+    })) as never);
+
+    handle({ type: 'bookmarks/space/create', id: spaceId, name: 'Work' }, ctx);
+    handle({ type: 'bookmarks/group/create', id: groupId, spaceId: spaceId!, name: 'Inbox' }, ctx);
+    handle(
+      {
+        type: 'bookmarks/item/create',
+        id: todoId,
+        groupId: groupId!,
+        beforeId: null,
+        item: { kind: 'todo', text: 'Ship', done: true },
+      },
+      ctx,
+    );
+    handle(
+      {
+        type: 'bookmarks/tabs/save',
+        spaceId: spaceId!,
+        groupId: groupId!,
+        tabIds: [7],
+        beforeId: todoId!,
+        ids: [tabItemId!],
+      },
+      ctx,
+    );
+    await vi.waitFor(() => expect(bookmarks.snapshot().items).toHaveLength(2));
+
+    const snapshot = bookmarks.snapshot();
+    expect(snapshot.spaces.at(-1)).toMatchObject({ id: spaceId, name: 'Work' });
+    expect(snapshot.groups[0]).toMatchObject({ id: groupId, spaceId });
+    expect(snapshot.items.map((item) => item.id)).toEqual([tabItemId, todoId]);
+    expect(snapshot.items[1]).toMatchObject({ kind: 'todo', done: true });
   });
 
   it('applies mutations to the store', async () => {

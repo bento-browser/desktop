@@ -130,6 +130,7 @@ function snapshotOf(
   firefoxImportOffered = true,
 ): BookmarksSnapshot {
   return {
+    status: 'ready',
     spaces,
     groups: columns.map((column) => column.group),
     items: columns.flatMap((column) => column.items),
