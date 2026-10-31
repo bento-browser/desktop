@@ -144,7 +144,7 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
 }
 
 /* Cap the menu popup so it sits exactly under the trigger's outer width.
- * Mux UI's .muxui-menu-popup defaults to `min-width: 10rem;
+ * Mux UI's .muxui-menu__popup defaults to `min-width: 10rem;
  * max-width: 20rem; width: max-content` — a long "Delete <very long
  * name>" item pushes it up to 320px regardless of the sidebar.
  *
@@ -160,7 +160,7 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
  * rules lose to unlayered regardless of specificity. min-width:0
  * unlocks the 10rem floor for narrow sidebars (persist=width allows
  * down to 200px). */
-.bento-workspace-switcher__popover.muxui-menu-popup {
+.bento-workspace-switcher__popover.muxui-menu__popup {
   min-width: 0;
   max-width: calc(100vw - 2 * var(--space-s));
 }
@@ -197,15 +197,15 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
     color var(--muxui-semantic-motion-state-transition);
 }
 
-.muxui-button.bento-workspace-switcher__trigger:hover:not([data-disabled], [data-pending]),
-.muxui-button.bento-workspace-switcher__trigger[data-hovered]:not([data-disabled], [data-pending]) {
+.muxui-button.bento-workspace-switcher__trigger:hover:not([data-muxui-state-disabled], [data-muxui-state-pending]),
+.muxui-button.bento-workspace-switcher__trigger[data-muxui-state-hovered]:not([data-muxui-state-disabled], [data-muxui-state-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 22%, transparent);
   color: var(--color-90);
 }
 
-.muxui-button.bento-workspace-switcher__trigger:active:not([data-disabled], [data-pending]),
-.muxui-button.bento-workspace-switcher__trigger[data-pressed]:not([data-disabled], [data-pending]) {
+.muxui-button.bento-workspace-switcher__trigger:active:not([data-muxui-state-disabled], [data-muxui-state-pending]),
+.muxui-button.bento-workspace-switcher__trigger[data-muxui-state-pressed]:not([data-muxui-state-disabled], [data-muxui-state-pending]) {
   background-color: color-mix(in srgb, var(--color-60) 16%, transparent);
   border-color: color-mix(in srgb, var(--color-60) 28%, transparent);
   color: var(--color-90);
@@ -243,10 +243,10 @@ html[data-bento-collapsed='true']
 html[data-bento-collapsed='true']
   .muxui-button.bento-workspace-switcher__trigger:is(
     :hover,
-    [data-hovered],
+    [data-muxui-state-hovered],
     :active,
-    [data-pressed]
-  ):not([data-disabled], [data-pending]) {
+    [data-muxui-state-pressed]
+  ):not([data-muxui-state-disabled], [data-muxui-state-pending]) {
   background-color: transparent;
   border-color: transparent;
 }
@@ -276,9 +276,9 @@ html[data-bento-collapsed='true']
      the icon's own transition list (added below) so the change
      animates rather than snaps. */
   .bento-workspace-switcher__trigger:hover .bento-workspace-switcher__chevron,
-  .bento-workspace-switcher__trigger[data-hovered] .bento-workspace-switcher__chevron,
+  .bento-workspace-switcher__trigger[data-muxui-state-hovered] .bento-workspace-switcher__chevron,
   .bento-workspace-switcher__trigger:focus-visible .bento-workspace-switcher__chevron,
-  .bento-workspace-switcher__trigger[data-focus-visible] .bento-workspace-switcher__chevron {
+  .bento-workspace-switcher__trigger[data-muxui-state-focus-visible] .bento-workspace-switcher__chevron {
     opacity: 1;
   }
 
@@ -303,9 +303,9 @@ html[data-bento-collapsed='true']
   /* Each Menu.Item is a flex row (Mux UI default). min-width:0 stops the
      row from refusing to shrink below its intrinsic content width, which
      is what lets the inner __item-name truncate via text-overflow once
-     the popup itself is capped (see the unlayered .muxui-menu-popup rule
+     the popup itself is capped (see the unlayered .muxui-menu__popup rule
      above). */
-  .bento-workspace-switcher__popover .muxui-menu-item {
+  .bento-workspace-switcher__popover .muxui-menu__item {
     min-width: 0;
   }
 
@@ -386,11 +386,11 @@ html[data-bento-collapsed='true']
   }
 }
 
-.bento-workspace-switcher__popover.muxui-menu-popup {
+.bento-workspace-switcher__popover.muxui-menu__popup {
   min-width: 0;
   max-width: calc(100vw - 2 * var(--space-s));
 }
-.bento-workspace-switcher__popover .muxui-menu-item {
+.bento-workspace-switcher__popover .muxui-menu__item {
   min-width: 0;
 }
 .bento-workspace-switcher__popover .muxui-text.bento-workspace-switcher__item-name {
@@ -401,7 +401,7 @@ html[data-bento-collapsed='true']
   white-space: nowrap;
   color: inherit;
 }
-.bento-workspace-switcher__popover .muxui-menu-item.bento-workspace-switcher__delete-item {
+.bento-workspace-switcher__popover .muxui-menu__item.bento-workspace-switcher__delete-item {
   color: var(--muxui-reference-color-error-60);
 }
 .bento-workspace-switcher__popover .bento-icon {

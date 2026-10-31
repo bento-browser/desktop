@@ -9,11 +9,11 @@
   min-width: 8.75rem;
 }
 
-.bento-chrome-menu--sm .muxui-menu-section-header {
+.bento-chrome-menu--sm .muxui-menu__header {
   padding: var(--space-4xs) var(--space-2xs);
 }
 
-.bento-chrome-menu--sm .muxui-menu-separator {
+.bento-chrome-menu--sm .muxui-menu__separator {
   margin-block: 2px;
 }
 
@@ -23,6 +23,6 @@
   color: var(--muxui-semantic-content-muted);
 }
 
-.bento-chrome-menu__submenu-item[data-focused]::after {
+.bento-chrome-menu__submenu-item[data-muxui-state-focused]::after {
   color: var(--muxui-semantic-action-foreground);
 }

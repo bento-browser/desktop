@@ -21,7 +21,7 @@ distribution is not enabled yet.
 
 - Node.js 24.19.0 (`nvm use` reads `.nvmrc`)
 - Mux UI React is installed from npm as the exact published version
-  `@muxui/react@0.1.0-rc.1`. The frozen lockfile records its registry
+  `@muxui/react@0.1.0-rc.4`. The frozen lockfile records its registry
   integrity. No local Mux archive is required.
 - Mozilla build prerequisites — installed by `pnpm run bootstrap` (calls
   `mach bootstrap` under the hood). Expect Python 3, Rust, clang, and several

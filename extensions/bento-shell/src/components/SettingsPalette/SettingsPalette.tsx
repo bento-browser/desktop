@@ -262,7 +262,7 @@ export default function SettingsPalette({
   const sliderSpec = sliderSpecFor(stage);
   const sliderValue = editor.value ?? sliderSpec?.defaultValue ?? sliderSpec?.min ?? 0;
   // An editor stage keeps no focus of its own: its highlight marks the preset that matches the value.
-  const highlightRef = useRowHighlight(editing ? '[role="option"][data-current]' : undefined);
+  const highlightRef = useRowHighlight(editing ? '[role="option"][data-muxui-state-current]' : undefined);
 
   // The one control that holds the focus and the keys: the slider on a slider page (no search
   // field is rendered there), else the field.

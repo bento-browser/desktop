@@ -6,8 +6,8 @@
 // with the rows) that slides to the row holding the virtual focus. Pointer hover moves that same
 // focus, so the keyboard and the pointer share the slab and there are never two.
 //
-// The hook measures: it reads the focused row from the DOM (React Aria marks it `data-focused`; a
-// stage that keeps no focus of its own marks its row `data-current`) and writes its box into
+// The hook measures: it reads Mux's `data-muxui-state-focused` from the DOM (a number
+// editor follows `data-muxui-state-current` instead) and writes the row's box into
 // custom properties on the list. It also keeps a list that appears under a stationary pointer
 // from taking the hover, and hands hover back at the first real movement (see `follow`).
 
@@ -96,7 +96,7 @@ function follow(list: HTMLElement, selector: string): () => void {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ['data-focused', 'data-current'],
+    attributeFilter: ['data-muxui-state-focused', 'data-muxui-state-current'],
   });
   const resizes = new ResizeObserver(place);
   resizes.observe(list);
@@ -171,7 +171,7 @@ function follow(list: HTMLElement, selector: string): () => void {
  * row to follow and is fixed for the life of the list element: a list that changes it is
  * remounted (the Settings palette keys its list by stage).
  */
-export function useRowHighlight(selector = '[role="option"][data-focused]') {
+export function useRowHighlight(selector = '[role="option"][data-muxui-state-focused]') {
   const stop = useRef<(() => void) | undefined>(undefined);
   return useCallback(
     (list: HTMLElement | null) => {

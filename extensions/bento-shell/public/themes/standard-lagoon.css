@@ -51,9 +51,32 @@
     --muxui-component-tabs-panel-foreground: #333b3a;
     --muxui-component-tabs-tab-foreground: #55605f;
     --muxui-component-tabs-vertical-list-border: #dde3e2;
+    --muxui-component-taggroup-brand-dot: #408383;
+    --muxui-component-taggroup-brand-foreground: #003a3a;
+    --muxui-component-taggroup-brand-selected-background: #006a6b;
+    --muxui-component-taggroup-brand-selected-foreground: #f2f9f9;
+    --muxui-component-taggroup-brand-strong-foreground: #003a3a;
+    --muxui-component-taggroup-brand-tint-heavy: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-color-50) 40%,
+      #00000000
+    );
+    --muxui-component-taggroup-brand-tint-weak: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-color-50) 10%,
+      #00000000
+    );
     --muxui-component-taggroup-label: #333b3a;
-    --muxui-component-taggroup-selected-foreground-hover: #f2f9f9;
-    --muxui-component-taggroup-tag-background: #edf1f1;
+    --muxui-component-taggroup-neutral-dot: #55605f;
+    --muxui-component-taggroup-neutral-selected-background: #333b3a;
+    --muxui-component-taggroup-neutral-selected-foreground: #f5f8f8;
+    --muxui-component-taggroup-selected-overlay-light: #f5f8f8;
+    --muxui-component-taggroup-selected-overlay-scheme: #333b3a;
+    --muxui-component-taggroup-tag-background: color-mix(
+      in srgb,
+      var(--muxui-semantic-surface-strong) 8%,
+      #00000000
+    );
     --muxui-component-taggroup-tag-foreground: #333b3a;
     --muxui-component-textfield-label: #333b3a;
     --muxui-reference-color-brand-10: #deeceb;
@@ -336,9 +359,36 @@
     --muxui-component-tabs-panel-foreground: #c6cecd;
     --muxui-component-tabs-tab-foreground: #8f9a99;
     --muxui-component-tabs-vertical-list-border: #303736;
+    --muxui-component-taggroup-brand-dot: #699c9c;
+    --muxui-component-taggroup-brand-foreground: #b7d1d0;
+    --muxui-component-taggroup-brand-selected-background: #699c9c;
+    --muxui-component-taggroup-brand-selected-foreground: #002b2b;
+    --muxui-component-taggroup-brand-strong-foreground: #f2f9f9;
+    --muxui-component-taggroup-brand-tint-heavy: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-color-50) 50%,
+      #00000000
+    );
+    --muxui-component-taggroup-brand-tint-weak: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-color-50) 25%,
+      #00000000
+    );
     --muxui-component-taggroup-label: #d4dbda;
-    --muxui-component-taggroup-selected-foreground-hover: #f2f9f9;
-    --muxui-component-taggroup-tag-background: #2a302f;
+    --muxui-component-taggroup-neutral-dot: #adb7b5;
+    --muxui-component-taggroup-neutral-selected-background: #dde3e2;
+    --muxui-component-taggroup-neutral-selected-foreground: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-neutral-10) 85%,
+      #000000
+    );
+    --muxui-component-taggroup-selected-overlay-light: #f5f8f8;
+    --muxui-component-taggroup-selected-overlay-scheme: #dde3e2;
+    --muxui-component-taggroup-tag-background: color-mix(
+      in srgb,
+      var(--muxui-semantic-surface-strong) 8%,
+      #00000000
+    );
     --muxui-component-taggroup-tag-foreground: #cbd3d1;
     --muxui-component-textfield-label: #adb7b5;
     --muxui-reference-color-brand-10: #deeceb;

@@ -74,6 +74,33 @@ function topLevelBlocks(css, source) {
   }
 }
 
+/** Keep RC4's public layers separate so component roots cannot enter the token bridge. */
+function publicLayerCss(css, source) {
+  const blocks = topLevelBlocks(css, source);
+  const order = '@layer muxui.tokens, muxui.components, muxui.utilities;';
+  const layers = new Map();
+  for (const [index, block] of blocks.entries()) {
+    let prelude = squash(block.prelude);
+    if (index === 0) {
+      if (!prelude.startsWith(`${order} `)) {
+        throw new MuxSourceError(`${source} changed the public layer order`);
+      }
+      prelude = prelude.slice(order.length).trim();
+    }
+    const name = /^@layer muxui\.(tokens|components|utilities)$/.exec(prelude)?.[1];
+    if (!name || layers.has(name)) {
+      throw new MuxSourceError(`${source} has an unexpected or duplicate public layer: ${prelude}`);
+    }
+    layers.set(name, block.body);
+    if (name !== 'tokens' && source === THEMES_CSS && block.body.trim()) {
+      throw new MuxSourceError(`${source} has rules outside the public token layer`);
+    }
+  }
+  if (!layers.get('tokens'))
+    throw new MuxSourceError(`${source} is missing the public token layer`);
+  return layers;
+}
+
 /**
  * Body of the flat top-level rule whose selector list is exactly `selector`. Matching the
  * whole selector list (not a substring) keeps `:root` from landing on the compatibility
@@ -119,12 +146,14 @@ export function parseDeclarations(body) {
  * @returns {{ root: string, modes: { selector: string, body: string }[], closure: string }}
  */
 export function readPublicBlocks(stylesCss) {
-  const root = extractPublicBlock(stylesCss, ':root');
+  const layers = publicLayerCss(stylesCss, STYLES);
+  const tokenCss = layers.get('tokens');
+  const root = extractPublicBlock(tokenCss, ':root');
   const modes = PUBLIC_MODE_SELECTORS.map((selector) => ({
     selector,
-    body: extractPublicBlock(stylesCss, selector),
+    body: extractPublicBlock(tokenCss, selector),
   }));
-  const closure = extractPublicBlock(stylesCss, PUBLIC_CLOSURE_SELECTOR);
+  const closure = extractPublicBlock(layers.get('components') ?? '', PUBLIC_CLOSURE_SELECTOR);
 
   for (const token of [
     '--muxui-reference-color-brand-60',
@@ -179,7 +208,10 @@ function colorSchemeOfThemeRule(selector) {
 export function splitCanonicalThemeRules(themesCss, themeIds) {
   const rulesById = new Map(themeIds.map((id) => [id, []]));
   const schemesById = new Map(themeIds.map((id) => [id, new Set()]));
-  for (const { prelude, body } of topLevelBlocks(themesCss, THEMES_CSS)) {
+  for (const { prelude, body } of topLevelBlocks(
+    publicLayerCss(themesCss, THEMES_CSS).get('tokens'),
+    THEMES_CSS,
+  )) {
     if (prelude.startsWith('@')) {
       throw new MuxSourceError(`${THEMES_CSS} has an unexpected at-rule: ${prelude}`);
     }

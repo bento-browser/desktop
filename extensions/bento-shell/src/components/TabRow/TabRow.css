@@ -334,34 +334,34 @@
 
   .bento-tab-row--selected
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:hover:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:active:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-hovered]:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
+    .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-pressed]:not([data-muxui-state-disabled], [data-muxui-state-pending]) {
     background-color: color-mix(in srgb, var(--neutral-90) 10%, transparent);
     color: var(--neutral-90);
   }
 
   .bento-tab-row--active
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:hover:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost']:active:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
+    .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-hovered]:not([data-muxui-state-disabled], [data-muxui-state-pending]),
   .bento-tab-row--active
     .bento-tab-row__actions
-    .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
+    .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-pressed]:not([data-muxui-state-disabled], [data-muxui-state-pending]) {
     background-color: color-mix(in srgb, var(--color-60-fg) 16%, transparent);
     color: var(--color-60-fg);
   }
@@ -460,19 +460,19 @@
 .bento-tab-row--active .bento-tab-row__audio-control .muxui-icon-button,
 .bento-tab-row--active
   .bento-tab-row__actions
-  .muxui-icon-button[data-variant='ghost']:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-muxui-variant='ghost']:not([data-muxui-state-disabled], [data-muxui-state-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .muxui-icon-button[data-variant='ghost']:hover:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-muxui-variant='ghost']:hover:not([data-muxui-state-disabled], [data-muxui-state-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .muxui-icon-button[data-variant='ghost']:active:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-muxui-variant='ghost']:active:not([data-muxui-state-disabled], [data-muxui-state-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .muxui-icon-button[data-variant='ghost'][data-hovered]:not([data-disabled], [data-pending]),
+  .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-hovered]:not([data-muxui-state-disabled], [data-muxui-state-pending]),
 .bento-tab-row--active
   .bento-tab-row__actions
-  .muxui-icon-button[data-variant='ghost'][data-pressed]:not([data-disabled], [data-pending]) {
+  .muxui-icon-button[data-muxui-variant='ghost'][data-muxui-state-pressed]:not([data-muxui-state-disabled], [data-muxui-state-pending]) {
   color: var(--color-60-fg);
 }
 

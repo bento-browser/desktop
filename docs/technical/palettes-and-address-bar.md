@@ -77,21 +77,31 @@ palette document stays loaded, so it shows with the query it had.
 The command palette, address bar and Settings palette share one highlight
 (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
 own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
-(transform and block-size on the Mux `state` pair, the sidebar hover highlight's 120 ms) to the row holding the virtual
-focus. The hook only measures: a `MutationObserver` on `data-focused` writes the row's box
+(transform and block/inline size at half the Mux `state` duration, 125 ms in RC4, with the
+same spring easing) to the row holding the virtual focus. Colour and opacity keep the full
+state pair (250 ms in RC4), including coordinated mode fades. First placement and stage
+changes are instant; reduced motion disables the transition.
+The hook only measures: a `MutationObserver` on `data-muxui-state-focused` writes the row's box
 into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
 popup's enter transform does not skew it. The slab anchors at the physical `left: 0` because
 those offsets are physical: a logical inline-start anchor sat at the right edge in RTL, shifted by
 the row's offset (`RowHighlight.test.ts` keeps the rule). Pointer hover moves that same focus through React
 Aria's `shouldFocusOnHover` (passed as a props object, `FOCUS_ON_HOVER`), so the pointer
 and the keyboard never show two highlights. Its colour is `--bento-palette-highlight-bg`
-(two steps above Mux's item focus fill, both modes). The slab takes its height from the row
+(light neutral-30, pressed neutral-40; dark neutral-14, pressed neutral-18), resolved at each
+explicit theme scope for a darker fill in both modes. Higher semantic neutral steps darken
+light mode but lighten dark mode. The slab takes its height from the row
 (`offsetHeight`), so rows of different heights need nothing more: the Settings palette's
 two-line option rows and the focused protection level, which grows by its benefits and
-caveats, make the slab change size as it moves, on the same `state` pair.
+caveats, make the slab change size as it moves, on the same half-duration geometry timing.
 
 Pitfalls:
 
+- Mux RC4 replaces React Aria's unprefixed state attributes. Observe and query
+  `data-muxui-state-focused` (the number editor follows `data-muxui-state-current`),
+  and suppress row fills and detect presses through the matching public state names.
+  Legacy selectors leave the slab hidden and Mux's pale row fill visible. A static
+  fixture with manually supplied legacy attributes missed this; verify real consumers.
 - Clear is reachable with Tab, but a remaining keyboard activation issue was reproduced in
   both palettes in isolated Chromium: with a nonempty query, press ArrowDown, Tab to Clear,
   then Enter or Space. Focus returns to the input without clearing the query. The shared
@@ -246,7 +256,7 @@ Do not reuse the URL regex on the query. `data:` URLs skip the URL test, since
 they carry the page itself (a 50 MiB one took about 25 ms per scan, on every
 keystroke) and only their title is matched.
 
-Pitfall: the grid for the result row is on Mux's `.muxui-button-content`, not the
+Pitfall: the grid for the result row is on Mux's `.muxui-button__label`, not the
 Button (see
 [../mux-ui-component-customisations.md](../mux-ui-component-customisations.md)).
 The title and domain share one `.bento-tab-list-search__text` flex column in the

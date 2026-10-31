@@ -18,9 +18,9 @@ const shellPackage = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/bento-shell/package.json'), 'utf8'),
 );
 // Pin the published package and registry integrity so lock tampering fails offline.
-const muxuiVersion = '0.1.0-rc.1';
+const muxuiVersion = '0.1.0-rc.4';
 const muxuiIntegrity =
-  'sha512-J7MB0roUffNcwygIxEO1KmTR0vW5Eh5IY1naCOahJjDsYMlR/OIp1QGzHs2zWCP/DQo4dDUnTHVZwzoCYgefJQ==';
+  'sha512-9XRnBRYCvSN7quvfL8nNMtNLRV9NMriSmjjGwP8Ja7w90CycxfKCp4xykxRlrWDLWnQgs8086vJ70KKD7BkVtA==';
 const muxuiTarball = `https://registry.npmjs.org/@muxui/react/-/react-${muxuiVersion}.tgz`;
 
 const APPROVED_SHELL_RUNTIME_DEPENDENCIES = Object.freeze({

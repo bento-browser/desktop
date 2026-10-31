@@ -200,7 +200,7 @@ body {
       var(--bento-mode-fade-colours) !important;
   }
 
-  [data-bento-mode-fade] .bento-pinned-panels__button.muxui-icon-button[data-variant='neutral'] {
+  [data-bento-mode-fade] .bento-pinned-panels__button.muxui-icon-button[data-muxui-variant='neutral'] {
     transition:
       all var(--muxui-semantic-motion-reveal-transition),
       var(--bento-mode-fade-colours) !important;
@@ -418,9 +418,9 @@ body {
 
   [data-bento-mode-fade] .bento-row-highlight[data-highlight-motion]::before {
     transition:
-      transform var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
-      block-size var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
-      inline-size var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
+      transform calc(var(--muxui-semantic-motion-state-transition-duration) / 2) var(--muxui-semantic-motion-state-transition-easing),
+      block-size calc(var(--muxui-semantic-motion-state-transition-duration) / 2) var(--muxui-semantic-motion-state-transition-easing),
+      inline-size calc(var(--muxui-semantic-motion-state-transition-duration) / 2) var(--muxui-semantic-motion-state-transition-easing),
       opacity var(--muxui-semantic-motion-state-transition-duration) var(--muxui-semantic-motion-state-transition-easing),
       var(--bento-mode-fade-colours) !important;
   }

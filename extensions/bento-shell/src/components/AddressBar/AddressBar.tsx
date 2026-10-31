@@ -573,7 +573,7 @@ export default function AddressBar({
                     <BentoIcon
                       icon={ChevronDownIcon}
                       size="sm"
-                      className="muxui-select-arrow bento-address-bar__engine-chevron"
+                      className="muxui-select__arrow bento-address-bar__engine-chevron"
                     />
                   </Select.Trigger>
                   <Select.Popup className="bento-address-bar__engine-popover" modal={false}>

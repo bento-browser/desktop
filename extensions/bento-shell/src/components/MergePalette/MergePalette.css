@@ -129,7 +129,7 @@
   gap: var(--space-xs);
 }
 
-.muxui-command-palette__popup .bento-merge-palette__loader .muxui-progress-bar-header {
+.muxui-command-palette__popup .bento-merge-palette__loader .muxui-progress-bar__header {
   text-align: start;
 }
 

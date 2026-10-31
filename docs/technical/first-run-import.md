@@ -273,7 +273,7 @@ Welcome dialog pitfall: transformed entry animations count toward scrollable
 overflow. The content column (`overflow-y: auto`) showed a scrollbar for the length
 of every step change because the stage and tiles start offset by
 `--muxui-semantic-layout-inset-tiny`; reserve room (`padding-block-end` of that
-token on `.bento-welcome > .muxui-dialog-content`) instead of clipping.
+token on `.bento-welcome > .muxui-dialog__content`) instead of clipping.
 
 ## Import handoff
 
