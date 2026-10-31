@@ -120,11 +120,62 @@ function applyPreference(
   });
 }
 
+/** Watches Auto without subscribing the owning React tree to the preference. */
+function watchSystemMode(preferStoredSystemResolution: boolean): () => void {
+  const media = matchMedia(DARK_QUERY);
+  const onChange = () => {
+    applyMode('system', { preferStoredSystemResolution }, undefined, (resolved) => {
+      if (!preferStoredSystemResolution) {
+        storeResolvedMode(resolved);
+        publishResolvedMode('system', resolved);
+      }
+    });
+  };
+  media.addEventListener('change', onChange);
+
+  let channel: BroadcastChannel | null = null;
+  const onMessage = (event: MessageEvent) => {
+    const data = event.data as { kind?: unknown; resolved?: unknown; windowId?: unknown } | null;
+    if (
+      !preferStoredSystemResolution ||
+      !data ||
+      data.kind !== RESOLVED_MODE_KIND ||
+      (data.resolved !== 'light' && data.resolved !== 'dark') ||
+      !isForThisWindow(data.windowId)
+    ) {
+      return;
+    }
+    storeResolvedMode(data.resolved);
+    applyMode('system', { preferStoredSystemResolution: true });
+  };
+  if (preferStoredSystemResolution && typeof BroadcastChannel !== 'undefined') {
+    channel = new BroadcastChannel(CHANNEL_NAME);
+    channel.addEventListener('message', onMessage);
+  }
+
+  const onStorage = (event: StorageEvent) => {
+    if (
+      !preferStoredSystemResolution ||
+      event.key !== RESOLVED_READ_KEY ||
+      (event.newValue !== 'light' && event.newValue !== 'dark')
+    ) {
+      return;
+    }
+    applyMode('system', { preferStoredSystemResolution: true });
+  };
+  if (preferStoredSystemResolution) window.addEventListener('storage', onStorage);
+
+  return () => {
+    media.removeEventListener('change', onChange);
+    if (channel) {
+      channel.removeEventListener('message', onMessage);
+      channel.close();
+    }
+    if (preferStoredSystemResolution) window.removeEventListener('storage', onStorage);
+  };
+}
+
 export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
-  // A boolean, not the pref: this hook sits at the root of every document, and a root that
-  // re-renders on every flip re-renders its whole tree (the sidebar's tab rows) just when the
-  // fade is about to start.
-  const isAuto = useSettingsStore((s) => s.current?.uiColorMode === 'system');
   const preferStoredSystemResolution = options.preferStoredSystemResolution === true;
   const appliedPref = useRef<UiColorModePref | null>(null);
 
@@ -151,59 +202,23 @@ export function useFirefoxTheme(options: FirefoxThemeOptions = {}): void {
     return useSettingsStore.subscribe(sync);
   }, [preferStoredSystemResolution]);
 
-  // The listeners that keep an Auto choice following the OS and the window's other documents.
+  // Entering or leaving Auto must not re-render a document's root: the footer cycles through
+  // Auto, so even a boolean React selector made Auto-to-Light render every sidebar row in the
+  // lead window and blocked the other documents' settings delivery. Manage listeners in the
+  // store update alongside the mode subscription instead.
   useEffect(() => {
-    if (!isAuto) return;
-    const media = matchMedia(DARK_QUERY);
-    const onChange = () => {
-      applyMode('system', { preferStoredSystemResolution }, undefined, (resolved) => {
-        if (!preferStoredSystemResolution) {
-          storeResolvedMode(resolved);
-          publishResolvedMode('system', resolved);
-        }
-      });
+    let stop: (() => void) | undefined;
+    const sync = (state: ReturnType<typeof useSettingsStore.getState>) => {
+      const auto = state.current?.uiColorMode === 'system';
+      if (auto === (stop !== undefined)) return;
+      stop?.();
+      stop = auto ? watchSystemMode(preferStoredSystemResolution) : undefined;
     };
-    media.addEventListener('change', onChange);
-
-    let channel: BroadcastChannel | null = null;
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { kind?: unknown; resolved?: unknown; windowId?: unknown } | null;
-      if (
-        !preferStoredSystemResolution ||
-        !data ||
-        data.kind !== RESOLVED_MODE_KIND ||
-        (data.resolved !== 'light' && data.resolved !== 'dark') ||
-        !isForThisWindow(data.windowId)
-      ) {
-        return;
-      }
-      storeResolvedMode(data.resolved);
-      applyMode('system', { preferStoredSystemResolution: true });
-    };
-    if (preferStoredSystemResolution && typeof BroadcastChannel !== 'undefined') {
-      channel = new BroadcastChannel(CHANNEL_NAME);
-      channel.addEventListener('message', onMessage);
-    }
-
-    const onStorage = (event: StorageEvent) => {
-      if (
-        !preferStoredSystemResolution ||
-        event.key !== RESOLVED_READ_KEY ||
-        (event.newValue !== 'light' && event.newValue !== 'dark')
-      ) {
-        return;
-      }
-      applyMode('system', { preferStoredSystemResolution: true });
-    };
-    if (preferStoredSystemResolution) window.addEventListener('storage', onStorage);
-
+    sync(useSettingsStore.getState());
+    const unsubscribe = useSettingsStore.subscribe(sync);
     return () => {
-      media.removeEventListener('change', onChange);
-      if (channel) {
-        channel.removeEventListener('message', onMessage);
-        channel.close();
-      }
-      if (preferStoredSystemResolution) window.removeEventListener('storage', onStorage);
+      unsubscribe();
+      stop?.();
     };
-  }, [preferStoredSystemResolution, isAuto]);
+  }, [preferStoredSystemResolution]);
 }

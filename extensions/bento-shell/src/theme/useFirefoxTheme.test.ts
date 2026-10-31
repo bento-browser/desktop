@@ -15,6 +15,9 @@ interface StoreState {
 interface FakeDocument {
   attributes: Map<string, string>;
   osDark: boolean;
+  renderUpdates: number;
+  mediaListeners: Set<() => void>;
+  cleanups: Array<() => void>;
   mode: string;
   flipAt?: number;
   storageListeners: Set<(event: { key: string; newValue: string | null }) => void>;
@@ -36,6 +39,9 @@ function freshDocument(): FakeDocument {
   return {
     attributes: new Map(),
     osDark: false,
+    renderUpdates: 0,
+    mediaListeners: new Set(),
+    cleanups: [],
     mode: 'light',
     storageListeners: new Set(),
     storeListeners: new Set(),
@@ -122,6 +128,7 @@ async function loadDocument({
   return {
     document,
     colorMode: () => document.attributes.get('data-color-mode'),
+    dispose: () => as(document, () => document.cleanups.forEach((cleanup) => cleanup())),
   };
 }
 
@@ -131,14 +138,26 @@ beforeEach(() => {
   posted = [];
   active = freshDocument();
   vi.doMock('react', () => ({
-    useEffect: (effect: () => void) => effect(),
+    useEffect: (effect: () => void | (() => void)) => {
+      const cleanup = effect();
+      if (cleanup) active.cleanups.push(cleanup);
+    },
     useRef: (initial: unknown) => ({ current: initial }),
   }));
   vi.doMock('../state/settings', () => ({
     // The selector form is what React renders with; getState and subscribe are what the
     // store notifies outside React.
     useSettingsStore: Object.assign(
-      (select: (state: unknown) => unknown) => select(stateOf(active)),
+      (select: (state: StoreState) => unknown) => {
+        const owner = active;
+        let selected = select(stateOf(owner));
+        owner.storeListeners.add((state) => {
+          const next = select(state);
+          if (!Object.is(next, selected)) owner.renderUpdates += 1;
+          selected = next;
+        });
+        return selected;
+      },
       {
         getState: () => stateOf(active),
         subscribe: (listener: (state: StoreState, previous: StoreState) => void) => {
@@ -184,11 +203,15 @@ beforeEach(() => {
       if (type === 'storage') active.storageListeners.delete(listener);
     },
   });
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('color-scheme') && active.osDark,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const owner = active;
+    return {
+      matches: query.includes('color-scheme') && owner.osDark,
+      addEventListener: (_type: string, listener: () => void) => owner.mediaListeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) =>
+        owner.mediaListeners.delete(listener),
+    };
+  });
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => {
@@ -278,6 +301,61 @@ describe('resolved colour mode of private windows', () => {
 
 describe('applying a settings change', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('does not schedule root renders when the footer enters or leaves Auto', async () => {
+    vi.useFakeTimers();
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    for (const mode of ['dark', 'system', 'light']) setStoreMode(sidebar.document, mode);
+    expect(sidebar.document.renderUpdates).toBe(0);
+  });
+
+  it('starts and stops Auto listeners inside the store update and cleans them up on unmount', async () => {
+    vi.useFakeTimers();
+    const overlay = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: true,
+    });
+    expect(overlay.document.mediaListeners.size).toBe(0);
+    setStoreMode(overlay.document, 'system');
+    expect(overlay.document.mediaListeners.size).toBe(1);
+    expect(overlay.document.storageListeners.size).toBe(1);
+    setStoreMode(overlay.document, 'system');
+    expect(overlay.document.mediaListeners.size).toBe(1);
+    setStoreMode(overlay.document, 'light');
+    expect(overlay.document.mediaListeners.size).toBe(0);
+    expect(overlay.document.storageListeners.size).toBe(0);
+    setStoreMode(overlay.document, 'system');
+    overlay.dispose();
+    expect(overlay.document.storeListeners.size).toBe(0);
+    expect(overlay.document.mediaListeners.size).toBe(0);
+    expect(overlay.document.storageListeners.size).toBe(0);
+    expect(channels.every(({ closed }) => closed)).toBe(true);
+  });
+
+  it('follows OS changes after entering Auto without a React render', async () => {
+    vi.useFakeTimers();
+    const sidebar = await loadDocument({
+      windowId: 1,
+      isPrivate: false,
+      mode: 'light',
+      stored: false,
+    });
+    setStoreMode(sidebar.document, 'system');
+    sidebar.document.osDark = true;
+    as(sidebar.document, () => {
+      for (const listener of sidebar.document.mediaListeners) listener();
+    });
+    expect(sidebar.colorMode()).toBe('dark');
+    expect(storage.get('resolved-color-mode')).toBe('dark');
+    expect(sidebar.document.renderUpdates).toBe(0);
+  });
 
   it('applies, fades and records the mode inside the store update, before React renders it', async () => {
     vi.useFakeTimers();
@@ -369,8 +447,8 @@ describe('applying a settings change', () => {
     vi.useFakeTimers();
     const start = Date.now();
     vi.stubGlobal('performance', { now: () => Date.now() - start });
-    // Explicit light with the OS dark. The Auto listeners are installed by an effect that only
-    // runs once React has rendered the Auto pref, which this hook instance never does here.
+    // Explicit light with the OS dark. Preparation must re-read the live preference even if
+    // no media-query event was delivered during the wait.
     const sidebar = await loadDocument({
       windowId: 1,
       isPrivate: false,
@@ -381,7 +459,7 @@ describe('applying a settings change', () => {
 
     setStoreMode(sidebar.document, 'system', Date.now() + 120);
     expect(sidebar.colorMode()).toBe('light');
-    // The OS turns light during the wait, before anything listens: no event is heard.
+    // Change the OS value without delivering a media-query event.
     sidebar.document.osDark = false;
     as(sidebar.document, () => vi.advanceTimersByTime(140));
 
