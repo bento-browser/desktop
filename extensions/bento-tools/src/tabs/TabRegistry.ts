@@ -886,7 +886,8 @@ export class TabRegistry {
     if (tab.pageError === (pageError ?? undefined)) return;
     if (pageError) tab.pageError = pageError;
     else delete tab.pageError;
-    this.#enqueue({ kind: 'updated', id, changes: { pageError: pageError ?? undefined } });
+    // null, not undefined: a private window's relay JSON-serialises deltas and would drop the key.
+    this.#enqueue({ kind: 'updated', id, changes: { pageError: pageError ?? null } });
   };
 
   #onActivated = (info: browser.tabs._OnActivatedActiveInfo) => {

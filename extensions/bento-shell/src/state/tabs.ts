@@ -68,6 +68,9 @@ export const useTabsStore = create<TabsState>((set) => ({
             const existing = byId[d.id];
             if (!existing) break;
             const merged = { ...existing, ...d.changes };
+            // A cleared page error arrives as null (undefined does not survive the private-window
+            // relay); keep the field absent, as in a snapshot.
+            if (merged.pageError === null) delete merged.pageError;
             byId[d.id] = merged;
             if ('index' in d.changes) needsReorder = true;
             break;

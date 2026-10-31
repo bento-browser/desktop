@@ -971,8 +971,10 @@ describe('TabRegistry page errors', () => {
     expect(batches.flat()).toEqual([
       { kind: 'updated', id: 1, changes: { pageError: 'unavailable' } },
       { kind: 'updated', id: 1, changes: { pageError: 'crashed' } },
-      { kind: 'updated', id: 1, changes: { pageError: undefined } },
+      { kind: 'updated', id: 1, changes: { pageError: null } },
     ]);
+    // A private window's relay JSON-serialises deltas: the clear must survive that.
+    expect(JSON.parse(JSON.stringify(batches.flat()))).toEqual(batches.flat());
   });
 
   it('ignores a repeat of the state a tab already has', async () => {

@@ -40,8 +40,9 @@ export interface TabSnapshot {
    * `blocked` (`about:blocked` for Safe Browsing, `about:restricted` for parental controls,
    * and a site blocked by enterprise policy). Read by bento-tools from the browser's actual
    * document, never inferred from the favicon or URL, which a website controls. Absent
-   * otherwise, and cleared by delta (`pageError: undefined`) when the page ends. */
-  pageError?: 'crashed' | 'unavailable' | 'certificate-warning' | 'blocked';
+   * otherwise. `null` in an update delta clears it; snapshots omit it. (`undefined` would
+   * not survive the private-window relay, which JSON-serialises messages.) */
+  pageError?: 'crashed' | 'unavailable' | 'certificate-warning' | 'blocked' | null;
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;

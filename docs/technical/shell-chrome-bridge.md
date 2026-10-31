@@ -609,7 +609,7 @@ Path, with `bento-tools` the producer and no mount script or Firefox patch invol
   `getPageErrors()` once the tabs are stored and sets every tab's state from it (a tools restart
   while a tab shows an error page still shows it). `#onPageErrorChanged` ignores an event that repeats
   the state, sets or deletes `pageError` on the snapshot and queues an `updated` delta
-  `{ pageError }` (`pageError: undefined` when it ends). The delta goes to the audience of its tab,
+  `{ pageError }` (`pageError: null` when it ends). The delta goes to the audience of its tab,
   so a private tab's state reaches only its private window's documents. `onCreated` for a tab the
   registry already tracks keeps the state. An event for a tab `onCreated` has not delivered yet
   (the experiment can fire first, as `tabs.create` can resolve first) is kept in
@@ -668,6 +668,11 @@ Pitfalls:
 - `onLocationChange` is delivered for every top-level navigation of every tab. The "last told" check
   is what keeps the experiment silent for the ones that change nothing; `getPageErrors()` must keep
   updating it, or a state read on attach would never be cleared by the next navigation.
+- A cleared state is `pageError: null` in the delta, never `undefined`. A private window's relay
+  (`BentoShellBusParent.sys.mjs`) JSON-serialises messages, which drops an `undefined` property, so the
+  shell would merge an empty change and keep the old icon and tint. Snapshots omit the field, and the
+  shell's tabs store deletes it when a `null` arrives. Any code reading `pageError` must treat `null`
+  like absent.
 - `getPageErrors` and `onPageErrorChanged` use the same tab ids as the tabs API and `TabSnapshot.id`.
 
 Verify (built app, tools background console or the sidebar): see the checks in
