@@ -890,7 +890,7 @@ The source review covered every active touchpoint:
   `#TabsToolbar`, and `#nav-bar` when panels are present, uses neutral-5 behind
   the main content with no panels, and matches neutral-14 behind the panel strip
   when panels are present, including clipped/native-titlebar fallback pixels from `body`,
-  `body::after`, `#browser`, and `#appcontent`, and the
+  `body::after`, and `#browser`, and the
   `#bento-toolbar-main-backdrop` layer behind the panel navigator/extension
   buttons, with split-view panel frame backplates resolving to the same
   neutral-14 value rather than neutral-5, and has no bottom separator line,
@@ -2912,6 +2912,61 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 - Rollback or migration notes: the rollback builds (`rollback/legacy-source`,
   `scripts/build-rollback-variant.mjs`) were removed with the pane. Restoring the
   pane means restoring the patch from version control and the experiment with it.
+
+### Dead Chrome Paths, Selectors, Prefs, And Experiment Method (removed)
+
+- Status: Removed (2026-11-15)
+- Last updated: 2026-11-15
+- Files or patches: `src/browser/base/content/bento-shell-mount.js`,
+  `bento-shell-mount.css`, `bento-chrome-theme.css`, `prefs/bento.js`,
+  `extensions/bento-tools/experiments/bento-privacy/{api.js,schema.json}`,
+  `extensions/bento-tools/manifest.json` (0.1.16 to 0.1.17). No patch changed.
+- Bento functionality: none changed. Removed from the mount script: the
+  `BENTO_COLOR_MODE:` and `BENTO_THEME:` title receivers (colour mode arrives
+  through the `bento-ui-color-mode-set` event and the `BENTO_PANELS` payload,
+  the workspace theme through the payload's `themeId`), the
+  `BENTO_SIDEBAR_ADDRESS_SUBMIT:` receiver (no shell sender), the unused
+  `bento-mode-presentation-phase` window event (the presenter's `onPhase` seam
+  stays), `toggleMergePalette`, a shadowed duplicate `getBrowserCurrentSpec`,
+  the DevTools pair lookups with no caller, `getPanelElementsForLayoutGroup`,
+  the write-only `data-bento-panel-layout-status` attribute, and the reads of
+  `data-bento-nav-leaving`, which nothing writes. The tokens, theme and layout
+  links now share one `appendChromeStylesheet(href)` helper (same order, same
+  returned links for the first-paint sheet gate), and the two context menu
+  installers share one `findSourcePanel`. Removed selectors that match nothing
+  in Firefox 160: `#appcontent` (the element no longer exists; `#browser`
+  still carries the split gradient and neutral-5), `#urlbar-background` (Firefox
+  creates `div.urlbar-background`, whose focused rule stays), and
+  `.bento-panel-nav__icon--leaving` (the `--entering` rule stays). Removed prefs
+  that no Firefox 160 or Bento code reads: `extensions.pocket.enabled`,
+  `browser.contentblocking.report.vpn.enabled`,
+  `browser.contentblocking.report.proxy.enabled`,
+  `toolkit.telemetry.coverage.opt-out`, `toolkit.coverage.opt-out` and
+  `toolkit.coverage.endpoint.base` (Firefox 160 has no coverage ping),
+  `datareporting.sessions.current.clean`,
+  `network.allow-experiments`, `bento.workspace.default`,
+  `bento.panels.minWidth`, `bento.tabs.sleep.afterMinutes`, and
+  `bento.commandPalette.enabled`. Removed `bentoPrivacy.clearPrefs`, which had no
+  caller; `getPrefs` and `setPrefs` keep the same allowlist.
+- Vanilla Firefox surface no longer touched: the `#appcontent` and
+  `#urlbar-background` ids, and the default-pref entries above.
+- Why this cannot stay extension-only: not applicable; this is a removal.
+- Firefox update risk: none added. A future Firefox that brings back an
+  `#appcontent` wrapper behind the panel strip would paint its own background
+  there, so the panel-strip and titlebar fallback checks below cover it.
+- Regression checks for future updates: in light and dark, with and without
+  panels and with the sidebar address bar on, the window behind the panel
+  strip and the titlebar fallback pixels match the toolbar split (no
+  neutral-5 strip); the focused URL bar background still uses the focus field
+  colour; the panel navigator adds icons with the enter fade and removes them
+  without a stale button; switching workspace themes and colour modes still
+  updates chrome; "Open in new panel" and "Inspect in Panel" still appear on a
+  link or page context menu inside a panel; the Browser Console shows no
+  `[bento-compat] missing` line and no `bentoPrivacy` schema error at startup.
+- Rollback or migration notes: restore from version control. Built-in add-on
+  metadata is cached by version, so the bento-tools version bump is what drops
+  the cached `clearPrefs` schema entry from existing profiles. Profiles keep any
+  user value they had set for a removed pref; Firefox ignores it.
 
 ### Hidden Native Tabs And Titlebar Controls
 

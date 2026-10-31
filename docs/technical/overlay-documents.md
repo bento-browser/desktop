@@ -95,8 +95,8 @@ page with no handshake (`embedded-import`).
   while an open waits. Every dismissal, toggle, outside-click, and focus path asks
   `isOverlayOpen(hostId, isVisible, overlayId)`, which is "visible or pending".
   The Escape handler consumes Esc for a pending open and cancels it through the
-  overlay's `hide*` function; `togglePalette` and `toggleMergePalette` close a
-  pending open instead of queueing a second one; a pointer-down outside cancels a
+  overlay's `hide*` function; `togglePalette` closes a pending open instead of
+  queueing a second one; a pointer-down outside cancels a
   pending menu (and an address bar, as before). Esc goes to the top-most open
   overlay by stacking ([palettes-and-address-bar.md](palettes-and-address-bar.md#esc-follows-the-stacking-order));
   a menu that was delivered handles its own Esc. The welcome and embedded import

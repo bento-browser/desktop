@@ -630,13 +630,6 @@ this.bentoPrivacy = class extends ExtensionAPI {
           }
         },
 
-        async clearPrefs(names) {
-          for (const name of names) {
-            assertAllowedPref(name);
-            Services.prefs.clearUserPref(name);
-          }
-        },
-
         async getSearchEngines() {
           await ensureSearchReady();
           const defaultEngine = await SearchService.getDefault();

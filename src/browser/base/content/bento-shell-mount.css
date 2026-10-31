@@ -181,8 +181,7 @@
 }
 :root[bento-sidebar-addressbar='true'] body,
 :root[bento-sidebar-addressbar='true'] body::after,
-:root[bento-sidebar-addressbar='true'] #browser,
-:root[bento-sidebar-addressbar='true'] #appcontent {
+:root[bento-sidebar-addressbar='true'] #browser {
   --bento-toolbar-left-bg: var(--bento-toolbar-sidebar-bg);
   --bento-toolbar-right-bg: var(--bento-toolbar-main-bg);
   background-color: var(--bento-toolbar-main-bg) !important;
@@ -210,8 +209,7 @@
   }
   :root[bento-sidebar-addressbar='true'] body,
   :root[bento-sidebar-addressbar='true'] body::after,
-  :root[bento-sidebar-addressbar='true'] #browser,
-  :root[bento-sidebar-addressbar='true'] #appcontent {
+  :root[bento-sidebar-addressbar='true'] #browser {
     background-color: var(--bento-toolbar-main-bg) !important;
     background-image: linear-gradient(
       to right,
@@ -1685,10 +1683,9 @@
 .bento-panel-nav__icon--main.bento-panel-nav__icon--active::after {
   background-color: var(--neutral-30);
 }
-/* Enter / leave states are opacity-only so structural updates
+/* The enter state is opacity-only so structural updates
    never animate navigator button dimensions. */
-.bento-panel-nav__icon--entering,
-.bento-panel-nav__icon--leaving {
+.bento-panel-nav__icon--entering {
   opacity: 0;
 }
 .bento-panel-nav__icon > img {

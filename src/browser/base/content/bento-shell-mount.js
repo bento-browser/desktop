@@ -525,14 +525,14 @@
   // We keep `var()` references (no manual hex constants) so changes to the
   // public Mux primitives flow in on the next import without touching this
   // hook.
-  function injectChromeTokens() {
+  function appendChromeStylesheet(href) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'chrome://browser/content/bento-chrome-tokens.css';
+    link.href = href;
     document.documentElement.appendChild(link);
     return link;
   }
-  const bentoTokensLink = injectChromeTokens();
+  const bentoTokensLink = appendChromeStylesheet('chrome://browser/content/bento-chrome-tokens.css');
 
   // Map Firefox's chrome color variables (--toolbar-bgcolor,
   // --toolbar-field-background-color, --toolbox-textcolor, etc.) to
@@ -542,14 +542,7 @@
   // header at chrome://browser/content/bento-chrome-theme.css for the
   // coverage list. Scrollbars and devtools chrome stay on Firefox
   // defaults until iterated.
-  function injectChromeTheme() {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'chrome://browser/content/bento-chrome-theme.css';
-    document.documentElement.appendChild(link);
-    return link;
-  }
-  const bentoThemeLink = injectChromeTheme();
+  const bentoThemeLink = appendChromeStylesheet('chrome://browser/content/bento-chrome-theme.css');
 
   const BENTO_CHROME_THEME_ATTRS = [
     'data-color-mode',
@@ -1154,10 +1147,7 @@
   // document sheet, so it comes from the shared sheet cache in later windows
   // and DevTools lists it.
   function injectChromeStyles(earlierLinks) {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'chrome://browser/content/bento-shell-mount.css';
-    document.documentElement.appendChild(link);
+    const link = appendChromeStylesheet('chrome://browser/content/bento-shell-mount.css');
     gateFirstPaintOnSheets([...earlierLinks, link]);
   }
   injectChromeStyles([bentoTokensLink, bentoThemeLink]);
@@ -3608,21 +3598,6 @@
     hideOverlayHostAfterFade(host);
   }
 
-  function toggleMergePalette() {
-    const host = document.getElementById('bento-merge-palette-host');
-    if (!host) {
-      console.warn(
-        '[bento-shell-mount] toggleMergePalette: bento-merge-palette-host missing - patch may not be applied',
-      );
-      return;
-    }
-    if (isOverlayOpen('bento-merge-palette-host', isMergePaletteVisible, 'merge-palette')) {
-      hideMergePalette();
-    } else {
-      showMergePalette();
-    }
-  }
-
   // ─── Floating address/search bar overlay ──────────────────────────────
 
   let currentAddrbarMode = 'current';
@@ -5211,7 +5186,6 @@
   const ADDRBAR_CLOSE_PREFIX = 'BENTO_CLOSE_ADDRBAR';
   const ADDRBAR_READY_PREFIX = 'BENTO_ADDRBAR_READY';
   const ADDRBAR_NAVIGATE_PREFIX = 'BENTO_ADDRBAR_NAVIGATE';
-  const SIDEBAR_ADDRESS_SUBMIT_PREFIX = 'BENTO_SIDEBAR_ADDRESS_SUBMIT:';
   const SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX = 'BENTO_SIDEBAR_ADDRESS_BOOKMARK_TOGGLE:';
   const SIDEBAR_ADDRESS_IDENTITY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_IDENTITY:';
   const SIDEBAR_ADDRESS_COPY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_COPY:';
@@ -5305,15 +5279,6 @@
   // the title-change event.
   const PANELS_PREFIX = 'BENTO_PANELS:';
 
-  // Color-mode IPC. Title format: BENTO_COLOR_MODE:<ts>:<light|dark|system>
-  // The shell sets this on settings/changed; the active BENTO_PANELS
-  // payload also carries the same uiColorMode field as a self-correcting
-  // backstop in case this dedicated message races with a panels/sync.
-  const COLOR_MODE_PREFIX = 'BENTO_COLOR_MODE:';
-  // Legacy per-workspace theme IPC. Current sidebar builds carry themeId
-  // inside BENTO_PANELS so it lands atomically with uiColorMode; this
-  // standalone handler remains for older shell documents and diagnostics.
-  const THEME_PREFIX = 'BENTO_THEME:';
   // Sidebar drag-to-reorder. Title format:
   //   BENTO_TAB_MOVE:<ts>:<srcTabId>:<anchorTabId>:<before|after>
   // Calls gBrowser.moveTabBefore / moveTabAfter so the dragged tab lands
@@ -5427,9 +5392,6 @@
     bentoModePresenter = createModePresenter({
       win: window, hub: BentoShellBusHub, getPageFrames: modePageFrames,
       writeNative: writeGrantedChromeMode,
-      onPhase: (state) => window.dispatchEvent(new window.CustomEvent('bento-mode-presentation-phase', {
-        detail: JSON.stringify(state),
-      })),
     });
     const unregister = BentoShellBusHub.registerModePresenter(window, bentoModePresenter);
     window.addEventListener('unload', () => { unregister(); bentoModePresenter.dispose(); }, { once: true });
@@ -5456,26 +5418,6 @@
     applyChromeColorMode(event.detail?.mode, event.detail?.stamp);
   }
   window.addEventListener(BENTO_UI_COLOR_MODE_SET_EVENT, handleUiColorModeSet);
-  function handleThemeTitle(rawTitle) {
-    // Format: BENTO_THEME:<ts>:<themeId>
-    const tail = rawTitle.slice(THEME_PREFIX.length);
-    const colonAfterTs = tail.indexOf(':');
-    if (colonAfterTs < 0) return;
-    const themeId = tail.slice(colonAfterTs + 1).trim();
-    // Defensive: ignore empty / whitespace-only payloads. Anything else
-    // is requested as-is — chrome either has a theme sheet for that id
-    // (which applies) or doesn't (chrome falls back to Default). Lenient
-    // by design so a typo'd new theme in the registry doesn't break chrome.
-    if (themeId.length === 0) return;
-    applyChromeThemeToDocument(document, themeId);
-  }
-  function handleColorModeTitle(rawTitle) {
-    const tail = rawTitle.slice(COLOR_MODE_PREFIX.length);
-    const colonAfterTs = tail.indexOf(':');
-    if (colonAfterTs < 0) return;
-    const mode = tail.slice(colonAfterTs + 1).trim();
-    applyChromeColorMode(mode);
-  }
 
   function ensureSidebarFooterAnchor(anchorRect, id) {
     const shellFrame = document.getElementById('bento-shell-frame');
@@ -6545,22 +6487,6 @@
 
   function isBentoPanelResizing() {
     return document.documentElement.getAttribute('bento-panel-resizing') === 'true';
-  }
-
-  function getBrowserCurrentSpec(browserEl) {
-    try {
-      const currentSpec = browserEl?.currentURI?.spec;
-      if (typeof currentSpec === 'string') return currentSpec;
-    } catch {}
-    try {
-      const documentSpec = browserEl?.browsingContext?.currentWindowGlobal?.documentURI?.spec;
-      if (typeof documentSpec === 'string') return documentSpec;
-    } catch {}
-    try {
-      const src = browserEl?.getAttribute?.('src');
-      if (typeof src === 'string') return src;
-    } catch {}
-    return '';
   }
 
   function isBentoSettingsAboutSpec(spec) {
@@ -8306,15 +8232,6 @@
     return null;
   }
 
-  function getTopLevelPanelElementForTabId(tabId) {
-    if (!Number.isFinite(tabId)) return null;
-    const exact = document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(String(tabId))}"]`);
-    if (exact) return exact;
-    const rootNodeId = getRootNodeIdContainingTabId(tabId);
-    if (!rootNodeId) return null;
-    return document.querySelector(`[data-bento-root-node-id="${CSS.escape(rootNodeId)}"]`);
-  }
-
   function getPanelElementForTabId(tabId) {
     if (!Number.isFinite(tabId)) return null;
     return document.querySelector(`[data-bento-panel-tab-id="${CSS.escape(String(tabId))}"]`);
@@ -8328,34 +8245,6 @@
     const localRect = currentPanelLayoutGeometry?.panelRects?.get(tabId);
     if (!localRect) return null;
     return viewportRectForLocalLayoutRect(localRect);
-  }
-
-  function getDevtoolsPartnerElement(panelEl) {
-    const slot = getTopLevelSlotPanelElement(panelEl);
-    if (!slot) return null;
-    if (slot.dataset?.bentoDevtoolsFor) {
-      const caller = slot.dataset.bentoDevtoolsFor;
-      if (caller === 'main') return document.querySelector('[data-bento-main-panel="1"]');
-      return getTopLevelPanelElementForTabId(Number(caller));
-    }
-    const tabId = getTopLevelSlotTabId(slot);
-    const rootNodeId = slot.dataset?.bentoRootNodeId || getRootNodeIdContainingTabId(tabId);
-    const link = Array.from(currentDevtoolsLinkByTabId.values()).find(
-      (candidate) =>
-        candidate.callerTabId === tabId ||
-        getRootNodeIdContainingTabId(candidate.callerTabId) === rootNodeId,
-    );
-    if (link) {
-      return document.querySelector(
-        `[data-bento-panel-tab-id="${CSS.escape(String(link.devtoolsTabId))}"]`,
-      );
-    }
-    if (slot.dataset?.bentoMainPanel === '1' && currentMainDevtoolsLink) {
-      return document.querySelector(
-        `[data-bento-panel-tab-id="${CSS.escape(String(currentMainDevtoolsLink.devtoolsTabId))}"]`,
-      );
-    }
-    return null;
   }
 
   function getDevtoolsFocusPartnerElement(panelEl) {
@@ -8383,14 +8272,6 @@
     if (!link) return null;
     return document.querySelector(
       `[data-bento-panel-tab-id="${CSS.escape(String(link.devtoolsTabId))}"]`,
-    );
-  }
-
-  function areDevtoolsPairPanelElements(leftPanelEl, rightPanelEl) {
-    if (!leftPanelEl || !rightPanelEl) return false;
-    return (
-      getDevtoolsPartnerElement(leftPanelEl) === rightPanelEl ||
-      getDevtoolsPartnerElement(rightPanelEl) === leftPanelEl
     );
   }
 
@@ -8597,7 +8478,7 @@
       setPanelPinButtonState(pinBtn, tabId);
     }
 
-    // Close button: dispatches tab/close (NOT panel/remove). Closing a
+    // Close button: dispatches tab/close. Closing a
     // side panel closes its underlying tab entirely — the tab does not
     // return to the sidebar list. bento-tools' tabs.onRemoved handler
     // (background.ts:201) automatically strips the tab from PanelStore
@@ -9684,7 +9565,6 @@
     const moved = [];
     for (const btn of Array.from(list.children)) {
       if (!btn.classList?.contains('bento-panel-nav__icon')) continue;
-      if (btn.dataset.bentoNavLeaving === '1') continue;
       const key = btn.dataset.bentoNavKey;
       if (!key) continue;
       const oldRect = snapshot.get(key);
@@ -11930,7 +11810,6 @@
           const navSnap = new Map();
           for (const child of Array.from(list.children)) {
             if (!child.classList?.contains('bento-panel-nav__icon')) continue;
-            if (child.dataset.bentoNavLeaving === '1') continue;
             const key = child.dataset.bentoNavKey;
             if (key) navSnap.set(key, child.getBoundingClientRect());
           }
@@ -12879,17 +12758,9 @@
     const navPanels = uniqueRootPanels(panels);
     const payloadByTabId = getPanelPayloadByTabIdForNav(panels);
 
-    // Index existing children by their bento nav key. Any stale
-    // mid-leave child is removed immediately: structural nav changes
-    // must not leave a temporary button ahead of the main icon for a
-    // paint, or the navigator visibly jumps.
+    // Index existing children by their bento nav key.
     const existing = new Map();
     for (const child of Array.from(list.children)) {
-      if (child.dataset.bentoNavLeaving === '1') {
-        stopPanelNavAudioEmitter(child, { removeParticles: true });
-        child.remove();
-        continue;
-      }
       const key = child.dataset.bentoNavKey;
       if (key) existing.set(key, child);
     }
@@ -14441,14 +14312,6 @@
     }
   }
 
-  function applyPanelLayoutStatusAttributes(statusByTabId) {
-    for (const panelEl of document.querySelectorAll('[data-bento-panel-tab-id]')) {
-      const tabId = Number(panelEl.dataset.bentoPanelTabId);
-      const status = statusByTabId?.get?.(tabId) || 'unknown';
-      panelEl.dataset.bentoPanelLayoutStatus = status;
-    }
-  }
-
   // Maps a rect in panel-layout coordinates to viewport coordinates inside the
   // side-panel host. Top-level so the DevTools connector fallback in
   // getViewportPanelRectForTabId and the header-drag drop targets share it.
@@ -14545,32 +14408,6 @@
       if (found) return found;
     }
     return null;
-  }
-
-  function getPanelElementsForLayoutGroup(groupId) {
-    const group = findCurrentLayoutGroup(groupId);
-    if (!group) return [];
-    const tabIds = [];
-    const collect = (node) => {
-      if (!node) return;
-      if (node.kind === 'panel') {
-        const tabId = Number(node.tabId);
-        if (Number.isFinite(tabId)) tabIds.push(tabId);
-        return;
-      }
-      if (node.kind === 'group') {
-        collect(node.children?.[0]);
-        collect(node.children?.[1]);
-      }
-    };
-    collect(group);
-    return tabIds
-      .map((tabId) =>
-        document.querySelector(
-          '[data-bento-panel-tab-id="' + CSS.escape(String(tabId)) + '"]',
-        ),
-      )
-      .filter(Boolean);
   }
 
   function ratioFromLayoutPointer(axis, groupRect, clientX, clientY) {
@@ -15999,7 +15836,6 @@
 
     currentPanelLayoutGeometry = computePanelLayoutGeometry(currentPanelLayout, panels, tabpanels);
     applyPanelLayoutRects(tabpanels, currentPanelLayoutGeometry);
-    applyPanelLayoutStatusAttributes(currentPanelStatusByTabId);
     syncFlatLayoutOverlays(tabpanels, currentPanelLayoutGeometry);
     syncInterPanelSplitters(rootLayoutTabsToRender);
     for (const panelEl of pendingRootPanelEnters) {
@@ -16579,6 +16415,22 @@
     }
   }
 
+  // Resolve the context menu's source panel container from gContextMenu.browser.
+  // closest() walks up — when split-view is active, the inner main
+  // panel and inner side panels carry data-bento-* attrs (set by
+  // reconcilePanelsSplitView). When NO side panels exist yet, the
+  // OUTER #tabbrowser-tabbox is the only element tagged data-bento-
+  // main-panel (set by unifyMainWithStrip at boot). Accept that
+  // case too: the outer tabbox has no data-bento-panel-tab-id, so
+  // the command handlers read sourceTabId as null → "Open in new panel"
+  // inserts at position 0 (first side panel), seeding split-view from a
+  // right-click in a plain tab.
+  function findSourcePanel() {
+    const browser = typeof gContextMenu !== 'undefined' ? gContextMenu?.browser : null;
+    if (!browser) return null;
+    return browser.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
+  }
+
   // ─── "Open in new panel" link context-menu item ────────────────────────
   // Adds a menuitem to Firefox's contentAreaContextMenu that appears when
   // the user right-clicks a link inside any Bento panel (main or side).
@@ -16604,22 +16456,6 @@
       document.getElementById('context-openlink') ||
       menu.firstChild;
     menu.insertBefore(item, anchor);
-
-    // Resolve the source panel container from gContextMenu.browser.
-    // closest() walks up — when split-view is active, the inner main
-    // panel and inner side panels carry data-bento-* attrs (set by
-    // reconcilePanelsSplitView). When NO side panels exist yet, the
-    // OUTER #tabbrowser-tabbox is the only element tagged data-bento-
-    // main-panel (set by unifyMainWithStrip at boot). Accept that
-    // case too: the outer tabbox has no data-bento-panel-tab-id, so
-    // the command handler reads sourceTabId as null → handler inserts
-    // at position 0 (first side panel), seeding split-view from a
-    // right-click in a plain tab.
-    function findSourcePanel() {
-      const browser = typeof gContextMenu !== 'undefined' ? gContextMenu?.browser : null;
-      if (!browser) return null;
-      return browser.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
-    }
 
     // Defer popupshowing-listener registration until DOMContentLoaded.
     // Firefox initializes gContextMenu inside a DOMContentLoaded callback in
@@ -16803,12 +16639,6 @@
   function installInspectInPanelMenuItems() {
     const menu = document.getElementById('contentAreaContextMenu');
     if (!menu || document.getElementById('bento-context-inspect-in-panel')) return;
-
-    function findSourcePanel() {
-      const browser = typeof gContextMenu !== 'undefined' ? gContextMenu?.browser : null;
-      if (!browser) return null;
-      return browser.closest('[data-bento-panel-tab-id], [data-bento-main-panel]');
-    }
 
     const inspectItem = document.createXULElement('menuitem');
     inspectItem.id = 'bento-context-inspect-in-panel';
@@ -17935,17 +17765,6 @@
       panels = decoratePanelsForLayout(sanitizedLayout, allPanelPayloads);
       const incomingWorkspaceId =
         typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
-      if (typeof decoded.windowId === 'number') {
-        // No window-ID validation against gBrowser here yet — chrome
-        // can't trivially resolve "my own WebExtension windowId" without
-        // a hop through ExtensionParent.windowTracker. Phase F's
-        // workspace mirroring will revisit this when per-window
-        // routing becomes load-bearing. For now, the per-window
-        // selector in useToolsPort already ensures each shell only
-        // writes its own window's title.
-
-        decoded.windowId; // documented presence; informational only
-      }
       // Workspace just changed — flag the next reconcile so the main
       // panel gets a one-shot CSS width transition. Without this the
       // sequence is: TabSelect fires immediately (new tab content swaps
@@ -18019,11 +17838,10 @@
         mainPanelWidth = null;
       }
       __mainWidthTransitionForNextReconcile = wsChanged;
-      // Self-correcting backstop for the dedicated BENTO_COLOR_MODE
-      // path: if a panels/sync raced with a color-mode change and
-      // overwrote the title before chrome read it, the next reconcile
-      // re-applies. Idempotent — applyChromeColorMode short-circuits
-      // when the attribute already matches.
+      // Self-correcting backstop for the direct bento-ui-color-mode-set
+      // path: the active panels payload carries the same uiColorMode, so
+      // each reconcile re-applies it. Stale stamps are rejected by
+      // applyChromeColorMode.
       if (typeof decoded.uiColorMode === 'string') {
         applyChromeColorMode(decoded.uiColorMode.trim(), decoded.uiColorModeStamp);
       }
@@ -19091,9 +18909,7 @@
       else if (title.startsWith(DOWNLOADS_ANCHOR_PREFIX)) handleDownloadsAnchorTitle(title);
       else if (title.startsWith(RAIL_TOOLTIP_PREFIX)) handleRailTooltipTitle(title);
       else if (title.startsWith(ADDRBAR_OPEN_PREFIX)) handleAddrbarOpenTitle(title);
-      else if (title.startsWith(SIDEBAR_ADDRESS_SUBMIT_PREFIX)) {
-        handleSidebarAddressSubmitTitle(title);
-      } else if (title.startsWith(SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX)) {
+      else if (title.startsWith(SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX)) {
         handleSidebarAddressBookmarkToggleTitle(title);
       } else if (title.startsWith(SIDEBAR_ADDRESS_IDENTITY_PREFIX)) {
         handleSidebarAddressIdentityTitle(title);
@@ -19118,8 +18934,6 @@
         handleSidebarContextMenuTitle(title);
       } else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
       else if (title.startsWith(TAB_MOVE_PREFIX)) handleTabMoveTitle(title);
-      else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
-      else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
       else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
     };
 
@@ -19850,24 +19664,6 @@
     } catch (err) {
       console.warn('[bento-shell-mount] sidebar address payload parse failed:', err);
       return null;
-    }
-  }
-
-  async function handleSidebarAddressSubmitTitle(rawTitle) {
-    const payload = parseSidebarAddressTitlePayload(rawTitle, SIDEBAR_ADDRESS_SUBMIT_PREFIX);
-    if (!sidebarAddressPayloadMatchesScope(payload)) return;
-    const value = typeof payload.value === 'string' ? payload.value.trim() : '';
-    if (!value) return;
-    try {
-      await navigateAddressEntry(
-        value,
-        payload.mode === 'newTab' ? 'newTab' : 'current',
-        typeof payload.searchEngineId === 'string' ? payload.searchEngineId : undefined,
-      );
-    } catch (err) {
-      console.warn('[bento-shell-mount] sidebar address submit failed:', err);
-    } finally {
-      scheduleSidebarAddressSnapshot();
     }
   }
 

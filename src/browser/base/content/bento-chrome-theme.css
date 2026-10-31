@@ -7,7 +7,7 @@
  * design tokens so the entire visible chrome (toolbar, URL bar, window
  * background) re-themes from a single source of truth.
  *
- * Loaded as a chrome stylesheet via injectChromeTheme() in
+ * Loaded as a chrome stylesheet via appendChromeStylesheet() in
  * src/browser/base/content/bento-shell-mount.js, AFTER bento-chrome-tokens
  * (which exposes the Mux/Bento variables on :root). Registered in jar.mn at
  * `chrome://browser/content/bento-chrome-theme.css`.
@@ -36,7 +36,7 @@
  * themes both light/dark variants. Per-workspace theme (re-points
  * --brand-*, --neutral-default-*, and --color-N-fg) flows through Bento's Mux UI
  * color cascade via data-bento-theme on the chrome window — set
- * by the BENTO_THEME title-IPC handler in bento-shell-mount.js. The
+ * from the BENTO_PANELS themeId field in bento-shell-mount.js. The
  * workspace theme presets ship inside bento-chrome-tokens.css
  * (concatenated by scripts/generate-chrome-tokens.mjs).
  */
@@ -255,12 +255,10 @@
     background-color: var(--neutral-5) !important;
   }
   #browser,
-  #appcontent,
   #tabbrowser-tabbox,
   #tabbrowser-tabpanels {
     background-color: var(--neutral-5) !important;
   }
-  #urlbar-background,
   #searchbar {
     background-color: var(--toolbar-field-background-color) !important;
     color: var(--toolbar-field-text-color) !important;
@@ -280,7 +278,6 @@
   .urlbar:is([focused], [open]) .urlbar-input {
     color: var(--toolbar-field-text-color-focus) !important;
   }
-  #urlbar:is([focused], [open]) > #urlbar-background,
   #urlbar:is([focused], [open]) > .urlbar-background {
     background-color: var(--toolbar-field-background-color-focus) !important;
   }

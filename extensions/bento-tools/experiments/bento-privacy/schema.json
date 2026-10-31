@@ -29,18 +29,6 @@
         ]
       },
       {
-        "name": "clearPrefs",
-        "type": "function",
-        "async": true,
-        "parameters": [
-          {
-            "name": "names",
-            "type": "array",
-            "items": { "type": "string" }
-          }
-        ]
-      },
-      {
         "name": "getSearchEngines",
         "type": "function",
         "async": true,

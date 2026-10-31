@@ -38,10 +38,9 @@ function mountLine(pattern) {
 const PROGRAM = [
   mountLine('const BENTO_SHEET_GATE_TIMEOUT_MS = \\d+;'),
   mountFunction('gateFirstPaintOnSheets'),
-  mountFunction('injectChromeTokens'),
-  mountLine('const bentoTokensLink = injectChromeTokens\\(\\);'),
-  mountFunction('injectChromeTheme'),
-  mountLine('const bentoThemeLink = injectChromeTheme\\(\\);'),
+  mountFunction('appendChromeStylesheet'),
+  mountLine(`const bentoTokensLink = appendChromeStylesheet\\('${TOKENS}'\\);`),
+  mountLine(`const bentoThemeLink = appendChromeStylesheet\\('${THEME}'\\);`),
   mountFunction('injectChromeStyles'),
   mountLine('injectChromeStyles\\(\\[bentoTokensLink, bentoThemeLink\\]\\);'),
 ].join('\n');
@@ -135,8 +134,8 @@ function run({ cached = [], inlineVisibility, breakListeners = false } = {}) {
 test('links are inserted in the order tokens, theme, layout, at the end of the root', () => {
   // The program above lists the calls in a fixed order, so check their order in the script itself.
   const positions = [
-    'const bentoTokensLink = injectChromeTokens();',
-    'const bentoThemeLink = injectChromeTheme();',
+    `const bentoTokensLink = appendChromeStylesheet('${TOKENS}');`,
+    `const bentoThemeLink = appendChromeStylesheet('${THEME}');`,
     'injectChromeStyles([bentoTokensLink, bentoThemeLink]);',
   ].map((call) => source.indexOf(`\n  ${call}\n`));
   assert.ok(positions[0] > 0 && positions[0] < positions[1] && positions[1] < positions[2]);

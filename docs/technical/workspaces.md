@@ -225,7 +225,7 @@ offset above the footer and the gap below the last row) to `useSidebarCardsStore
 and `TabListPane` gives it to the virtualizer as `paddingEnd` and `scrollPaddingEnd`.
 The padding is part of the virtualizer's total size, not CSS on the scroller, so
 `getTotalSize()`, the viewport height, `scrollHeight` and the collapsed custom
-scrollbar's metrics all include it; `scrollToIndex` for the active or revealed row
+scrollbar's metrics all include it; `scrollToIndex` for the active row
 stops above the card. With no card the padding is 0. The search results list takes the
 same inset as its end padding (`padding-block-end` on `.bento-tab-list-search__results`,
 set inline from `useSidebarCardsStore`), and the cards sit above the pane's sticky bar
@@ -783,8 +783,8 @@ all `ui/*` actions as bus-only. Chrome receives tab and folder context menus via
 handled before the `hasTabId` guard because folder menus intentionally carry no
 tab id. Rename requests initiated from the native chrome context menu must also
 move focus back into the sidebar frame before broadcasting on
-`bento-shell-bus`; `BENTO_SHELL_ACTION` frame script calls `content.focus()` for
-`ui/*` actions so the shell's inline rename input can focus and select its text.
+`bento-shell-bus`; the `BentoShellAction` frame script
+(`SHELL_ACTION_FRAME_SCRIPT_SRC`) calls `content.focus()` for `ui/*` actions so the shell's inline rename input can focus and select its text.
 The folder row then retries `input.focus()`/`input.select()` briefly after
 entering rename mode to cover React commit and browser focus timing.
 
@@ -938,7 +938,7 @@ collapse and expand only (a test keeps it that way).
   commit's layout reads (so one style change carries both and every colour starts from where
   it was), at the settle, and on the instant path. A hide leaves it for the settle, since the
   sidebar leaves. `:root[bento-sidebar-rail]` makes `--bento-toolbar-sidebar-bg` the main
-  colour, which the window, `#browser` and `#appcontent` gradients read (they switch at once;
+  colour, which the window and `#browser` gradients read (they switch at once;
   the host covers them) and `#bento-shell-host`'s background follows (`transition:
 background-color` on the spring pair while a collapse or expand runs). The toolbar
   surfaces (`#navigator-toolbox`, `#TabsToolbar`, `#nav-bar`) read a registered `<color>`

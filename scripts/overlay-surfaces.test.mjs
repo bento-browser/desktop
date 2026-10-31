@@ -138,7 +138,6 @@ const FUNCTIONS = [
   'isMergePaletteVisible',
   'showMergePalette',
   'hideMergePalette',
-  'toggleMergePalette',
   'isSettingsPaletteVisible',
   'showSettingsPalette',
   'hideSettingsPalette',
@@ -323,7 +322,6 @@ const EXPORTED = [
   'showWorkspacePalette',
   'showMergePalette',
   'hideMergePalette',
-  'toggleMergePalette',
   'showSettingsPalette',
   'hideSettingsPalette',
   'handleSettingsTargetTitle',
@@ -1055,10 +1053,10 @@ test('a cold palette open followed by the toggle cancels it instead of queueing 
   assert.equal(world.isShown('palette'), false);
 });
 
-test('a cold merge palette open followed by the toggle or Esc never appears', () => {
-  for (const dismiss of [(world) => world.toggleMergePalette(), (world) => world.pressEscape()]) {
+test('a cold merge palette open followed by a hide or Esc never appears', () => {
+  for (const dismiss of [(world) => world.hideMergePalette(), (world) => world.pressEscape()]) {
     const world = makeWorld();
-    world.toggleMergePalette();
+    world.showMergePalette();
     assert.equal(world.overlays.hasPendingOpen('merge-palette'), true);
     dismiss(world);
     world.ready('merge-palette');
