@@ -56,8 +56,6 @@ export interface SidebarAddressCopyResult {
 
 interface SidebarAddressState {
   snapshot: SidebarAddressSnapshot | null;
-  editMode: AddrbarMode | null;
-  draftValue: string;
   pendingBookmarkToggleKey: string | null;
   openRequest: SidebarAddressOpenRequest | null;
   bookmarkPopupRequest: SidebarBookmarkPopupRequest | null;
@@ -69,9 +67,6 @@ interface SidebarAddressState {
   requestOpen: (mode: AddrbarMode, requestId: string) => void;
   requestBookmarkPopup: (requestId: string) => void;
   setPaletteOverRow: (over: boolean) => void;
-  beginEdit: (mode: AddrbarMode, draftValue?: string) => void;
-  cancelEdit: () => void;
-  setDraft: (value: string) => void;
   setPendingBookmarkToggle: (key: string | null) => void;
   reset: () => void;
 }
@@ -79,10 +74,6 @@ interface SidebarAddressState {
 let nextOpenRequestId = 1;
 let nextBookmarkPopupRequestId = 1;
 let nextCopyResultId = 1;
-
-function snapshotDraftValue(snapshot: SidebarAddressSnapshot | null): string {
-  return snapshot?.url || '';
-}
 
 function isNewerOrEqualSnapshot(
   current: SidebarAddressSnapshot | null,
@@ -95,8 +86,6 @@ function isNewerOrEqualSnapshot(
 
 export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => ({
   snapshot: null,
-  editMode: null,
-  draftValue: '',
   pendingBookmarkToggleKey: null,
   openRequest: null,
   bookmarkPopupRequest: null,
@@ -105,11 +94,7 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
   applySnapshot: (snapshot) => {
     const current = get().snapshot;
     if (!isNewerOrEqualSnapshot(current, snapshot)) return;
-    set((state) => ({
-      snapshot,
-      draftValue: state.editMode ? state.draftValue : snapshotDraftValue(snapshot),
-      pendingBookmarkToggleKey: null,
-    }));
+    set({ snapshot, pendingBookmarkToggleKey: null });
   },
   applyCopyResult: (result) => {
     set({
@@ -129,25 +114,10 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
     nextBookmarkPopupRequestId += 1;
   },
   setPaletteOverRow: (paletteOverRow) => set({ paletteOverRow }),
-  beginEdit: (mode, draftValue) => {
-    set({
-      editMode: mode,
-      draftValue: draftValue ?? (mode === 'newTab' ? '' : snapshotDraftValue(get().snapshot)),
-    });
-  },
-  cancelEdit: () => {
-    set({
-      editMode: null,
-      draftValue: snapshotDraftValue(get().snapshot),
-    });
-  },
-  setDraft: (draftValue) => set({ draftValue }),
   setPendingBookmarkToggle: (pendingBookmarkToggleKey) => set({ pendingBookmarkToggleKey }),
   reset: () =>
     set({
       snapshot: null,
-      editMode: null,
-      draftValue: '',
       pendingBookmarkToggleKey: null,
       openRequest: null,
       bookmarkPopupRequest: null,

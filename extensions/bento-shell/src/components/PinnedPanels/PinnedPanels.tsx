@@ -121,7 +121,6 @@ interface PendingDrag {
   pointerId: number;
   startX: number;
   startY: number;
-  lastClientX: number;
   lastClientY: number;
   sourceButton: HTMLButtonElement;
   captured: boolean;
@@ -209,7 +208,7 @@ export function PinnedPanels() {
   }, []);
 
   const finishDrag = useCallback(
-    (pointerId: number, clientX: number, clientY: number, commit: boolean) => {
+    (pointerId: number, clientY: number, commit: boolean) => {
       const pending = dragRef.current;
       if (!pending || pointerId !== pending.pointerId) return;
       dragRef.current = null;
@@ -261,7 +260,7 @@ export function PinnedPanels() {
     const cancelActiveDrag = () => {
       const pending = dragRef.current;
       if (!pending) return;
-      finishDrag(pending.pointerId, pending.lastClientX, pending.lastClientY, false);
+      finishDrag(pending.pointerId, pending.lastClientY, false);
     };
     const cancelOnWindowExit = (event: globalThis.MouseEvent) => {
       if (event.relatedTarget === null) cancelActiveDrag();
@@ -287,7 +286,6 @@ export function PinnedPanels() {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        lastClientX: event.clientX,
         lastClientY: event.clientY,
         sourceButton: event.currentTarget,
         captured: false,
@@ -301,7 +299,6 @@ export function PinnedPanels() {
     (event: PointerEvent<HTMLButtonElement>) => {
       const pending = dragRef.current;
       if (!pending || event.pointerId !== pending.pointerId) return;
-      pending.lastClientX = event.clientX;
       pending.lastClientY = event.clientY;
       const distanceX = event.clientX - pending.startX;
       const distanceY = event.clientY - pending.startY;
@@ -343,17 +340,10 @@ export function PinnedPanels() {
           dragging={dragState?.entryKey === getEntryKey(entry)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerUp={(event) => finishDrag(event.pointerId, event.clientX, event.clientY, true)}
-          onPointerCancel={(event) =>
-            finishDrag(event.pointerId, event.clientX, event.clientY, false)
-          }
+          onPointerUp={(event) => finishDrag(event.pointerId, event.clientY, true)}
+          onPointerCancel={(event) => finishDrag(event.pointerId, event.clientY, false)}
           onLostPointerCapture={(event) =>
-            finishDrag(
-              event.pointerId,
-              event.clientX,
-              event.clientY,
-              dragRef.current?.dragging === true,
-            )
+            finishDrag(event.pointerId, event.clientY, dragRef.current?.dragging === true)
           }
           shouldSuppressOpen={shouldSuppressOpen}
         />

@@ -59,10 +59,7 @@ export function growShadowTransforms(box: GrowBox) {
 
 function prefersReducedMotion(el: Element): boolean {
   const view = el.ownerDocument.defaultView;
-  return (
-    view?.matchMedia('(prefers-reduced-motion: reduce)').matches === true ||
-    el.closest('[data-reduced-motion], [data-muxui-motion="reduced"]') !== null
-  );
+  return view?.matchMedia('(prefers-reduced-motion: reduce)').matches === true;
 }
 
 /**

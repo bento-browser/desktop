@@ -488,7 +488,6 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
 
   return (
     <MuxCommandPalette.Root
-      className="bento-command-palette__popup"
       open={true}
       size="lg"
       closeOnSelect={false}

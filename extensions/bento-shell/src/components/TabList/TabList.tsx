@@ -46,8 +46,6 @@ import { useSettingsStore } from '../../state/settings';
 import { useSidebarCardsStore } from '../../state/sidebarCards';
 
 export interface TabListProps {
-  revealTabUrl?: string;
-  revealTabRequest?: number;
   onActivate: (id: number) => void;
   onClose: (id: number) => void;
   onCloseSelected?: (ids: number[]) => void;
@@ -257,8 +255,6 @@ interface TabListPaneProps {
   /** The field closed because the sidebar collapsed (SearchState.folded). */
   searchFolded: boolean;
   searchResults: TabListSearchResult[];
-  revealTabId?: number | null;
-  revealTabRequest?: number;
   onOpenSearch: () => void;
   onCloseSearch: () => void;
   onSearchQueryChange: (value: string) => void;
@@ -292,8 +288,6 @@ function TabListPane({
   searchQuery,
   searchFolded,
   searchResults,
-  revealTabId,
-  revealTabRequest,
   onOpenSearch,
   onCloseSearch,
   onSearchQueryChange,
@@ -350,7 +344,6 @@ function TabListPane({
   // The New menu is up in the chrome overlay. Read from the store, not held
   // here: a workspace switch remounts this pane while the menu stays open.
   const newMenuOpen = useUiStore((s) => s.newMenuContextId !== null);
-  const smoothRevealRef = useRef<{ request: number; rowIndex: number } | null>(null);
   const folderToggleAnchorRef = useRef<{ folderId: string; offsetTop: number } | null>(null);
   const suppressAutoScrollLayoutRef = useRef<string | null>(null);
   // Drop slot — 0..displayedIds.length, where slot N means "insert above
@@ -452,12 +445,6 @@ function TabListPane({
       (row) => (row.kind === 'tab' || row.kind === 'peek') && row.id === activeId,
     );
   }, [activeId, rows]);
-  const requestedRevealRowIndex = useMemo(() => {
-    if (revealTabId === null || revealTabId === undefined) return -1;
-    return rows.findIndex(
-      (row) => (row.kind === 'tab' || row.kind === 'peek') && row.id === revealTabId,
-    );
-  }, [revealTabId, rows]);
   const topSectionRowCount = useMemo(() => {
     let count = 0;
     for (const row of rows) {
@@ -549,37 +536,12 @@ function TabListPane({
   }, [rowLayoutKey, rowSlotSize, searchFiltering, updateScrollMetrics]);
 
   useLayoutEffect(() => {
-    if (
-      revealTabRequest === undefined ||
-      searchFiltering ||
-      requestedRevealRowIndex < 0 ||
-      rowSlotSize <= 0
-    ) {
-      return;
-    }
-    if (suppressAutoScrollLayoutRef.current === rowLayoutKey) return;
-    smoothRevealRef.current = { request: revealTabRequest, rowIndex: requestedRevealRowIndex };
-    virtualizer.scrollToIndex(requestedRevealRowIndex, { align: 'auto', behavior: 'smooth' });
-  }, [
-    requestedRevealRowIndex,
-    revealTabRequest,
-    rowLayoutKey,
-    rowSlotSize,
-    searchFiltering,
-    virtualizer,
-  ]);
-
-  useLayoutEffect(() => {
     if (suppressAutoScrollLayoutRef.current === rowLayoutKey) {
-      smoothRevealRef.current = null;
       suppressAutoScrollLayoutRef.current = null;
       return;
     }
     if (searchFiltering || activeRowIndex < 0 || rowSlotSize <= 0) return;
     suppressAutoScrollLayoutRef.current = null;
-    const smoothReveal = smoothRevealRef.current;
-    if (smoothReveal?.rowIndex === activeRowIndex) return;
-    smoothRevealRef.current = null;
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
   }, [activeRowIndex, rowLayoutKey, rowSlotSize, searchFiltering, virtualizer]);
 
@@ -1060,9 +1022,9 @@ function TabListPane({
   // Always mounted so closing can animate back into the trigger. Closed, it is
   // inert and hidden (after the close transition, see TabList.css) and its field
   // row sits exactly on the trigger.
-  const renderSearchOverlay = (filtering = false) => (
+  const renderSearchOverlay = () => (
     <div
-      className={'bento-tab-list-search' + (filtering ? ' bento-tab-list-search--filtering' : '')}
+      className="bento-tab-list-search"
       data-open={searchOpen ? '' : undefined}
       data-folding={searchFolded ? '' : undefined}
       data-has-query={queryTyped ? '' : undefined}
@@ -1200,7 +1162,7 @@ function TabListPane({
           />
           {renderNewButton()}
           {renderSearchButton()}
-          {renderSearchOverlay(searchFiltering)}
+          {renderSearchOverlay()}
         </div>
       </div>
       <div
@@ -1329,8 +1291,6 @@ function TabListPane({
 // stage-level slide replaces it: the OLD pane carries OLD ids only, the
 // NEW pane carries NEW ids only, and the user sees a directional swap.
 export function TabList({
-  revealTabUrl,
-  revealTabRequest,
   onActivate,
   onClose,
   onCloseSelected,
@@ -1387,12 +1347,6 @@ export function TabList({
   }, [railLayout]);
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
-  const revealTabId = useMemo(() => {
-    if (revealTabRequest === undefined || !revealTabUrl) return null;
-    const activeTab = activeId !== null ? tabsById[activeId] : null;
-    if (activeTab?.url === revealTabUrl) return activeTab.id;
-    return orderedIds.find((id) => tabsById[id]?.url === revealTabUrl) ?? null;
-  }, [activeId, orderedIds, revealTabRequest, revealTabUrl, tabsById]);
 
   const searchResults = useMemo<TabListSearchResult[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -1690,8 +1644,6 @@ export function TabList({
             searchQuery=""
             searchFolded={false}
             searchResults={[]}
-            revealTabId={null}
-            revealTabRequest={undefined}
             onOpenSearch={() => undefined}
             onCloseSearch={() => undefined}
             onSearchQueryChange={() => undefined}
@@ -1727,8 +1679,6 @@ export function TabList({
           searchQuery={searchQuery}
           searchFolded={search.folded}
           searchResults={searchResults}
-          revealTabId={revealTabId}
-          revealTabRequest={revealTabRequest}
           onOpenSearch={handleOpenSearch}
           onCloseSearch={handleCloseSearch}
           onSearchQueryChange={handleSearchQueryChange}

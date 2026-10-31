@@ -54,7 +54,3 @@ export function useWorkspaceFolders(workspaceId: string | null): TabFolder[] {
   );
   return useMemo(() => sortFolders(folders), [folders]);
 }
-
-export function useFolder(id: string): TabFolder | undefined {
-  return useTabFoldersStore((state) => state.byId[id]);
-}

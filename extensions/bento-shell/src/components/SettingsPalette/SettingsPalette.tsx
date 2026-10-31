@@ -920,7 +920,7 @@ export default function SettingsPalette({
                 ) : null}
               </>
             )}
-            <Palette.Footer className="bento-settings-palette__footer">
+            <Palette.Footer>
               <span className="bento-settings-palette__hints">
                 {notice ? (
                   <span className="bento-settings-palette__notice" data-kind="error" role="status">

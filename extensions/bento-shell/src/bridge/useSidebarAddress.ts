@@ -6,7 +6,6 @@ import { useSidebarAddressStore, type SidebarAddressSnapshot } from '../state/si
 import { sendChromeTitle } from './chromeTitle';
 
 export const SIDEBAR_ADDRESS_BUS_NAME = 'bento-sidebar-address-bus';
-export const SIDEBAR_ADDRESS_SUBMIT_PREFIX = 'BENTO_SIDEBAR_ADDRESS_SUBMIT:';
 export const SIDEBAR_ADDRESS_BOOKMARK_TOGGLE_PREFIX = 'BENTO_SIDEBAR_ADDRESS_BOOKMARK_TOGGLE:';
 export const SIDEBAR_ADDRESS_IDENTITY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_IDENTITY:';
 export const SIDEBAR_ADDRESS_COPY_PREFIX = 'BENTO_SIDEBAR_ADDRESS_COPY:';
@@ -66,12 +65,6 @@ export type SidebarAddressBusMessage =
 export interface SidebarAddressScope {
   windowId: number | null;
   bridgeToken: string | null;
-}
-
-export interface SidebarAddressSubmitPayload extends SidebarAddressScope {
-  value: string;
-  mode: AddrbarMode;
-  searchEngineId?: string;
 }
 
 export interface SidebarAddressBookmarkTogglePayload extends SidebarAddressScope {
@@ -157,10 +150,6 @@ export function applySidebarAddressBusMessage(data: SidebarAddressBusMessage): v
 
 function signalScopedSidebarAddressCommand(prefix: string, payload: object): void {
   sendChromeTitle(`${prefix}${Date.now()}:${encodeTitlePayload(JSON.stringify(payload))}`);
-}
-
-export function signalSidebarAddressSubmit(payload: SidebarAddressSubmitPayload): void {
-  signalScopedSidebarAddressCommand(SIDEBAR_ADDRESS_SUBMIT_PREFIX, payload);
 }
 
 export function signalSidebarAddressBookmarkToggle(

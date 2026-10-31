@@ -27,7 +27,6 @@ export interface WorkspaceThemePickerProps {
   workspaceName: string;
   selectedThemeId: string | undefined | null;
   onThemeChange: (themeId: string) => void;
-  className?: string | undefined;
 }
 
 const THEME_COLLECTIONS: ReadonlyArray<{
@@ -82,7 +81,6 @@ export function WorkspaceThemePicker({
   workspaceName,
   selectedThemeId,
   onThemeChange,
-  className,
 }: WorkspaceThemePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -135,7 +133,7 @@ export function WorkspaceThemePicker({
       trigger={
         <Button
           type="button"
-          className={`bento-workspace-theme-picker__trigger${className ? ` ${className}` : ''}`}
+          className="bento-workspace-theme-picker__trigger"
           variant="neutral"
           size="sm"
           aria-label={`Theme for ${workspaceName}: ${selectedTheme.name}`}
@@ -185,7 +183,7 @@ export function WorkspaceThemePicker({
             className="bento-workspace-theme-picker__list"
           >
             {filteredThemeGroups.map((collection) => (
-              <Column key={collection.id} gap="3xs" className="bento-workspace-theme-picker__group">
+              <Column key={collection.id} gap="3xs">
                 <Text
                   as="div"
                   variant="label"
