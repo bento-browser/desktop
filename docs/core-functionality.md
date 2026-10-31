@@ -95,7 +95,8 @@ other regular browser imports in this flow use Firefox's native migration wizard
 and are separate from the additive Bento backup import flow.
 
 The sidebar footer exposes Firefox's native app menu and Firefox's native
-downloads panel; it has no separate Settings or merge button. The app menu lists
+downloads panel, plus a Bookmarks button that opens the Bookmarks view (regular windows
+only); it has no separate Settings or merge button. The app menu lists
 "Bento Settings" directly above Firefox's own Settings item, and the command
 palette has an Open Settings command; both open the Settings palette. Native footer panels are left-edge
 anchored to their trigger buttons so they grow rightward when screen space
@@ -676,6 +677,43 @@ future built-in tool.
 The important product rule is that widgets should not become a separate mode of
 window management. They should inherit the same workspace, layout, traversal,
 and theming behavior as panels.
+
+### Bookmarks view
+
+Bento keeps its own collection of links, separate from Firefox's bookmarks, in a
+full-window Bookmarks view. It opens from the command palette's "Open Bookmarks"
+command or Cmd/Ctrl+Shift+O, and replaces the
+browser content while the toolbar strip stays in place. It is not available in private
+windows: the command is hidden there and the shortcut opens Firefox's Library instead.
+Esc, the Back button, or the shortcut again returns to the browser, with focus back
+where it was.
+
+The view has three parts:
+
+- **Spaces.** A column on the left lists the spaces, each with a colour dot, its name
+  and its link count. Selecting one shows it; the view reopens on the space last used.
+  "+ Space" adds one, and a space's menu (also on right-click) renames it, sets its
+  colour, or deletes it with its groups. Below about 1200 px wide the column folds to
+  the colour dots.
+- **Groups and rows.** The selected space's groups are columns that scroll sideways. Each
+  column holds links (favicon, title, host), notes and to-dos (with a checkbox). Hovering
+  a row shows actions to open the link in a new panel or in a new tab, edit and delete.
+  Rows edit in place; Enter saves and Esc cancels. The "+ Link, note or to-do" row at
+  the foot of a column adds one by typing: a web address or bare domain becomes a link, text
+  starting with `[]` becomes a to-do, anything else a note. A group's menu renames it,
+  sets its colour, opens all its links in panels, or deletes it. "+ Group" adds a column.
+- **Open tabs.** The header's "Open tabs" toggle opens a drawer on the right with the
+  tabs and panels of the active workspace. A tab dragged into a column is saved at the
+  spot where it is dropped, and "Save all to new group" saves every tab at once. In a
+  narrow window the drawer floats over the board.
+
+The header shows the space's name and "N groups, M links", with a search field that finds
+links, notes and to-dos in every space, listed by space and group. Rows and columns reorder
+by dragging: a line shows where the item will land, nothing shifts while dragging, and the
+dropped item glides into place; Esc cancels. Deleting an item removes it at once and offers
+Undo for a few seconds; deleting a group or space asks first. A space with no groups says
+"Drop tabs here" and offers a new group or saving the open tabs; until it has been used or
+declined once, it also offers to import the Firefox bookmarks into a space of their own.
 
 ## Primary user flows
 

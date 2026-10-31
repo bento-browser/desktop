@@ -281,6 +281,32 @@
     --bento-welcome-source-height: 3.25rem;
     --bento-welcome-source-logo: 1.25rem;
 
+    /* Bookmarks view (src/components/BookmarksView). Widths: the spaces column, the icon-only
+       column it folds to below 1200px, one board column, and the open tabs drawer. The dot and
+       favicon sizes, a row's least height (a link's two lines make it taller), the height of the
+       header strip (the main header and the drawer's), the width of the search field and of a
+       deleted-item toast, and the opacity of the row being dragged. The seven colours of a space or group are Mux reference
+       hues at the 60 step (gray is the semantic neutral), so a dot reads the same in light and
+       dark. */
+    --bento-bookmarks-spaces-width: 14.5rem;
+    --bento-bookmarks-spaces-width-compact: 3.5rem;
+    --bento-bookmarks-column-width: 14.75rem;
+    --bento-bookmarks-drawer-width: 15.5rem;
+    --bento-bookmarks-dot-size: 0.5rem;
+    --bento-bookmarks-favicon-size: 1rem;
+    --bento-bookmarks-row-min-height: 1.75rem;
+    --bento-bookmarks-header-height: 3.5rem;
+    --bento-bookmarks-search-width: 17.5rem;
+    --bento-bookmarks-toast-width: 21rem;
+    --bento-bookmarks-dragging-opacity: 0.45;
+    --bento-bookmark-color-gray: var(--muxui-semantic-color-neutral-60);
+    --bento-bookmark-color-red: var(--muxui-reference-color-red-60);
+    --bento-bookmark-color-orange: var(--muxui-reference-color-orange-60);
+    --bento-bookmark-color-yellow: var(--muxui-reference-color-yellow-60);
+    --bento-bookmark-color-green: var(--muxui-reference-color-green-60);
+    --bento-bookmark-color-blue: var(--muxui-reference-color-sky-60);
+    --bento-bookmark-color-purple: var(--muxui-reference-color-purple-60);
+
     /* System UI font stack for plain pages that load no Mux fonts. */
     --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 

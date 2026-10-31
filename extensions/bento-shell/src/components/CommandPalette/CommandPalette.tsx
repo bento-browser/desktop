@@ -29,6 +29,7 @@ import {
 import { useShallow } from 'zustand/shallow';
 
 // Per-icon imports — barrel forbidden by eslint (bundle, §6.2).
+import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import SettingsIcon from 'lucide-react/dist/esm/icons/settings';
 import ShieldIcon from 'lucide-react/dist/esm/icons/shield';
 import MergeIcon from 'lucide-react/dist/esm/icons/merge';
@@ -56,6 +57,7 @@ import {
 import './CommandPalette.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { SETTINGS_INDEX } from './settingsIndex';
+import { openBookmarksView } from '../../bookmarks/titles';
 
 export interface CommandPaletteProps {
   /** Invoked whenever the palette is dismissed (Esc, backdrop click, or
@@ -151,6 +153,18 @@ function useCommands(query: string): BentoCommand[] {
       keywords: ['preferences', 'options'],
       action: () => signalOpenSettings(),
     });
+    // The Bookmarks view is for regular windows only. Chrome closes this palette as it opens.
+    if (!isPrivate) {
+      cmds.push({
+        id: 'nav:bookmarks',
+        title: 'Open Bookmarks',
+        subtitle: 'Browse and organise saved links, notes and to-dos.',
+        group: 'Navigation',
+        icon: commandIcon(BookmarkIcon),
+        keywords: ['bookmarks', 'links', 'boards', 'saved', 'spaces'],
+        action: () => openBookmarksView(),
+      });
+    }
     cmds.push({
       id: 'nav:privacy',
       title: 'Open Bento Privacy Settings',

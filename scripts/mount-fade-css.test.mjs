@@ -218,6 +218,7 @@ const MUX_GRADIENT_RESIDUAL = {
   'toggle-button': 'Welcome only, a selected standalone toggle under the pointer',
   tabs: 'WorkspaceIconPicker only, the tabs__motion-edge overflow buttons under the pointer',
   'color-swatch': 'two-tone swatches take fixed theme metadata colours, which do not depend on the mode',
+  checkbox: 'Bookmarks view only, a hovered or pressed to-do checkbox',
 };
 
 test('every Mux gradient tint on a component the shell renders is carried or recorded', () => {

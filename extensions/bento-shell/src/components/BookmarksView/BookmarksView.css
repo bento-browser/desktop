@@ -1,0 +1,950 @@
+/* Layer-2 component: BookmarksView.
+ *
+ * The Bookmarks manager as a full-window view. .bento-bookmarks is the size container; its frame
+ * is a grid of the spaces column, the main area and, while it is open, the open tabs drawer. Below
+ * the container breakpoint (75rem, 1200px at the 16px root; a container query cannot read a token)
+ * the spaces column folds to colour dots and the drawer overlays the boards.
+ *
+ * Mux controls (Button, IconButton, Input, Checkbox) paint through rules that are not all in a
+ * layer, so the overrides for them sit unlayered below, scoped by a Bento class and the Mux class.
+ * Layout, surfaces and motion are in bento.components. The page paints --bento-toolbar-main-bg
+ * itself (bookmarks.html marks the document), so the view reads as one surface with the toolbar
+ * strip above it. Hover states use the state role, the drawer its reveal and dismiss roles, and the
+ * reorder settle the reveal role (data-bm-flipping, set by flip.ts). */
+
+/* The shared document rule paints --bento-brand-bg; this document is the toolbar surface. */
+html[data-bento-document='bookmarks'],
+html[data-bento-document='bookmarks'] body,
+html[data-bento-document='bookmarks'] #root {
+  background-color: var(--bento-toolbar-main-bg);
+}
+
+@layer bento.components {
+  .bento-bookmarks {
+    container: bento-bookmarks / inline-size;
+    position: relative;
+    box-sizing: border-box;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--bento-toolbar-main-bg);
+    color: var(--muxui-semantic-content-default);
+    font-family: var(--bento-font-system);
+  }
+
+  .bento-bookmarks--unavailable {
+    display: grid;
+    place-items: center;
+  }
+
+  .bento-bookmarks[data-bm-dragging] {
+    cursor: grabbing;
+    user-select: none;
+  }
+
+  /* While something is dragged, no row or space takes a hover, and no action shows. */
+  .bento-bookmarks[data-bm-dragging] .bento-bookmarks__row:hover,
+  .bento-bookmarks[data-bm-dragging] .bento-bookmarks__space:hover {
+    background-color: transparent;
+  }
+
+  .bento-bookmarks[data-bm-dragging] .bento-bookmarks__row-actions,
+  .bento-bookmarks[data-bm-dragging] .bento-bookmarks__more {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .bento-bookmarks__frame {
+    display: grid;
+    grid-template-columns: var(--bento-bookmarks-spaces-width) minmax(0, 1fr);
+    height: 100%;
+  }
+
+  .bento-bookmarks__frame[data-drawer='open'] {
+    grid-template-columns:
+      var(--bento-bookmarks-spaces-width) minmax(0, 1fr)
+      var(--bento-bookmarks-drawer-width);
+  }
+
+  /* ---- Spaces ------------------------------------------------------------------------- */
+
+  .bento-bookmarks__spaces {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--muxui-semantic-layout-tight-gap);
+    padding: var(--muxui-semantic-layout-inset-small);
+    border-inline-end: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+  }
+
+  .bento-bookmarks__spaces-head {
+    display: flex;
+    padding-block-end: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__space-list {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: var(--muxui-semantic-layout-dense-gap);
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .bento-bookmarks__space {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    transition: background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__space:hover,
+  .bento-bookmarks__space:focus-within {
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-bookmarks__space[data-selected] {
+    background-color: var(--bento-surface-active);
+  }
+
+  .bento-bookmarks__space-main {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+  }
+
+  .bento-bookmarks__spaces-foot {
+    padding-block-start: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__dot {
+    flex: none;
+    width: var(--bento-bookmarks-dot-size);
+    height: var(--bento-bookmarks-dot-size);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--bento-bm-color, var(--bento-bookmark-color-gray));
+  }
+
+  .bento-bookmarks__dot[data-bm-color='gray'] {
+    --bento-bm-color: var(--bento-bookmark-color-gray);
+  }
+  .bento-bookmarks__dot[data-bm-color='red'] {
+    --bento-bm-color: var(--bento-bookmark-color-red);
+  }
+  .bento-bookmarks__dot[data-bm-color='orange'] {
+    --bento-bm-color: var(--bento-bookmark-color-orange);
+  }
+  .bento-bookmarks__dot[data-bm-color='yellow'] {
+    --bento-bm-color: var(--bento-bookmark-color-yellow);
+  }
+  .bento-bookmarks__dot[data-bm-color='green'] {
+    --bento-bm-color: var(--bento-bookmark-color-green);
+  }
+  .bento-bookmarks__dot[data-bm-color='blue'] {
+    --bento-bm-color: var(--bento-bookmark-color-blue);
+  }
+  .bento-bookmarks__dot[data-bm-color='purple'] {
+    --bento-bm-color: var(--bento-bookmark-color-purple);
+  }
+
+  .bento-bookmarks__count {
+    flex: none;
+    margin-inline-start: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The "..." triggers appear on hover or focus, and stay while their menu is open. */
+  .bento-bookmarks__more {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--muxui-control-size-sm);
+    height: var(--muxui-control-size-sm);
+    padding: 0;
+    border: 0;
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    background-color: transparent;
+    color: var(--muxui-semantic-content-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__space:hover .bento-bookmarks__more,
+  .bento-bookmarks__column-head:hover .bento-bookmarks__more,
+  .bento-bookmarks__more:focus-visible,
+  .bento-bookmarks__more[data-muxui-state-open],
+  .bento-bookmarks__more[aria-expanded='true'] {
+    opacity: 1;
+  }
+
+  .bento-bookmarks__more:hover {
+    background-color: var(--bento-surface-active);
+  }
+
+  .bento-bookmarks__more:focus-visible {
+    outline: var(--bento-focus-ring-width) solid var(--bento-workspace-accent);
+  }
+
+  .bento-bookmarks__menu-colour {
+    display: flex;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+  }
+
+  /* ---- Main: header, boards, results, empty ------------------------------------------- */
+
+  .bento-bookmarks__main {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .bento-bookmarks__header {
+    display: flex;
+    flex: none;
+    box-sizing: border-box;
+    height: var(--bento-bookmarks-header-height);
+    align-items: center;
+    gap: var(--muxui-semantic-layout-inset-medium);
+    padding-inline: var(--muxui-semantic-layout-inset-medium);
+    border-block-end: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+  }
+
+  .bento-bookmarks__title {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: baseline;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+  }
+
+  .bento-bookmarks__meta {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .bento-bookmarks__search {
+    flex: 0 1 var(--bento-bookmarks-search-width);
+    min-width: 0;
+  }
+
+  .bento-bookmarks__drawer-toggle {
+    flex: none;
+  }
+
+  .bento-bookmarks__drawer-toggle .bento-bookmarks__count {
+    margin-inline-start: var(--muxui-semantic-layout-dense-gap);
+  }
+
+  .bento-bookmarks__boards {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .bento-bookmarks__column {
+    display: flex;
+    min-height: 0;
+    flex: none;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: var(--bento-bookmarks-column-width);
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+    border-inline-end: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+  }
+
+  .bento-bookmarks__column[data-dragging] {
+    opacity: var(--bento-bookmarks-dragging-opacity);
+  }
+
+  .bento-bookmarks__column--add {
+    width: auto;
+    min-width: var(--bento-bookmarks-column-width);
+    border-inline-end: 0;
+  }
+
+  .bento-bookmarks__column-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    min-height: var(--muxui-control-size-md);
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .bento-bookmarks__column--add .bento-bookmarks__column-head {
+    cursor: default;
+  }
+
+  .bento-bookmarks__column-name {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .bento-bookmarks__rename {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .bento-bookmarks__list {
+    display: flex;
+    min-height: var(--bento-bookmarks-row-min-height);
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .bento-bookmarks__column-foot {
+    flex: none;
+    padding-block: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  /* ---- Rows -------------------------------------------------------------------------- */
+
+  .bento-bookmarks__row {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    min-height: var(--bento-bookmarks-row-min-height);
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    cursor: grab;
+    touch-action: none;
+    transition: background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__row:hover,
+  .bento-bookmarks__row:focus-within {
+    background-color: var(--bento-surface-hover);
+  }
+
+  .bento-bookmarks__row[data-dragging] {
+    opacity: var(--bento-bookmarks-dragging-opacity);
+  }
+
+  .bento-bookmarks__row[data-editing] {
+    cursor: default;
+    background-color: transparent;
+  }
+
+  .bento-bookmarks__row[data-kind='todo'] {
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__row[data-done] .bento-bookmarks__todo-text {
+    color: var(--muxui-semantic-content-muted);
+    text-decoration: line-through;
+  }
+
+  .bento-bookmarks__row[data-kind='note']::before {
+    content: '';
+    position: absolute;
+    inset-block: var(--muxui-semantic-layout-dense-gap);
+    inset-inline-start: 0;
+    width: var(--bento-focus-ring-width);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--muxui-semantic-border-strong);
+  }
+
+  .bento-bookmarks__row-text {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bento-bookmarks__row-text > * {
+    max-width: 100%;
+  }
+
+  .bento-bookmarks__note-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  .bento-bookmarks__todo-text {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+  }
+
+  .bento-bookmarks__todo-box {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .bento-bookmarks__favicon {
+    display: block;
+    flex: none;
+    width: var(--bento-bookmarks-favicon-size);
+    height: var(--bento-bookmarks-favicon-size);
+    border-radius: var(--muxui-semantic-shape-radius-xs);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .bento-bookmarks__favicon--fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muxui-semantic-content-muted);
+  }
+
+  /* Hover actions sit over the row's right end and paint no background: the text under them is
+     masked out (below) so a long title does not run behind the buttons, and the row's hover
+     surface shows through. A link has four actions, a note or a to-do two. */
+  .bento-bookmarks__row {
+    --bento-bookmarks-action-count: 4;
+    --bento-bookmarks-actions-fade: var(--muxui-semantic-layout-inset-medium);
+    --bento-bookmarks-actions-offset: calc(
+      var(--bento-bookmarks-action-count) * var(--bento-control-size-sm)
+    );
+    --bento-bookmarks-actions-width: calc(
+      var(--bento-bookmarks-actions-offset) + var(--bento-bookmarks-actions-fade)
+    );
+  }
+
+  .bento-bookmarks__row:not([data-kind='link']) {
+    --bento-bookmarks-action-count: 2;
+  }
+
+  /* Three layers, from the right: nothing over the buttons, a ramp of the fade's width, and the
+     rest opaque. The sizes and places carry the lengths so the gradients hold no custom property
+     (the fade check reads every gradient stop). Only the alpha matters; 'canvas' is an opaque
+     system colour keyword. */
+  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__row-text,
+  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__row-text,
+  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__note-text,
+  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__note-text,
+  .bento-bookmarks__row:not([data-editing]):hover .bento-bookmarks__todo-text,
+  .bento-bookmarks__row:not([data-editing]):focus-within .bento-bookmarks__todo-text {
+    mask-image: linear-gradient(canvas, canvas), linear-gradient(to left, transparent, canvas);
+    mask-repeat: no-repeat;
+    mask-size:
+      calc(100% - var(--bento-bookmarks-actions-width)) 100%,
+      var(--bento-bookmarks-actions-fade) 100%;
+    mask-position:
+      left top,
+      right var(--bento-bookmarks-actions-offset) top 0;
+  }
+
+  .bento-bookmarks__row-actions {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    display: flex;
+    align-items: center;
+    padding-inline-start: var(--muxui-semantic-layout-inset-medium);
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__row:hover .bento-bookmarks__row-actions,
+  .bento-bookmarks__row:focus-within .bento-bookmarks__row-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ---- Inline editors ---------------------------------------------------------------- */
+
+  .bento-bookmarks__editor {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--muxui-semantic-layout-dense-gap);
+    margin-block: var(--muxui-semantic-layout-dense-gap);
+  }
+
+  .bento-bookmarks__link-editor {
+    gap: var(--muxui-semantic-layout-tight-gap);
+    padding: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__editor-hint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--muxui-semantic-layout-inset-small);
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+    color: var(--muxui-semantic-content-muted);
+    font-size: var(--muxui-semantic-typography-badge-size);
+  }
+
+  /* ---- Drawer ------------------------------------------------------------------------ */
+
+  .bento-bookmarks__drawer {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    box-sizing: border-box;
+    border-inline-start: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+    background-color: var(--bento-brand-bg);
+    animation: bento-bookmarks-drawer-in var(--muxui-semantic-motion-reveal-transition) both;
+  }
+
+  .bento-bookmarks__drawer[data-exiting] {
+    animation: bento-bookmarks-drawer-out var(--muxui-semantic-motion-dismiss-transition) both;
+  }
+
+  @keyframes bento-bookmarks-drawer-in {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes bento-bookmarks-drawer-out {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bento-bookmarks__drawer,
+    .bento-bookmarks__drawer[data-exiting] {
+      animation: none;
+    }
+  }
+
+  /* The drawer's header is as tall as the main header, so their rules line up. */
+  .bento-bookmarks__drawer-head {
+    display: flex;
+    flex: none;
+    box-sizing: border-box;
+    height: var(--bento-bookmarks-header-height);
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    padding-inline: var(--muxui-semantic-layout-inset-medium);
+    border-block-end: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+  }
+
+  .bento-bookmarks__drawer-head .bento-bookmarks__count {
+    margin-inline-start: 0;
+  }
+
+  .bento-bookmarks__drawer-close {
+    margin-inline-start: auto;
+  }
+
+  .bento-bookmarks__drawer-list {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    margin: 0;
+    padding: var(--muxui-semantic-layout-inset-tight);
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .bento-bookmarks__drawer-empty {
+    padding: var(--muxui-semantic-layout-inset-small);
+  }
+
+  .bento-bookmarks__drawer-foot {
+    flex: none;
+    margin-block-start: auto;
+    padding: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__tab {
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+    padding-block: var(--muxui-semantic-layout-tight-gap);
+  }
+
+  /* ---- Search results ---------------------------------------------------------------- */
+
+  .bento-bookmarks__results {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--muxui-semantic-layout-inset-small);
+    padding: var(--muxui-semantic-layout-inset-small) var(--muxui-semantic-layout-inset-medium);
+    overflow-y: auto;
+  }
+
+  .bento-bookmarks__results--empty {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bento-bookmarks__result-group {
+    display: flex;
+    max-width: var(--bento-bookmarks-column-width);
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .bento-bookmarks__results .bento-bookmarks__result-group {
+    width: 100%;
+    max-width: calc(var(--bento-bookmarks-column-width) * 2);
+  }
+
+  .bento-bookmarks__result-head {
+    display: flex;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+    min-height: var(--muxui-control-size-md);
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks__results .bento-bookmarks__row {
+    cursor: default;
+  }
+
+  /* ---- Empty space ------------------------------------------------------------------- */
+
+  .bento-bookmarks__empty {
+    display: grid;
+    min-height: 0;
+    flex: 1 1 auto;
+    place-items: center;
+    padding: var(--muxui-semantic-layout-inset-large);
+  }
+
+  .bento-bookmarks__empty-box {
+    display: flex;
+    box-sizing: border-box;
+    width: min(100%, calc(var(--bento-bookmarks-column-width) * 2));
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-inset-small);
+    padding: var(--muxui-semantic-layout-inset-xlarge);
+    border: var(--bento-border-hairline) dashed var(--muxui-semantic-border-strong);
+    border-radius: var(--muxui-semantic-shape-container-radius);
+    text-align: center;
+    transition: background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__empty[data-bm-drop-active] .bento-bookmarks__empty-box {
+    background-color: var(--bento-surface-hover);
+    border-color: var(--bento-workspace-accent);
+  }
+
+  .bento-bookmarks__empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--muxui-semantic-layout-inset-small);
+  }
+
+  .bento-bookmarks__empty-import {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-inset-small);
+    margin-block-start: var(--muxui-semantic-layout-inset-small);
+    padding-block-start: var(--muxui-semantic-layout-inset-medium);
+    border-block-start: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+  }
+
+  /* ---- Drag overlays ----------------------------------------------------------------- */
+
+  /* The insertion line floats over the board and never moves a row. */
+  .bento-bookmarks__drop-line {
+    position: absolute;
+    z-index: 3;
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--bento-workspace-accent);
+    pointer-events: none;
+  }
+
+  .bento-bookmarks__drop-line[data-orientation='horizontal'] {
+    height: var(--bento-focus-ring-width);
+    margin-block-start: calc(var(--bento-focus-ring-width) / -2);
+  }
+
+  .bento-bookmarks__drop-line[data-orientation='vertical'] {
+    width: var(--bento-focus-ring-width);
+    margin-inline-start: calc(var(--bento-focus-ring-width) / -2);
+  }
+
+  /* The clone that follows the pointer. */
+  .bento-bookmarks__ghost {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-radius: var(--muxui-semantic-shape-option-radius);
+    background-color: var(--muxui-semantic-surface-raised);
+    box-shadow: var(--muxui-semantic-elevation-floating);
+    cursor: grabbing;
+    list-style: none;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  .bento-bookmarks__ghost .bento-bookmarks__row-actions,
+  .bento-bookmarks__ghost .bento-bookmarks__more {
+    display: none;
+  }
+
+  /* ---- Reorder settle ---------------------------------------------------------------- */
+
+  [data-bm-flipping] {
+    transition: transform var(--muxui-semantic-motion-reveal-transition);
+  }
+
+  /* ---- Undo toasts ------------------------------------------------------------------- */
+
+  .bento-bookmarks__toasts {
+    position: absolute;
+    z-index: 5;
+    inset-block-end: var(--muxui-semantic-layout-viewport-inset);
+    inset-inline-start: var(--muxui-semantic-layout-viewport-inset);
+    display: flex;
+    max-width: calc(100% - (var(--muxui-semantic-layout-viewport-inset) * 2));
+    flex-direction: column;
+    gap: var(--muxui-semantic-layout-inset-small);
+    pointer-events: none;
+  }
+
+  .bento-bookmarks__toast {
+    display: flex;
+    box-sizing: border-box;
+    width: var(--bento-bookmarks-toast-width);
+    max-width: 100%;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-inset-small);
+    padding: var(--muxui-semantic-layout-inset-small) var(--muxui-semantic-layout-inset-small)
+      var(--muxui-semantic-layout-inset-small) var(--muxui-semantic-layout-inset-medium);
+    border: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+    border-radius: var(--muxui-semantic-shape-container-radius);
+    background-color: var(--muxui-semantic-surface-raised);
+    box-shadow: var(--muxui-semantic-elevation-toast);
+    pointer-events: auto;
+    animation: bento-bookmarks-toast-in var(--muxui-semantic-motion-reveal-transition) both;
+  }
+
+  .bento-bookmarks__toast[data-exiting] {
+    animation: bento-bookmarks-toast-out var(--muxui-semantic-motion-dismiss-transition) both;
+  }
+
+  .bento-bookmarks__toast-text {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  @keyframes bento-bookmarks-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes bento-bookmarks-toast-out {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bento-bookmarks__toast,
+    .bento-bookmarks__toast[data-exiting] {
+      animation: none;
+    }
+  }
+
+  /* ---- Narrow windows ---------------------------------------------------------------- */
+
+  @container bento-bookmarks (max-width: 75rem) {
+    .bento-bookmarks__frame,
+    .bento-bookmarks__frame[data-drawer='open'] {
+      grid-template-columns: var(--bento-bookmarks-spaces-width-compact) minmax(0, 1fr);
+    }
+
+    .bento-bookmarks__spaces {
+      align-items: center;
+      padding-inline: var(--muxui-semantic-layout-inset-tight);
+    }
+
+    .bento-bookmarks__back-label,
+    .bento-bookmarks__add-label,
+    .bento-bookmarks__space-name,
+    .bento-bookmarks__space .bento-bookmarks__count,
+    .bento-bookmarks__space .bento-bookmarks__more {
+      display: none;
+    }
+
+    .bento-bookmarks__space-list,
+    .bento-bookmarks__space {
+      align-items: center;
+    }
+
+    .bento-bookmarks__drawer {
+      position: absolute;
+      z-index: 2;
+      inset-block: 0;
+      inset-inline-end: 0;
+      width: var(--bento-bookmarks-drawer-width);
+      box-shadow: var(--muxui-semantic-elevation-floating);
+    }
+  }
+}
+
+/* ---- Overrides of Mux controls (unlayered, see the header) ----------------------------- */
+
+.bento-bookmarks__back.muxui-button {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+@container bento-bookmarks (max-width: 75rem) {
+  .bento-bookmarks__back.muxui-button {
+    justify-content: center;
+    width: auto;
+  }
+
+  .bento-bookmarks__space-main.muxui-button {
+    justify-content: center;
+    flex: none;
+    inline-size: var(--muxui-control-size-md);
+    padding-inline: 0;
+  }
+
+  .bento-bookmarks__space-main.muxui-button .bento-bookmarks__dot {
+    width: calc(var(--bento-bookmarks-dot-size) * 1.5);
+    height: calc(var(--bento-bookmarks-dot-size) * 1.5);
+  }
+}
+
+/* A space or a row: the row paints the hover, so the button inside stays transparent. */
+.bento-bookmarks__space-main.muxui-button,
+.bento-bookmarks__row-main.muxui-button {
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  background-color: transparent;
+  text-align: start;
+}
+
+.bento-bookmarks__row-main.muxui-button {
+  align-items: center;
+  padding-block: var(--muxui-semantic-layout-tight-gap);
+  padding-inline: var(--muxui-semantic-layout-inset-tight);
+  min-block-size: var(--bento-bookmarks-row-min-height);
+  height: auto;
+  cursor: inherit;
+}
+
+.bento-bookmarks__row-main.muxui-button .muxui-button__label {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--muxui-semantic-layout-control-content-gap);
+}
+
+.bento-bookmarks__space-main.muxui-button .muxui-button__label {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--muxui-semantic-layout-control-content-gap);
+}
+
+.bento-bookmarks__space[data-selected] .bento-bookmarks__space-main.muxui-button {
+  font-weight: var(--muxui-semantic-typography-label-weight);
+}
+
+/* "+ Link, note or to-do", "+ Group" and the like: a quiet ghost button, left aligned. */
+.bento-bookmarks__add.muxui-button {
+  justify-content: flex-start;
+  width: 100%;
+  color: var(--muxui-semantic-content-muted);
+}
+
+/* Inline fields: the look of the sidebar's rename field, on this surface. */
+.bento-bookmarks__field {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-block-size: 0;
+  margin: 0;
+  padding: var(--muxui-semantic-layout-tight-gap) var(--muxui-semantic-layout-inset-tight);
+  border: var(--bento-border-hairline) solid var(--bento-workspace-accent);
+  border-radius: var(--muxui-semantic-shape-option-radius);
+  background-color: var(--muxui-semantic-surface-background);
+  color: var(--muxui-semantic-content-default);
+  font: inherit;
+  font-size: var(--muxui-semantic-typography-small-size);
+  line-height: var(--muxui-semantic-typography-compact-line-height);
+  outline: none;
+  resize: none;
+  user-select: text;
+}
+
+.bento-bookmarks__field[aria-invalid='true'] {
+  border-color: var(--muxui-semantic-feedback-invalid-border);
+}
+
+/* The checkbox has no label of its own (the text is the row's), so it takes no gap for one. */
+.bento-bookmarks__todo-box .muxui-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.bento-bookmarks__todo-box .muxui-checkbox__label {
+  display: none;
+}
+
+.bento-bookmarks__row[data-kind='note'] .bento-bookmarks__row-main.muxui-button {
+  padding-inline-start: var(--muxui-semantic-layout-inset-small);
+}
+
+/* The hover actions are compact: four of them must leave most of the row to grab. */
+.bento-bookmarks__row-actions .muxui-icon-button {
+  width: var(--bento-control-size-sm);
+  height: var(--bento-control-size-sm);
+  min-width: var(--bento-control-size-sm);
+  min-height: var(--bento-control-size-sm);
+  padding: 0;
+}

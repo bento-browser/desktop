@@ -746,6 +746,47 @@ instead, and the rules for doing it are in
   `--panel-shadow` are not read by Firefox, and the `--panel-list-*` tokens paint nothing
   inside a XUL panel. Read the computed value of the element Firefox paints.
 
+### Bookmarks view
+
+The Bookmarks view (`components/BookmarksView/`, see [technical/bookmarks.md](technical/bookmarks.md))
+uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbox`, `Menu`
+(Root, Trigger, Popup, List, Item, Submenu, Separator), `Dialog`, `Input.Input` and
+`TextArea.TextArea`. Its conventions:
+
+- **Layout in `bento.components`, Mux overrides unlayered.** Mux paints some control rules
+  outside a layer, so the view's overrides for a Mux control (a ghost button that left-aligns
+  its content, a row button that paints no fill because the row paints the hover, the compact
+  hover actions) sit unlayered at the end of `BookmarksView.css`, scoped by a Bento class and
+  the Mux class (`.bento-bookmarks__back.muxui-button`). Layout, surfaces and motion stay in
+  the layer.
+- **Container query for the narrow mode.** The root is an inline-size container
+  (`bento-bookmarks`); below `75rem` (1200 px at the 16 px root; a container query cannot read
+  a token) the spaces fold to colour dots and the drawer overlays the board.
+- **Undo toasts are a Bento composite, not Mux `Toast`.** `UndoToasts` is built on `Button`,
+  `IconButton` and `Text`. Mux Toast added about 7 KB gzip to the cold start of every overlay
+  document, and the view needs one toast kind. It enters on `reveal`, leaves on `dismiss`
+  through `afterMotion`, and pauses on hover and focus.
+- **Confirmation is a Mux `Dialog`.** Deleting a group or space needs one question and one
+  answer, so no `AlertDialog` is used.
+- **No Mux drag.** Row, tab and column drag is a pointer hook (`useBoardDrag`) that begins in the
+  capture phase, because Mux Buttons stop `pointerdown` from bubbling. The ghost clone, insertion
+  line and autoscroll draw imperatively from one `requestAnimationFrame` loop.
+- **Colour tokens.** The seven space and group colours are `--bento-bookmark-color-{gray,red,
+  orange,yellow,green,blue,purple}` in `bento-tokens.css` (the Mux reference hues at step 60;
+  gray is the semantic neutral). Dimensions come from `--bento-bookmarks-*` tokens; the row or
+  column being dragged dims to `--bento-bookmarks-dragging-opacity`.
+- **Hover actions without a background.** The row's actions paint no fill. The row text under
+  them is masked out with three `mask-image` layers whose lengths come from `mask-size` and
+  `mask-position`, not from gradient stops, because the fade check (`scripts/mount-fade-css.test.mjs`)
+  and the motion check read every `var()` inside a gradient. `canvas` is an opaque system colour
+  keyword: only the alpha matters.
+- **Reorder settle.** `[data-bm-flipping]` carries a `transform` transition on the `reveal`
+  role; `flip.ts` ends it with `afterMotion({ properties: ['transform'] })` and skips it under
+  reduced motion.
+- **Mux gradient residual.** A hovered or pressed Mux `Checkbox` (the to-do rows) tints with a
+  gradient over an unregistered custom property, so it does not cross-fade with the theme; it is
+  listed in `MUX_GRADIENT_RESIDUAL` in `scripts/mount-fade-css.test.mjs`.
+
 ### Pruning Mux component CSS
 
 The package has one stylesheet for all components. `mux-css-prune.ts` removes the

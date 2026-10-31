@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-bento-theme="default" data-bento-document="bookmarks">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Bookmarks</title>
+
+    <!-- Persist color-mode preference; same boot script as the main shell. -->
+    <script src="./boot.js"></script>
+
+    <!-- Unlike the other overlay documents this one is opaque: the Bookmarks view is a full-window
+         view, not a modal, and paints the toolbar surface so it reads as one with the toolbar strip
+         above it. The background itself is in BookmarksView.css, keyed on data-bento-document, so the
+         shared transparent rule is not repeated here. -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/bookmarks/main.tsx"></script>
+  </body>
+</html>

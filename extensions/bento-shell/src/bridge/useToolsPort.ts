@@ -56,6 +56,7 @@ import { usePanelsStore } from '../state/panels';
 import { usePinnedPanelsStore } from '../state/pinnedPanels';
 import { useTabFoldersStore } from '../state/tabFolders';
 import { useSavedPanelsStore } from '../state/savedPanels';
+import { useBookmarksStore } from '../state/bookmarks';
 import { usePrivacyStore } from '../state/privacy';
 import { useAddressBarStore } from '../state/addressBar';
 import { useSearchEnginesStore } from '../state/searchEngines';
@@ -505,6 +506,9 @@ function ensureConnection(): void {
         return;
       case 'savedPanels/snapshot':
         useSavedPanelsStore.getState().apply(event.items);
+        return;
+      case 'bookmarks/snapshot':
+        useBookmarksStore.getState().apply(event.snapshot);
         return;
       case 'externalMerge/sources':
         useExternalMergeStore.getState().applySources(event, state.windowId);
