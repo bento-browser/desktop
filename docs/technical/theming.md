@@ -326,6 +326,14 @@ nested theme-scope updates or let a late stylesheet continuation rewrite the old
 scheme. Do not remove the opaque hold before a reversal's underlying commit.
 Keep actual-window ownership and current-WindowGlobal checks at every actor await.
 
+Keep `bento-add-panel-trailer` out of `modePageFrames()`'s active slots. Its
+`split-view-panel-active` class enables painting, but its saved-panel grid and
+interior fill are Bento UI covered by the shared old image. Treating that frame
+as a live page hole exposes final colours before the surrounding fade completes
+in either direction. Keep its native-mode registration and settle/ACK path intact.
+`scripts/mount-motion.test.mjs` exercises the actual frame selection function;
+verify both flip directions in the native panels view with the trailer visible.
+
 ### Measurements
 
 The following records describe the superseded per-document fade, not acceptance
