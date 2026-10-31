@@ -33,6 +33,9 @@ export interface TabSnapshot {
    * Sidebar dims the favicon so users can see at a glance which tabs are
    * sleeping vs. resident in memory. */
   discarded?: boolean;
+  /** True while the tab's content process has crashed and Firefox shows its
+   * crashed-tab page. Cleared when the tab is reloaded or restored. */
+  crashed?: boolean;
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;
