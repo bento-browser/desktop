@@ -23,7 +23,6 @@ describe('Settings categories', () => {
           const model = { ...REGULAR_MODEL, isPrivate, privacy, search };
           const expected = SETTINGS_CATEGORIES.filter(
             ({ id }) =>
-              (id !== 'tabAppearance' || __BENTO_SOFTCAST_DEMO__) &&
               (id !== 'privacy' || (privacy && search)) &&
               (!['backup', 'reset'].includes(id) || !isPrivate),
           );
@@ -43,9 +42,9 @@ describe('Settings categories', () => {
         }
       }
     }
-    expect(controlRows(REGULAR_MODEL)).toHaveLength(__BENTO_SOFTCAST_DEMO__ ? 24 : 22);
-    expect(rootRows(REGULAR_MODEL)).toHaveLength(__BENTO_SOFTCAST_DEMO__ ? 9 : 8);
-    expect(rootRows(PRIVATE_MODEL)).toHaveLength(__BENTO_SOFTCAST_DEMO__ ? 7 : 6);
+    expect(controlRows(REGULAR_MODEL)).toHaveLength(24);
+    expect(rootRows(REGULAR_MODEL)).toHaveLength(9);
+    expect(rootRows(PRIVATE_MODEL)).toHaveLength(7);
   });
 
   it('reaches every former control once through its category, opening shortcuts directly', () => {
@@ -64,6 +63,7 @@ describe('Settings categories', () => {
         ]),
       );
       expect(sizes.get('category:appearance')).toBe(1);
+      expect(sizes.get('category:tabAppearance')).toBe(2);
       expect(sizes.get('category:performance')).toBe(3);
       expect(sizes.get('category:workspaces')).toBe(1);
       expect(sizes.get('category:panels')).toBe(6);
@@ -96,14 +96,13 @@ describe('Settings categories', () => {
       hints: ['↑↓ move', 'Enter open', 'Esc close'],
       status: '9 categories',
     });
-    expect(footerFor(ROOT_STAGE, PRIVATE_MODEL, 6).status).toBe('6 categories');
+    expect(footerFor(ROOT_STAGE, PRIVATE_MODEL, 7).status).toBe('7 categories');
     expect(footerFor({ kind: 'category', id: 'appearance' }, REGULAR_MODEL, 1).hints).toContain(
       'Enter open',
     );
-    if (__BENTO_SOFTCAST_DEMO__)
-      expect(
-        footerFor({ kind: 'category', id: 'tabAppearance' }, REGULAR_MODEL, 2).hints,
-      ).toContain('Enter toggle');
+    expect(footerFor({ kind: 'category', id: 'tabAppearance' }, REGULAR_MODEL, 2).hints).toContain(
+      'Enter toggle',
+    );
   });
 });
 

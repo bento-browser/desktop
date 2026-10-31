@@ -1,8 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BentoSettings, TabSnapshot } from '@shared/protocol';
 import { DEFAULT_FIXTURE } from '../../state/__fixtures__/settings';
-import { softcastFixtureUrl } from '../../dev/softcast';
 import { TabRow } from './TabRow';
 
 const state = vi.hoisted(() => ({
@@ -16,7 +15,8 @@ vi.mock('../../state/settings', () => ({
     selector({ current: state.settings }),
 }));
 
-const shellUrl = 'moz-extension://bento-shell-test/dist/index.html';
+const failedUrl = 'https://example.org/';
+const blockedIcon = 'chrome://global/skin/icons/blocked.svg';
 const favicon = 'https://example.org/favicon.svg';
 const render = () =>
   renderToStaticMarkup(
@@ -29,9 +29,9 @@ const render = () =>
     />,
   );
 const rowTag = (markup: string) => markup.match(/<div[^>]*data-bento-tab-id="1"[^>]*>/)?.[0];
+const stateIcon = (markup: string) => markup.match(/<img[^>]*bento-tab-row__state-icon[^>]*>/)?.[0];
 
 beforeEach(() => {
-  vi.stubGlobal('location', { href: shellUrl });
   state.settings = { ...DEFAULT_FIXTURE };
   state.tab = {
     id: 1,
@@ -42,11 +42,11 @@ beforeEach(() => {
     pinned: false,
     audible: false,
     muted: false,
-    url: softcastFixtureUrl(shellUrl, 'blocked'),
-    favIconUrl: favicon,
+    url: failedUrl,
+    favIconUrl: blockedIcon,
+    pageError: 'blocked',
   };
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe('tab appearance preferences', () => {
   it.each([
@@ -61,31 +61,78 @@ describe('tab appearance preferences', () => {
       customTabStateIconsEnabled: icons,
     };
     const markup = render();
-    expect(rowTag(markup)?.includes('data-softcast-state="blocked"')).toBe(
-      __BENTO_SOFTCAST_DEMO__ && tints,
-    );
-    expect(markup.includes('bento-tab-row__softcast')).toBe(__BENTO_SOFTCAST_DEMO__ && icons);
-    expect(markup.includes(`src="${favicon}"`)).toBe(!__BENTO_SOFTCAST_DEMO__ || !icons);
+    expect(rowTag(markup)?.includes('data-tab-state="blocked"')).toBe(tints);
+    expect(stateIcon(markup)?.includes('data-tab-state="blocked"') ?? false).toBe(icons);
+    expect(stateIcon(markup)?.includes('alt="Blocked"') ?? false).toBe(icons);
+    expect(markup.includes(`src="${blockedIcon}"`)).toBe(!icons);
   });
 
   it('uses enabled defaults before settings hydrate and keeps missing rows empty', () => {
     state.settings = null;
-    expect(render().includes('bento-tab-row__softcast')).toBe(__BENTO_SOFTCAST_DEMO__);
+    const markup = render();
+    expect(rowTag(markup)).toContain('data-tab-state="blocked"');
+    expect(stateIcon(markup)).toBeDefined();
     state.tab = undefined;
     expect(render()).toBe('');
   });
 
   it('keeps real website favicons with both controls On', () => {
-    state.tab = { ...state.tab!, url: 'https://example.org' };
+    state.tab = { ...state.tab!, pageError: undefined, favIconUrl: favicon };
     const markup = render();
     expect(markup).toContain(`src="${favicon}"`);
-    expect(markup).not.toContain('bento-tab-row__softcast');
-    expect(rowTag(markup)).not.toContain('data-softcast-state');
+    expect(stateIcon(markup)).toBeUndefined();
+    expect(rowTag(markup)).not.toContain('data-tab-state');
+  });
+
+  it('keeps the favicon of a website that declares a Firefox error icon', () => {
+    state.tab = { ...state.tab!, pageError: undefined, favIconUrl: blockedIcon };
+    const markup = render();
+    expect(markup).toContain(`src="${blockedIcon}"`);
+    expect(stateIcon(markup)).toBeUndefined();
+    expect(rowTag(markup)).not.toContain('data-tab-state');
+  });
+
+  it('shows the state icon from the real tab fields, tinting only failure states', () => {
+    const cases = [
+      [{ favIconUrl: undefined }, 'default', false],
+      [{ discarded: true }, 'sleeping', false],
+      [{ pageError: 'crashed' }, 'crashed', true],
+      [{ pageError: 'crashed', loading: true }, 'crashed', true],
+      [{ url: 'about:preferences#privacy', favIconUrl: favicon }, 'internal-settings', true],
+      [{ pageError: 'unavailable' }, 'unavailable', true],
+      [{ pageError: 'certificate-warning' }, 'certificate-warning', true],
+      [{ pageError: 'blocked' }, 'blocked', true],
+    ] as const;
+    const base = state.tab!;
+    for (const [changes, expected, tinted] of cases) {
+      state.tab = { ...base, pageError: undefined, ...changes };
+      const markup = render();
+      expect(stateIcon(markup), expected).toContain(`data-tab-state="${expected}"`);
+      expect(stateIcon(markup), expected).toMatch(/src="[^"]*tab-state-[^"]*\.svg/);
+      expect(rowTag(markup)?.includes(`data-tab-state="${expected}"`), expected).toBe(tinted);
+    }
+  });
+
+  it('keeps the Mux progress circle for a loading tab with both controls On', () => {
+    state.tab = { ...state.tab!, loading: true };
+    const markup = render();
+    expect(markup).toContain('bento-tab-row__favicon--loading');
+    expect(markup).toContain('aria-label="Loading"');
+    expect(markup).toContain('title="Loading — Example"');
+    expect(stateIcon(markup)).toBeUndefined();
+    expect(rowTag(markup)).not.toContain('data-tab-state');
+    expect(markup).not.toContain('<img');
   });
 
   it('retains native loading, discarded styling, and titles with custom icons Off', () => {
     state.settings = { ...DEFAULT_FIXTURE, customTabStateIconsEnabled: false };
-    state.tab = { ...state.tab!, url: 'https://example.org', loading: true, discarded: true };
+    state.tab = {
+      ...state.tab!,
+      url: failedUrl,
+      favIconUrl: favicon,
+      loading: true,
+      discarded: true,
+    };
     const loading = render();
     expect(loading).toContain('bento-tab-row__favicon--loading');
     expect(loading).toContain('aria-label="Loading"');

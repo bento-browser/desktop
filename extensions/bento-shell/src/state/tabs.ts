@@ -6,7 +6,7 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
-import type { TabDelta, TabSnapshot } from '@shared/protocol';
+import type { TabChanges, TabDelta, TabSnapshot } from '@shared/protocol';
 import { getPanelIdsForWorkspace, usePanelsStore } from './panels';
 
 interface TabsState {
@@ -31,6 +31,21 @@ function recomputeOrder(byId: Record<number, TabSnapshot>): number[] {
   return Object.values(byId)
     .sort((a, b) => a.index - b.index)
     .map((t) => t.id);
+}
+
+/** Merges an update delta. `null` clears a field: it arrives that way because a private window's
+ * relay JSON-serialises deltas and drops `undefined`. The field is deleted so the tab reads as in
+ * a snapshot. */
+function applyChanges(tab: TabSnapshot, changes: TabChanges): TabSnapshot {
+  const entries = Object.entries(changes);
+  const merged: TabSnapshot = {
+    ...tab,
+    ...Object.fromEntries(entries.filter(([, value]) => value !== null)),
+  };
+  for (const [key, value] of entries) {
+    if (value === null) Reflect.deleteProperty(merged, key);
+  }
+  return merged;
 }
 
 export const useTabsStore = create<TabsState>((set) => ({
@@ -67,8 +82,7 @@ export const useTabsStore = create<TabsState>((set) => ({
           case 'updated': {
             const existing = byId[d.id];
             if (!existing) break;
-            const merged = { ...existing, ...d.changes };
-            byId[d.id] = merged;
+            byId[d.id] = applyChanges(existing, d.changes);
             if ('index' in d.changes) needsReorder = true;
             break;
           }

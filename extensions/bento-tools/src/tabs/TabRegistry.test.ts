@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TabDelta } from '@shared/protocol';
+import type { TabDelta, TabSnapshot } from '@shared/protocol';
 import { TabRegistry } from './TabRegistry';
 import { partitionTabDeltas } from '../messaging/audience';
 
@@ -13,7 +13,10 @@ interface TabListeners {
   removed?: (id: number, info: browser.tabs._OnRemovedRemoveInfo) => void;
   attached?: (id: number, info: browser.tabs._OnAttachedAttachInfo) => void;
   activated?: (info: browser.tabs._OnActivatedActiveInfo) => void;
+  pageErrorChanged?: (tabId: number, pageError: TabSnapshot['pageError'] | null) => void;
 }
+
+type PageErrorRead = Awaited<ReturnType<typeof browser.bentoTabState.getPageErrors>>[number];
 
 function makeTab(overrides: Partial<browser.tabs.Tab> & { id: number }): browser.tabs.Tab {
   const { id, ...rest } = overrides;
@@ -49,6 +52,12 @@ function stubTabsBrowser(initialTabs: browser.tabs.Tab[] = []): TabListeners {
       onMoved: { addListener: vi.fn() },
       onAttached: { addListener: vi.fn((listener) => (listeners.attached = listener)) },
       get: vi.fn(),
+    },
+    bentoTabState: {
+      getPageErrors: vi.fn(async (): Promise<PageErrorRead[]> => []),
+      onPageErrorChanged: {
+        addListener: vi.fn((listener) => (listeners.pageErrorChanged = listener)),
+      },
     },
   });
   return listeners;
@@ -441,7 +450,7 @@ describe('TabRegistry URL snapshots', () => {
       kind: 'updated',
       id: 1,
       changes: expect.objectContaining({
-        customTitle: undefined,
+        customTitle: null,
         title: 'New title',
         url: 'https://new.example/',
       }),
@@ -471,13 +480,13 @@ describe('TabRegistry URL snapshots', () => {
     expect(emitted).toContainEqual({
       kind: 'updated',
       id: 1,
-      changes: expect.not.objectContaining({ customTitle: undefined }),
+      changes: expect.not.objectContaining({ customTitle: null }),
     });
     expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
     expect(tabs.snapshot()[0]?.customTitle).toBe('Pinned workflow');
   });
 
-  it('emits undefined and clears the stored URL when update has no URL', async () => {
+  it('emits null and clears the stored URL when update has no URL', async () => {
     const listeners = stubTabsBrowser([makeTab({ id: 1, url: 'https://old.example/' })]);
     const emitted: unknown[] = [];
     const tabs = new TabRegistry();
@@ -493,9 +502,55 @@ describe('TabRegistry URL snapshots', () => {
     expect(emitted).toContainEqual({
       kind: 'updated',
       id: 1,
-      changes: expect.objectContaining({ url: undefined }),
+      changes: expect.objectContaining({ url: null }),
     });
     expect(tabs.snapshot()[0]?.url).toBeUndefined();
+  });
+
+  it('clears favicon, URL and custom title with null so a relayed delta keeps the clear', async () => {
+    const listeners = stubTabsBrowser([
+      makeTab({
+        id: 1,
+        title: 'Page',
+        url: 'https://old.example/',
+        favIconUrl: 'chrome://global/skin/icons/info.svg',
+      }),
+    ]);
+    const emitted: TabDelta[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Mine');
+    await tabs.rename(1, '');
+    emitted.length = 0;
+
+    listeners.updated?.(
+      1,
+      {} as browser.tabs._OnUpdatedChangeInfo,
+      makeTab({ id: 1, title: 'Page', url: undefined, favIconUrl: undefined }),
+    );
+
+    expect(emitted).toEqual([{ kind: 'updated', id: 1, changes: { favIconUrl: null, url: null } }]);
+    // The private-window relay JSON-serialises deltas: `undefined` would vanish here.
+    expect(JSON.parse(JSON.stringify(emitted))).toEqual(emitted);
+    expect(tabs.snapshot()[0]).not.toHaveProperty('favIconUrl');
+    expect(tabs.snapshot()[0]).not.toHaveProperty('url');
+  });
+
+  it('sends a cleared custom title as null, and keeps the snapshot field absent', async () => {
+    stubTabsBrowser([makeTab({ id: 1 })]);
+    const emitted: TabDelta[] = [];
+    const tabs = new TabRegistry();
+    tabs.onDeltas((deltas) => emitted.push(...deltas));
+    await tabs.init();
+    await tabs.rename(1, 'Mine');
+    emitted.length = 0;
+
+    await tabs.rename(1, '');
+
+    expect(emitted).toEqual([{ kind: 'updated', id: 1, changes: { customTitle: null } }]);
+    expect(JSON.parse(JSON.stringify(emitted))).toEqual(emitted);
+    expect(tabs.snapshot()[0]).not.toHaveProperty('customTitle');
   });
 
   it('keeps URL available for closing-window snapshots', async () => {
@@ -912,5 +967,186 @@ describe('TabRegistry explicit restore hydration', () => {
     });
     expect(tabs.isClosing(42)).toBe(false);
     expect(browser.sessions.setTabValue).not.toHaveBeenCalled();
+  });
+});
+
+describe('TabRegistry page errors', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function registryWithTabs(atStart: PageErrorRead[] = []) {
+    const listeners = stubTabsBrowser([
+      makeTab({ id: 1, windowId: 1 }),
+      makeTab({ id: 2, windowId: 1 }),
+      makeTab({ id: 900, windowId: 9, incognito: true }),
+    ]);
+    vi.mocked(browser.bentoTabState.getPageErrors).mockResolvedValue(atStart);
+    const tabs = new TabRegistry();
+    await tabs.init();
+    const batches: TabDelta[][] = [];
+    tabs.onDeltas((deltas) => batches.push(deltas));
+    return { listeners, tabs, batches };
+  }
+
+  const errorsOf = (tabs: TabRegistry) =>
+    Object.fromEntries(
+      tabs
+        .snapshot()
+        .filter((tab) => tab.pageError)
+        .map((tab) => [tab.id, tab.pageError]),
+    );
+  const flushReads = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('marks tabs that already show a failure page in the initial snapshot', async () => {
+    const { tabs } = await registryWithTabs([{ tabId: 2, pageError: 'certificate-warning' }]);
+
+    expect(errorsOf(tabs)).toEqual({ 2: 'certificate-warning' });
+  });
+
+  it('emits a delta when a tab starts, changes and stops showing a failure page', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.pageErrorChanged?.(1, 'unavailable');
+    expect(errorsOf(tabs)).toEqual({ 1: 'unavailable' });
+    listeners.pageErrorChanged?.(1, 'crashed');
+    listeners.pageErrorChanged?.(1, null);
+    expect(errorsOf(tabs)).toEqual({});
+    expect(tabs.snapshot().find((tab) => tab.id === 1)).not.toHaveProperty('pageError');
+
+    expect(batches.flat()).toEqual([
+      { kind: 'updated', id: 1, changes: { pageError: 'unavailable' } },
+      { kind: 'updated', id: 1, changes: { pageError: 'crashed' } },
+      { kind: 'updated', id: 1, changes: { pageError: null } },
+    ]);
+    // A private window's relay JSON-serialises deltas: the clear must survive that.
+    expect(JSON.parse(JSON.stringify(batches.flat()))).toEqual(batches.flat());
+  });
+
+  it('ignores a repeat of the state a tab already has', async () => {
+    const { listeners, batches } = await registryWithTabs();
+
+    listeners.pageErrorChanged?.(1, null);
+    listeners.pageErrorChanged?.(1, 'blocked');
+    listeners.pageErrorChanged?.(1, 'blocked');
+
+    expect(batches.flat()).toEqual([{ kind: 'updated', id: 1, changes: { pageError: 'blocked' } }]);
+  });
+
+  it('keeps a private tab out of the regular audience', async () => {
+    const { listeners, tabs, batches } = await registryWithTabs();
+
+    listeners.pageErrorChanged?.(900, 'crashed');
+
+    const { regular, privateByWindow } = partitionTabDeltas(tabs, batches.flat());
+    expect(regular).toEqual([]);
+    expect(privateByWindow.get(9)).toEqual([
+      { kind: 'updated', id: 900, changes: { pageError: 'crashed' } },
+    ]);
+  });
+
+  it('keeps the state when onCreated reports a tab it already tracks', async () => {
+    const { listeners, tabs } = await registryWithTabs([{ tabId: 2, pageError: 'crashed' }]);
+
+    listeners.created?.(makeTab({ id: 2, windowId: 1 }));
+
+    expect(errorsOf(tabs)).toEqual({ 2: 'crashed' });
+  });
+
+  describe('for a tab onCreated has not delivered yet', () => {
+    it('applies the state its first event reported, without a separate delta', async () => {
+      const { listeners, tabs, batches } = await registryWithTabs();
+
+      listeners.pageErrorChanged?.(50, 'unavailable');
+      expect(batches).toEqual([]);
+      listeners.created?.(makeTab({ id: 50, windowId: 1 }));
+
+      expect(errorsOf(tabs)).toEqual({ 50: 'unavailable' });
+      expect(batches.flat()).toEqual([
+        {
+          kind: 'created',
+          tab: expect.objectContaining({ id: 50, pageError: 'unavailable' }),
+        },
+      ]);
+    });
+
+    it('applies the state a read found', async () => {
+      const { listeners, tabs } = await registryWithTabs([{ tabId: 50, pageError: 'blocked' }]);
+
+      listeners.created?.(makeTab({ id: 50, windowId: 1 }));
+
+      expect(errorsOf(tabs)).toEqual({ 50: 'blocked' });
+    });
+
+    it('does not let a state kept during init outlive the read that follows it', async () => {
+      const listeners = stubTabsBrowser();
+      // The event arrives while init waits for the tab list, before the registry knows the tab.
+      vi.mocked(browser.tabs.query).mockImplementation(async () => {
+        listeners.pageErrorChanged?.(60, 'unavailable');
+        return [makeTab({ id: 60, windowId: 1 })];
+      });
+      vi.mocked(browser.bentoTabState.getPageErrors).mockResolvedValue([]);
+      const tabs = new TabRegistry();
+      await tabs.init();
+
+      // SessionStore can deliver onCreated for a tab init already saw.
+      listeners.created?.(makeTab({ id: 60, windowId: 1 }));
+
+      expect(errorsOf(tabs)).toEqual({});
+    });
+
+    it('drops the state when it ended or the tab closed first', async () => {
+      const { listeners, tabs } = await registryWithTabs();
+
+      listeners.pageErrorChanged?.(50, 'crashed');
+      listeners.pageErrorChanged?.(50, null);
+      listeners.pageErrorChanged?.(51, 'crashed');
+      listeners.removed?.(51, { windowId: 1, isWindowClosing: false });
+      listeners.created?.(makeTab({ id: 50, windowId: 1 }));
+      listeners.created?.(makeTab({ id: 51, windowId: 1 }));
+
+      expect(errorsOf(tabs)).toEqual({});
+    });
+  });
+
+  describe('after a tab moves to another window', () => {
+    async function moveTab2(readsAfter: PageErrorRead[]) {
+      const setup = await registryWithTabs([{ tabId: 2, pageError: 'crashed' }]);
+      vi.mocked(browser.bentoTabState.getPageErrors).mockResolvedValue(readsAfter);
+      vi.mocked(browser.tabs.get).mockResolvedValue(makeTab({ id: 2, windowId: 5 }));
+      setup.listeners.attached?.(2, { newWindowId: 5, newPosition: 0 });
+      await flushReads();
+      return setup;
+    }
+
+    it('keeps the crashed page the adopted document still shows', async () => {
+      const { tabs, batches } = await moveTab2([{ tabId: 2, pageError: 'crashed' }]);
+
+      expect(errorsOf(tabs)).toEqual({ 2: 'crashed' });
+      expect(
+        batches.flat().filter((d) => d.kind === 'updated' && 'pageError' in d.changes),
+      ).toEqual([]);
+    });
+
+    it('clears it when the adopted tab no longer shows the page', async () => {
+      const { tabs } = await moveTab2([]);
+
+      expect(errorsOf(tabs)).toEqual({});
+    });
+  });
+
+  it('still starts when the experiment is unavailable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    stubTabsBrowser([makeTab({ id: 1 })]);
+    vi.mocked(browser.bentoTabState.onPageErrorChanged.addListener).mockImplementation(() => {
+      throw new Error('no experiment');
+    });
+    vi.mocked(browser.bentoTabState.getPageErrors).mockRejectedValue(new Error('no experiment'));
+    const tabs = new TabRegistry();
+
+    await tabs.init();
+
+    expect(tabs.snapshot().map((tab) => tab.id)).toEqual([1]);
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });

@@ -558,6 +558,145 @@ documents, not chrome windows, and a chrome window is not a registered document.
   root takes `data-color-mode` and a single `data-bento-mode-fade` set; the private window's
   `bento-ui-color-mode-set` listener sees each event and its root stays as it was.
 
+## Page error signal (chrome to tools)
+
+`TabSnapshot.pageError` is set while a tab's top-level document is one of Firefox's own pages for a
+failure, and absent otherwise. The WebExtension tabs API says nothing about the page, and the
+signals Firefox does give are unreliable: a tab on an error page keeps the failed address as its URL,
+and its favicon is a stand-in that a website can declare too (the `global` chrome package is content
+accessible, and `FaviconLoader.sys.mjs` accepts `chrome:` favicons after
+`checkLoadURIWithPrincipal`), so a favicon proves nothing. The state comes from the document the
+tab's browser actually shows.
+
+Mapping from the browser's document (`browser.documentURI`, scheme `about:`, path and `e` query
+parameter) to `pageError`:
+
+- `crashed`: `about:tabcrashed`; `about:restartrequired` (a build-ID mismatch, which sets the same
+  attribute); and the `crashed` attribute on the tab while the page document is still loading.
+- `certificate-warning`: `about:certerror`; `about:neterror` with `e=nssBadCert` or
+  `e=nssFailure2` (the cases where `aboutNetError.mjs` and the identity panel's
+  `_isCertErrorPage` use the certificate treatment).
+- `blocked`: `about:blocked` (Safe Browsing, `urlclassifier.alternate_error_page`);
+  `about:restricted` (parental controls); `about:neterror` with `e=blockedByPolicy`.
+- `unavailable`: `about:httpsonlyerror`; any other `about:neterror`.
+
+The `blockedByPolicy` and `nssFailure2` mappings are judgement calls: Firefox titles the first "Blocked
+Page" and gives the second its certificate icon, and Bento follows. Everything else on
+`about:neterror` (DNS, refused, timeout, offline, proxy, and so on) is `unavailable`. Other pages,
+such as `about:sessionrestore` or a website that declares a Firefox error icon, report nothing.
+
+Path, with `bento-tools` the producer and no mount script or Firefox patch involved:
+
+- `extensions/bento-tools/experiments/bento-tab-state/api.js` (the `bentoTabState` experiment, schema
+  next to it) registers a callback with `EveryWindow` (`resource:///modules/EveryWindow.sys.mjs`),
+  which runs it in each browser window once its startup is done and in every window opened later.
+  Per window it keeps two event sources: `gBrowser.addTabsProgressListener` (top-level
+  `onLocationChange` only, for every tab, selected or not) and one `MutationObserver` on
+  `gBrowser.tabContainer` (subtree, `crashed` attribute only). That one container holds every tab of
+  the window: pinned and unpinned tabs, tabs in groups and the panel tabs of a split view. Both
+  sources re-derive the tab's state from `documentURI` and the attribute and fire
+  `onPageErrorChanged(tabId, pageError | null)` when it differs from the last value told to this
+  extension (a `WeakMap` per tab element, so a navigation that changes nothing sends nothing). The
+  WebExtension tab id is `extension.tabManager.getWrapper(tab).id`. No timer and no per-tab listener.
+- When a window starts being watched, its tabs that already show such a page are reported at once
+  (forced past the "last told" check, because the receiver may have dropped an earlier event). A
+  window is only watched after its delayed startup, so this covers a tab that crashed or failed to
+  load before then, and a tab adopted into a new window, whose document is swapped in while that
+  window loads.
+- `getPageErrors()` returns `[{ tabId, pageError }]` for the tabs of every ready window and records
+  the answer as told.
+- `TabRegistry` (`tabs/TabRegistry.ts`) subscribes first in `init()` (before `tabs.query`), then calls
+  `getPageErrors()` once the tabs are stored and sets every tab's state from it (a tools restart
+  while a tab shows an error page still shows it). `#onPageErrorChanged` ignores an event that repeats
+  the state, sets or deletes `pageError` on the snapshot and queues an `updated` delta
+  `{ pageError }` (`pageError: null` when it ends). The delta goes to the audience of its tab,
+  so a private tab's state reaches only its private window's documents. `onCreated` for a tab the
+  registry already tracks keeps the state. An event for a tab `onCreated` has not delivered yet
+  (the experiment can fire first, as `tabs.create` can resolve first) is kept in
+  `#pendingPageErrors` and applied when the tab arrives, then dropped on `onRemoved`.
+- The state is cosmetic. If the experiment is missing or throws, `TabRegistry` logs
+  `page-error events unavailable` or `page-error read failed` and goes on without it.
+- Manifest: the experiment schema is cached per add-on version, so
+  `extensions/bento-tools/manifest.json` was bumped to 0.1.14 (0.1.13 shipped the earlier
+  `crashed` boolean API). Edits to `api.js` alone are read fresh.
+
+What flips it and what clears it:
+
+- Crashed: Firefox puts the crashed-tab page in the tab: a selected tab whose content process dies
+  (`about:crashcontent`), or a tab that crashed in the background once it is selected (a background
+  crash revives the tab as an unloaded `about:blank` tab and defers the page until
+  `SessionStore.#maybeRestoreTabContent` runs for it on selection or split-view activation, so a
+  background crash does not set the state until then). `sendToTabCrashedPage` sets the attribute
+  right after it asks the docshell for the page, so the attribute reports first and the
+  location change (`LOCATION_CHANGE_ERROR_PAGE`) confirms it. The tab's progress listener is new
+  after the switch to a non-remote browser and withholds location changes until it sees the first
+  real request, which the crashed-tab page's own load is.
+- Error pages: the docshell loads `about:<page>?e=...&u=<failed address>` into the tab. A remote
+  browser stores that document's URI (`BrowserParent::RecvOnLocationChange` calls
+  `updateForLocationChange` just before it notifies listeners), so the tabs listener reads the new
+  document. `nsIWebProgressListener.idl` documents that on an error page `document.documentURI` is
+  the redirected location.
+- Clears on any location change to another document (reload, navigation, URL typed, Restore Tab and
+  Restore All Crashed Tabs through `reviveCrashedTab`, a switch to a new content process), and when
+  the tab closes (`tabs.onRemoved`). Restore Tab removes the attribute before the new document
+  loads, so the state clears at the location change that follows, a few milliseconds later, not at
+  the attribute change.
+- A moved tab keeps its state: `swapBrowsersAndCloseOther` swaps the docshell, which keeps the
+  crashed-tab page, but does not copy the attribute to the new tab element. The document still says
+  `about:tabcrashed`. A tab moved into an existing window is re-read by `TabRegistry.#onAttached`
+  (`getPageErrors()` after the swap). A tab torn out into a new window gets `onAttached` before the
+  swap, which `browser-init.js` does as that window loads (at once for a non-remote tab such as the
+  crashed-tab page, on the first paint for a remote one). The new window is not ready yet, so that
+  read can clear the state; the new window's watch reports it again once its startup is done, a
+  fraction of a second later.
+
+Pitfalls:
+
+- A website can declare a `chrome://global/skin/icons/warning.svg`, `info.svg` or `blocked.svg`
+  favicon, so no state may come from the favicon. The earlier favicon heuristic showed a normal
+  HTTPS page with such an icon as a certificate warning. `about:restricted` also keeps the website
+  URL and uses `warning.svg`, which the same heuristic read as a certificate warning. Only the
+  document decides.
+- A tab copies `crashed` onto its own children by attribute inheritance (`.tab-icon-stack`,
+  `.tab-icon-image`, `.tab-icon-overlay`, `.tab-audio-button`, `tab.js` `inheritedAttributes`), so the
+  subtree observer also sees records for those elements. The callback keeps only records whose target
+  `gBrowser.isTab()`; without that filter `getWrapper` would mint a tab id for an icon element.
+- `getWrapper` returns nothing for a tab mid-adoption and for one the extension may not access; both are
+  skipped, never given an id.
+- A tab in a window that has not finished its startup is not in `getPageErrors()`; that window's
+  watch reports it later. Do not treat a missing tab as proof the state ended before then.
+- `onLocationChange` is delivered for every top-level navigation of every tab. The "last told" check
+  is what keeps the experiment silent for the ones that change nothing; `getPageErrors()` must keep
+  updating it, or a state read on attach would never be cleared by the next navigation.
+- Never read a lazy tab's browser. A tab without a `linkedPanel` (discarded, or restored by the
+  session store and not yet selected) holds a stand-in browser whose `documentURI` is one of the
+  `#browserBindingProperties` getters that insert the real browser (`Tabbrowser.sys.mjs`
+  `#createLazyBrowser`). Reading it gives the tab a panel, the tabs API then reports
+  `discarded: false` and the sleeping row turns `default`. `getPageErrors()` runs at
+  `TabRegistry.init` and after every `onAttached`, so an unguarded read would wake every restored
+  tab at startup. `pageErrorOf` in `api.js` is the only place that touches `linkedBrowser` and reads
+  `documentURI` only when `linkedPanel` is set (the test Firefox's own tabs API uses for
+  `discarded`); a lazy tab can still report `crashed` from the attribute. Discarding a crashed tab
+  removes the attribute and the panel, which the observer reports as cleared without reading the
+  document. Any new read of a tab's browser must keep this guard.
+- A cleared field in an `updated` delta is `null`, never `undefined`: `TabChanges` (protocol.ts)
+  allows `null` for `pageError`, `favIconUrl`, `url` and `customTitle`, and `TabRegistry` sends the
+  wire form (`clearedAsNull`). A private window's relay (`BentoShellBusParent.sys.mjs` `sendDown`)
+  JSON-serialises messages, which drops an `undefined` property, so the shell kept the old value:
+  the error tint stayed after leaving an error page, and so did the error page's stand-in favicon,
+  which the new page had not replaced. Snapshots never hold `null`: the shell's tabs store
+  (`applyChanges` in `state/tabs.ts`) deletes a field that arrives as `null`, so every reader sees
+  absent, as in a snapshot. `workspaceId` and `folderId` still clear with `undefined` (their clears
+  come from explicit mutations, not from Firefox events); a private window would miss one, which
+  has not been observed. The consumers of `updated` deltas are `useTabsStore.applyDeltas` and, in
+  `bento-tools/src/background.ts`, two listeners that test `'key' in changes` or `changes.folderId`
+  (never the values), one that ignores them, and the relay that forwards them; the mount script
+  reads none.
+- `getPageErrors` and `onPageErrorChanged` use the same tab ids as the tabs API and `TabSnapshot.id`.
+
+Verify (built app, tools background console or the sidebar): see the checks in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md#page-error-state-bento-tab-state-experiment).
+
 ## Title IPC pitfalls
 
 - Title writes coalesce: a title replaced before the content process reports it

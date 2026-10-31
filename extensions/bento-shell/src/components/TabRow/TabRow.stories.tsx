@@ -2,8 +2,12 @@
 // instead of the deploy+reload loop in real Bento.
 
 import { useEffect } from 'react';
+import type { TabSnapshot } from '@shared/protocol';
 import { TabRow } from './TabRow';
+import { DEFAULT_FIXTURE, seedDefault } from '../../state/__fixtures__/settings';
 import { makeTab, seedSingle } from '../../state/__fixtures__/tabs';
+import { useSettingsStore } from '../../state/settings';
+import { useTabsStore } from '../../state/tabs';
 
 const noop = () => {};
 const COLLAPSED_SIDEBAR_WIDTH = 'var(--bento-tab-strip-width-collapsed)';
@@ -299,3 +303,94 @@ export const DraggingActive = () => {
 };
 
 DraggingActive.storyName = 'Dragging — active tab';
+
+// One tab per presented state, then the same states under the active and selected fills.
+const STATE_TABS: TabSnapshot[] = [
+  makeTab({
+    id: 20,
+    title: 'Website favicon',
+    url: 'https://developer.mozilla.org/',
+    favIconUrl: 'https://developer.mozilla.org/favicon.ico',
+  }),
+  makeTab({
+    id: 21,
+    title: 'Default (no favicon)',
+    url: 'https://example.org/',
+    favIconUrl: undefined,
+  }),
+  makeTab({
+    id: 22,
+    title: 'Loading (native indicator)',
+    url: 'https://example.org/',
+    loading: true,
+  }),
+  makeTab({ id: 23, title: 'Sleeping', url: 'https://example.org/', discarded: true }),
+  makeTab({
+    id: 24,
+    title: 'Unavailable',
+    url: 'https://example.invalid/',
+    pageError: 'unavailable',
+  }),
+  makeTab({
+    id: 25,
+    title: 'Certificate warning',
+    url: 'https://expired.example.org/',
+    pageError: 'certificate-warning',
+  }),
+  makeTab({
+    id: 26,
+    title: 'Blocked',
+    url: 'https://blocked.example.org/',
+    pageError: 'blocked',
+  }),
+  makeTab({ id: 27, title: 'Crashed', url: 'https://example.org/', pageError: 'crashed' }),
+  makeTab({
+    id: 28,
+    title: 'Internal settings',
+    url: 'about:preferences#privacy',
+    favIconUrl: undefined,
+  }),
+];
+const STATE_ROWS: { id: number; active?: boolean; selected?: boolean }[] = [
+  ...STATE_TABS.map(({ id }) => ({ id })),
+  { id: 26, selected: true },
+  { id: 27, active: true },
+];
+
+function TabStates({ tints = true, icons = true }: { tints?: boolean; icons?: boolean }) {
+  useEffect(() => {
+    useTabsStore.getState().applySnapshot(STATE_TABS);
+    useSettingsStore.getState().apply({
+      ...DEFAULT_FIXTURE,
+      tabStateTintsEnabled: tints,
+      customTabStateIconsEnabled: icons,
+    });
+    return seedDefault;
+  }, [tints, icons]);
+  return (
+    <SidebarFrame>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {STATE_ROWS.map(({ id, active = false, selected = false }) => (
+          <TabRow
+            key={`${id}-${active}-${selected}`}
+            id={id}
+            active={active}
+            selected={selected}
+            onActivate={noop}
+            onClose={noop}
+            onOpenInSidePanel={noop}
+          />
+        ))}
+      </div>
+    </SidebarFrame>
+  );
+}
+
+export const States = () => <TabStates />;
+States.storyName = 'Tab states (tints and icons On)';
+
+export const StatesTintsOff = () => <TabStates tints={false} />;
+StatesTintsOff.storyName = 'Tab states (tints Off)';
+
+export const StatesIconsOff = () => <TabStates icons={false} />;
+StatesIconsOff.storyName = 'Tab states (custom icons Off)';

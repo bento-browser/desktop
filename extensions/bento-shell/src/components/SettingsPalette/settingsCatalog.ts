@@ -116,7 +116,7 @@ export const BOOLEAN_SPECS: Record<BooleanSettingKey, BooleanSpec> = {
   customTabStateIconsEnabled: {
     key: 'customTabStateIconsEnabled',
     label: 'Use custom tab state icons',
-    keywords: ['tab appearance', 'status', 'favicon', 'softcast'],
+    keywords: ['tab appearance', 'status', 'favicon', 'icon'],
   },
   tabSleepEnabled: { key: 'tabSleepEnabled', label: 'Sleep idle tabs', keywords: ['tab sleep'] },
   panelCycleWraparound: {

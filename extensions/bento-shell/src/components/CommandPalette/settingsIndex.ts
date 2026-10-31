@@ -23,22 +23,18 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     group: 'Appearance',
     keywords: ['theme', 'dark mode', 'light mode'],
   },
-  ...(typeof __BENTO_SOFTCAST_DEMO__ !== 'undefined' && __BENTO_SOFTCAST_DEMO__
-    ? [
-        {
-          id: 'setting:tabStateTintsEnabled',
-          label: 'Show tab state tints',
-          group: 'Tab appearance',
-          keywords: ['status', 'background', 'color', 'quiet'],
-        },
-        {
-          id: 'setting:customTabStateIconsEnabled',
-          label: 'Use custom tab state icons',
-          group: 'Tab appearance',
-          keywords: ['status', 'favicon', 'softcast'],
-        },
-      ]
-    : []),
+  {
+    id: 'setting:tabStateTintsEnabled',
+    label: 'Show tab state tints',
+    group: 'Tab appearance',
+    keywords: ['status', 'background', 'color', 'quiet'],
+  },
+  {
+    id: 'setting:customTabStateIconsEnabled',
+    label: 'Use custom tab state icons',
+    group: 'Tab appearance',
+    keywords: ['status', 'favicon', 'icon'],
+  },
   {
     id: 'setting:tabSleepEnabled',
     label: 'Sleep idle tabs',

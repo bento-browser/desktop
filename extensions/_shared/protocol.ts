@@ -33,6 +33,15 @@ export interface TabSnapshot {
    * Sidebar dims the favicon so users can see at a glance which tabs are
    * sleeping vs. resident in memory. */
   discarded?: boolean;
+  /** Set while the tab's top-level document is one of Firefox's own pages for a failure:
+   * `crashed` (the crashed-tab page, `about:tabcrashed`, after a content process crash),
+   * `unavailable` (a site that cannot be reached, `about:neterror` and `about:httpsonlyerror`),
+   * `certificate-warning` (`about:certerror` and the TLS failures of `about:neterror`) or
+   * `blocked` (`about:blocked` for Safe Browsing, `about:restricted` for parental controls,
+   * and a site blocked by enterprise policy). Read by bento-tools from the browser's actual
+   * document, never inferred from the favicon or URL, which a website controls. Absent
+   * otherwise. */
+  pageError?: 'crashed' | 'unavailable' | 'certificate-warning' | 'blocked';
   /** Workspace this tab belongs to. Undefined during the brief window between
    * tab creation and tools assigning it to the active workspace. */
   workspaceId?: string;
@@ -42,9 +51,15 @@ export interface TabSnapshot {
   folderId?: string;
 }
 
+/** The fields an `updated` delta changes. `null` clears a field (`favIconUrl`, `url`, `customTitle`
+ * and `pageError`): a private window's relay JSON-serialises messages, which drops an `undefined`
+ * property and so would leave the old value in the shell's mirror. Snapshots never hold `null`; the
+ * shell's tabs store deletes the field. `workspaceId` and `folderId` still clear with `undefined`. */
+export type TabChanges = { [K in keyof TabSnapshot]?: TabSnapshot[K] | null };
+
 export type TabDelta =
   | { kind: 'created'; tab: TabSnapshot }
-  | { kind: 'updated'; id: number; changes: Partial<TabSnapshot> }
+  | { kind: 'updated'; id: number; changes: TabChanges }
   | { kind: 'removed'; id: number }
   | { kind: 'activated'; id: number; windowId: number };
 

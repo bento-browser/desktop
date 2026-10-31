@@ -39,7 +39,7 @@ describe('control rows', () => {
     const rows = controlRows(REGULAR_MODEL);
     expect([...new Set(rows.map((row) => row.group))]).toEqual([
       'Appearance',
-      ...(__BENTO_SOFTCAST_DEMO__ ? ['Tab appearance'] : []),
+      'Tab appearance',
       'Performance',
       'Workspaces',
       'Panels',
@@ -58,32 +58,28 @@ describe('control rows', () => {
     expect(find(rows, 'privacy:search').value).toBe('DuckDuckGo');
   });
 
-  it('gates the independent tab appearance switches with the demo capability', () => {
+  it('lists the independent tab appearance switches with their saved values', () => {
     const rows = controlRows({
       ...REGULAR_MODEL,
       settings: { ...FIXTURE_SETTINGS, tabStateTintsEnabled: false },
     });
     const appearance = rows.filter((row) => row.group === 'Tab appearance');
-    expect(appearance).toEqual(
-      __BENTO_SOFTCAST_DEMO__
-        ? [
-            expect.objectContaining({
-              id: 'setting:tabStateTintsEnabled',
-              label: 'Show tab state tints',
-              value: 'Off',
-              switchOn: false,
-              intent: { type: 'toggle', key: 'tabStateTintsEnabled' },
-            }),
-            expect.objectContaining({
-              id: 'setting:customTabStateIconsEnabled',
-              label: 'Use custom tab state icons',
-              value: 'On',
-              switchOn: true,
-              intent: { type: 'toggle', key: 'customTabStateIconsEnabled' },
-            }),
-          ]
-        : [],
-    );
+    expect(appearance).toEqual([
+      expect.objectContaining({
+        id: 'setting:tabStateTintsEnabled',
+        label: 'Show tab state tints',
+        value: 'Off',
+        switchOn: false,
+        intent: { type: 'toggle', key: 'tabStateTintsEnabled' },
+      }),
+      expect.objectContaining({
+        id: 'setting:customTabStateIconsEnabled',
+        label: 'Use custom tab state icons',
+        value: 'On',
+        switchOn: true,
+        intent: { type: 'toggle', key: 'customTabStateIconsEnabled' },
+      }),
+    ]);
   });
 
   it('toggles booleans in place and opens a stage for everything else', () => {

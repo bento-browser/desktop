@@ -1,0 +1,28 @@
+[
+  {
+    "namespace": "bentoTabState",
+    "events": [
+      {
+        "name": "onPageErrorChanged",
+        "type": "function",
+        "parameters": [
+          { "name": "tabId", "type": "integer" },
+          {
+            "name": "pageError",
+            "type": "string",
+            "enum": ["crashed", "unavailable", "certificate-warning", "blocked"],
+            "optional": true
+          }
+        ]
+      }
+    ],
+    "functions": [
+      {
+        "name": "getPageErrors",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      }
+    ]
+  }
+]

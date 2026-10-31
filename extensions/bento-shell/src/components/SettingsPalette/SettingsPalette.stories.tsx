@@ -106,7 +106,7 @@ export const Appearance = () => <Story stages={at({ kind: 'category', id: 'appea
 Appearance.storyName = 'Category (Appearance)';
 
 export const TabAppearance = () => <Story stages={at({ kind: 'category', id: 'tabAppearance' })} />;
-TabAppearance.storyName = 'Category (Tab appearance, demo only)';
+TabAppearance.storyName = 'Category (Tab appearance)';
 
 export const Performance = () => <Story stages={at({ kind: 'category', id: 'performance' })} />;
 Performance.storyName = 'Category (Performance)';
@@ -117,7 +117,7 @@ Panels.storyName = 'Category (Panels)';
 export const LightTabAppearance = () => (
   <Story mode="light" stages={at({ kind: 'category', id: 'tabAppearance' })} />
 );
-LightTabAppearance.storyName = 'Light mode (Tab appearance, demo only)';
+LightTabAppearance.storyName = 'Light mode (Tab appearance)';
 
 export const RootSearch = () => <Story typed="radius" />;
 RootSearch.storyName = 'Search settings across categories';
