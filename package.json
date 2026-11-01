@@ -64,6 +64,7 @@
     "shell:import:mux": "node scripts/muxui-dev.mjs import",
     "tools:build": "pnpm --filter @bento/tools build",
     "ext:build": "pnpm run theme:sync && pnpm --filter @bento/shell build && pnpm --filter @bento/tools build",
+    "ext:bundle": "pnpm run theme:sync && pnpm --filter @bento/shell build:bundle && pnpm --filter @bento/tools build",
     "size": "BENTO_RELEASE=1 pnpm run ext:build && pnpm run size:check",
     "size:check": "node scripts/check-size-budgets.mjs",
     "size:baseline": "BENTO_RELEASE=1 pnpm run ext:build && node scripts/check-size-budgets.mjs --write-baseline",
