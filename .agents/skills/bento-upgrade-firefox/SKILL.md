@@ -222,6 +222,18 @@ otherwise stop working silently: fix or remove the hook, then update the
 registry entry. A pass proves the definition still exists, not that the hook
 still behaves the same, so keep the touchpoint regression checks.
 
+Read the split-view diff in full in the same base comparison. Bento renders its
+panels by driving Firefox's native split view through private members, so an
+upstream behaviour change there blanks or misplaces panels with no patch
+conflict and no missing registry member. Diff `browser/components/tabbrowser/`
+and `toolkit/content/widgets/tabbox.js`, plus the `browser.tabs.splitView` and
+`browser.tabs.splitview` prefs in `browser/app/profile/firefox.js`. Check each
+change to tab selection, activation, closing, insertion, adoption, or
+`docShellIsActive` against the split-view registry entries and the pitfalls in
+`docs/technical/chrome-panel-rendering.md`. The step is done when the Chrome
+Panel Shell Mount entry in `docs/firefox-core-touchpoints.md` records each
+relevant change and its effect on Bento, or states that there was none.
+
 Review official Mozilla release notes and security advisories for intent and
 risk. Classify the change as a low-risk fast path, targeted review,
 feature-impact review, or broad review according to the actual intersections,
