@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { marFileName, validateDescriptor } from './descriptor.mjs';
 import { handleRequest, selectResponse } from './worker.mjs';
@@ -214,12 +216,10 @@ test('fetch handler: GET and HEAD answer, other methods are 405', async () => {
   assert.ok(!(await post.text()).startsWith('<'));
 });
 
-test('the committed descriptors are valid and serve nothing yet', () => {
+test('the committed descriptors are valid', () => {
   for (const env of ['test', 'production']) {
     const file = path.join(import.meta.dirname, 'releases', `${env}.json`);
-    const descriptor = validateDescriptor(JSON.parse(fs.readFileSync(file, 'utf8')));
-    assert.equal(descriptor.serving, false, env);
-    assert.equal(descriptor.release, null, env);
+    validateDescriptor(JSON.parse(fs.readFileSync(file, 'utf8')));
   }
 });
 
@@ -270,22 +270,62 @@ test('descriptor validation rejects unknown, missing and malformed fields', () =
   assert.throws(() => validateDescriptor([]), /not an object/);
 });
 
-test('wrangler.toml serves each environment from its own descriptor on its own domain', () => {
+test('descriptor validation rejects characters XML 1.0 cannot carry, in every string', () => {
+  for (const character of ['\u0000', '\u0001', '\u000B', '\u001F', '\uFFFE', '\uFFFF', '\uD800']) {
+    const name = `U+${character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+    // `new URL()` accepts all of these, so only the XML check can stop them.
+    assert.throws(
+      () => validateDescriptor(withRelease({ detailsUrl: `https://example.test/${character}` })),
+      /release\.detailsUrl contains a character that XML 1\.0 cannot carry/,
+      name,
+    );
+    assert.throws(
+      () => validateDescriptor(withRelease({ marUrl: `${release.marUrl}?x=${character}` })),
+      /release\.marUrl contains a character that XML 1\.0 cannot carry/,
+      name,
+    );
+    assert.throws(
+      () => validateDescriptor({ ...serving, product: `Bento${character}` }),
+      /descriptor\.product contains a character that XML 1\.0 cannot carry/,
+      name,
+    );
+  }
+  // Tab, LF and CR are legal in XML, and so are non-ASCII and astral characters.
+  validateDescriptor(withRelease({ detailsUrl: 'https://example.test/\u00e9\u{1F600}' }));
+});
+
+test("each environment's wrangler entry serves its own descriptor on its own domain", async (t) => {
+  // A copy of the service whose environments offer different releases, so the answer
+  // shows which descriptor the entry named by `main` bundled.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'update-service-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.cpSync(import.meta.dirname, dir, {
+    recursive: true,
+    filter: (source) => !source.endsWith('.test.mjs'),
+  });
+  const versions = { test: '0.0.3', production: '0.0.5' };
+  for (const [env, version] of Object.entries(versions)) {
+    const marUrl = `https://downloads.bentobrowser.app/${marFileName(version, release.buildId)}`;
+    fs.writeFileSync(
+      path.join(dir, 'releases', `${env}.json`),
+      JSON.stringify({ ...serving, release: { ...release, version, marUrl } }),
+    );
+  }
+
   const toml = fs.readFileSync(path.join(import.meta.dirname, 'wrangler.toml'), 'utf8');
-  const [, test, production] = toml.split(/^\[env\.(?:test|production)\]$/m);
+  const [, testSection, productionSection] = toml.split(/^\[env\.(?:test|production)\]$/m);
   for (const [env, section, host] of [
-    ['test', test, 'updates-test.bentobrowser.app'],
-    ['production', production, 'updates.bentobrowser.app'],
+    ['test', testSection, 'updates-test.bentobrowser.app'],
+    ['production', productionSection, 'updates.bentobrowser.app'],
   ]) {
     assert.ok(
       section.includes(`pattern = "${host}", custom_domain = true`),
       `${env} custom domain`,
     );
-    assert.ok(
-      section.includes(`release-descriptor = "./releases/${env}.json"`),
-      `${env} descriptor alias`,
-    );
-    assert.ok(fs.existsSync(path.join(import.meta.dirname, 'releases', `${env}.json`)));
+    const [, main] = /^main = "(.+)"$/m.exec(section);
+    const worker = (await import(pathToFileURL(path.join(dir, main)).href)).default;
+    const response = await worker.fetch(new Request(updateUrl({ version: '0.0.1' })));
+    assert.match(await response.text(), new RegExp(`appVersion="${versions[env]}"`), env);
   }
   assert.ok(
     !/^\s*(?:account_id|api_token)\s*=/im.test(toml),

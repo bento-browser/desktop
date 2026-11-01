@@ -10,6 +10,13 @@ import { ENVIRONMENTS, WRANGLER_VERSION, parseArgs, publish } from './ota-publis
 
 const GATE = ['pnpm', ['run', 'release:security-check:public']];
 const CACHE = 'public, max-age=31536000, immutable';
+const DISABLED = {
+  serving: false,
+  product: 'Bento',
+  target: 'Darwin_aarch64-gcc3',
+  channel: 'bento',
+  release: null,
+};
 const digest = (algorithm, bytes) => crypto.createHash(algorithm).update(bytes).digest('hex');
 const wrangler = (...args) => ['dlx', `wrangler@${WRANGLER_VERSION}`, ...args];
 const marBytesFor = (version, buildId) => Buffer.from(`mar ${version} ${buildId} `.repeat(50));
@@ -54,13 +61,16 @@ function setup(t, options = {}) {
   };
   fs.writeFileSync(path.join(releaseDir, 'release-manifest.json'), JSON.stringify(manifest));
 
+  // Both environments start disabled whatever the committed descriptors say.
   const root = path.join(dir, 'repo');
   const serviceDir = path.join(root, 'update-service');
-  fs.cpSync(
-    path.join(import.meta.dirname, '../update-service/releases'),
-    path.join(serviceDir, 'releases'),
-    { recursive: true },
-  );
+  fs.mkdirSync(path.join(serviceDir, 'releases'), { recursive: true });
+  for (const environment of Object.keys(ENVIRONMENTS)) {
+    fs.writeFileSync(
+      path.join(serviceDir, 'releases', `${environment}.json`),
+      JSON.stringify(DISABLED),
+    );
+  }
   fs.mkdirSync(path.join(root, 'config'));
   fs.writeFileSync(
     path.join(root, 'config/release-security.json'),
@@ -442,45 +452,58 @@ test('promote alone verifies the hosted MAR first and leaves the descriptor alon
   assert.equal(s.descriptor('test').release.version, '0.0.3');
 });
 
-test('versions only rise: older and republished releases are refused, the same release may be served again', async (t) => {
+test('the same release may be served again after a withdrawal, by --promote or --assets', async (t) => {
   const s = setup(t);
   await publish(s.args(['--assets', '--promote']), s.ctx);
   const live = s.descriptor('test');
 
   await publish(s.args(['--withdraw']), s.ctx);
   await publish(s.args(['--promote']), s.ctx);
+  await publish(s.args(['--assets']), s.ctx);
   assert.deepEqual(
     s.descriptor('test'),
     live,
     'the same release is served again after a withdrawal',
   );
+});
 
-  const newerLive = {
-    ...live,
+test('an older or republished version is refused before anything is uploaded or deployed', async (t) => {
+  const named = (version, buildId, changes = {}) => ({
+    ...DISABLED,
+    serving: true,
     release: {
-      ...live.release,
-      version: '0.0.4',
-      marUrl: live.release.marUrl.replace('0.0.3', '0.0.4'),
-    },
-  };
-  s.setDescriptor('test', newerLive);
-  await assert.rejects(
-    publish(s.args(['--promote']), s.ctx),
-    /already names 0\.0\.4.*strictly higher/,
-  );
-
-  s.setDescriptor('test', {
-    ...live,
-    release: {
-      ...live.release,
-      buildId: '20250101000000',
-      marUrl: live.release.marUrl.replace('20261102120000', '20250101000000'),
+      version,
+      buildId,
+      marUrl: `https://downloads-test.bentobrowser.app/${marFileName(version, buildId)}`,
+      size: 1,
+      sha512: 'cd'.repeat(64),
+      platformVersion: '158.0',
+      detailsUrl: `https://bentobrowser.app/release-notes/${version}/`,
+      ...changes,
     },
   });
-  await assert.rejects(
-    publish(s.args(['--promote']), s.ctx),
-    /already names 0\.0\.3 \(20250101000000\)/,
-  );
+  const s = setup(t); // builds 0.0.3 (20261102120000)
+  for (const [name, live, message] of [
+    ['a higher version is live', named('0.0.4', '20261102120000'), /already names 0\.0\.4/],
+    [
+      'the same version has another BuildID',
+      named('0.0.3', '20250101000000'),
+      /already names 0\.0\.3 \(20250101000000\)/,
+    ],
+    [
+      'the same version and BuildID have another MAR',
+      named('0.0.3', '20261102120000'),
+      /already names 0\.0\.3 \(20261102120000\).*strictly higher/,
+    ],
+  ]) {
+    s.setDescriptor('test', live);
+    for (const flags of [['--assets'], ['--promote'], ['--assets', '--promote']]) {
+      await assert.rejects(publish(s.args(flags), s.ctx), message, `${name}: ${flags}`);
+    }
+    assert.deepEqual(s.commands(), [], `${name}: nothing uploaded or deployed`);
+    assert.deepEqual(s.requests, [], `${name}: storage never contacted`);
+    assert.deepEqual(s.descriptor('test'), live, `${name}: descriptor untouched`);
+  }
 });
 
 test('fails clearly when the release directory is incomplete or inconsistent', async (t) => {
@@ -545,6 +568,44 @@ test('needs Cloudflare credentials before doing anything', async (t) => {
     );
   }
   assert.deepEqual(s.commands(), []);
+});
+
+test('a held lock refuses a second run, and every run releases its own lock', async (t) => {
+  const s = setup(t);
+  const lock = path.join(s.root, '.bento', 'ota-publish.lock');
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  const holder = '{"pid":1,"started":"2026-11-02T12:00:00.000Z"}\n';
+  fs.writeFileSync(lock, holder);
+
+  for (const flags of [['--assets', '--promote'], ['--withdraw']]) {
+    await assert.rejects(
+      publish(s.args(flags), s.ctx),
+      /ota-publish\.lock exists.*"pid":1/s,
+      flags.join(' '),
+    );
+  }
+  assert.deepEqual(s.commands(), []);
+  assert.deepEqual(s.requests, []);
+  assert.equal(fs.readFileSync(lock, 'utf8'), holder, 'a refused run leaves the holder lock alone');
+  fs.rmSync(lock);
+
+  const heldDuringRun = [];
+  const ctx = {
+    ...s.ctx,
+    run: (...args) => {
+      heldDuringRun.push(fs.existsSync(lock));
+      return s.ctx.run(...args);
+    },
+  };
+  await publish(s.args(['--assets']), ctx);
+  assert.deepEqual(heldDuringRun, [true, true], 'held while uploading');
+  assert.ok(!fs.existsSync(lock), 'released after a successful run');
+
+  await assert.rejects(
+    publish({ ...s.args(['--assets']), releaseDir: path.join(s.root, 'no-such-dir') }, s.ctx),
+    /release-manifest\.json is missing/,
+  );
+  assert.ok(!fs.existsSync(lock), 'released after a failed run');
 });
 
 test('every wrangler call runs the pinned version from the service directory', async (t) => {

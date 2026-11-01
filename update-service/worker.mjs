@@ -8,7 +8,7 @@
 // So every valid request gets 200 XML, and only a request that is not an update
 // check at all gets a plain-text 400.
 
-import { compareVersions, parseVersion } from './descriptor.mjs';
+import { compareVersions, parseVersion, validateDescriptor } from './descriptor.mjs';
 
 const URL_FIELDS = [
   'product',
@@ -118,4 +118,13 @@ export function handleRequest(request, descriptor) {
   }
   const response = selectResponse(request.url, descriptor);
   return request.method === 'HEAD' ? new Response(null, response) : response;
+}
+
+/**
+ * The Worker module for one environment's descriptor. Validating here, when the module
+ * loads, makes an invalid descriptor fail the deploy and not the first request.
+ */
+export function createWorker(descriptor) {
+  const validated = validateDescriptor(descriptor);
+  return { fetch: (request) => handleRequest(request, validated) };
 }

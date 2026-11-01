@@ -61,6 +61,17 @@ function unexpectedKeys(object, allowed, label) {
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
+// The Worker writes descriptor strings into XML attributes. XML 1.0 cannot carry anything
+// outside its Char range, even escaped: control characters other than tab, LF and CR,
+// lone surrogates, U+FFFE and U+FFFF.
+const XML_INVALID_CHARACTER = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/u;
+
+function xmlProblems(object, label) {
+  return Object.entries(object)
+    .filter(([, value]) => typeof value === 'string' && XML_INVALID_CHARACTER.test(value))
+    .map(([key]) => `${label}.${key} contains a character that XML 1.0 cannot carry`);
+}
+
 function releaseProblems(release) {
   if (!isPlainObject(release)) return ['release must be an object or null'];
   const problems = unexpectedKeys(release, RELEASE_KEYS, 'release');
@@ -87,6 +98,7 @@ function releaseProblems(release) {
   }
   if (!isHttpsUrl(detailsUrl))
     problems.push('release.detailsUrl must be an https URL without credentials');
+  problems.push(...xmlProblems(release, 'release'));
   return problems;
 }
 
@@ -108,6 +120,7 @@ export function validateDescriptor(descriptor) {
     if (descriptor[key] !== expected)
       problems.push(`descriptor.${key} must be ${JSON.stringify(expected)}`);
   }
+  problems.push(...xmlProblems(descriptor, 'descriptor'));
   if (descriptor.release != null) problems.push(...releaseProblems(descriptor.release));
   if (descriptor.serving === true && !descriptor.release) {
     problems.push('descriptor.serving is true but there is no release to serve');

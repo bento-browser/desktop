@@ -59,7 +59,7 @@ build therefore gets a unique, strictly higher patch version.
 
 Each environment has one committed descriptor, `update-service/releases/<env>.json`,
 holding at most one current release. `serving: false` and `release: null` is the
-state of both files today.
+state of both files until the first promotion.
 
 ```json
 {
@@ -91,14 +91,20 @@ state of both files today.
 | `release.sha512`               | The MAR's SHA-512, lowercase hex.                                                        |
 | `release.platformVersion`      | The Firefox version, dotted digits.                                                      |
 | `release.detailsUrl`           | An https URL without credentials, the release notes page.                                |
+| every string                   | Only characters XML 1.0 can carry.                                                       |
 
-Unknown fields and missing fields are both errors. The descriptor is validated
+Unknown fields and missing fields are both errors. The Worker writes the
+strings into XML attributes, and XML 1.0 cannot carry control characters other
+than tab, LF and CR, lone surrogates, U+FFFE or U+FFFF, even escaped, so
+validation rejects them in every string (a URL such as `https://example.test/\u0000`
+parses fine and would otherwise emit a NUL). The descriptor is validated
 by `validateDescriptor` in
 [`update-service/descriptor.mjs`](../update-service/descriptor.mjs) in three
-places: the Worker's entry module validates it when the script loads, so an
+places: the Worker's entry modules validate it when the script loads, so an
 invalid descriptor fails the deploy and not the first request;
 `ota-publish` validates what it writes before writing it; and the tests
-validate the committed files.
+validate the committed files (and only validate them: they do not assert that a
+descriptor is disabled, so committing a promoted descriptor keeps CI green).
 
 ## Environments
 
@@ -123,11 +129,21 @@ preview URLs off and request logging off. `wrangler deploy --env <env>`
 creates the domain's DNS record, so a pre-existing DNS record for the hostname
 has to be removed before the first deploy.
 
-The descriptor is bundled at deploy time. `entry.mjs` imports the module name
-`release-descriptor`, and each environment's `alias` table maps that name to its
-own JSON file. This needs no build step and no extra files per environment;
-the alternative, one entry file per environment, would duplicate the entry
-code.
+The descriptor is bundled at deploy time. Each environment has its own entry
+module, `entry-test.mjs` and `entry-production.mjs`, named by `main` in that
+environment's table of `wrangler.toml`. Each imports its environment's JSON
+(`import descriptor from './releases/<env>.json' with { type: 'json' }`) and
+exports `createWorker(descriptor)` from `worker.mjs`, which validates it and
+returns the `fetch` handler. There is no top-level `main`, so a deploy has to
+name an environment. Per-environment `alias` tables do not work: wrangler
+4.156.0 reads `alias` only from the top level of the config (it reports
+`env.<name>.alias` as an unexpected field and ignores it), so an entry importing
+an aliased name fails to bundle with `Could not resolve`. `main`, unlike
+`alias`, is an inheritable key that an environment may override.
+
+To check a bundle without Cloudflare, run from `update-service/`:
+`pnpm dlx wrangler@<version> deploy --dry-run --env test --outdir <empty dir>`
+(no login or token is needed; it builds the Worker and exits).
 
 ## Publishing
 
@@ -159,12 +175,27 @@ same SHA-256 and size.
   did), rewrites `update-service/releases/<env>.json` from the build with the
   environment's download host and the release notes URL
   `https://bentobrowser.app/release-notes/<version>/`, and runs
-  `wrangler deploy --env <env>`. The descriptor must not name a higher
-  version, or the same version with another BuildID or MAR; the same release
-  can be promoted again, for example after a withdrawal. The script leaves the
-  rewritten descriptor in the working tree: commit it once the deploy worked.
+  `wrangler deploy --env <env>`. The script leaves the rewritten descriptor in
+  the working tree: commit it once the deploy worked.
+- Before `--assets` or `--promote` touches storage or Cloudflare (so also for
+  `--assets` alone), the script compares the build with the environment's
+  committed descriptor and refuses a descriptor that names a higher version, or
+  the same version with another BuildID or MAR. The same release is accepted
+  again, for example to serve it after a withdrawal.
 - `--withdraw` sets `serving: false`, keeping the release on record, and
   deploys. It needs no build output and no gate.
+
+Every run, `--withdraw` included, holds an exclusive lock file,
+`.bento/ota-publish.lock` (gitignored), created with the `wx` flag and holding
+the pid and start time. It is removed when the run ends, successfully or not,
+and a second run that finds it stops at once and names the file. The lock is
+local only: object immutability is a HEAD followed by a PUT, so two publishers
+could both see "missing" and upload different bytes to one key, and the lock
+stops that on one machine. That is enough because one maintainer publishes from
+one Mac; a second publisher or a CI publisher would need a lock in shared
+storage, and this script has none. A run that is killed (Ctrl-C, a crash)
+leaves the file behind: confirm no other run is active, delete the file named
+in the error, and run again.
 
 Production operations other than `--withdraw` first run
 `pnpm run release:security-check:public`, and then require all of:

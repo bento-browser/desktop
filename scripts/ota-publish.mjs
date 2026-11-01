@@ -16,8 +16,10 @@
  *            release and deploy the Worker, which starts offering it.
  * --withdraw set serving to false and deploy. Needs no release and no gate.
  *
- * Production operations other than --withdraw first run the public release gate and
- * require evidence that this exact artifact was tested. See docs/ota-updates.md.
+ * --assets and --promote refuse an older or republished version before uploading or
+ * deploying anything. Production operations other than --withdraw first run the public
+ * release gate and require evidence that this exact artifact was tested. Every run
+ * holds an exclusive local lock (.bento/ota-publish.lock). See docs/ota-updates.md.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -279,26 +281,30 @@ function writeDescriptor(ctx, descriptor) {
   fs.writeFileSync(descriptorFile(ctx), `${JSON.stringify(descriptor, null, 2)}\n`);
 }
 
+/**
+ * Versions only ever rise (docs/ota-updates.md); the one repeat allowed is the same
+ * release, to serve it again after a withdrawal or a failed deploy. Checked before
+ * anything is uploaded, so a republished version never reaches storage.
+ */
+function assertNotRepublished(ctx, release) {
+  const live = readDescriptor(ctx).release;
+  if (!live) return;
+  const order = compareVersions(parseVersion(release.version), parseVersion(live.version));
+  const same =
+    order === 0 && live.buildId === release.buildId && live.sha512 === release.mar.sha512;
+  if (order < 0 || (order === 0 && !same)) {
+    fail(
+      `${ctx.environment} already names ${live.version} (${live.buildId}); publish a strictly higher version, never an older or republished one`,
+    );
+  }
+}
+
 const deploy = (ctx) =>
   ctx.run('pnpm', wrangler('deploy', '--env', ctx.environment), { cwd: ctx.serviceDir });
 
 async function promote(ctx, release, verified) {
   const marUrl = `https://${ENVIRONMENTS[ctx.environment].downloadHost}/${release.mar.name}`;
   if (!verified.has(marUrl)) await verifyHosted(ctx, marUrl, release.mar);
-
-  // Versions only ever rise (docs/ota-updates.md); the one repeat allowed is the same
-  // release, to serve it again after a withdrawal or a failed deploy.
-  const live = readDescriptor(ctx).release;
-  if (live) {
-    const order = compareVersions(parseVersion(release.version), parseVersion(live.version));
-    const same =
-      order === 0 && live.buildId === release.buildId && live.sha512 === release.mar.sha512;
-    if (order < 0 || (order === 0 && !same)) {
-      fail(
-        `${ctx.environment} already names ${live.version} (${live.buildId}); publish a strictly higher version, never an older or republished one`,
-      );
-    }
-  }
 
   writeDescriptor(ctx, {
     serving: true,
@@ -331,14 +337,27 @@ async function withdraw(ctx) {
 }
 
 /**
- * Runs the requested operations. `ctx` carries everything outside the repository
- * (`run` for commands, `fetch`, `log`, `processEnv`) so tests can fake it.
+ * Takes the exclusive local publish lock and returns the function that releases it.
+ * Object immutability is a HEAD followed by a PUT, so two runs could both see "missing"
+ * and upload different bytes to one key; the lock stops a second run from starting.
+ * A run that is killed leaves the file behind, and the error says how to clear it.
  */
-export async function publish(args, ctx) {
-  const context = { ...ctx, environment: args.environment };
-  if (!context.processEnv.CLOUDFLARE_API_TOKEN || !context.processEnv.CLOUDFLARE_ACCOUNT_ID) {
-    fail('set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment');
+function acquireLock(ctx) {
+  const file = path.join(ctx.root, '.bento', 'ota-publish.lock');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  try {
+    const holder = { pid: process.pid, started: new Date().toISOString() };
+    fs.writeFileSync(file, `${JSON.stringify(holder)}\n`, { flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    fail(
+      `${file} exists, so another ota-publish run may be active (${fs.readFileSync(file, 'utf8').trim()}); wait for it, or delete the file if that run was killed`,
+    );
   }
+  return () => fs.rmSync(file, { force: true });
+}
+
+async function runOperations(args, context) {
   if (args.withdraw) return withdraw(context);
 
   const production = args.environment === 'production';
@@ -352,10 +371,29 @@ export async function publish(args, ctx) {
     const problems = productionProblems(release, security);
     if (problems.length > 0) fail(`production publish refused:\n- ${problems.join('\n- ')}`);
   }
+  assertNotRepublished(context, release);
 
   const verified = new Set();
   if (args.assets) await publishAssets(context, release, verified);
   if (args.promote) await promote(context, release, verified);
+}
+
+/**
+ * Runs the requested operations under the publish lock. `ctx` carries everything
+ * outside the repository (`root`, `serviceDir`, `run` for commands, `fetch`, `log`,
+ * `processEnv`) so tests can fake it.
+ */
+export async function publish(args, ctx) {
+  const context = { ...ctx, environment: args.environment };
+  if (!context.processEnv.CLOUDFLARE_API_TOKEN || !context.processEnv.CLOUDFLARE_ACCOUNT_ID) {
+    fail('set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment');
+  }
+  const unlock = acquireLock(context);
+  try {
+    await runOperations(args, context);
+  } finally {
+    unlock();
+  }
 }
 
 function defaultContext() {
