@@ -313,8 +313,8 @@ the CI workflow and composite actions. It excludes `plans/` and unrelated
 documentation. A source change invalidates every recorded gate.
 
 After each successful gate, record one of `patch-stack`, `static`,
-`import-idempotence`, `build`, `package`, `release-build`, `headless-smoke`, or
-`final-review`:
+`import-idempotence`, `build`, `package`, `release-build`, `headless-smoke`,
+`panel-suite`, or `final-review`:
 
 ```sh
 node .agents/skills/bento-upgrade-firefox/scripts/validation-checkpoint.mjs record . <target> build "pnpm run build"
@@ -339,6 +339,7 @@ pnpm run ext:build
 pnpm run import
 pnpm run firefox:compat:engine
 pnpm run build
+pnpm run test:panels -- --app engine/obj-bento/dist/Bento.app
 pnpm run package
 pnpm run artifacts:check
 ```
@@ -393,6 +394,22 @@ the Browser Console must show `[bento-compat] probed N members on Firefox
 loaded yet) are not errors; `window.BentoFirefoxCompat.check()` lists them and
 probes them once opened. Run focused manual checks for every affected
 Firefox touchpoint before declaring completion.
+
+Run the panel suite on the built app, which checks the panel renderer headless
+(two panels through the add-panel path, a main-tab switch, both panels closed,
+with split-view state, activity flags, geometry and per-panel pixels):
+
+```sh
+pnpm run test:panels -- --app engine/obj-bento/dist/Bento.app
+```
+
+Require a zero exit. Exit 1 with "stale build" means the app does not serve the
+repo's mount script or stylesheet: refresh with `pnpm run build` and rerun. Any
+other exit 1 prints the failed invariants, a state dump, and a window screenshot;
+fix the cause rather than loosening the suite. Its warning about a dead panel id in
+`tabpanels.splitViewPanels` at main only is known and not a failure (see "Panel suite"
+in `docs/technical/chrome-panel-rendering.md`). The suite needs no Firefox display and
+is never run in CI. Record the pass as the `panel-suite` checkpoint gate.
 
 ## Land the upgrade
 

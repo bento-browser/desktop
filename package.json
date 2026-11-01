@@ -42,6 +42,7 @@
     "test:boundary-detector": "node --test scripts/boundary-detector.test.mjs",
     "test:size-ratchet": "node --test scripts/size-ratchet.test.mjs",
     "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",
+    "test:panels": "node scripts/panel-suite.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
     "security:check": "node scripts/check-security-invariants.mjs",
     "release:security-check": "node scripts/check-release-security.mjs --channel=preview",

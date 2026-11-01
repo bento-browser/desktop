@@ -126,3 +126,21 @@ test('rejects a checkpoint recorded for another target', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('records the panel-suite gate and rejects a gate name it does not know', () => {
+  const root = fixture();
+  try {
+    run(['record', root, '152.0.6', 'panel-suite', 'pnpm run test:panels']);
+    assert.match(run(['has', root, '152.0.6', 'panel-suite']), /recorded gates: panel-suite/);
+    assert.throws(
+      () => run(['has', root, '152.0.6', 'panel-suite', 'headless']),
+      (error) => error.status === 2 && /unknown gate headless/.test(error.stderr),
+    );
+    assert.throws(
+      () => run(['record', root, '152.0.6', 'panel-suit']),
+      (error) => error.status === 2 && /unknown gate panel-suit/.test(error.stderr),
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

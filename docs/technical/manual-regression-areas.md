@@ -4,6 +4,13 @@ Part of the [technical notes index](../core-functionality-technical.md).
 
 When changing core functionality, manually verify at least the affected subset:
 
+- the panel renderer (`reconcilePanelsSplitView`, the add-panel path, panel close and
+  the main-tab switch): run `pnpm run test:panels -- --app <built app>` first (see
+  [Panel suite](chrome-panel-rendering.md#panel-suite)); it covers split-view
+  membership and order, activity flags, geometry, stale state and each panel's pixels
+  headless, so verify by hand only what it leaves out: panel traversal keys, native
+  popups, DOM fullscreen, drag, reorder and splitter resize, saved panels and
+  subdivisions;
 - shell menus and submenus (kebab, context, New menu with nested items) in a
   running browser after any Vite chunking or Mux/React Aria change;
 - sidebar collapse and expand with Cmd+S (the push slide; the checklist is under
