@@ -13860,6 +13860,10 @@
 
     const liveWidthForTabId = (tabId) => {
       const panelEl = document.querySelector('[data-bento-panel-tab-id="' + Number(tabId) + '"]');
+      // A panel in its enter animation (animatePanelEnter) renders a width that is on its way
+      // from 0, not the width it settles at. Reading it would write that width back as the
+      // panel's size when a live refresh lands mid-animation (the panel column resizing).
+      if (panelEl && motionWaits.get(panelEl)?.has('enter')) return 0;
       const rectWidth = panelEl?.getBoundingClientRect?.().width || 0;
       return rectWidth > 0 ? Math.round(rectWidth) : 0;
     };

@@ -721,7 +721,10 @@ root attribute, so a manager toggle re-measures).
   frame resizes and `refreshFlatPanelLayoutFromLiveState` runs from the `tabpanels` resize
   observer, as in a window height drag. The toolbar's own frame does not resize (the host keeps
   its row height; the strip clips it). If it janks with many panels, cut the per-frame work in that
-  observer path rather than the motion.
+  observer path rather than the motion. The observer also runs while a new panel enters (adding
+  the first panel moves the reserve by a fraction of a pixel, so the margin transition starts with
+  it), which is why a live refresh must ignore an entering panel's rendered width
+  ([flat layout pitfalls](flat-panel-layout.md#flat-layout-pitfalls)).
 
 ## Address Entry Pitfalls
 
