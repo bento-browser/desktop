@@ -12,7 +12,7 @@ export interface SettingsIndexEntry {
   /** The Settings palette's group, which also names the row's description. */
   group: string;
   keywords: readonly string[];
-  /** Backup rows: a private window's Settings palette has none. */
+  /** Backup rows and the Bookmarks manager: a private window's Settings palette has none. */
   regularOnly?: true;
 }
 
@@ -58,6 +58,13 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     label: 'Sidebar collapse type',
     group: 'Workspaces',
     keywords: ['sidebar', 'minimize', 'shortcut', 'cmd s', 'ctrl s'],
+  },
+  {
+    id: 'setting:bookmarksEnabled',
+    label: 'Bookmarks manager',
+    group: 'Workspaces',
+    keywords: ['bookmarks', 'links', 'library'],
+    regularOnly: true,
   },
   {
     id: 'setting:defaultPanelWidthPx',

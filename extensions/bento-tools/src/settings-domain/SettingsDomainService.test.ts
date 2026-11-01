@@ -330,6 +330,33 @@ describe('SettingsDomainService', () => {
       ).resolves.toMatchObject({ settings: appearance });
     });
 
+    it('saves the Bookmarks manager from either window type, for the whole profile', async () => {
+      const h = await createHarness();
+      const caller = await overlay(h);
+      const listener = vi.fn();
+      h.service.onSettingsChange(listener);
+      expect(h.settings.snapshot().bookmarksEnabled).toBe(true);
+      await run(h, 'settings/update', { changes: { bookmarksEnabled: false } }, caller);
+      expect(h.settings.snapshot().bookmarksEnabled).toBe(false);
+      expect(listener).toHaveBeenLastCalledWith(
+        expect.objectContaining({ bookmarksEnabled: false }),
+        1,
+      );
+      await run(
+        h,
+        'settings/update',
+        { changes: { bookmarksEnabled: true } },
+        { ...caller, isPrivate: true },
+      );
+      expect(h.settings.snapshot().bookmarksEnabled).toBe(true);
+      await expect(
+        run(h, 'snapshot/get', { domains: ['settings'] }, caller),
+      ).resolves.toMatchObject({ settings: { bookmarksEnabled: true } });
+      await expect(
+        codeOf(run(h, 'settings/update', { changes: { bookmarksEnabled: 'off' } }, caller)),
+      ).resolves.toBe('invalid_payload');
+    });
+
     it('limits the overlay operation to the editable inventory', async () => {
       const h = await createHarness();
       const caller = await overlay(h);

@@ -7,7 +7,12 @@
 // change. The code each line rests on is recorded in docs/technical/privacy-search.md.
 
 import type { PrivacyAdvancedKey } from '@shared/protocol';
-import { PANEL_SIZE_LIMITS, type EnumKey, type NumberSettingKey } from './settingsCatalog';
+import {
+  PANEL_SIZE_LIMITS,
+  type BooleanSettingKey,
+  type EnumKey,
+  type NumberSettingKey,
+} from './settingsCatalog';
 
 export const NUMBER_DESCRIPTIONS: Record<NumberSettingKey, string> = {
   tabSleepAfterMinutes:
@@ -24,6 +29,13 @@ export const NUMBER_DESCRIPTIONS: Record<NumberSettingKey, string> = {
     'How often Bento saves an automatic backup while it is running. Applies only while Automatic backups is on.',
   autoBackupMaxCount:
     'How many automatic backups Bento keeps. When a new one pushes past the limit, the oldest is deleted.',
+};
+
+/** The line under a switch whose label does not say what it changes. The other switches are
+ * named by their label alone and have none. */
+export const TOGGLE_DESCRIPTIONS: Partial<Record<BooleanSettingKey, string>> = {
+  bookmarksEnabled:
+    "Open it with Cmd/Ctrl+Shift+O or the command palette. The star, Cmd/Ctrl+D and the bookmarks toolbar use it too. Off keeps your saved bookmarks and gives all of these back to Firefox's bookmarks and Library.",
 };
 
 export const ENUM_DESCRIPTIONS: Record<EnumKey, string> = {

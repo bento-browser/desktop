@@ -1065,6 +1065,7 @@ describe('shell bus bootstrap', () => {
       panelShadowsEnabled: false,
       panelCornerRadiusPx: 9,
       panelSplitterSizePx: 5,
+      bookmarksEnabled: false,
     } satisfies Partial<BentoSettings>;
     const persistedSettings = CHROME_SETTINGS as BentoSettings;
     type ChromePanels = {

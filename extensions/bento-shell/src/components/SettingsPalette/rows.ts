@@ -37,6 +37,7 @@ import {
   NUMBER_DESCRIPTIONS,
   SIZE_ACTION_DESCRIPTIONS,
   STAGE_DESCRIPTIONS,
+  TOGGLE_DESCRIPTIONS,
 } from './settingsCopy';
 import { isEditorStage, type ConfirmAction, type Stage } from './stageStack';
 import type { EditableSettings } from './model';
@@ -161,6 +162,7 @@ function toggleRow(model: SettingsPaletteModel, group: string, key: BooleanSetti
     label: spec.label,
     value: onOff(model.settings[key]),
     switchOn: switchState(model.settings[key], pending, model.pendingTargets.get(key)),
+    description: TOGGLE_DESCRIPTIONS[key],
     pending,
     keywords: spec.keywords,
     intent: { type: 'toggle', key },
@@ -275,6 +277,8 @@ export function controlRows(model: SettingsPaletteModel): PaletteRow[] {
     numberRow(model, 'Performance', 'tabSleepAfterMinutes'),
     numberRow(model, 'Performance', 'tabSleepKeepAlivePerWorkspace'),
     enumRow(model, 'Workspaces', 'sidebarShortcutBehavior'),
+    // The Bookmarks view is never available in a private window, so the switch is not shown there.
+    ...(model.isPrivate ? [] : [toggleRow(model, 'Workspaces', 'bookmarksEnabled')]),
     numberRow(model, 'Panels', 'defaultPanelWidthPx'),
     toggleRow(model, 'Panels', 'panelCycleWraparound'),
     toggleRow(model, 'Panels', 'panelShadowsEnabled'),
@@ -395,14 +399,14 @@ export function rootRows(model: SettingsPaletteModel): PaletteRow[] {
 }
 
 /** Everything the root search can reach: the flat controls, the advanced privacy rows and the
- * shortcuts. The results stay one line each: the advanced rows lose their description. */
+ * shortcuts. The results stay one line each: a row loses its description here. */
 export function searchableRows(model: SettingsPaletteModel): PaletteRow[] {
-  return [
+  const flat = [
     ...controlRows(model),
-    ...(model.privacy && model.search ? advancedRows(model) : []).map((row) => ({
-      ...row,
-      description: undefined,
-    })),
+    ...(model.privacy && model.search ? advancedRows(model) : []),
+  ];
+  return [
+    ...flat.map((row) => ({ ...row, description: undefined })),
     ...shortcutRows().map((row) => ({ ...row, info: false, intent: pushShortcuts })),
   ];
 }

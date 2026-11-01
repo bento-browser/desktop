@@ -95,7 +95,7 @@ other regular browser imports in this flow use Firefox's native migration wizard
 and are separate from the additive Bento backup import flow.
 
 The sidebar footer exposes Firefox's native app menu and Firefox's native
-downloads panel; it has no separate Settings or merge button. The app menu lists
+downloads panel; it has no Bookmarks, Settings or merge button. The app menu lists
 "Bento Settings" directly above Firefox's own Settings item, and the command
 palette has an Open Settings command; both open the Settings palette. Native footer panels are left-edge
 anchored to their trigger buttons so they grow rightward when screen space
@@ -454,9 +454,11 @@ out the backup settings.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
 at the top of the sidebar above the tab list. It mirrors the active main
-tab's URL, loading state, Firefox security identity state, and regular Firefox
-bookmark state, with one-click actions to copy the current URL or toggle the
-regular bookmark state. The copy action shows a `Copied` tooltip after the URL
+tab's URL, loading state, Firefox security identity state, and bookmark state,
+with one-click actions to copy the current URL or bookmark the page. In a regular
+window the bookmark star works on Bento's bookmarks (see "Saving pages and the
+bookmarks toolbar"); in a private window, or with the Bookmarks manager off, it
+toggles the regular Firefox bookmark instead. The copy action shows a `Copied` tooltip after the URL
 has been written to the clipboard. Clicking the row, or pressing `Cmd/Ctrl+L` or
 `Cmd/Ctrl+E` while the expanded row is on screen, opens Bento's address entry as
 the row growing: the field sits exactly over the row, with the same height, a
@@ -677,6 +679,107 @@ The important product rule is that widgets should not become a separate mode of
 window management. They should inherit the same workspace, layout, traversal,
 and theming behavior as panels.
 
+### Bookmarks view
+
+Bento keeps its own collection of links, separate from Firefox's bookmarks, in a
+full-window Bookmarks view. It opens from the command palette's "Open Bookmarks"
+command or Cmd/Ctrl+Shift+O, and replaces the
+browser content while the toolbar strip stays in place. Back, Forward, Reload and the
+extension buttons slide up out of the toolbar and fade as the view opens, and slide back when it
+closes; with reduced motion they change at once. The top-left button reads "Back to browser" and shrinks to an arrow in a narrow
+window. Right-clicking in the view opens Bento's own menu for whatever is under the pointer: a link
+(open in a panel or new tab, copy the link, edit, move, delete), a note or to-do (edit, mark done,
+move, delete), a group column (open all in panels, rename, colour, reorder, delete), a space
+(rename, colour, delete), an open tab in the drawer (save to a group), or the board background (new
+group, save all open tabs). Text fields keep the normal cut, copy and paste menu, and Firefox's page
+menu no longer appears. The Menu key or Shift+F10 opens the same menu for the focused item. It is not available in private
+windows: the command is hidden there and the shortcut opens Firefox's Library instead.
+Esc, the Back button, or the shortcut again returns to the browser, with focus back
+where it was.
+
+The Bookmarks manager can be turned off in Settings (Workspaces, "Bookmarks manager", On by
+default, saved for the whole profile and included in backups). Off hides the "Open Bookmarks"
+command, gives Cmd/Ctrl+Shift+O back to Firefox's Library and closes the view if it is open;
+the bookmarks you saved are kept, and turning it back on brings them back as they were. The
+switch is not shown in private windows, where the view is never available.
+
+The view has three parts:
+
+- **Spaces.** A column on the left lists the spaces, each with a colour dot, its name
+  and its link count. Selecting one shows it; the view reopens on the space last used.
+  "+ Space" adds one, and a space's menu (also on right-click) renames it, sets its
+  colour, or deletes it with its groups. Below about 1200 px wide the column folds to
+  the colour dots.
+- **Groups and rows.** The selected space's groups are columns that scroll sideways. Each
+  column holds links (favicon, title, host), notes and to-dos (with a checkbox). Clicking a
+  link opens it in a new panel. Hovering a row shows a "More actions" button with Open in new
+  tab (links), Edit, Move and Delete; it leaves the row's text readable.
+  Rows edit in place; Enter saves and Esc cancels, and the focus goes back to the row (or to
+  the button that began the edit). A full-width "+" under a column's
+  last row, shown while the pointer is over the column or the focus is inside it, adds a link,
+  note or to-do by typing: a web address or bare domain becomes a link, text
+  starting with `[]` becomes a to-do, anything else a note. A group's menu renames it,
+  sets its colour, moves it left or right, opens all its links in panels, or deletes it.
+  "+ Group" adds a column; a space with no groups has the same "Group" button in its
+  first-steps box. Names, titles and notes stop at the length Bento stores.
+- **Open tabs.** The header's "Open tabs" toggle opens a drawer on the right with the
+  tabs and panels of the active workspace. A tab dragged into a column is saved at the
+  spot where it is dropped, a tab's menu has "Save to group" (a list of the space's
+  groups and "New group"), and "Save all to new group" saves every tab at once. In a
+  narrow window the drawer floats over the board.
+
+The header shows the space's name and "N groups, M links", with a search field that finds
+links, notes and to-dos in every space, listed by space and group. Rows and columns reorder
+by dragging: a line shows where the item will land, nothing shifts while dragging, and the
+dropped item glides into place; Esc cancels, and letting go afterwards does not open the link
+that was grabbed. Everything dragging does also has a menu for the keyboard: a row's
+"More actions" menu (Move to group, Move up, Move down under Move), a column's Move left and
+Move right, and an open tab's Save to group; each is reached by Tab and keeps the focus on what
+moved. Deleting an
+item removes it at once and offers Undo for a few seconds (the countdown waits while the
+pointer is over the toast or the focus is on it); deleting a group or space asks first. A space with no groups says
+"Drop tabs here" and offers a new group or saving the open tabs; until it has been used or
+declined once, it also offers to import the Firefox bookmarks into a space of their own.
+If the stored bookmarks cannot be read, the view says "Bookmarks couldn't load" with a
+Retry button instead of showing a board that could not save; nothing is changed meanwhile.
+
+### Saving pages and the bookmarks toolbar
+
+With the Bookmarks manager on, in a regular window, saving a page and the bookmarks toolbar use
+Bento's bookmarks rather than Firefox's. Private windows, and any window while the manager is off in
+Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, unchanged.
+
+- **Saving.** The star in the sidebar address row, Cmd/Ctrl+D, and the Bookmark Page entries of
+  the menu bar, the app menu and the page's context menu all save the page at once and open a small
+  popover under the star (or, when the sidebar row is not on screen, at the top right of the active
+  panel) with Name, Space and Group, Remove and Done. A page goes into the group of the most
+  recently saved link in the current space (the one the toolbar shows); in a space with no group,
+  into a group called "Unsorted".
+  Name saves on Enter or when the field loses focus. Choosing another Space moves the link to that
+  space's first group (making "Unsorted" if it has none), and choosing a Group moves it there.
+  Done, a click outside and Esc close the popover and keep the save; Esc also drops a name that
+  was typed but not saved. The popover also closes, keeping a typed name, when the window is
+  resized, the tab changes or another overlay opens. Remove deletes the link. If the stored
+  bookmarks could not be read, the popover says the page was not saved and offers Retry.
+- **The star.** It is filled for any page that is saved in any group. Pressing it, or Cmd/Ctrl+D,
+  on a saved page opens the popover on the most recent copy rather than saving again, and the star
+  shows as pressed while the popover is open. A page Bento does not save (Firefox's own pages and
+  other internal pages) leaves the star disabled, and Cmd/Ctrl+D does nothing there. The panel header
+  star follows the same rules.
+- **Bookmarks toolbar.** In place of Firefox's toolbar (it still shows and hides with
+  Cmd/Ctrl+Shift+B) a rounded strip, lined up with the top of the workspace switcher and the edges
+  of the panels, slides in while the panels shrink to make room (and out again; the sidebar stays
+  still). The row lists the groups of the space the Bookmarks view last showed, each a
+  button with its colour dot, name and a chevron. A group's menu lists its links (favicon and
+  title; choosing one opens it as a new panel), then "Open all in panels" and "Open in
+  Bookmarks". The space button at the right shows the current space; its menu lists every space
+  with a check on the current one (choosing one switches the toolbar, the Bookmarks view and
+  every other window to it) and "Open Bookmarks". Groups that do not fit move behind an overflow
+  button at the end of the groups, each a submenu of its links. A space with no links shows "No
+  bookmarks in" and its name, and the row shows nothing until the stored bookmarks have loaded (or
+  if they could not be read). The button whose menu is open shows as pressed. Esc, a click
+  outside or choosing an item closes a menu.
+
 ## Primary user flows
 
 ### Build a persona workspace
@@ -824,7 +927,8 @@ Bento Settings is a quick-pick palette over the window, not a page. The app menu
 onboarding dialog's Open Settings button open it; the command palette's
 Privacy command opens it on the protection level list, and a matching setting
 in the command palette's results opens it at that setting inside its category. The first
-list contains categories with short descriptions: Appearance, Performance, Workspaces,
+list contains categories with short descriptions: Appearance, Performance, Workspaces
+(the sidebar collapse type and the Bookmarks manager switch),
 Panels, Privacy and search, Backup and data, Keyboard shortcuts, and Reset Bento.
 Each category opens its controls with their current values; Keyboard shortcuts opens its
 reference directly. Search settings finds individual controls, advanced privacy settings
@@ -845,7 +949,9 @@ or a click on the track and follows the pointer exactly while dragged), Page key
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 
-Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
+The Bookmarks manager switch is the one switch that carries a second, always visible line (it
+names the Cmd/Ctrl+Shift+O shortcut, says the star, Cmd/Ctrl+D and the bookmarks toolbar use the
+manager too, and says that Off keeps the saved bookmarks); search results show it on one line. Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
 are independent switches, both On by default and saved for the whole profile. Turning
 tints off removes the status backgrounds; turning custom icons off restores Bento's
 loading indicator, website favicon or empty placeholder. Sleeping-tab styling and

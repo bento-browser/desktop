@@ -1,7 +1,7 @@
 {
   "build": "BENTO_RELEASE=1 pnpm run ext:build",
   "gzipBytes": {
-    "extensions/bento-shell/dist/assets/shell.js": 304440,
+    "extensions/bento-shell/dist/assets/shell.js": 308845,
     "extensions/bento-shell/dist/assets/palette.js": 254563,
     "extensions/bento-shell/dist/assets/address-bar.js": 263224,
     "extensions/bento-shell/dist/assets/confirm.js": 245567,
@@ -14,9 +14,12 @@
     "extensions/bento-shell/dist/assets/workspace-switcher.js": 254376,
     "extensions/bento-shell/dist/assets/panel-trailer.js": 257802,
     "extensions/bento-shell/dist/assets/panel-navigator-tooltip.js": 254263,
-    "extensions/bento-shell/dist/assets/style.css": 88981,
+    "extensions/bento-shell/dist/assets/bookmarks.js": 285482,
+    "extensions/bento-shell/dist/assets/bookmarks-popup.js": 275752,
+    "extensions/bento-shell/dist/assets/bookmarks-toolbar.js": 255943,
+    "extensions/bento-shell/dist/assets/style.css": 91861,
     "extensions/bento-shell/dist/assets/panel-newtab.css": 23615,
     "extensions/bento-shell/dist/assets/background.js": 3311,
-    "extensions/bento-tools/dist/background.js": 60026
+    "extensions/bento-tools/dist/background.js": 64451
   }
 }

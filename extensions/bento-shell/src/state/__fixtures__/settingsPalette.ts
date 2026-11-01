@@ -30,6 +30,7 @@ export const FIXTURE_SETTINGS: EditableSettings = {
   panelShadowsEnabled: true,
   panelCornerRadiusPx: 12,
   panelSplitterSizePx: 14,
+  bookmarksEnabled: true,
   autoBackupEnabled: true,
   autoBackupIntervalMinutes: 30,
   autoBackupMaxCount: 5,

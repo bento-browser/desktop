@@ -100,6 +100,10 @@ itself out inside is the exception. Two chrome hosts hold a shell document:
   shell's trailer assumes a 256px select and 39.6px buttons, while chrome computed
   176px and 31.15px, so the select was clipped in the host.
 
+One chrome rule lines up with shell geometry the same way: the Bento bookmarks toolbar strip sits
+`--bento-sidebar-top-inset` below the top bar, the workspace switcher's top padding, so the
+generator pins that token too.
+
 Type is the same problem. Mux's typography tokens are rem tokens too
 (`--muxui-semantic-typography-text-m-font-size` resolves to `1rem`), so used
 directly in chrome `text-m` renders at 11px, 11/16 of its shell size, and `text-s`

@@ -512,7 +512,9 @@ test('every lazily created overlay frame has a title handler, and the reverse', 
     titleTable.indexOf(']);\n    const lastSeenTitleByFrameId'),
   );
   const titleFrames = [...titleBlock.matchAll(/'bento-([a-z-]+)-frame'/g)].map((m) => m[1]);
-  const eager = new Set(['shell', 'panel-trailer']);
+  // The sidebar, the panel trailer and the Bookmarks toolbar are frames in the chrome layout,
+  // not overlays: they have title handlers and no row.
+  const eager = new Set(['shell', 'panel-trailer', 'bookmarks-toolbar']);
   assert.deepEqual(
     [...new Set(titleFrames.filter((id) => !eager.has(id)))].sort(),
     [...tableIds].sort(),
@@ -586,9 +588,62 @@ test('the table lists the strategies the docs promise', () => {
   // Prewarm order is table order.
   assert.deepEqual(
     rows.filter((row) => row.prewarm).map((row) => row.id),
-    ['addrbar', 'palette', 'menu'],
+    ['addrbar', 'palette', 'menu', 'bookmarks-popup'],
   );
   assert.ok(rows.every((row) => !(row.eager && row.prewarm)));
+});
+
+test('the Bookmarks view is created on first use, and its host is the lowest of the stack', () => {
+  const row = /overlayEntry\(\{\s*id: 'bookmarks',([\s\S]*?)\}\)/.exec(MOUNT);
+  assert.ok(row, 'no bookmarks row in the overlay table');
+  assert.match(row[1], /created: true/);
+  assert.doesNotMatch(row[1], /eager: true|prewarm: true/, 'a view nobody asked for is not loaded');
+
+  // Palettes, the menu, the address bar, confirm and the tooltip open over the view, so every
+  // other host (the mount's ensureOverlayHost calls and the hosts the patch declares) is higher.
+  const patch = fs.readFileSync(
+    path.join(ROOT, 'patches/chrome-layout/01-bento-shell-mount.patch'),
+    'utf8',
+  );
+  const hostZ = new Map();
+  for (const match of MOUNT.matchAll(/ensureOverlayHost\(\{\s*hostId: '([a-z-]+)',\s*zIndex: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  for (const match of patch.matchAll(/id="(bento-[a-z-]+-host)"[\s\S]*?z-index: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  const bookmarks = hostZ.get('bento-bookmarks-host');
+  assert.equal(typeof bookmarks, 'number');
+  assert.ok(hostZ.size >= 8, 'the other hosts were not found');
+  for (const [host, z] of hostZ) {
+    if (host !== 'bento-bookmarks-host') assert.ok(z > bookmarks, `${host} must stack above the view`);
+  }
+});
+
+test('the bookmark popup host covers the window above the view and below every other overlay', () => {
+  const patch = fs.readFileSync(
+    path.join(ROOT, 'patches/chrome-layout/01-bento-shell-mount.patch'),
+    'utf8',
+  );
+  const hostZ = new Map();
+  for (const match of MOUNT.matchAll(/ensureOverlayHost\(\{\s*hostId: '([a-z-]+)',\s*zIndex: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  for (const match of patch.matchAll(/id="(bento-[a-z-]+-host)"[\s\S]*?z-index: (\d+)/g)) {
+    hostZ.set(match[1], Number(match[2]));
+  }
+  const popup = hostZ.get('bento-bookmarks-popup-host');
+  assert.equal(typeof popup, 'number');
+  for (const [host, z] of hostZ) {
+    if (host === 'bento-bookmarks-popup-host') continue;
+    if (host === 'bento-bookmarks-host') assert.ok(z < popup, 'the view is below the popup');
+    else assert.ok(z > popup, `${host} must stack above the popup`);
+  }
+  // A child of the chrome root, so it also covers the toolbar strip.
+  assert.match(
+    MOUNT,
+    /hostId: 'bento-bookmarks-popup-host',\s*zIndex: \d+,\s*parentId: null,/,
+  );
 });
 
 test('presentation acknowledgement gates reveal and cancellation invalidates a stale show', async () => {
@@ -655,6 +710,7 @@ test('window startup loads the shell and the eager overlays, not the others', ()
     'Welcome',
     'WorkspaceSwitcher',
     'Menu',
+    'BookmarksPopup',
     'PanelNavigatorTooltip',
   ]) {
     assert.ok(

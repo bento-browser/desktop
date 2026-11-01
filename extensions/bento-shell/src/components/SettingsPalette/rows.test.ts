@@ -27,7 +27,12 @@ import {
 } from './rows';
 import { PRIVACY_LEVEL_DETAILS } from '@shared/privacy-levels';
 import { ENUM_SPECS, NUMBER_SPECS, PANEL_SIZE_LIMITS, type EnumKey } from './settingsCatalog';
-import { ENUM_DESCRIPTIONS, ENUM_OPTION_DESCRIPTIONS, NUMBER_DESCRIPTIONS } from './settingsCopy';
+import {
+  ENUM_DESCRIPTIONS,
+  ENUM_OPTION_DESCRIPTIONS,
+  NUMBER_DESCRIPTIONS,
+  TOGGLE_DESCRIPTIONS,
+} from './settingsCopy';
 import type { Stage } from './stageStack';
 import type { SettingsPaletteModel } from './types';
 
@@ -79,6 +84,45 @@ describe('control rows', () => {
         switchOn: true,
         intent: { type: 'toggle', key: 'customTabStateIconsEnabled' },
       }),
+    ]);
+  });
+
+  it('puts the Bookmarks manager switch under Workspaces with its description, in a regular window only', () => {
+    const off = controlRows({
+      ...REGULAR_MODEL,
+      settings: { ...FIXTURE_SETTINGS, bookmarksEnabled: false },
+    });
+    expect(find(off, 'setting:bookmarksEnabled')).toMatchObject({
+      group: 'Workspaces',
+      label: 'Bookmarks manager',
+      value: 'Off',
+      switchOn: false,
+      description: TOGGLE_DESCRIPTIONS.bookmarksEnabled,
+      intent: { type: 'toggle', key: 'bookmarksEnabled' },
+    });
+    expect(find(controlRows(REGULAR_MODEL), 'setting:bookmarksEnabled')).toMatchObject({
+      value: 'On',
+      switchOn: true,
+    });
+    // The switch is a named state, and the description stays a description.
+    expect(rowAriaLabel(find(off, 'setting:bookmarksEnabled'))).toBe('Bookmarks manager, Off');
+    // The view is never available in a private window, so the switch is not offered there.
+    expect(controlRows(PRIVATE_MODEL).some((row) => row.id === 'setting:bookmarksEnabled')).toBe(
+      false,
+    );
+    expect(searchableRows(PRIVATE_MODEL).some((row) => row.id === 'setting:bookmarksEnabled')).toBe(
+      false,
+    );
+  });
+
+  it('keeps a search result for a described switch to one line', () => {
+    const control = find(controlRows(REGULAR_MODEL), 'setting:bookmarksEnabled');
+    expect(control.description).toBeDefined();
+    expect(find(searchableRows(REGULAR_MODEL), 'setting:bookmarksEnabled').description).toBe(
+      undefined,
+    );
+    expect(filterRows(searchableRows(REGULAR_MODEL), 'bookmarks').map((row) => row.id)).toEqual([
+      'setting:bookmarksEnabled',
     ]);
   });
 

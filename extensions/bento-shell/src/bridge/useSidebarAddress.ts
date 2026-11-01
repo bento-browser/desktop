@@ -39,6 +39,19 @@ export type SidebarAddressBusMessage =
     }
   | {
       /**
+       * Chrome asks the row to open the bookmark popup over its star (Cmd+D, the menu bar and the
+       * page context menu entries). The row answers with BENTO_BOOKMARK_POPUP_OPEN, kind `edit`,
+       * carrying `requestId`, when the star is on screen and the page can be saved; otherwise it
+       * stays silent and chrome opens the popup itself after a timeout.
+       */
+      kind: 'bookmark-popup-request';
+      windowId: number | null;
+      bridgeToken: string;
+      messageId?: number;
+      requestId: string;
+    }
+  | {
+      /**
        * Chrome shows the address palette anchored over the row (`open: true`, as its fade-in
        * starts) or starts hiding it, or opens it centred (`open: false`). The row fades its
        * border out while the palette is over it, so the two borders cross-fade.
@@ -110,6 +123,7 @@ export function shouldAcceptSidebarAddressMessage(
   if (
     data.kind !== 'snapshot' &&
     data.kind !== 'open-request' &&
+    data.kind !== 'bookmark-popup-request' &&
     data.kind !== 'copy-result' &&
     data.kind !== 'palette-over-row'
   ) {
@@ -136,7 +150,8 @@ export function applySidebarAddressBusMessage(data: SidebarAddressBusMessage): v
   } else if (data.kind === 'palette-over-row') {
     store.setPaletteOverRow(data.open === true);
   } else if (typeof data.requestId === 'string' && data.requestId) {
-    store.requestOpen(data.mode, data.requestId);
+    if (data.kind === 'bookmark-popup-request') store.requestBookmarkPopup(data.requestId);
+    else store.requestOpen(data.mode, data.requestId);
   }
 }
 

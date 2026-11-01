@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-bento-theme="default">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bento Bookmarks Toolbar</title>
+
+    <!-- Persist color-mode preference; same boot script as the main shell. -->
+    <script src="./boot.js"></script>
+
+    <!-- Background is intentionally transparent. The chrome XUL host replaces Firefox's bookmarks
+         toolbar and carries the surface behind it; this iframe only paints the button row. -->
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background: transparent !important;
+        background-color: transparent !important;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/bookmarks-toolbar/main.tsx"></script>
+  </body>
+</html>

@@ -167,7 +167,8 @@ describe('chrome-to-overlay messages', () => {
     const handlers = new Map<string, (message: { data: unknown }) => void>();
     new Function('addMessageListener', 'content', source)(
       (name: string, handler: (message: { data: unknown }) => void) => handlers.set(name, handler),
-      { BroadcastChannel: FakeBroadcastChannel },
+      // `focus` is what the shell action relay calls for a `ui/` action, to focus the overlay.
+      { BroadcastChannel: FakeBroadcastChannel, focus: () => {} },
     );
     const handler = handlers.get(messageName);
     if (!handler) throw new Error(`${constant} does not listen for ${messageName}`);
@@ -235,6 +236,28 @@ describe('chrome-to-overlay messages', () => {
     expect(menusTwo).toEqual(['menu-2']);
   });
 
+  it('ui/bookmarkPopup/open actions reach only the popup of the window chrome named', async () => {
+    const send = loadFrameScript('SHELL_ACTION_FRAME_SCRIPT', 'BentoShellAction');
+    const one = await loadChromeSubscribers(1);
+    const two = await loadChromeSubscribers(2);
+    const popupsOne: string[] = [];
+    const popupsTwo: string[] = [];
+    one.bookmarkPopup(({ popupId }) => popupsOne.push(popupId));
+    two.bookmarkPopup(({ popupId }) => popupsTwo.push(popupId));
+    const open = (popupId: string, windowId: number) => ({
+      type: 'ui/bookmarkPopup/open',
+      popupId,
+      request: { kind: 'spaces', anchor: ANCHOR },
+      __windowId: windowId,
+    });
+
+    send(open('popup-2', 2));
+    send(open('popup-1', 1));
+
+    expect(popupsOne).toEqual(['popup-1']);
+    expect(popupsTwo).toEqual(['popup-2']);
+  });
+
   it('messages without a window id are applied, as from a chrome whose lookup failed', async () => {
     const send = loadFrameScript(
       'MERGE_PALETTE_LIFECYCLE_FRAME_SCRIPT',
@@ -255,12 +278,22 @@ describe('chrome-to-overlay messages', () => {
     one.addrbar(seen);
     one.mergePalette(seen);
     one.menu(seen);
+    one.bookmarkPopup(seen);
 
     postRaw('bento-addrbar-bus', { kind: 'open', mode: 'current', windowId: 2 });
     postRaw('bento-merge-palette', { type: 'open', nonce: 'x', windowId: 2 });
     postRaw('bento-shell-bus', {
       kind: 'action',
       action: { type: 'menu/open', contextId: 'm', items: [], anchor: ANCHOR, __windowId: 2 },
+    });
+    postRaw('bento-shell-bus', {
+      kind: 'action',
+      action: {
+        type: 'ui/bookmarkPopup/open',
+        popupId: 'p',
+        request: { kind: 'spaces', anchor: ANCHOR },
+        __windowId: 2,
+      },
     });
 
     expect(seen).not.toHaveBeenCalled();

@@ -267,6 +267,11 @@ export interface BentoSettings {
    * panel boundaries. This also controls the visual gap between panels.
    * The default matches the current hard-coded splitter size. */
   panelSplitterSizePx: number;
+  /** The Bookmarks manager is available. When false, chrome refuses to open the Bookmarks view
+   * (and closes it if it is open), Cmd/Ctrl+Shift+O goes back to Firefox's Library, and the
+   * command palette hides "Open Bookmarks". Nothing stored is deleted: tools keeps serving the
+   * bookmarks, so turning it back on brings everything back. */
+  bookmarksEnabled: boolean;
   /** Automatic periodic backup of workspace state to storage.local. */
   autoBackupEnabled: boolean;
   /** Minutes between automatic backups. */
@@ -632,6 +637,77 @@ export type Action =
    * as a `savedPanels/snapshot` event. Sent on shell entry mount so
    * the panel-trailer iframe paints its favicon row immediately. */
   | { type: 'savedPanels/requestSnapshot' }
+  /** Ask tools to send the Bookmarks manager state as `bookmarks/snapshot`. A document that
+   * mounts after boot sends this once; every later change arrives as a snapshot on its own. It
+   * also retries a load that failed (`status: 'loadFailed'`). Tools runs `bookmarks/` actions in
+   * arrival order, after the stored data has loaded. All `bookmarks/` actions are refused in
+   * private windows. */
+  | { type: 'bookmarks/requestSnapshot' }
+  /** `id` is a client-chosen UUID (`crypto.randomUUID()`) so follow-ups can target the new space;
+   * tools generates one when it is absent and refuses the action when the id already exists. */
+  | { type: 'bookmarks/space/create'; id?: string; name: string }
+  | { type: 'bookmarks/space/update'; id: string; name?: string; color?: BookmarkColor }
+  /** Deleting a space deletes its groups and their items. */
+  | { type: 'bookmarks/space/delete'; id: string }
+  /** Records the space the view reopens on (`lastSpaceId`). */
+  | { type: 'bookmarks/space/select'; id: string }
+  /** `id` as for `bookmarks/space/create`. */
+  | { type: 'bookmarks/group/create'; id?: string; spaceId: string; name: string }
+  | { type: 'bookmarks/group/update'; id: string; name?: string; color?: BookmarkColor }
+  /** Deleting a group deletes its items. */
+  | { type: 'bookmarks/group/delete'; id: string }
+  /** Move a group into `spaceId` (possibly its own) before the group `beforeId`, or to the end
+   * when `beforeId` is null. */
+  | { type: 'bookmarks/group/move'; id: string; spaceId: string; beforeId: string | null }
+  /** Create an item in `groupId` before the item `beforeId`, or at the end when null. `id` as for
+   * `bookmarks/space/create`; undo of a delete passes the old item's fields (a to-do with its
+   * `done`) and the deleted item's id, so a second undo is refused instead of duplicating it. */
+  | {
+      type: 'bookmarks/item/create';
+      id?: string;
+      groupId: string;
+      beforeId: string | null;
+      item: BookmarkItemInput;
+    }
+  /** `title` and `url` apply to links, `text` to notes and to-dos, `done` to to-dos. A field
+   * that does not apply to the item's kind is ignored. */
+  | {
+      type: 'bookmarks/item/update';
+      id: string;
+      title?: string;
+      url?: string;
+      text?: string;
+      done?: boolean;
+    }
+  /** Undo re-creates the item with `bookmarks/item/create`. */
+  | { type: 'bookmarks/item/delete'; id: string }
+  | { type: 'bookmarks/item/move'; id: string; groupId: string; beforeId: string | null }
+  /** Open a link in the sending window's active workspace: `panel` as a new panel at the end of
+   * the strip (the `panel/openAt` path), `tab` as a new active tab. */
+  | { type: 'bookmarks/item/open'; id: string; where: 'panel' | 'tab' }
+  /** Save open tabs as links, in the given order, into `groupId`, or into a new group named
+   * "Saved tabs" in `spaceId` when `groupId` is null. Tabs with a privileged URL, private tabs,
+   * tabs that have closed and repeats of an earlier tab id are skipped. All saved links go in as
+   * one change.
+   *
+   * - `beforeId`: the links are inserted before this item of the target group, in `tabIds` order;
+   *   at the end when it is absent, null or not in the group. Ignored for a new group.
+   * - `ids`: client UUIDs matched to `tabIds` by index. `ids[i]` becomes the id of the link saved
+   *   from `tabIds[i]`; a skipped tab leaves its slot unused (later tabs keep their own slot), and
+   *   a missing slot (`ids` shorter than `tabIds`) gets a generated id. If any entry of `ids`
+   *   already exists or repeats, nothing is saved. */
+  | {
+      type: 'bookmarks/tabs/save';
+      spaceId: string;
+      groupId: string | null;
+      tabIds: number[];
+      beforeId?: string | null;
+      ids?: string[];
+    }
+  /** One-time import of the Firefox bookmark folders into a new, selected space "Firefox bookmarks". */
+  | { type: 'bookmarks/import/firefox' }
+  /** Decline the import offer. Both import actions set `firefoxImportOffered`. */
+  | { type: 'bookmarks/import/dismiss' }
   | { type: 'externalMerge/requestSources'; requestId: string }
   | {
       type: 'externalMerge/merge';
@@ -649,6 +725,86 @@ export interface SavedPanelEntry {
   title: string;
   url: string;
   favIconUrl?: string;
+}
+
+export const BOOKMARK_COLORS = [
+  'gray',
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'blue',
+  'purple',
+] as const;
+export type BookmarkColor = (typeof BOOKMARK_COLORS)[number];
+
+/** A top-level collection in the Bookmarks manager. `order` is the position among spaces. */
+export interface BookmarkSpace {
+  id: string;
+  name: string;
+  color: BookmarkColor;
+  order: number;
+}
+
+/** A column of items inside a space. `order` is the position among the space's groups. */
+export interface BookmarkGroup {
+  id: string;
+  spaceId: string;
+  name: string;
+  color: BookmarkColor;
+  order: number;
+}
+
+/** A link, note or to-do in a group. `order` is the position among the group's items. */
+export type BookmarkItem = {
+  id: string;
+  groupId: string;
+  order: number;
+  createdAt: number;
+} & (
+  | { kind: 'link'; url: string; title: string; favIconUrl?: string }
+  | { kind: 'note'; text: string }
+  | { kind: 'todo'; text: string; done: boolean }
+);
+
+/** What `bookmarks/item/create` carries; tools assigns the order and creation time, and the id
+ * unless the action brings one. A to-do's `done` defaults to false. */
+export type BookmarkItemInput =
+  | { kind: 'link'; url: string; title: string; favIconUrl?: string }
+  | { kind: 'note'; text: string }
+  | { kind: 'todo'; text: string; done?: boolean };
+
+/** One cap per stored field, in UTF-16 code units. Every path that stores a field (create, update,
+ * import, tabs/save, storage load) enforces it, and the wire validators reject longer input, so
+ * anything tools stores can be sent back by undo. Text over a cap is truncated where the source is
+ * not the user (imports, tab titles, storage); a favicon URL over its cap is dropped. */
+export const BOOKMARK_LIMITS = {
+  /** Space and group names. */
+  name: 1_024,
+  /** A link's title. */
+  linkTitle: 4_096,
+  /** A note's or to-do's text. */
+  text: 32_768,
+  /** A link's favicon URL. */
+  favIconUrl: 262_144,
+} as const;
+
+/** The whole Bookmarks manager state. The arrays are sorted by `order`, and the order is dense
+ * per parent (0..n-1 among a space's groups and among a group's items), so filtering by parent
+ * keeps the sibling order. `lastSpaceId` is null only when there are no spaces; tools keeps at
+ * least one once loaded. `firefoxImportOffered` is true once the user imported or declined the
+ * import.
+ *
+ * `status` is `loadFailed` when the stored data could not be read: the arrays are empty,
+ * `lastSpaceId` is null, tools refuses every mutation and writes nothing, and
+ * `bookmarks/requestSnapshot` retries the load. */
+export interface BookmarksSnapshot {
+  status: 'ready' | 'loadFailed';
+  spaces: BookmarkSpace[];
+  groups: BookmarkGroup[];
+  items: BookmarkItem[];
+  lastSpaceId: string | null;
+  firefoxImportOffered: boolean;
 }
 
 /** A pinned-panel entry. Identity is `(workspaceId, tabId)` while the
@@ -969,6 +1125,9 @@ export type Event =
    * inside the folder). The panel-trailer iframe mirrors this into its
    * Zustand store and re-renders the favicon row. */
   | { type: 'savedPanels/snapshot'; items: SavedPanelEntry[] }
+  /** The Bookmarks manager state. Emitted on `bookmarks/requestSnapshot`, on shell connect and
+   * after every change, to the documents of regular windows only. */
+  | { type: 'bookmarks/snapshot'; snapshot: BookmarksSnapshot }
   | {
       type: 'externalMerge/sources';
       requestId: string;

@@ -48,6 +48,7 @@ export const EDITABLE_SETTING_RULES = {
   panelShadowsEnabled: { type: 'boolean' },
   panelCornerRadiusPx: { type: 'integer', min: 0, max: 36 },
   panelSplitterSizePx: { type: 'integer', min: 6, max: 36 },
+  bookmarksEnabled: { type: 'boolean' },
   autoBackupEnabled: { type: 'boolean' },
   autoBackupIntervalMinutes: { type: 'integer', min: 5, max: 1440 },
   autoBackupMaxCount: { type: 'integer', min: 1, max: 20 },

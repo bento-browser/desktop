@@ -1,0 +1,134 @@
+/* Layer-2 component: BookmarkPopup.
+ *
+ * The save popover and the toolbar's menus. They render in the popup overlay document, which
+ * covers the window and is transparent, and anchor to an invisible button placed at the rect of
+ * the button that asked. Mux's own styles sit in the low-precedence `muxui` layer, so the
+ * overrides here are layered rules scoped by a Bento class. The dot and icon classes are shared
+ * with the bookmarks toolbar. */
+
+@layer bento.components {
+  .bento-bookmark-popup__anchor {
+    position: fixed;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
+    /* Mux's Button keeps a control-size minimum height (36px). The anchor is a Button, so
+       without this its box would be taller than the rect it stands for and the popover would
+       open that much below the asking button. */
+    min-block-size: 0;
+  }
+
+  /* Mux's popover is a strong (inverted) surface; the save popover is a plain raised one. The
+     popover is an opaque floating surface (nothing behind it may show through), and the form
+     inside it sits on that surface: the fields take the Bookmarks manager's field fill, a tint,
+     where Mux paints them solid neutral-5. */
+  .muxui-popover.bento-bookmark-popup__edit {
+    box-sizing: border-box;
+    width: var(--bento-bookmark-popup-width);
+    max-width: 100%;
+    padding: var(--muxui-semantic-layout-inset-medium);
+    border: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
+    background-color: var(--muxui-semantic-surface-raised);
+    color: var(--muxui-semantic-content-default);
+    /* The form's text is the sidebar's (tab rows and the address field are text-xs). Mux has no
+       control size below sm, and at sm it still sets field values in body size, so the values
+       take Mux's field token and the labels and buttons the rule below. */
+    --muxui-field-font-size: var(--muxui-semantic-typography-text-xs-font-size);
+    --muxui-field-bg: var(--bento-bookmarks-field-fill);
+  }
+
+  .muxui-popover.bento-bookmark-popup__edit
+    :is(.muxui-field-label, .muxui-select-native__label, .muxui-button) {
+    font-size: var(--muxui-semantic-typography-label-xs-font-size);
+  }
+
+  .bento-bookmark-dot {
+    flex: none;
+    width: var(--bento-bookmarks-dot-size);
+    height: var(--bento-bookmarks-dot-size);
+    border-radius: var(--muxui-semantic-shape-pill-radius);
+    background-color: var(--bento-bm-color, var(--bento-bookmark-color-gray));
+  }
+
+  .bento-bookmark-dot[data-bm-color='gray'] {
+    --bento-bm-color: var(--bento-bookmark-color-gray);
+  }
+  .bento-bookmark-dot[data-bm-color='red'] {
+    --bento-bm-color: var(--bento-bookmark-color-red);
+  }
+  .bento-bookmark-dot[data-bm-color='orange'] {
+    --bento-bm-color: var(--bento-bookmark-color-orange);
+  }
+  .bento-bookmark-dot[data-bm-color='yellow'] {
+    --bento-bm-color: var(--bento-bookmark-color-yellow);
+  }
+  .bento-bookmark-dot[data-bm-color='green'] {
+    --bento-bm-color: var(--bento-bookmark-color-green);
+  }
+  .bento-bookmark-dot[data-bm-color='blue'] {
+    --bento-bm-color: var(--bento-bookmark-color-blue);
+  }
+  .bento-bookmark-dot[data-bm-color='purple'] {
+    --bento-bm-color: var(--bento-bookmark-color-purple);
+  }
+
+  .bento-bookmark-favicon {
+    display: block;
+    flex: none;
+    width: var(--bento-bookmarks-favicon-size);
+    height: var(--bento-bookmarks-favicon-size);
+    border-radius: var(--muxui-semantic-shape-radius-xs);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .bento-bookmark-favicon--fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muxui-semantic-content-muted);
+  }
+
+  .muxui-menu.bento-bookmark-popup__menu {
+    max-width: var(--bento-bookmark-popup-menu-max-width);
+  }
+
+  /* An item's content: icon or dot, a title that truncates, and a trailing check. */
+  .bento-bookmark-popup__item {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+  }
+
+  .bento-bookmark-popup__item-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bento-bookmark-popup__check {
+    display: inline-flex;
+    flex: none;
+    margin-inline-start: auto;
+    color: var(--muxui-semantic-content-muted);
+  }
+
+  /* A submenu's arrow, drawn like the chrome menus do (menu/menu.css). */
+  .bento-bookmark-popup__submenu-item::after {
+    content: '\203a';
+    margin-inline-start: auto;
+    color: var(--muxui-semantic-content-muted);
+  }
+
+  .bento-bookmark-popup__submenu-item[data-muxui-state-focused]::after,
+  .muxui-menu__item[data-muxui-state-focused] .bento-bookmark-popup__check {
+    color: var(--muxui-semantic-action-foreground);
+  }
+}

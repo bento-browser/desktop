@@ -47,6 +47,7 @@ import { restoreParkedEntries } from './panels/ParkedRestore';
 import { PinnedPanelsStore } from './pinnedPanels/PinnedPanelsStore';
 import { TabFolderStore } from './tabFolders/TabFolderStore';
 import { SavedPanelsStore } from './saved-panels/SavedPanelsStore';
+import { BookmarksStore } from './bookmarks/BookmarksStore';
 import { BackupStore } from './backup/BackupStore';
 import {
   clearDevtoolsPanelMarker,
@@ -91,6 +92,7 @@ const pinnedPanels = new PinnedPanelsStore({
 });
 const tabFolders = new TabFolderStore();
 const savedPanels = new SavedPanelsStore();
+const bookmarks = new BookmarksStore();
 const backup = new BackupStore({ workspaces, tabs, panels, pinnedPanels, settings, savedPanels });
 const mutationCoordinator = new BentoMutationCoordinator();
 const operationRegistry = new OperationRegistry();
@@ -924,6 +926,7 @@ const storesReady = Promise.all([
   savedPanels
     .init()
     .catch((err) => console.error('[bento-tools] SavedPanelsStore init failed:', err)),
+  bookmarks.init().catch((err) => console.error('[bento-tools] BookmarksStore init failed:', err)),
   loadParkedWorkspaceTabs(),
 ]);
 
@@ -975,6 +978,8 @@ const bootReady = storesReady.then(async () => {
     settings.snapshot().panelCornerRadiusPx;
   let lastPanelSplitterSizePx: BentoSettings['panelSplitterSizePx'] =
     settings.snapshot().panelSplitterSizePx;
+  let lastBookmarksEnabled: BentoSettings['bookmarksEnabled'] =
+    settings.snapshot().bookmarksEnabled;
   // The direct leg of a colour flip to chrome; the panels/sync below carries the value too.
   const signalChromeColorMode = createChromeColorModeSignal(
     (mode, stamp) => browser.bentoPrivacy.notifyUiColorMode(mode, stamp),
@@ -987,7 +992,8 @@ const bootReady = storesReady.then(async () => {
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
     // sidebarHidden, sidebarShortcutBehavior, customPanelSizes,
     // defaultPanelWidthPx, panelCycleWraparound,
-    // panelShadowsEnabled, panelCornerRadiusPx, panelSplitterSizePx)
+    // panelShadowsEnabled, panelCornerRadiusPx, panelSplitterSizePx,
+    // bookmarksEnabled)
     // so chrome picks up the new value via the BENTO_PANELS title
     // (which carries those fields in its payload). The shell no longer
     // writes dedicated title channels for these — they raced BENTO_PANELS via
@@ -1019,6 +1025,7 @@ const bootReady = storesReady.then(async () => {
     const shadowsChanged = next.panelShadowsEnabled !== lastPanelShadowsEnabled;
     const cornerRadiusChanged = next.panelCornerRadiusPx !== lastPanelCornerRadiusPx;
     const splitterSizeChanged = next.panelSplitterSizePx !== lastPanelSplitterSizePx;
+    const bookmarksChanged = next.bookmarksEnabled !== lastBookmarksEnabled;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
     if (hiddenChanged) lastSidebarHidden = next.sidebarHidden;
@@ -1029,6 +1036,7 @@ const bootReady = storesReady.then(async () => {
     if (shadowsChanged) lastPanelShadowsEnabled = next.panelShadowsEnabled;
     if (cornerRadiusChanged) lastPanelCornerRadiusPx = next.panelCornerRadiusPx;
     if (splitterSizeChanged) lastPanelSplitterSizePx = next.panelSplitterSizePx;
+    if (bookmarksChanged) lastBookmarksEnabled = next.bookmarksEnabled;
     if (
       colorChanged ||
       collapsedChanged ||
@@ -1039,7 +1047,8 @@ const bootReady = storesReady.then(async () => {
       wraparoundChanged ||
       shadowsChanged ||
       cornerRadiusChanged ||
-      splitterSizeChanged
+      splitterSizeChanged ||
+      bookmarksChanged
     ) {
       for (const wsId of workspaces.shownWorkspaceIds()) void emitPanelsSync(wsId);
     }
@@ -1506,6 +1515,12 @@ workspaces.onDeltas((deltas) => {
 savedPanels.onChange((items) => {
   broadcastEvent({ type: 'savedPanels/snapshot', items });
   for (const wsId of workspaces.shownWorkspaceIds()) void emitPanelsSync(wsId);
+});
+
+// Bookmarks manager state reaches the documents of regular windows only: it is stored,
+// not private, so a private window never receives it.
+bookmarks.onChange((snapshot) => {
+  broadcastAudience('regular', { type: 'bookmarks/snapshot', snapshot });
 });
 
 // "Add panel" trailer button (bento-shell-mount.js addNewPanel) creates the
@@ -2355,6 +2370,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
         pinnedPanels,
         tabFolders,
         savedPanels,
+        bookmarks,
         send,
         sendAudience,
         syncPrivateWindow,
@@ -2428,6 +2444,7 @@ browser.runtime.onConnectExternal.addListener((port) => {
     sendAudience('regular', { type: 'pinnedPanels/snapshot', entries: pinnedPanels.entries() });
     sendAudience('regular', { type: 'tabFolders/snapshot', folders: tabFolders.snapshot() });
     send({ type: 'savedPanels/snapshot', items: savedPanels.list() });
+    sendAudience('regular', { type: 'bookmarks/snapshot', snapshot: bookmarks.snapshot() });
     // Replay panels for EVERY workspace so a freshly mounted shell can
     // pre-populate its per-workspace panelsStore. Without this, the
     // sidebar tab-list filter (useWorkspaceTabIds) for non-active

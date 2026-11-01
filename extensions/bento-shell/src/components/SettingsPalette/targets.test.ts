@@ -86,6 +86,15 @@ describe('ready-model target availability', () => {
     }
   });
 
+  it('opens the Bookmarks manager switch in its category, filtered to its label', () => {
+    const requested = target('setting:bookmarksEnabled');
+    expect(requested).toEqual({
+      stages: [{ kind: 'root' }, { kind: 'category', id: 'workspaces' }],
+      query: 'Bookmarks manager',
+    });
+    expect(targetForModel(requested, REGULAR_MODEL)).toBe(requested);
+  });
+
   it('rejects private backup targets, including number and backup detail ancestors', () => {
     for (const id of [
       'setting:autoBackupEnabled',
