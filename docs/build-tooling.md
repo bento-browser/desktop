@@ -120,6 +120,14 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run build:release`: run the release gate, create a host-platform
   release-mode package, and write its SBOM, manifest, and checksums (see
   [Release security and provenance](#release-security-and-provenance)).
+- `pnpm run test:panels -- --app <Bento.app>`: launch a built app headless on a
+  temporary profile and run the panel renderer scenario through Marionette (add two
+  panels, switch the main tab, close both, with pixel checks), after checking that
+  the app serves the repo's mount script and stylesheet. Local only; CI builds no
+  application, and it exits 2 without launching anything when the `CI` environment
+  variable is non-empty. Without `--app` it uses `engine/obj-bento/dist/Bento.app`.
+  Exit 1 names a stale build, which `pnpm run build` refreshes. See
+  [Panel suite](technical/chrome-panel-rendering.md#panel-suite).
 - `pnpm run lc`: run Bento's source-overlay license check.
 - `pnpm run release:security-check:shell`: fail when a release shell still has the
   dev-only reload command (see [Dev-only reload command](#dev-only-reload-command)).

@@ -500,7 +500,12 @@ Use this shape for new or changed touchpoints:
   against the target source before anything else and fix or remove every hook it
   reports missing, confirm the Browser Console shows
   `[bento-compat] probed N members` with no `[bento-compat] missing` errors in a
-  built app, run the flat panels manual checklist in
+  built app, run `pnpm run test:panels -- --app <built app>` (the panel suite: it
+  builds two panels through the add-panel path, switches the main tab and closes both
+  headless, and checks split-view state, activity flags, geometry and each panel's
+  pixels; a warning about a dead id in `splitViewPanels` is known, see
+  [chrome-panel-rendering.md](technical/chrome-panel-rendering.md#panel-suite)), run
+  the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
   with no side panels clips page content inside the rounded main content frame
   corners during normal browsing without a square tabbox/tabpanels backing

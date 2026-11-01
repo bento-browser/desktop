@@ -6,6 +6,18 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const schemaVersion = 2;
+// The gates SKILL.md ("Reuse validation checkpoints") lets an upgrade record.
+const knownGates = [
+  'patch-stack',
+  'static',
+  'import-idempotence',
+  'build',
+  'package',
+  'release-build',
+  'headless-smoke',
+  'panel-suite',
+  'final-review',
+];
 const relevantPaths = [
   'bento.json',
   'package.json',
@@ -123,6 +135,16 @@ function writeCheckpoint(repoRoot, checkpoint) {
   fs.renameSync(temporary, destination);
 }
 
+function requireKnownGates(gates) {
+  const unknown = gates.filter((gate) => !knownGates.includes(gate));
+  if (unknown.length > 0) {
+    console.error(
+      `validation-checkpoint: unknown gate ${unknown.join(', ')} (known: ${knownGates.join(', ')})`,
+    );
+    process.exit(2);
+  }
+}
+
 function usage() {
   console.error(
     'usage: validation-checkpoint.mjs <fingerprint|status|has|record> <repo-root> [target] [gate...]',
@@ -146,6 +168,7 @@ if (command === 'fingerprint') {
   process.stdout.write(`${JSON.stringify(result.checkpoint, null, 2)}\n`);
 } else if (command === 'has') {
   if (!target || rest.length === 0) usage();
+  requireKnownGates(rest);
   const result = currentCheckpoint(repoRoot, target);
   if (!result.valid) fail(result.reason);
   const missing = rest.filter((gate) => !result.checkpoint.gates?.[gate]);
@@ -154,6 +177,7 @@ if (command === 'fingerprint') {
 } else if (command === 'record') {
   const [gate, evidence = ''] = rest;
   if (!target || !gate) usage();
+  requireKnownGates([gate]);
   const currentFingerprint = fingerprint(repoRoot);
   const existing = readCheckpoint(repoRoot);
   const reusable =
