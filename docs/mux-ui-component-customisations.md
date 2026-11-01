@@ -804,7 +804,9 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
   bar paints a translucent `color-mix` of `--muxui-semantic-color-neutral-90` into `transparent`
   (`neutral-100` for the toggle's hover), never a solid neutral, so it reads through whatever is
   under it like the toolbar strip does. Rows, spaces, "..." triggers and the empty-space drop
-  target use `--bento-surface-hover` and `--bento-surface-active`; Mux `neutral` and `ghost`
+  target use `--bento-surface-hover` and `--bento-surface-active`, as does a column's tonal "+"
+  (`.bento-bookmarks__add-item`, a ghost `Button` whose `--muxui-button-background` is set to
+  `--bento-surface-hover` at rest, so Mux's hover and press rules still repaint it); Mux `neutral` and `ghost`
   buttons and the menu's `.muxui-menu__focus` highlight are already tints of the neutral. The rest
   are `--bento-bookmarks-{field,checkbox,toggle-selected,toggle-selected-hover,note-bar}-fill`
   (and `-toolbar-fill` for the strip) in `bento-tokens.css`, each weighted so its tint over

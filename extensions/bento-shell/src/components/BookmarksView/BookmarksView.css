@@ -331,6 +331,25 @@ html[data-bento-document='bookmarks'] #root {
     padding-block: var(--muxui-semantic-layout-inset-tight);
   }
 
+  /* The column's "+": a full-width tint that shows while the column is hovered or holds the
+     focus. It keeps its space while hidden so the column does not jump. */
+  .bento-bookmarks__add-item.muxui-button {
+    --muxui-button-background: var(--bento-surface-hover);
+    --muxui-button-background-hover: var(--bento-surface-active);
+    --muxui-button-background-pressed: var(--bento-surface-active);
+    width: 100%;
+    color: var(--muxui-semantic-content-muted);
+    opacity: 0;
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      background-color var(--muxui-semantic-motion-state-transition);
+  }
+
+  .bento-bookmarks__column:hover .bento-bookmarks__add-item.muxui-button,
+  .bento-bookmarks__column:focus-within .bento-bookmarks__add-item.muxui-button {
+    opacity: 1;
+  }
+
   /* ---- Rows -------------------------------------------------------------------------- */
 
   .bento-bookmarks__row {
@@ -942,7 +961,7 @@ html[data-bento-document='bookmarks'] #root {
   font-weight: var(--muxui-semantic-typography-label-weight);
 }
 
-/* "+ Link, note or to-do", "+ Group" and the like: a quiet ghost button, left aligned. */
+/* "+ Group", "+ Space" and the like: a quiet ghost button, left aligned. */
 .bento-bookmarks__add.muxui-button {
   justify-content: flex-start;
   width: 100%;

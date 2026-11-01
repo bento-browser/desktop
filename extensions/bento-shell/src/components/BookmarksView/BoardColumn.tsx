@@ -1,5 +1,5 @@
 // One group of the board: a header with the colour dot, name, count and menu, the rows, and the
-// "+ Link, note or to-do" entry. The header is the handle for ordering columns (the menu has
+// "+" entry for a link, note or to-do (shown while the column is hovered or holds the focus). The header is the handle for ordering columns (the menu has
 // Move left and Move right for the keyboard); a double click renames. `AddGroupColumn` is the
 // trailing "+ Group" column.
 
@@ -173,13 +173,12 @@ function BoardColumnImpl({
           <Button
             variant="ghost"
             size="sm"
-            className="bento-bookmarks__add"
+            className="bento-bookmarks__add-item"
             aria-label="Add link, note or to-do"
             data-bm-add-item
             onActivate={() => onEdit({ kind: 'add-item', groupId: group.id })}
           >
             <BentoIcon icon={Plus} size="sm" />
-            Link, note or to-do
           </Button>
         )}
       </footer>
