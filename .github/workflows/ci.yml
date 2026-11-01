@@ -21,9 +21,10 @@ permissions:
 jobs:
   security-gate:
     name: Security gate
-    # Runs first and alone: the source-import job needs it, so an invariant,
-    # release gate, or advisory failure stops it before it starts. It reads the
-    # tree and the lockfile only, so it installs no dependencies.
+    # Cheap and independent: it reads the tree and the lockfile only, so it
+    # installs no dependencies. source-import needs it, so an invariant,
+    # release gate, or advisory failure stops the Firefox source download
+    # before it starts.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -42,6 +43,43 @@ jobs:
 
       - name: Dependency audit
         run: pnpm audit --audit-level high
+
+  changes:
+    name: Detect import inputs
+    # Decides whether source-import has anything to check. A pull request whose
+    # changed files cannot affect the import skips that job (the path rule is
+    # scripts/import-inputs.mjs). Every push to main runs it, which keeps the
+    # engine source cache seeded for pull requests. Any doubt means run it. It
+    # installs nothing, so the script runs on the runner's own Node and may use
+    # only built-in modules.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      import: ${{ steps.detect.outputs.import }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          # A pull request checks out its merge commit; the diff against the
+          # first parent is exactly what the pull request changes.
+          fetch-depth: 2
+
+      - name: Decide whether source-import runs
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          import=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # NUL-separated changed paths in, `true` or `false` out. A missing
+            # merge parent, a failed diff, or a failed script all mean true.
+            if git rev-parse --verify --quiet 'HEAD^2' > /dev/null; then
+              import=$(git diff --name-only --no-renames -z HEAD^1 HEAD | node scripts/import-inputs.mjs) || import=true
+            fi
+          fi
+          case "$import" in true | false) ;; *) import=true ;; esac
+          echo "source-import needed: $import"
+          echo "import=$import" >> "$GITHUB_OUTPUT"
 
   static-checks:
     name: JSON, shell, prefs sanity
@@ -109,8 +147,8 @@ jobs:
           done
 
       - name: Lint scripts, Firefox-side sources, and agent skills
-        # The extension packages lint themselves in the extensions job; this
-        # covers the code outside them with the root ESLint config.
+        # The extension packages lint themselves in the extensions-checks job;
+        # this covers the code outside them with the root ESLint config.
         run: pnpm run lint:repo
 
       - name: Markdown links and anchors
@@ -124,7 +162,7 @@ jobs:
         run: pnpm run test:agent-skills
 
       - name: Branding and built-in add-on installer tests
-        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/ci-build-guard.test.mjs scripts/rust-thin-lto.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/undefined-tokens.test.mjs scripts/overlay-manager.test.mjs scripts/overlay-surfaces.test.mjs scripts/mount-sheet-gate.test.mjs scripts/check-doc-links.test.mjs scripts/mount-icons.test.mjs scripts/mount-workspace-watchdog.test.mjs scripts/mount-window-handover.test.mjs scripts/mount-restored-pinned-unload.test.mjs scripts/import-output-checks.test.mjs scripts/check-motion-values.test.mjs scripts/mount-motion.test.mjs scripts/mount-fade-css.test.mjs scripts/mount-sidebar-push.test.mjs scripts/mount-sidebar-push-geometry.test.mjs scripts/mount-downloads-anchor.test.mjs scripts/mount-rail-tooltip.test.mjs scripts/shell-bus-actors.test.mjs scripts/marionette-client.test.mjs
+        run: node --test scripts/install-branding.test.mjs scripts/install-builtin-addons.test.mjs scripts/bento-privacy-security.test.mjs scripts/import-sources.test.mjs scripts/validate-bento-artifacts.test.mjs scripts/release-security.test.mjs scripts/ci-build-guard.test.mjs scripts/rust-thin-lto.test.mjs scripts/muxui-local.test.mjs scripts/muxui-source.test.mjs scripts/muxui-regenerator.test.mjs scripts/dev-profile-clean.test.mjs scripts/size-ratchet.test.mjs scripts/bento-build.test.mjs scripts/dev-reload.test.mjs scripts/theme-sheets.test.mjs scripts/check-firefox-compat.test.mjs scripts/mux-css.test.mjs scripts/legacy-aliases.test.mjs scripts/undefined-tokens.test.mjs scripts/overlay-manager.test.mjs scripts/overlay-surfaces.test.mjs scripts/mount-sheet-gate.test.mjs scripts/check-doc-links.test.mjs scripts/mount-icons.test.mjs scripts/mount-workspace-watchdog.test.mjs scripts/mount-window-handover.test.mjs scripts/mount-restored-pinned-unload.test.mjs scripts/import-output-checks.test.mjs scripts/check-motion-values.test.mjs scripts/mount-motion.test.mjs scripts/mount-fade-css.test.mjs scripts/mount-sidebar-push.test.mjs scripts/mount-sidebar-push-geometry.test.mjs scripts/mount-downloads-anchor.test.mjs scripts/mount-rail-tooltip.test.mjs scripts/shell-bus-actors.test.mjs scripts/marionette-client.test.mjs scripts/import-inputs.test.mjs
 
       - name: Zen reference boundary
         run: pnpm run check:zen-boundary
@@ -153,8 +191,10 @@ jobs:
         # Last: it regenerates theme presets and chrome tokens in the worktree.
         run: pnpm run lc
 
-  extensions:
-    name: Extensions — typecheck, lint, build, size-limit
+  extensions-checks:
+    name: Extensions — typecheck, lint, test
+    # Runs beside extensions-build. The two Typecheck steps below are CI's only
+    # type gate: ext:bundle deliberately skips tsc, so do not drop them.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -200,10 +240,22 @@ jobs:
       - name: Test (tools)
         run: pnpm --filter @bento/tools test
 
-      - name: Build extensions
+  extensions-build:
+    name: Extensions — bundle, release gate, size-limit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - name: Bundle extensions
+        # ext:bundle is ext:build without the tsc gate, which extensions-checks
+        # already runs.
         env:
           BENTO_RELEASE: '1'
-        run: pnpm run ext:build
+        run: pnpm run ext:bundle
 
       - name: Release shell has no dev-only reload command
         # The release bundle must not ship the Alt+Shift+R handler
@@ -220,9 +272,14 @@ jobs:
     # The check name keeps the label it had when this job was a platform matrix
     # entry, so a required-status-check rule on it keeps matching.
     name: Source import (linux-x64)
-    # The checks above run in parallel and all pass first, so a failing tree
-    # never costs a source download and import.
-    needs: [security-gate, static-checks, extensions]
+    # Starts once the security gate and the change detector finish; it does not
+    # wait for the static or extension checks, which run beside it (minutes are
+    # free on this public repo, and the run is as long as its slowest job). A
+    # pull request whose changed files cannot affect the import skips this job.
+    # Every push to main runs it and seeds the engine source cache. An empty
+    # `changes` output runs it, so the skip fails open.
+    needs: [security-gate, changes]
+    if: needs.changes.outputs.import != 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -237,6 +294,25 @@ jobs:
           git config --global user.email "ci@bentobrowser.invalid"
           git config --global core.autocrlf false
           git config --global core.longpaths true
+          # tar keeps mtime and size but not ctime and inode, so by default the
+          # first status after a cache restore re-verifies every restored file.
+          # Keep this in global config for the whole job.
+          git config --global core.checkStat minimal
+          # No detached gc while the cache is saved.
+          git config --global gc.auto 0
+          git config --global maintenance.auto false
+
+      # The bundle does not need the Firefox source, so it runs in the background
+      # while the cache restores. setsid lets it outlive this step; the Wait step
+      # below collects its status and log before the import needs the output.
+      - name: Start extension bundle
+        env:
+          BENTO_RELEASE: '1'
+        run: |
+          # shellcheck disable=SC2016 # $? and $RUNNER_TEMP expand in the child shell.
+          setsid nohup bash -c 'pnpm run ext:bundle; echo $? > "$RUNNER_TEMP/ext-bundle.status"' \
+            > "$RUNNER_TEMP/ext-bundle.log" 2>&1 < /dev/null &
+          echo $! > "$RUNNER_TEMP/ext-bundle.pid"
 
       # Pristine source keyed by Firefox version and source digest. Bento's
       # source command checks the protected engine checkout before it is used.
@@ -244,10 +320,36 @@ jobs:
         id: engine-source
         uses: ./.github/actions/engine-source
 
-      - name: Build extensions and import Bento sources
+      - name: Wait for extension bundle
+        shell: bash
+        run: |
+          status_file="$RUNNER_TEMP/ext-bundle.status"
+          pid="$(cat "$RUNNER_TEMP/ext-bundle.pid")"
+          # At most about five minutes; the bundle takes well under one.
+          for _ in $(seq 600); do
+            [ -s "$status_file" ] && break
+            if ! kill -0 "$pid" 2> /dev/null; then
+              # The wrapper writes the status just before it exits.
+              [ -s "$status_file" ] || echo 'The extension bundle process exited without a status.'
+              break
+            fi
+            sleep 0.5
+          done
+          echo '--- ext:bundle log ---'
+          cat "$RUNNER_TEMP/ext-bundle.log"
+          echo '--- end of ext:bundle log ---'
+          if [ ! -s "$status_file" ]; then
+            echo 'The extension bundle did not finish.' >&2
+            exit 1
+          fi
+          status="$(cat "$status_file")"
+          [[ "$status" =~ ^[0-9]+$ ]] || status=1
+          exit "$status"
+
+      - name: Import Bento sources
         env:
           BENTO_RELEASE: '1'
-        run: pnpm run ext:build && pnpm run import
+        run: pnpm run import
 
       - name: Verify repeated import is idempotent
         env:

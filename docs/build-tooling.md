@@ -156,35 +156,65 @@ pull requests, on the free `ubuntu-24.04` runner only.
 
 `ci.yml` jobs and what they wait for:
 
-| Job (check name)                                               | Needs                                          | Runs                                                                                                                                                                                                      |
-| -------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `security-gate` (Security gate)                                | none                                           | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                  |
-| `static-checks` (JSON, shell, prefs sanity)                    | none                                           | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`. |
-| `extensions` (Extensions — typecheck, lint, build, size-limit) | none                                           | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest, extension build, `pnpm run release:security-check:shell`, `pnpm run size:check`.                        |
-| `source-import` (Source import (linux-x64))                    | `security-gate`, `static-checks`, `extensions` | Pristine Firefox source, `ext:build`, `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.            |
+| Job (check name)                                                   | Needs                      | Runs                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security-gate` (Security gate)                                    | none                       | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                                                                                                                                |
+| `changes` (Detect import inputs)                                   | none                       | Decides whether `source-import` runs. On a pull request it pipes the changed paths (merge commit against its first parent) into `scripts/import-inputs.mjs`; any other event, a failed diff or script, or an unexpected answer means run. Installs no dependencies (the script runs on the runner's preinstalled Node). |
+| `static-checks` (JSON, shell, prefs sanity)                        | none                       | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs` and `scripts/import-inputs.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`.                                                                          |
+| `extensions-checks` (Extensions — typecheck, lint, test)           | none                       | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest. The two typecheck steps are CI's only type gate, because `ext:bundle` skips `tsc`.                                                                                                                                    |
+| `extensions-build` (Extensions — bundle, release gate, size-limit) | none                       | `BENTO_RELEASE=1 pnpm run ext:bundle` (`ext:build` without the `tsc` gate), `pnpm run release:security-check:shell`, `pnpm run size:check`.                                                                                                                                                                             |
+| `source-import` (Source import (linux-x64))                        | `security-gate`, `changes` | Skipped when `changes` says `false`. Pristine Firefox source, `ext:bundle` (started in the background during the cache restore), `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.                               |
 
 The check name of `source-import` keeps the label it had as a platform matrix
-entry, so a required-status-check rule on it still matches. The first three jobs
-run in parallel and `source-import` starts only after all of them pass, so a
-failing tree never downloads Firefox source. It has a 20-minute bound.
+entry, so a required-status-check rule on it still matches. The first five jobs
+start together. `source-import` waits only for `security-gate` and `changes`,
+not for the static or extension checks, so a tree that fails them can still
+download Firefox source (minutes are free on this public repo, and the run takes
+as long as its slowest job). It has a 20-minute bound.
+
+A pull request skips `source-import` when every changed file is under `docs/`, a
+root markdown file, `.agents/`, `scripts/*.test.mjs`, `extensions/bento-shell/src/`
+or `extensions/bento-tools/src/` (outside an experiments directory), the size and
+legacy-alias baseline JSON files, or the CodeQL and Dependabot configs.
+`scripts/import-inputs.mjs` holds the rule and `scripts/import-inputs.test.mjs`
+pins it. Every push to `main` runs the job and seeds the engine cache. A path the
+rule does not recognise runs the job, and so does an empty `changes` output. A
+skipped job reports as skipped, which GitHub counts as passing for a required
+check.
+
+`source-import` starts `ext:bundle` in the background (`setsid`, so it outlives
+its step) before the cache restore and collects its status and log in a later
+step, so the extension bundle costs no wall-clock time beside the restore.
 
 Each job installs its own dependencies, because each job is a separate machine.
+Node comes from the `engines.node` range in `package.json` (`>=24.19.0 <25`),
+which matches the Node 24.x already in the runner tool cache. The exact `.nvmrc`
+pin is never cached on the runner, so reading it would download Node in every
+job.
 
 One hosted cache remains. Its definition lives in `.github/actions/engine-source`:
 
-| Cache          | Key                                                                     | Restore keys | Saved                                                        |
-| -------------- | ----------------------------------------------------------------------- | ------------ | ------------------------------------------------------------ |
-| Firefox source | `bento-engine-source-v3-<OS>-<firefox.version>-<firefox.source.sha256>` | none         | Right after `pnpm run download` on a miss; never overwritten |
+| Cache          | Key                                                                     | Restore keys | Saved                                                                                                        |
+| -------------- | ----------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| Firefox source | `bento-engine-source-v4-<OS>-<firefox.version>-<firefox.source.sha256>` | none         | Right after `pnpm run download` on a miss, once `git repack -a -d` has packed the objects; never overwritten |
 
 - **Source.** The cache holds `engine/` (without `obj-*`) and
   `.bento/source-state.json` exactly as `pnpm run download` leaves them, before
   any import. `import` resets the patched files and copies every overlay, so
   edits to the UI, patches, scripts, prefs, or branding never invalidate it. A
   Firefox bump or a new source digest does. Imported state (`import-manifest.json`,
-  `engine-state.json`) is not cached.
+  `engine-state.json`) is not cached. The download's commit leaves one loose git
+  object per file, so a miss runs `git repack -a -d` before the save; the v3
+  caches held about 500K loose objects, which every restore extracted as small
+  files. `source-import` also sets `core.checkStat minimal` in global git config
+  for the whole job: tar keeps mtime and size but not ctime and inode, so by
+  default the first `git status` after a restore would re-verify every restored
+  file. It sets `gc.auto 0` and `maintenance.auto false` so no detached gc runs
+  while the cache is saved.
 - **Scope.** GitHub lets a run read caches from its own ref and the default
-  branch. Pushes to `main` seed the source cache for every pull request. The
-  job summary of `source-import` lists whether the cache hit.
+  branch. Pushes to `main` seed the source cache for every pull request, and a
+  push to `main` always runs `source-import`. The job summary of `source-import`
+  lists whether the cache hit.
 
 Local builds are the only application builds. The cross-platform tooling stays
 in the repository for when other platforms return: `scripts/bento-build.mjs`,
@@ -459,8 +489,14 @@ synchronization validation are recorded in [theming.md](technical/theming.md#nat
 
 - **Patch check.** `firefox-patch-stack.mjs check` (with or without
   `--for-import`) reads the base commit into a temporary Git index
-  (`GIT_INDEX_FILE` and `git read-tree`) and runs `git apply --cached` for each
-  patch in manifest order, with the same whitespace arguments as `apply`. The
+  (`GIT_INDEX_FILE` and `git read-tree`) and applies the whole series with one
+  `git apply --cached` call (every patch path in manifest order, each patch
+  seeing the previous result), with the same whitespace arguments as `apply`. If
+  that call fails, the replay retries one patch at a time from the same untouched
+  index and names the first manifest entry that fails alone. If every patch
+  applies alone the series counts as applied: one Git process keeps symlink
+  bookkeeping across patch files and can reject a sequence the per-patch `apply`
+  accepts. The
   settings that can change an outcome (`apply.whitespace=warn`,
   `core.autocrlf=false`, `core.safecrlf=false`) are pinned with `git -c` for the
   replay and the live `apply`, so user or system git configuration cannot make
@@ -474,8 +510,11 @@ synchronization validation are recorded in [theming.md](technical/theming.md#nat
   `patches/` (including `series.json`), the resolved base commit, and the apply
   arguments and the pinned git settings is stored in `.bento/patch-check.json`; while
   it still matches, the replay is skipped. `check --force` ignores the record, and `export` always
-  replays. Measured on the Firefox 154.0 tree (471,508 files): 5.0 to 7.3 s over nine runs for a
-  replay and 0.5 to 0.65 s when skipped. Because the replay never
+  replays. Measured on the Firefox 158.0 tree (482,831 files, 26 patches; Apple M5 Max,
+  macOS 27.0, Apple Git 2.54.0), three runs each: 1.7 to 1.9 s for a forced replay
+  (11.2 to 11.5 s when each patch was applied in its own `git apply`) and 0.2 to
+  0.3 s when skipped (1.4 to 1.6 s before the base content hash was dropped from
+  the path where the tree id matches). Because the replay never
   checks anything out, `check` and `apply` refuse to run when the engine repository
   has `core.symlinks=false` and a patch changes a tracked symlink (the checkout
   holds a plain file, so `apply` would fail with "wrong type" after the import has
@@ -488,6 +527,11 @@ synchronization validation are recorded in [theming.md](technical/theming.md#nat
   process instead of spawning `shasum`, `sha256sum` or `certutil` per file.
   Hashing the 871 files in `.bento/engine-state.json` took 0.095 s against 8.5 s
   with `shasum`, with identical digests.
+- **Patch reset.** `reset-engine-patches.sh` classifies the patch paths with one
+  `git ls-files` and one `git diff --name-only` call (NUL separated, `xargs -r`,
+  literal pathspecs) instead of two git calls per path: 5.4 to 6.6 s down to 0.5
+  to 0.7 s on the 158.0 tree (51 patch paths, M5 Max). A directory that holds a
+  listed file counts as listed, like a directory pathspec.
 - **Write-if-changed.** `engine/mozconfig`, `browser/config/version.txt`,
   `version_display.txt`, built-in add-on files, their `jar.mn` and `moz.build`,
   `browser/extensions/moz.build`, the branding tree, and the prefs files are
@@ -785,10 +829,15 @@ reachable:
 ## Pull request checks
 
 Automatic `pull_request` and `push` CI runs perform static checks, the
-extension checks, and one Linux source-import check. The Linux job downloads
-Firefox source, imports Bento, repeats the import to verify idempotence, and
-validates the generated output. Opening, updating, reopening, or marking a PR
-ready for review, and pushing to `main`, never start an application build, and
+extension checks (typecheck, lint, and tests in one job; bundle, release gate,
+and size in another), and one Linux source-import check. The source-import check
+runs on every push to `main` and on pull requests that change a file the import
+can read; a pull request that touches only docs, tests, extension UI source, or
+the other paths listed in [CI jobs and caches](#ci-jobs-and-caches) skips it.
+When it runs, the Linux job downloads Firefox source, imports Bento, repeats the
+import to verify idempotence, and validates the generated output. Opening,
+updating, reopening, or marking a PR ready for review, and pushing to `main`,
+never start an application build, and
 there are no PR test builds or PR build comments. To try a change in the app,
 build it locally (see the dev loop in `CLAUDE.md`).
 
@@ -1059,7 +1108,8 @@ release everywhere, so `BENTO_RELEASE=1 pnpm run build` builds a release native
 build; it does not build the dev mode that earlier drivers did. `BENTO_RELEASE=1`
 with `BENTO_BUILD_MODE=dev` (or `debug`) is contradictory and resolves to release,
 the mode that ships fewer dev-only affordances; an unknown `BENTO_BUILD_MODE` still
-fails. `BENTO_RELEASE=1 pnpm run ext:build`, which `size` and CI use, builds only
+fails. `BENTO_RELEASE=1 pnpm run ext:build`, which `size` uses (CI runs
+`ext:bundle`, the same build without the `tsc` gate), builds only
 the extensions and is unaffected. `scripts/bento-build.test.mjs` checks that the
 native build, the background bundle, and `isReleaseBuild` agree for every
 combination.
