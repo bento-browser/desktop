@@ -1103,7 +1103,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - `scripts/firefox-compat-registry.mjs` (new entries `manBookmarkKb`,
     `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
     `TabDialogBox._containerFor`, `tabDialogShowing` and `TabSplitViewActivate`;
-    `gBrowser.selectedBrowsers` and `TabSelect` gain a site), the regenerated table below
+    `gBrowser.selectedBrowsers` and `TabSelect` gain a site; `nav-bar-customization-target`,
+    `back-button`, `forward-button` and `stop-reload-button` gain the top-bar motion site), the
+    regenerated table below
   - `extensions/bento-shell/src/bridge/overlayReady.ts` (`bookmarks` in `OverlayName`)
   - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`
   - No Firefox patch.
@@ -1119,6 +1121,14 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     property stop `--bento-toolbar-left-bg` is overridden on `#navigator-toolbox`,
     `#TabsToolbar` and `#nav-bar`. The button box, `#nav-bar` and `#navigator-toolbox` are
     never hidden, faded or transformed, and no ancestor gets opacity, a transform or a filter.
+  - The direct children of `#nav-bar-customization-target` (`#back-button`, `#forward-button`,
+    `#stop-reload-button`, the extension buttons, and Bento's own `#bento-panel-nav`): they slide
+    up past the window's top edge and fade (`translate`, `opacity`, staggered, dismiss role) when
+    the view opens, and back (reveal role) when it closes, then end hidden with `visibility`. The
+    container is a sibling of `.titlebar-buttonbox-container`, so no ancestor of the window
+    buttons gets an effect. The left controls are named by id and the right ones counted from the
+    last child. No Firefox rule sets `translate` or `opacity` on these toolbar children, and
+    Bento's sidebar push uses `transform` there, which is why the slide uses `translate`.
   - A root attribute, `bento-bookmarks-view` on `documentElement` (Bento's own, no Firefox
     meaning).
   - The `manBookmarkKb` key in `mainKeyset` (`browser-sets.inc.xhtml`): the mount removes its
@@ -1175,7 +1185,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   selecting the tab of a Leave/Stay prompt, or fires `TabSelect` after the attribute is set
   instead of before, the checks above still cover it (each order has its own signal). A new
   top-layer popover in the toolbar would show over the hidden strip (the native urlbar is one
-  today and is hidden).
+  today and is hidden). If the Back, Forward or Reload ids change, or the toolbar controls move
+  out of `#nav-bar-customization-target`, they stop sliding and only hide (the group falls to the
+  right-hand counting). A Firefox rule that sets `transition`, `translate` or `opacity` on the
+  toolbar's direct children would replace the slide's timing. If the window buttons are ever
+  placed inside `#nav-bar-customization-target`, the slide would take the traffic lights with it.
 - Regression checks for future updates: on macOS, open the Bookmarks view from the sidebar and
   with `Cmd+Shift+O` in a regular window: the traffic lights stay visible, in place and
   clickable, the empty strip drags the window, the Library window does not open, and
@@ -1190,7 +1204,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `alert()` of a background tab leaves it open, and closing a background tab that has a
   `beforeunload` handler closes it and shows the Leave/Stay prompt. With the
   command palette open over the view, `Cmd+Shift+O` closes the view and the palette keeps the
-  focus. Run `pnpm run firefox:compat:engine` and confirm `manBookmarkKb`,
+  focus. Open and close the view and watch the strip: Back, Forward, Reload, the panel navigator
+  and the extension buttons slide up and fade, staggered from the outer edges, and slide back
+  down and fade in; the traffic lights stay visible and in place throughout, nothing
+  in the strip takes focus or a click once they are gone, and reduced motion changes them at
+  once. Run `pnpm run firefox:compat:engine` and confirm `manBookmarkKb`,
   `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
   `TabDialogBox._containerFor`, `tabDialogShowing` and `TabSplitViewActivate` are found.
 - Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
@@ -3155,14 +3173,14 @@ below is generated; edit the registry, then run
 | `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |
 | `sidebar-splitter` | element (runtime) | Native sidebar splitter whose resize behavior Bento replaces. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:27` |
 | `navigator-toolbox` | element (runtime) | Native toolbox whose separators and offsets Bento adjusts. | `attachSidebarChromeDivider` | `browser/base/content/navigator-toolbox.inc.xhtml:5` |
-| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#bento-bookmarks-view` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
-| `titlebar-buttonbox-container` | source (engine only) | The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls. | `src/browser/base/content/bento-shell-mount.css#titlebar-buttonbox-container` | `browser/base/content/titlebar-items.inc.xhtml:5` |
-| `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:127` |
+| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility (the controls inside #nav-bar-customization-target slide up and fade first). | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#bento-bookmarks-view` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
+| `titlebar-buttonbox-container` | source (engine only) | The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform, a translate or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls. | `src/browser/base/content/bento-shell-mount.css#titlebar-buttonbox-container` | `browser/base/content/titlebar-items.inc.xhtml:5` |
+| `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. Its direct children are the strip controls that slide up and fade when the Bookmarks view opens (translate and opacity, staggered, hidden with visibility after); it is a sibling of the window button box, never an ancestor, so the traffic lights are unaffected. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:127` |
 | `urlbar` | element (runtime) | Native urlbar; Bento intercepts pointer and focus events on it and opens its own address overlay. | `attachTopUrlbarModalListener` | `browser/base/content/navigator-toolbox.inc.xhtml:165` |
 | `urlbar-input` | source (engine only) | Native urlbar text input; Bento blurs it and opens its own address overlay instead. | `attachTopUrlbarModalListener` | `browser/components/urlbar/content/UrlbarInputBase.mjs:402` |
-| `stop-reload-button` | source (engine only) | Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:142` |
-| `back-button` | source (engine only) | Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:128` |
-| `forward-button` | source (engine only) | Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:135` |
+| `stop-reload-button` | source (engine only) | Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. It is the third control of the Bookmarks view top-bar slide, named by id so the stagger order does not depend on the toolbar layout. | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:142` |
+| `back-button` | source (engine only) | Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the first control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout). | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:128` |
+| `forward-button` | source (engine only) | Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the second control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout). | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:135` |
 | `identity-box` | element (runtime) | Native identity box that Bento reads for security state. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:216` |
 | `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:230` |
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |

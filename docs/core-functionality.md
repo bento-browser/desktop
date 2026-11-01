@@ -682,7 +682,9 @@ and theming behavior as panels.
 Bento keeps its own collection of links, separate from Firefox's bookmarks, in a
 full-window Bookmarks view. It opens from the command palette's "Open Bookmarks"
 command or Cmd/Ctrl+Shift+O, and replaces the
-browser content while the toolbar strip stays in place. It is not available in private
+browser content while the toolbar strip stays in place. Back, Forward, Reload and the
+extension buttons slide up out of the toolbar and fade as the view opens, and slide back when it
+closes; with reduced motion they change at once. It is not available in private
 windows: the command is hidden there and the shortcut opens Firefox's Library instead.
 Esc, the Back button, or the shortcut again returns to the browser, with focus back
 where it was.

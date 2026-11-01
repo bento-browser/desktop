@@ -2287,11 +2287,12 @@
    change and nothing persists a bogus width. The '*' half is needed because children with their
    own visibility would otherwise stay. The flip waits for the host's fade-in (a visibility
    transition on the modal role), so the view cross-fades over the browser; when the attribute
-   goes, the chrome is visible at once, under the host's fade-out.
+   goes, the chrome is visible at once, under the host's fade-out. The strip's controls are the
+   exception: they slide out first (see 'Top-bar motion' below) and hide when the slide is over.
 
    NEVER hide, fade or transform the toolbox, #nav-bar or .titlebar-buttonbox-container, and
-   never give one of their ancestors opacity, transform or filter. macOS draws the traffic
-   lights itself and Gecko positions them from the rects of the window buttons inside
+   never give one of their ancestors opacity, transform, translate or filter. macOS draws the
+   traffic lights itself and Gecko positions them from the rects of the window buttons inside
    .titlebar-buttonbox, which are registered only while those are laid out, visible and have no
    effect on an ancestor; if they are not, the lights leave the window. Only the strip's other
    children hide, and #PersonalToolbar (a toolbar row, not window chrome) is removed so the
@@ -2347,6 +2348,153 @@
   transition:
     --bento-toolbar-left-bg var(--muxui-semantic-motion-modal-transition),
     --bento-toolbar-right-bg var(--muxui-semantic-motion-modal-transition);
+}
+/* Top-bar motion. The strip's controls are the direct children of #nav-bar-customization-target:
+   Back, Forward, Reload (#stop-reload-button) and the panel navigator on the left, the extension
+   buttons on the right. Opening the view slides each up past the window's top edge (the window
+   clips it; nothing else is above the strip) as it fades out, on the dismiss role; closing slides
+   it back down as it fades in, on the reveal role. The return is on the resting rule, so removing
+   the attribute is what animates it.
+
+   Safety: only these children move. #nav-bar-customization-target is a sibling of
+   .titlebar-buttonbox-container, never an ancestor, so no effect reaches the window buttons. The
+   individual 'translate' property is used, not 'transform': the sidebar push and drag set
+   'transform' on Back, Forward, Reload and the navigator, and a transition on it here would
+   animate their end-of-push reset. The distance is the control's own height plus twice the
+   toolbar's top inset (a control's bottom edge sits one inset plus the outer padding below the
+   window top), so it clears the edge at any density.
+
+   Stagger: each group starts at its outer edge (left group: DOM order; right group: from the last
+   child) and each control starts a step of 0.08 of its role's duration after the one before it, up
+   to three steps. Left controls are named by id; the right group is counted from the end
+   (:nth-last-child), so a hidden trailing child shifts the counts but never the order. The two
+   selector halves never match one element (:not(...) lists the left ids), so no rule depends on
+   source order. The delays are literal fractions because lint:motion allows only plain numbers in
+   a calc(); that is also why each step has its own rule.
+
+   Hiding: the base rule above still ends on 'visibility: hidden' for these controls (no focus, no
+   hit-testing, no no-drag regions over the strip). Its flip waits for the last stagger and the
+   slide (the visibility entry: dismiss duration, delay of three steps). The return has no
+   visibility entry, so they are visible again at its first frame. Pointer events are off from the
+   first frame of the way out. Anything else the strip shows (the overflow button, a private
+   window's indicator) keeps the plain visibility flip. */
+:root[bento-bookmarks-view] #nav-bar-customization-target > * {
+  translate: 0 calc(-100% - 2 * var(--bento-toolbar-top-inset));
+  opacity: 0;
+  pointer-events: none;
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #back-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #forward-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #stop-reload-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #bento-panel-nav,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+/* The return: the resting rules. The panel navigator keeps its own opacity fade (workspace
+   switches, state role, the plain '#bento-panel-nav' transition rule) while
+   .bento-workspace-stabilizing is on it, so its entry below does not match then. */
+#nav-bar-customization-target
+  > :is(
+    #back-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0);
+}
+#nav-bar-customization-target
+  > :is(
+    #forward-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08);
+}
+#nav-bar-customization-target
+  > :is(
+    #stop-reload-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16);
+}
+#nav-bar-customization-target
+  > :is(
+    #bento-panel-nav:not(.bento-workspace-stabilizing),
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24);
+}
+/* Reduced motion: no slide and no fade. The controls change at once (the chrome has no Mux
+   reduced token set, so this follows the other chrome rules and uses the media query). */
+@media (prefers-reduced-motion: reduce) {
+  :root[bento-bookmarks-view] #nav-bar-customization-target > * {
+    translate: none;
+  }
+  #nav-bar-customization-target > * {
+    transition: none !important;
+  }
 }
 /* Injected per-panel header — sits above the browser, takes its
    natural height, doesn't flex. */

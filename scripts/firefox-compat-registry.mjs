@@ -1225,7 +1225,7 @@ export const MEMBERS = [
       'getPanelNavigatorToolbarTarget',
       'src/browser/base/content/bento-shell-mount.css#bento-bookmarks-view',
     ],
-    use: 'Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility.',
+    use: 'Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility (the controls inside #nav-bar-customization-target slide up and fade first).',
     at: [FF.navigatorToolbox, '<toolbar id="nav-bar"', 109],
   },
   {
@@ -1234,7 +1234,7 @@ export const MEMBERS = [
     how: 'queries',
     probe: 'E',
     sites: ['src/browser/base/content/bento-shell-mount.css#titlebar-buttonbox-container'],
-    use: 'The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls.',
+    use: 'The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform, a translate or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls.',
     at: [FF.titlebarItems, '<hbox class="titlebar-buttonbox-container"', 5],
   },
   {
@@ -1242,8 +1242,12 @@ export const MEMBERS = [
     kind: 'element',
     how: 'queries',
     probe: 'R',
-    sites: ['attachToolbarNavigationAlignment', 'getPanelNavigatorToolbarTarget'],
-    use: 'Toolbar item container observed for placement changes.',
+    sites: [
+      'attachToolbarNavigationAlignment',
+      'getPanelNavigatorToolbarTarget',
+      'src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *',
+    ],
+    use: 'Toolbar item container observed for placement changes. Its direct children are the strip controls that slide up and fade when the Bookmarks view opens (translate and opacity, staggered, hidden with visibility after); it is a sibling of the window button box, never an ancestor, so the traffic lights are unaffected.',
     at: [FF.navigatorToolbox, '<hbox id="nav-bar-customization-target"', 127],
   },
   {
@@ -1269,8 +1273,11 @@ export const MEMBERS = [
     kind: 'source',
     how: 'queries',
     probe: 'E',
-    sites: ['attachToolbarNavigationAlignment'],
-    use: 'Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe.',
+    sites: [
+      'attachToolbarNavigationAlignment',
+      'src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *',
+    ],
+    use: 'Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. It is the third control of the Bookmarks view top-bar slide, named by id so the stagger order does not depend on the toolbar layout.',
     at: [FF.navigatorToolbox, '<toolbaritem id="stop-reload-button"', 142],
   },
   {
@@ -1278,8 +1285,11 @@ export const MEMBERS = [
     kind: 'source',
     how: 'queries',
     probe: 'E',
-    sites: ['attachToolbarNavigationAlignment'],
-    use: 'Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe.',
+    sites: [
+      'attachToolbarNavigationAlignment',
+      'src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *',
+    ],
+    use: 'Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the first control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout).',
     at: [FF.navigatorToolbox, '<toolbarbutton id="back-button"', 128],
   },
   {
@@ -1287,8 +1297,11 @@ export const MEMBERS = [
     kind: 'source',
     how: 'queries',
     probe: 'E',
-    sites: ['attachToolbarNavigationAlignment'],
-    use: 'Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe.',
+    sites: [
+      'attachToolbarNavigationAlignment',
+      'src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *',
+    ],
+    use: 'Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the second control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout).',
     at: [FF.navigatorToolbox, '<toolbarbutton id="forward-button"', 135],
   },
   {

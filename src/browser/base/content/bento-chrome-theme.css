@@ -1566,6 +1566,66 @@
       var(--bento-mode-fade-colours) !important;
   }
 
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #back-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #forward-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #stop-reload-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #bento-panel-nav, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #back-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #forward-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #stop-reload-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #bento-panel-nav:not(.bento-workspace-stabilizing), :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
   [data-bento-mode-fade] #bento-add-panel-trailer {
     transition:
       flex-basis var(--muxui-semantic-motion-reveal-transition),

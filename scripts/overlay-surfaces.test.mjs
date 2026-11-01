@@ -2788,30 +2788,80 @@ test('Cmd+L does not anchor to the sidebar row while the Bookmarks view hides th
   assert.equal(canAnchor(), false);
 });
 
-test('the stylesheet never hides, fades or transforms the toolbox, the nav bar or the window buttons', () => {
-  // macOS drops the traffic lights when #navigator-toolbox, #nav-bar or the button box is hidden,
-  // or has opacity, a transform or a filter (docs/technical/overlay-documents.md).
-  const css = fs
-    .readFileSync(path.join(ROOT, 'src/browser/base/content/bento-shell-mount.css'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-  const forbidden = /(^|;)\s*(visibility|display|opacity|transform|filter|-moz-subtree-hidden-only-visually)\s*:/;
+// Problems in the Bookmarks view rules of a stylesheet: what would hide, fade or move the toolbox,
+// the nav bar or the window buttons (macOS drops the traffic lights when #navigator-toolbox,
+// #nav-bar or the button box is hidden, or has opacity, a transform or a filter on it or on an
+// ancestor; docs/technical/overlay-documents.md). The strip's controls may move only as children
+// of #nav-bar-customization-target, a sibling of the button box.
+function bookmarksViewRuleProblems(source) {
+  const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  const forbidden =
+    /(^|;)\s*(visibility|display|opacity|transform|translate|scale|rotate|filter|-moz-subtree-hidden-only-visually)\s*:/;
+  const effect =
+    /(^|;)\s*(opacity|transform|translate|scale|rotate|filter|-moz-subtree-hidden-only-visually)\s*:/;
   const protectedSubject =
     /(^|[\s>+~])(#navigator-toolbox|#nav-bar|#TabsToolbar|\.titlebar-buttonbox-container|\.titlebar-buttonbox)\s*$|^(html|:root)(\[[^\]]*\])*$/;
+  const touchesToolbox = /#nav-bar|#navigator-toolbox|#TabsToolbar|\.titlebar-buttonbox/;
+  const universalSubject = /(^|[\s>+~])\*\s*$/;
+  const underControls = /#nav-bar-customization-target\s*>/;
+  const problems = [];
   let rules = 0;
   for (const [, selectors, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!selectors.includes(BOOKMARKS_ATTR)) continue;
     rules += 1;
-    if (!forbidden.test(declarations)) continue;
-    for (const selector of selectors.split(/,(?![^(]*\))/)) {
-      assert.ok(
-        !protectedSubject.test(selector.trim()),
-        `${selector.trim()} must not take ${declarations.trim()}`,
-      );
+    for (const raw of selectors.split(/,(?![^(]*\))/)) {
+      const selector = raw.trim();
+      if (forbidden.test(declarations) && protectedSubject.test(selector)) {
+        problems.push(`${selector} must not take ${declarations.trim()}`);
+      }
+      if (
+        effect.test(declarations) &&
+        !underControls.test(selector) &&
+        (touchesToolbox.test(selector) || universalSubject.test(selector))
+      ) {
+        problems.push(`${selector} may move or fade only children of #nav-bar-customization-target`);
+      }
     }
   }
-  assert.ok(rules >= 3, 'the Bookmarks view rules are missing from the stylesheet');
+  if (rules < 3) problems.push('the Bookmarks view rules are missing from the stylesheet');
+  return problems;
+}
+
+test('the stylesheet never hides, fades or transforms the toolbox, the nav bar or the window buttons', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'src/browser/base/content/bento-shell-mount.css'), 'utf8');
+  assert.deepEqual(bookmarksViewRuleProblems(css), []);
   // The strip keeps only the button box: every other nav-bar child is hidden, that one is not.
   assert.match(css, /#nav-bar > :not\(\.titlebar-buttonbox-container\)/);
+  // The top-bar slide and fade is on the controls, a sibling of the button box.
+  assert.match(
+    css,
+    /:root\[bento-bookmarks-view\] #nav-bar-customization-target > \* \{\s*translate:[^;]+;\s*opacity: 0;/,
+  );
+});
+
+test('the guard fails a rule that would move or fade the toolbox, the nav bar or the button box', () => {
+  const bad = (selector, declaration) =>
+    bookmarksViewRuleProblems(
+      `:root[${BOOKMARKS_ATTR}] .a { color: red }\n:root[${BOOKMARKS_ATTR}] .b { color: red }\n` +
+        `${selector} { ${declaration} }`,
+    );
+  const view = `:root[${BOOKMARKS_ATTR}]`;
+  for (const [selector, declaration] of [
+    [`${view} #nav-bar`, 'translate: 0 -10px'],
+    [`${view} #navigator-toolbox`, 'transform: scale(0.9)'],
+    [`${view} .titlebar-buttonbox-container`, 'opacity: 0'],
+    [`${view} .titlebar-buttonbox`, 'filter: blur(1px)'],
+    [`${view} #nav-bar > *`, 'opacity: 0'],
+    [`${view} #nav-bar > :not(.titlebar-buttonbox-container)`, 'translate: 0 -10px'],
+    [`${view} *`, 'opacity: 0'],
+    [view, 'opacity: 0'],
+  ]) {
+    assert.notDeepEqual(bad(selector, declaration), [], `${selector} { ${declaration} }`);
+  }
+  assert.deepEqual(
+    bad(`${view} #nav-bar > #nav-bar-customization-target > *`, 'translate: 0 -10px; opacity: 0'),
+    [],
+  );
 });
 
 // ─── Chrome stamps the window on what it sends ──────────────────────────────

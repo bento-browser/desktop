@@ -309,8 +309,8 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   surface: both stops of the toolbar gradient take `--bento-brand-bg` (neutral-5), the colour the
   document paints, in every window (with or without side panels). The hidden chrome flips on a `visibility` transition of the
   `modal` role, so it hides when the host's fade-in ends and the view cross-fades over the
-  browser. Entering the view fades both strip stops with it; leaving it does not (the
-  attribute and the transition go together). Dragging the window in the strip is Firefox's
+  browser (the strip's controls are the exception, see Top-bar motion). Entering the view fades
+  both strip stops with it; leaving it does not (the attribute and the transition go together). Dragging the window in the strip is Firefox's
   own nav-bar drag, because only the top-level chrome document computes drag regions.
 - **Host motion.** The host has no inline transition (`ensureOverlayHost` with
   `inlineFade: false`): `bento-shell-mount.css` gives `#bento-bookmarks-host` an `opacity`
@@ -322,6 +322,39 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   colour-mode fade keeps its opacity transition (an inline transition would lose to the fade's
   `!important` catch-all and jump). `scripts/mount-fade-css.test.mjs` checks the rules and
   both twins.
+- **Top-bar motion.** The strip's controls are the direct children of
+  `#nav-bar-customization-target`: Back, Forward, Reload (`#stop-reload-button`) and the panel
+  navigator (`#bento-panel-nav`) on the left, the extension buttons on the right. Opening the
+  view slides each up past the window's top edge (the window clips it) and fades it out on the
+  `dismiss` role; closing slides it back and fades it in on `reveal`. The return is on the
+  resting rule, so removing the attribute is what animates it.
+  - Only these children move. The container is a sibling of `.titlebar-buttonbox-container`,
+    never an ancestor, so nothing reaches the window buttons; `#nav-bar` and the toolbox are
+    untouched.
+  - The individual `translate` property carries the slide, not `transform`: the sidebar push and
+    drag set `transform` on Back, Forward, Reload and the navigator, and a transition on it
+    would animate the reset at the end of a push. The distance is `-100%` of the control plus
+    twice `--bento-toolbar-top-inset`, so it clears the window edge at any density.
+  - Stagger: each group starts at its outer edge, each control a step of 0.08 of the role's
+    duration after the one before, up to three steps. The left controls are named by id (Back,
+    Forward, Reload, navigator); the right group is counted from the last child
+    (`:nth-last-child`), so a hidden trailing child shifts the counts but not the order. A rule
+    per step, because `lint:motion` allows only plain numbers in a `calc()`; the two halves of
+    each `:is()` never match one element (`:not()` lists the left ids), so no rule depends on
+    source order. The way out and the way back stagger the same way.
+  - The base rule still ends on `visibility: hidden` for the controls (no focus, hit-testing or
+    no-drag regions over the strip). Its flip is an entry of the slide's transition: the
+    dismiss duration with a delay of three steps, so it lands after the last control arrives. The
+    return has no visibility entry, so the controls are visible from its first frame.
+    `pointer-events: none` is on from the first frame of the way out.
+  - Anything else the strip shows (the overflow button, a private window's indicator) keeps the
+    plain `modal` visibility flip.
+  - Reduced motion (`prefers-reduced-motion: reduce`; the chrome has no Mux reduced token set):
+    no slide and no fade, the change is instant.
+  - The generated twins in `bento-chrome-theme.css` keep the slide through a colour-mode flip
+    (`node scripts/fade-twins.mjs`). `scripts/mount-fade-css.test.mjs` checks every step's
+    entries and twins; `scripts/overlay-surfaces.test.mjs` fails on a rule that moves or fades
+    anything in the strip but children of the container.
 - **Address bar.** While the view is open the sidebar is hidden, so `Cmd+L` opens the centered
   address bar (`canAnchorAddrbarToSidebarRow`) instead of anchoring it to an invisible row.
 - **Dev reload.** `overlayEntry`'s `suspend` removes the attribute for `bookmarks`, so the
@@ -329,13 +362,24 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
 
 Pitfalls:
 
-- Never hide, fade or transform `#navigator-toolbox`, `#nav-bar` or
-  `.titlebar-buttonbox-container`, and never give one of their ancestors `opacity`,
-  `transform` or `filter`. macOS draws the traffic lights itself and Gecko places them from the
+- Never hide, fade or transform (`transform`, `translate`, `scale`, `rotate`)
+  `#navigator-toolbox`, `#nav-bar` or `.titlebar-buttonbox-container`, and never give one of
+  their ancestors `opacity`, `transform`, `translate` or `filter`. macOS draws the traffic lights itself and Gecko places them from the
   rects of the window buttons inside `.titlebar-buttonbox`, which it registers only while they
   are laid out, visible and without an effect on an ancestor; otherwise the lights leave the
   window.
-  `scripts/overlay-surfaces.test.mjs` reads the stylesheet and fails on such a rule.
+  `scripts/overlay-surfaces.test.mjs` reads the stylesheet and fails on such a rule, and on
+  any `opacity` or transform-like declaration in a view rule that touches the toolbar outside
+  `#nav-bar-customization-target`.
+- The top-bar slide must stay on the children of `#nav-bar-customization-target`. A `#nav-bar >
+  *` or `:not(.titlebar-buttonbox-container)` rule with `translate` or `opacity` would also
+  select the button box, or an ancestor of it, and the traffic lights would leave the window.
+- Do not put the slide on `transform`, and do not add a resting `transition` for `transform` to
+  Back, Forward, Reload or the navigator: the sidebar push and drag set `transform` there and the
+  transition would animate its reset.
+- `lint:motion` rejects `var(--bento-...)` in a `transition-delay` or a `calc()` in a
+  `transition`, so a stagger index cannot come from a custom property; each step has its own
+  rule and its own twin.
 - Hide with `visibility`, not `display`, except `#PersonalToolbar`. Boxes that keep their size
   fire no resize observer and persist no bogus width; the toolbar row is the one that has to
   go for the strip to be a single row.
@@ -374,7 +418,15 @@ Manual verification (macOS, regular window, `--jsdebugger` for the Browser Toolb
 view from the sidebar and from the command palette (the palette closes), and with
 `Cmd+Shift+O` with a web page focused (the Library window must not open; Bookmarks > Manage
 Bookmarks still opens it). The traffic lights stay visible and in place, and clickable, while
-it is open and after it closes; dragging the empty strip moves the window. Esc closes it from
+it is open and after it closes, also while the top-bar controls slide; dragging the empty strip
+moves the window. Opening: Back, Forward, Reload, the panel navigator and the extension buttons
+slide up past the top edge, fading, each group from its outer edge; nothing is left in the strip
+afterwards and no control is focusable (Tab) or clickable there. Closing: they slide back and
+fade in, from the same edges, with no jump at the end. Repeat slowed down (Browser Toolbox
+Console: set `--muxui-semantic-motion-dismiss-transition-duration` and
+`--muxui-semantic-motion-reveal-transition-duration` on `document.documentElement.style`) to see
+the order, with the sidebar dragged or pushed just before, with a colour-mode flip during the
+slide, and with reduced motion (no slide, instant). Esc closes it from
 its first screen and leaves an open inline editor first. `Cmd+L`, `Cmd+T` and `Cmd+Alt+P` open
 their overlays above it, and Esc closes only those. Close it: the sidebar, panels and
 bookmarks toolbar return without a shift, and the focus is back where it was. Repeat in light
