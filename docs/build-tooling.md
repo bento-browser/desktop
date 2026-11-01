@@ -770,14 +770,22 @@ Signing private keys never belong in the repository.
 
 `scripts/macos-sign-release.mjs` runs on macOS between packaging and collection.
 It never signs the app in the object directory. It copies the staged app
-(`<objdir>/dist/bento/Bento.app`, the one the MAR is built from; the unbundled
-`<objdir>/dist/Bento.app` links into the object directory and is refused) to
-`dist/macos-signing/`, signs the copy with `mach macos-sign -c release`
-(`-c` is required: mach maps only Mozilla's bundle ids to a channel), freezes it
-read-only, and builds the DMG that is collected. The directory is rebuilt on every
-run and ends up holding the frozen `Bento.app` (the update MAR is built from it),
-`bento-<version>.signed.dmg`, and `signing.json`, the `{ mode, teamId, notarized }`
-record that `release-manifest.json` carries as `signing`.
+(`<objdir>/dist/bento/Bento.app`, the one the package step builds the MAR from;
+the unbundled `<objdir>/dist/Bento.app` links into the object directory and is
+refused) to `dist/macos-signing/`, signs the copy with
+`mach macos-sign -c release` (`-c` is required: mach maps only Mozilla's bundle
+ids to a channel), freezes it read-only, and builds the DMG that is collected.
+The directory is rebuilt on every run and ends up holding the frozen `Bento.app`,
+`bento-<version>.signed.dmg`, and `signing.json`, the
+`{ mode, teamId, notarized }` record that `release-manifest.json` carries as
+`signing`.
+
+The MAR is not built from the frozen signed app yet; that is pending the MAR
+signing phase (PR 3). Today `mach package` creates `dist/output.mar` from the
+unsigned staged app before this script runs, and collection copies that file
+unchanged, and only when `updates.enabled` is true (it is `false`, so no MAR is
+collected). The MAR signing phase builds the MAR from `dist/macos-signing/Bento.app`
+between signing and collection.
 
 | Mode           | Selected by                                            | Entitlements                    | Result                                         |
 | -------------- | ------------------------------------------------------ | ------------------------------- | ---------------------------------------------- |
@@ -804,7 +812,12 @@ Both modes run `codesign --verify --deep --strict --verbose=2` on the signed cop
 `scripts/check-macos-signing.mjs` runs on the collected DMG. It mounts the image
 read-only on a private mount point (always detached afterwards), runs the same
 strict verification on the app inside, and confirms the signature matches
-`signing.json`. When `config/release-security.json`
+`signing.json`. For a `developer-id` record it also runs
+`codesign --verify --strict` on the DMG itself and requires a
+`Developer ID Application` authority and the recorded Team ID (and the
+`platformSigning.macosDeveloperIdTeam` team when set), so a stapled ticket cannot
+vouch for an image signed by someone else. An `ad-hoc` DMG is unsigned by design:
+the check skips its signature and says so in its output. When `config/release-security.json`
 `platformSigning.macosDeveloperIdTeam` is not empty it also requires a
 `developer-id` build for exactly that team, `notarized: true`, and a passing
 `xcrun stapler validate` on the app and the DMG.

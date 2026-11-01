@@ -343,8 +343,8 @@ export function signRelease({
     throw new Error('the ad-hoc build is not signed ad-hoc');
   }
 
-  // Freeze: nothing may change the signed bytes from here on (a MAR is built
-  // from this directory, and it must match what ships in the DMG).
+  // Freeze: nothing may change the signed bytes from here on (the MAR signing
+  // phase will build the MAR from this directory, so it must match the DMG).
   must(run, 'chmod', ['-R', 'a-w', app]);
   buildDmg({ run, app, brandDir: path.join(root, 'branding', config.brand), outDir, dmg });
 

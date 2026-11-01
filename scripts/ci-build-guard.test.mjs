@@ -61,9 +61,40 @@ test('rejects every native build entry point', () => {
     'bash scripts/mach-raw.sh repackage dmg -i a -o b',
     'xcrun notarytool submit Bento.zip --keychain-profile bento-notary --wait',
     'xcrun stapler staple Bento.app',
+    'codesign --sign - Bento.app',
+    'codesign --force --deep --sign "Developer ID Application: Bento" Bento.app',
+    'codesign --sign=- Bento.app',
+    'codesign -s - Bento.app',
+    'codesign -fs - Bento.app',
+    '/usr/bin/codesign --timestamp -s ID Bento.dmg',
+    'xcrun codesign --force --sign - Bento.app',
+    'cd dist && codesign -s - Bento.app',
+    'codesign --force \\\n    --sign - Bento.app',
+    'hdiutil create -srcfolder stage -volname Bento Bento.dmg',
+    'hdiutil makehybrid -hfs -o Bento.dmg stage',
+    'hdiutil convert in.dmg -format UDZO -o out.dmg',
+    'sudo hdiutil create -size 1g x.dmg',
   ];
   for (const command of commands) {
     assert.ok(hits(`run: ${command}\n`).length > 0, `${command} should be rejected`);
+  }
+});
+
+test('accepts read-only codesign and hdiutil use', () => {
+  const commands = [
+    'codesign --verify --deep --strict --verbose=2 Bento.app',
+    'codesign --verify --strict Bento.dmg',
+    'codesign -d Bento.app',
+    'codesign -dvv Bento.app',
+    'codesign -d --entitlements - Bento.app',
+    'codesign --display --verbose=4 Bento.app',
+    'hdiutil attach -readonly -nobrowse Bento.dmg',
+    'hdiutil detach /Volumes/Bento',
+    'hdiutil imageinfo Bento.dmg',
+    'node scripts/check-macos-signing.mjs Bento.dmg signing.json',
+  ];
+  for (const command of commands) {
+    assert.deepEqual(hits(`run: ${command}\n`), [], `${command} should be accepted`);
   }
 });
 
@@ -75,17 +106,23 @@ test('derives native aliases from normalized script bodies', () => {
     quoted: 'node scripts/bento-build.mjs "package"',
     chained: 'pnpm run filtered',
     extension: 'pnpm --filter @bento/shell build',
+    sign: 'codesign --force --sign - dist/Bento.app',
+    image: 'hdiutil create -srcfolder dist Bento.dmg',
+    signed: 'pnpm run sign',
+    inspect: 'codesign -dvv dist/Bento.app && hdiutil imageinfo Bento.dmg',
   };
   const names = nativeScriptNames(scripts, repoPackage.name);
   assert.deepEqual(
     [...names].sort(),
-    ['build', 'chained', 'continued', 'filtered', 'quoted'],
+    ['build', 'chained', 'continued', 'filtered', 'image', 'quoted', 'sign', 'signed'],
   );
-  for (const alias of ['filtered', 'continued', 'quoted', 'chained']) {
+  for (const alias of ['filtered', 'continued', 'quoted', 'chained', 'sign', 'image', 'signed']) {
     const found = nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name);
     assert.ok(found.length > 0, `pnpm run ${alias} should be rejected`);
   }
-  assert.deepEqual(nativeBuildMatches('run: pnpm run extension\n', names, repoPackage.name), []);
+  for (const alias of ['extension', 'inspect']) {
+    assert.deepEqual(nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name), []);
+  }
 });
 
 test('treats a filter that selects the root package as an unfiltered run', () => {

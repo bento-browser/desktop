@@ -175,9 +175,11 @@ case "$PLATFORM" in
     step "5/6 Skipping signing ($PLATFORM build)"
     ;;
 esac
-# The update MAR is built here, between signing and collection, from the frozen
-# signed app in $SIGNING_DIR/Bento.app. Until then the package step's MAR comes
-# from the unsigned staged app.
+# Insertion point for the MAR signing phase (PR 3): build the update MAR here,
+# between signing and collection, from the frozen signed app in
+# $SIGNING_DIR/Bento.app. Not done yet: the package step above creates
+# dist/output.mar from the unsigned staged app, and step 6 copies it unchanged
+# (only when bento.json updates.enabled is true; it is false, so no MAR ships).
 
 step "6/6 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific artifacts under $OBJ_DIST/.

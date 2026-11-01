@@ -11,7 +11,9 @@ import path from 'node:path';
 const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-addons)';
 
 // Direct native entry points: scripts, subcommands, mach (including macOS signing
-// and repackaging), notarization, and release creation.
+// and repackaging), direct codesign signing and DMG creation, notarization, and
+// release creation. Read-only `codesign --verify` / `-d` / `-dvv` and
+// `hdiutil attach` / `detach` / `imageinfo` stay allowed.
 const nativeCommands = [
   {
     description: 'a Bento native build command',
@@ -28,6 +30,15 @@ const nativeCommands = [
   {
     description: 'the macOS signing script',
     pattern: /\bmacos-sign-release\.mjs\b/,
+  },
+  {
+    // `--sign`, `-s`, or a short-flag cluster ending in s such as `-fs`.
+    description: 'a codesign signing command',
+    pattern: /(?:^|[\s;&|(/])codesign\b[^\n;&|]*\s(?:--sign\b|-(?!-)[A-Za-z]*s\b)/m,
+  },
+  {
+    description: 'an hdiutil command that creates a disk image',
+    pattern: /(?:^|[\s;&|(/])hdiutil\s+(?:create|makehybrid|convert)\b/m,
   },
   { description: 'a notarization command', pattern: /\b(?:notarytool|stapler)\b/ },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },

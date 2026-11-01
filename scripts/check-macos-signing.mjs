@@ -2,9 +2,10 @@
 
 // Checks the collected macOS DMG against its signing record (run by
 // build-release.sh after collection). Mounts the DMG read-only, verifies the
-// app's signature, and confirms it matches the record. When
-// config/release-security.json platformSigning.macosDeveloperIdTeam is set,
-// only a notarized Developer ID build for that team passes.
+// app's signature, and confirms it matches the record. A Developer ID record
+// also verifies the DMG's own signature (an ad-hoc DMG is unsigned by design).
+// When config/release-security.json platformSigning.macosDeveloperIdTeam is
+// set, only a notarized Developer ID build for that team passes.
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,11 +29,12 @@ export function requiredTeam(root = ROOT) {
 
 /**
  * What is wrong with the build, given the record, what codesign reports for
- * the app (`observed`: verified, adhoc, teamId, authorities) and whether
- * `stapler validate` passed (`stapled`: app, dmg; needed only for a notarized
- * record or a required team).
+ * the app (`observed`: verified, adhoc, teamId, authorities) and for the DMG
+ * itself (`observedDmg`, the same shape; read only for a developer-id record),
+ * and whether `stapler validate` passed (`stapled`: app, dmg; needed only for
+ * a notarized record or a required team).
  */
-export function signingProblems({ record, observed, stapled, team = '' }) {
+export function signingProblems({ record, observed, observedDmg, stapled, team = '' }) {
   const problems = [];
   if (!observed.verified) problems.push(`codesign --verify --deep --strict failed: ${observed.verifyDetail}`);
   if (record.mode === 'ad-hoc') {
@@ -45,6 +47,7 @@ export function signingProblems({ record, observed, stapled, team = '' }) {
     if (!observed.authorities.some((name) => name.startsWith('Developer ID Application:'))) {
       problems.push('the app is not signed by a Developer ID Application certificate');
     }
+    problems.push(...dmgProblems({ record, observedDmg, team }));
   }
   if (team) {
     if (record.mode !== 'developer-id') {
@@ -59,6 +62,36 @@ export function signingProblems({ record, observed, stapled, team = '' }) {
     if (!stapled?.dmg) problems.push('xcrun stapler validate failed on the DMG');
   }
   return problems;
+}
+
+// A developer-id DMG carries its own signature, separate from the app inside,
+// so a stapled ticket alone does not vouch for who signed the image.
+function dmgProblems({ record, observedDmg, team }) {
+  if (!observedDmg) return ['the DMG signature was not checked'];
+  const problems = [];
+  if (!observedDmg.verified) problems.push(`codesign --verify --strict failed on the DMG: ${observedDmg.verifyDetail}`);
+  if (!observedDmg.authorities.some((name) => name.startsWith('Developer ID Application:'))) {
+    problems.push('the DMG is not signed by a Developer ID Application certificate');
+  }
+  for (const expected of new Set([record.teamId, team].filter(Boolean))) {
+    if (observedDmg.teamId !== expected) {
+      problems.push(`the DMG should be signed by team ${expected} but is signed by ${observedDmg.teamId ?? 'no team'}`);
+    }
+  }
+  return problems;
+}
+
+// What codesign reports for `target`, in the shape signingProblems reads.
+function observeSignature(run, target, verifyFlags) {
+  const verify = run('codesign', ['--verify', ...verifyFlags, '--verbose=2', target], { capture: true });
+  const details = codesignDetails(run, target);
+  return {
+    verified: verify.status === 0,
+    verifyDetail: verify.stderr.trim(),
+    adhoc: details?.adhoc ?? false,
+    teamId: details?.teamId ?? null,
+    authorities: details?.authorities ?? [],
+  };
 }
 
 // Mounts the DMG read-only on a private mount point and always detaches it.
@@ -87,18 +120,13 @@ export function checkSigning({ dmg, record, team = '', run = runCommand }) {
     const apps = fs.readdirSync(mountPoint).filter((name) => name.endsWith('.app'));
     if (apps.length !== 1) throw new Error(`expected one app in ${dmg}, found ${apps.length}`);
     const app = path.join(mountPoint, apps[0]);
-    const verify = run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], { capture: true });
-    const details = codesignDetails(run, app);
+    const observed = observeSignature(run, app, ['--deep', '--strict']);
+    const observedDmg = record.mode === 'developer-id' ? observeSignature(run, dmg, ['--strict']) : undefined;
     const validates = (target) => run('xcrun', ['stapler', 'validate', target], { capture: true }).status === 0;
     return signingProblems({
       record,
-      observed: {
-        verified: verify.status === 0,
-        verifyDetail: verify.stderr.trim(),
-        adhoc: details?.adhoc ?? false,
-        teamId: details?.teamId ?? null,
-        authorities: details?.authorities ?? [],
-      },
+      observed,
+      observedDmg,
       stapled: needsStaple ? { app: validates(app), dmg: validates(dmg) } : undefined,
       team,
     });
@@ -112,8 +140,9 @@ function main(argv) {
   const team = requiredTeam();
   const problems = checkSigning({ dmg, record, team });
   if (problems.length) throw new Error(`${path.basename(dmg)} does not match its signing record:\n- ${problems.join('\n- ')}`);
+  const dmgNote = record.mode === 'ad-hoc' ? '; the DMG itself is unsigned by design' : '; DMG signature verified';
   process.stdout.write(
-    `check-macos-signing: ${path.basename(dmg)} is ${record.mode}${record.teamId ? ` (team ${record.teamId})` : ''}, notarized ${record.notarized}\n`,
+    `check-macos-signing: ${path.basename(dmg)} is ${record.mode}${record.teamId ? ` (team ${record.teamId})` : ''}, notarized ${record.notarized}${dmgNote}\n`,
   );
 }
 
