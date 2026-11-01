@@ -219,8 +219,8 @@ private windows cannot use that channel; see
   `handlePanelsTitle` in `bento-shell-mount.js` reads: `uiColorMode`,
   `sidebarCollapsed`, `sidebarHidden`, `sidebarShortcutBehavior`,
   `defaultPanelWidthPx`, `customPanelSizes`, `panelCycleWraparound`,
-  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`) and the
-  workspace theme. A replayed `panels/sync` can arrive before any of them, so
+  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`,
+  `bookmarksEnabled`) and the workspace theme. A replayed `panels/sync` can arrive before any of them, so
   the sidebar keeps the latest incomplete sync per workspace
   (`pendingPanelsSync` in `bridge/useToolsPort.ts`): held while the active
   workspace is unknown, or kept after a forward that went out before settings

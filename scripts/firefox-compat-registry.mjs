@@ -1358,8 +1358,8 @@ export const MEMBERS = [
     kind: 'element',
     how: 'writes',
     probe: 'R',
-    sites: ['retargetLibraryKeyToBookmarksView'],
-    use: "Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute and listens for the command event the key then raises on itself, to toggle the Bookmarks view. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key.",
+    sites: ['retargetLibraryKeyToBookmarksView', 'restoreLibraryKey'],
+    use: "Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute (keeping the value on the key in data-bento-library-command) and listens for the command event the key then raises on itself, to toggle the Bookmarks view. Turning the Bookmarks manager off in Settings puts the command attribute back, so the key opens the Library again. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key.",
     at: [FF.browserSets, '<key id="manBookmarkKb"', 290],
   },
   {

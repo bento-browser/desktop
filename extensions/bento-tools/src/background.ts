@@ -978,6 +978,8 @@ const bootReady = storesReady.then(async () => {
     settings.snapshot().panelCornerRadiusPx;
   let lastPanelSplitterSizePx: BentoSettings['panelSplitterSizePx'] =
     settings.snapshot().panelSplitterSizePx;
+  let lastBookmarksEnabled: BentoSettings['bookmarksEnabled'] =
+    settings.snapshot().bookmarksEnabled;
   // The direct leg of a colour flip to chrome; the panels/sync below carries the value too.
   const signalChromeColorMode = createChromeColorModeSignal(
     (mode, stamp) => browser.bentoPrivacy.notifyUiColorMode(mode, stamp),
@@ -990,7 +992,8 @@ const bootReady = storesReady.then(async () => {
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
     // sidebarHidden, sidebarShortcutBehavior, customPanelSizes,
     // defaultPanelWidthPx, panelCycleWraparound,
-    // panelShadowsEnabled, panelCornerRadiusPx, panelSplitterSizePx)
+    // panelShadowsEnabled, panelCornerRadiusPx, panelSplitterSizePx,
+    // bookmarksEnabled)
     // so chrome picks up the new value via the BENTO_PANELS title
     // (which carries those fields in its payload). The shell no longer
     // writes dedicated title channels for these — they raced BENTO_PANELS via
@@ -1022,6 +1025,7 @@ const bootReady = storesReady.then(async () => {
     const shadowsChanged = next.panelShadowsEnabled !== lastPanelShadowsEnabled;
     const cornerRadiusChanged = next.panelCornerRadiusPx !== lastPanelCornerRadiusPx;
     const splitterSizeChanged = next.panelSplitterSizePx !== lastPanelSplitterSizePx;
+    const bookmarksChanged = next.bookmarksEnabled !== lastBookmarksEnabled;
     if (colorChanged) lastUiColorMode = next.uiColorMode;
     if (collapsedChanged) lastSidebarCollapsed = next.sidebarCollapsed;
     if (hiddenChanged) lastSidebarHidden = next.sidebarHidden;
@@ -1032,6 +1036,7 @@ const bootReady = storesReady.then(async () => {
     if (shadowsChanged) lastPanelShadowsEnabled = next.panelShadowsEnabled;
     if (cornerRadiusChanged) lastPanelCornerRadiusPx = next.panelCornerRadiusPx;
     if (splitterSizeChanged) lastPanelSplitterSizePx = next.panelSplitterSizePx;
+    if (bookmarksChanged) lastBookmarksEnabled = next.bookmarksEnabled;
     if (
       colorChanged ||
       collapsedChanged ||
@@ -1042,7 +1047,8 @@ const bootReady = storesReady.then(async () => {
       wraparoundChanged ||
       shadowsChanged ||
       cornerRadiusChanged ||
-      splitterSizeChanged
+      splitterSizeChanged ||
+      bookmarksChanged
     ) {
       for (const wsId of workspaces.shownWorkspaceIds()) void emitPanelsSync(wsId);
     }

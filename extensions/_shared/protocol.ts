@@ -267,6 +267,11 @@ export interface BentoSettings {
    * panel boundaries. This also controls the visual gap between panels.
    * The default matches the current hard-coded splitter size. */
   panelSplitterSizePx: number;
+  /** The Bookmarks manager is available. When false, chrome refuses to open the Bookmarks view
+   * (and closes it if it is open), Cmd/Ctrl+Shift+O goes back to Firefox's Library, and the
+   * command palette hides "Open Bookmarks". Nothing stored is deleted: tools keeps serving the
+   * bookmarks, so turning it back on brings everything back. */
+  bookmarksEnabled: boolean;
   /** Automatic periodic backup of workspace state to storage.local. */
   autoBackupEnabled: boolean;
   /** Minutes between automatic backups. */

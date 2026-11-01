@@ -1468,6 +1468,8 @@
   // Set on the chrome root while the Bookmarks view is shown. bento-shell-mount.css hides the Bento
   // chrome under it (see showBookmarksView).
   const BOOKMARKS_VIEW_ATTR = 'bento-bookmarks-view';
+  // On the Library key while it is retargeted to the view: its stock command, to put back.
+  const LIBRARY_KEY_STOCK_ATTR = 'data-bento-library-command';
 
   // One row per overlay, in prewarm order. `eager` rows start at window startup
   // (overlays.startEager()), `prewarm` rows at idle after the veil lifts, the rest
@@ -2550,7 +2552,9 @@
   // it is shown the root carries bento-bookmarks-view and bento-shell-mount.css hides the Bento
   // chrome beneath the host, leaving the toolbar strip with Firefox's own window controls. Regular
   // windows only: a private window refuses to open it (and keeps the stock Library key, see
-  // retargetLibraryKeyToBookmarksView). Other overlays open above it and do not close it.
+  // retargetLibraryKeyToBookmarksView). Other overlays open above it and do not close it. The
+  // Bookmarks manager can be turned off in Settings: every open is then refused, an open view
+  // closes, and the Library key is Firefox's again (applyChromeBookmarksEnabled).
   function isBookmarksViewVisible(host) {
     return host.style.display !== 'none';
   }
@@ -2570,6 +2574,10 @@
   // opened the view is closed by it.
   let bookmarksViewReturnFocus = null;
   let bookmarksViewSelectedBrowser = null;
+
+  // Whether the Bookmarks manager is on in Settings. BENTO_PANELS carries it; until the first one
+  // arrives the window assumes the setting's default (on).
+  let currentBookmarksEnabled = true;
 
   // The overlays whose hosts stack above the view: all of them but the view and the tooltip, whose
   // host stays laid out and never takes the focus. scripts/overlay-surfaces.test.mjs keeps this
@@ -2621,7 +2629,7 @@
   }
 
   function showBookmarksView() {
-    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window) || !currentBookmarksEnabled) return;
     const host = document.getElementById('bento-bookmarks-host');
     if (!host) {
       console.warn('[bento-shell-mount] showBookmarksView: host missing');
@@ -2772,9 +2780,10 @@
   // key loses its command attribute, so the key raises 'command' on itself (as the mainKeyset keys
   // without a command do); the menus and toolbar buttons keep Browser:ShowAllBookmarks, so the
   // Library stays reachable. The key is Firefox's, so its letter follows the locale. A private
-  // window keeps the stock key because the view refuses to open there.
+  // window keeps the stock key because the view refuses to open there, and so does a window whose
+  // Bookmarks manager is off (restoreLibraryKey puts it back).
   function retargetLibraryKeyToBookmarksView() {
-    if (BentoPrivateBrowsingUtils.isWindowPrivate(window)) return;
+    if (BentoPrivateBrowsingUtils.isWindowPrivate(window) || !currentBookmarksEnabled) return;
     const key = document.getElementById('manBookmarkKb');
     if (!key) {
       if (document.readyState !== 'complete') {
@@ -2785,10 +2794,37 @@
       }
       return;
     }
-    if (key.getAttribute('data-bento-library-retargeted') === '1') return;
-    key.setAttribute('data-bento-library-retargeted', '1');
+    if (key.hasAttribute(LIBRARY_KEY_STOCK_ATTR)) return;
+    // The key's own command is kept on it, so turning the manager off restores it exactly.
+    key.setAttribute(LIBRARY_KEY_STOCK_ATTR, key.getAttribute('command') ?? '');
     key.removeAttribute('command');
     key.addEventListener('command', toggleBookmarksView);
+  }
+
+  // Cmd/Ctrl+Shift+O opens Firefox's Library again: the key gets back the command it had before
+  // retargetLibraryKeyToBookmarksView, and stops raising the Bookmarks view toggle.
+  function restoreLibraryKey() {
+    const key = document.getElementById('manBookmarkKb');
+    if (!key?.hasAttribute(LIBRARY_KEY_STOCK_ATTR)) return;
+    const stock = key.getAttribute(LIBRARY_KEY_STOCK_ATTR);
+    key.removeEventListener('command', toggleBookmarksView);
+    key.removeAttribute(LIBRARY_KEY_STOCK_ATTR);
+    if (stock) key.setAttribute('command', stock);
+  }
+
+  // The Bookmarks manager turned on or off in Settings (BENTO_PANELS, handlePanelsTitle). Off closes
+  // a view that is open or waiting for its document, with the usual fade, and gives the Library its
+  // key back; showBookmarksView refuses from then on. On points the key at the view again. Stored
+  // bookmarks are not touched: bento-tools keeps serving them.
+  function applyChromeBookmarksEnabled(enabled) {
+    if (enabled === currentBookmarksEnabled) return;
+    currentBookmarksEnabled = enabled;
+    if (enabled) {
+      retargetLibraryKeyToBookmarksView();
+      return;
+    }
+    if (isBookmarksViewOpen()) hideBookmarksView();
+    restoreLibraryKey();
   }
 
   let mergePaletteOpenSeq = 0;
@@ -17136,6 +17172,9 @@
       }
       if (typeof decoded.panelSplitterSizePx === 'number') {
         applyChromePanelSplitterSize(decoded.panelSplitterSizePx);
+      }
+      if (typeof decoded.bookmarksEnabled === 'boolean') {
+        applyChromeBookmarksEnabled(decoded.bookmarksEnabled);
       }
       hideStartupVeil();
       if (

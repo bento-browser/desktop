@@ -1,8 +1,9 @@
-// The left column: Back to the browser, the spaces (colour dot, name, link count), and "+ Space".
-// Below ~1200px the stylesheet folds it to dots; the buttons keep their names for assistive
-// technology and a native tooltip.
+// The left column: "Back to browser", the spaces (colour dot, name, link count), and "+ Space".
+// Below ~1200px the stylesheet folds it to dots and the Back button to its arrow; the buttons keep
+// their names for assistive technology and a native tooltip. A right-click on a space opens the
+// view's context menu (contextMenuModel.ts), which holds the same items as the space's "..." menu.
 
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { Button, Text } from '@muxui/react';
 import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left';
 import Plus from 'lucide-react/dist/esm/icons/plus';
@@ -11,28 +12,23 @@ import { BOOKMARK_LIMITS } from '@shared/protocol';
 import { BentoIcon } from '../primitives';
 import { EntityMenu } from './EntityMenu';
 import { InlineEditor } from './InlineEditor';
+import { spaceEntries, type SpaceHandlers } from './menuEntries';
 import type { SpaceSummary } from './model';
-import { isEditing, type BookmarksAction, type EditHandler, type EditTarget } from './types';
+import { isEditing, type EditTarget } from './types';
 
-export interface SpacesListProps {
+export interface SpacesListProps extends SpaceHandlers {
   spaces: SpaceSummary[];
   currentId: string | null;
   editing: EditTarget | null;
-  send: (action: BookmarksAction) => void;
-  onEdit: EditHandler;
   /** Adds a space (the caller sends the create and selects it once it exists). */
   onCreate: (name: string) => void;
   onClose: () => void;
-  onDeleteSpace: (summary: SpaceSummary) => void;
 }
 
-interface SpaceRowProps {
+interface SpaceRowProps extends SpaceHandlers {
   summary: SpaceSummary;
   selected: boolean;
   renaming: boolean;
-  send: (action: BookmarksAction) => void;
-  onEdit: EditHandler;
-  onDeleteSpace: (summary: SpaceSummary) => void;
 }
 
 const SpaceRow = memo(function SpaceRow({
@@ -44,16 +40,11 @@ const SpaceRow = memo(function SpaceRow({
   onDeleteSpace,
 }: SpaceRowProps) {
   const { space, linkCount } = summary;
-  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <li
       className="bento-bookmarks__space"
       data-bm-space-id={space.id}
       data-selected={selected ? 'true' : undefined}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setMenuOpen(true);
-      }}
     >
       {renaming ? (
         <div className="bento-bookmarks__space-main">
@@ -93,13 +84,7 @@ const SpaceRow = memo(function SpaceRow({
       )}
       <EntityMenu
         label={`Actions for ${space.name}`}
-        deleteLabel="Delete space"
-        color={space.color}
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        onRename={() => onEdit({ kind: 'space', id: space.id })}
-        onColor={(color) => send({ type: 'bookmarks/space/update', id: space.id, color })}
-        onDelete={() => onDeleteSpace(summary)}
+        entries={spaceEntries(summary, { send, onEdit, onDeleteSpace })}
       />
     </li>
   );
@@ -128,7 +113,7 @@ export function SpacesList({
           onActivate={onClose}
         >
           <BentoIcon icon={ChevronLeft} size="sm" />
-          <span className="bento-bookmarks__back-label">Browser</span>
+          <span className="bento-bookmarks__back-label">Back to browser</span>
         </Button>
       </div>
       <ul className="bento-bookmarks__space-list">

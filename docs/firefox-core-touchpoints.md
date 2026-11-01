@@ -1092,7 +1092,8 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `isOverlayAboveBookmarksViewShown`, `shownBrowsers`, `isTabDialogShowing`,
     `isPageContainerShown`, `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog`
     and `closeBookmarksViewForShownDialog`,
-    `retargetLibraryKeyToBookmarksView`, `dispatchBookmarksViewShow` / `Hide`,
+    `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey`,
+    `applyChromeBookmarksEnabled`, `dispatchBookmarksViewShow` / `Hide`,
     `sendBookmarksViewMessage` and their
     `BOOKMARKS_VIEW_FRAME_SCRIPT_URL`, the `bento-bookmarks-frame` title handler and the
     `BENTO_OPEN_BOOKMARKS` routes of the sidebar and command palette frames, the Esc early
@@ -1113,7 +1114,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   is open the sidebar, panels, splitters, panel navigator, trailer and the toolbar's
   contents are hidden; the toolbar row stays as a strip that carries Firefox's own window
   controls. The sidebar and the command palette open it, and so does `Cmd/Ctrl+Shift+O`,
-  which was Firefox's Library shortcut. Not opened in private windows.
+  which was Firefox's Library shortcut. Not opened in private windows. The Bookmarks manager
+  can be turned off in Settings (`BentoSettings.bookmarksEnabled`, carried to chrome by
+  `BENTO_PANELS`): the view then refuses to open, closes if open, and the Library shortcut is
+  Firefox's again.
 - Vanilla Firefox surface touched or depended on:
   - `#nav-bar` and its `.titlebar-buttonbox-container` child (the nav-bar copy of
     `titlebar-items.inc.xhtml`): every other child of `#nav-bar` is hidden with
@@ -1132,9 +1136,13 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   - A root attribute, `bento-bookmarks-view` on `documentElement` (Bento's own, no Firefox
     meaning).
   - The `manBookmarkKb` key in `mainKeyset` (`browser-sets.inc.xhtml`): the mount removes its
-    `command` attribute at window load and listens for the `command` event a key without one
+    `command` attribute at window load (keeping the value in `data-bento-library-command`) and
+    listens for the `command` event a key without one
     raises on itself (the `mainKeyset` handler in `browser-sets.js` already relies on that for
-    keys such as `viewBookmarksSidebarKb`). The `Browser:ShowAllBookmarks` command, the
+    keys such as `viewBookmarksSidebarKb`). With the Bookmarks manager off in Settings,
+    `restoreLibraryKey` sets the saved value back as `command` and removes the listener, so the
+    key is as `browser-sets.inc.xhtml` declares it (the attribute is read when the key fires,
+    so no restart is needed); turning it on retargets the key again. The `Browser:ShowAllBookmarks` command, the
     `bookmarksShowAll` menu item, `panelMenu_showAllBookmarks` and the bookmarks toolbar
     button menus are untouched, so the Library stays reachable from the menus; they still show
     the key's accelerator text.
@@ -1208,12 +1216,15 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   and the extension buttons slide up and fade, staggered from the outer edges, and slide back
   down and fade in; the traffic lights stay visible and in place throughout, nothing
   in the strip takes focus or a click once they are gone, and reduced motion changes them at
-  once. Run `pnpm run firefox:compat:engine` and confirm `manBookmarkKb`,
+  once. Turn the Bookmarks manager off in Settings (Workspaces) and press `Cmd+Shift+O` in a
+  regular window: the Library opens and the view does not; turn it on and the shortcut opens the
+  view; with the view open, turning it off closes the view. Run `pnpm run firefox:compat:engine`
+  and confirm `manBookmarkKb`,
   `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
   `TabDialogBox._containerFor`, `tabDialogShowing` and `TabSplitViewActivate` are found.
 - Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
-  entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` leaves
-  no persistent change (the key is edited in the window's DOM only).
+  entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` and
+  `restoreLibraryKey` leave no persistent change (the key is edited in the window's DOM only).
 
 ### Search Engine Icons (bento-privacy Experiment)
 
@@ -3186,7 +3197,7 @@ below is generated; edit the registry, then run
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |
 | `identity-popup` | source (engine only) | Native identity panel that Bento opens at a sidebar anchor. It sits inside template-identity-popup until gIdentityHandler._initializePopup() expands it, which Bento calls first. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:5` |
 | `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
-| `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute and listens for the command event the key then raises on itself, to toggle the Bookmarks view. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView` | `browser/base/content/browser-sets.inc.xhtml:290` |
+| `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute (keeping the value on the key in data-bento-library-command) and listens for the command event the key then raises on itself, to toggle the Bookmarks view. Turning the Bookmarks manager off in Settings puts the command attribute back, so the key opens the Library again. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey` | `browser/base/content/browser-sets.inc.xhtml:290` |
 | `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:679` |
 | `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |

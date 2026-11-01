@@ -34,6 +34,9 @@ layer is `extensions/bento-tools/src/bookmarks/`.
 - **Private windows.** Chrome refuses to open the view and tools refuses `bookmarks/*` actions
   there. The command palette entry is not rendered in a private window, `Cmd/Ctrl+Shift+O`
   keeps opening Firefox's Library there, and the document shows a "not available" notice if it is ever shown in one.
+- **The opt-out.** The Bookmarks manager can be turned off in Settings
+  ([Turning the manager off](#turning-the-manager-off)). The store, its snapshots and the
+  `bookmarks/*` actions are not affected by it.
 
 ## Data layer
 
@@ -112,6 +115,10 @@ the open and close prefixes equal to the mount script's). The document backgroun
 so it wins over the shared document rule: the view is one surface with the toolbar strip that
 stays visible above it.
 
+The top-left button reads "Back to browser" beside a left chevron and leaves the view. Below the
+narrow-width breakpoint the stylesheet hides the label and the button keeps only the chevron; its
+`aria-label` and `title` stay "Back to browser" at every width.
+
 The component is `components/BookmarksView/`. `BookmarksView.tsx` is presentational: it takes
 the snapshot, the open tabs, `send` and `onClose`, so stories bind `send` to the fake reducer
 in `state/__fixtures__/bookmarks.ts` (`applyFakeAction`, `useFakeBookmarks`).
@@ -129,7 +136,10 @@ in `state/__fixtures__/bookmarks.ts` (`applyFakeAction`, `useFakeBookmarks`).
 | `flip.ts` | Records element positions before a snapshot and plays the settle after it. |
 | `useBoardDrag.ts` | Pointer drag for items, open tabs and groups. |
 | `InlineEditor.tsx` | The one inline text field: Enter commits, Shift+Enter breaks a line in a multiline field, Esc cancels, blur commits; `maxLength` caps it at the stored field's limit. |
-| `ItemMenu`, `GroupSubmenu`, `EntityMenu`, `TabMenu` (in `TabsDrawer.tsx`) | The row, group-list, column and open-tab menus (below). |
+| `menuEntries.ts` | What every menu offers, as data: `itemEntries`, `groupEntries`, `spaceEntries`, `tabEntries`, `boardEntries` (below). Pure. |
+| `EntryList.tsx` | Draws a `MenuEntry` list with the public Mux `Menu` parts. |
+| `ItemMenu`, `EntityMenu`, `TabMenu` (in `TabsDrawer.tsx`) | The trigger and popup of the row, column or space, and open-tab menus; their items are `menuEntries.ts` lists. |
+| `contextMenuModel.ts`, `ContextMenu.tsx` | The right-click menu: which element a click or key press is about, whether the native menu stays, and the Mux menu opened at a point (below). `contextMenuModel.ts` is pure. |
 | `AddGroup.tsx` | The "+ Group" button that becomes a name field; used by the board's trailing column and by the empty space. |
 | `LoadFailed.tsx` | The notice for a failed load (below). |
 | `SpacesList`, `BoardColumn`, `ItemRow`, `TabsDrawer`, `SearchResults`, `EmptySpace`, `UndoToasts` | The parts of the screen. |
@@ -164,7 +174,8 @@ which either replaces the notice or is a new failed one. Esc still closes the vi
 ### Esc order
 
 The document handles Esc itself (the chrome listener returns for this frame). One press does
-one thing: an open inline editor cancels, else a Mux menu closes (it consumes its own Esc),
+one thing: an open inline editor cancels, else a Mux menu (a "More actions" menu or the right-click
+menu) closes (it consumes its own Esc),
 else a search with text clears (the field's own handler), else a drawer that overlays the board
 (below the narrow-width breakpoint) closes, else the view closes. A drawer docked beside the
 board is left alone.
@@ -242,16 +253,17 @@ trigger and the column menu show on `:focus-within`, and stay while their menu i
 | --- | --- | --- |
 | Open tab in the drawer (`TabMenu`, "Save <title>") | Save to group: a submenu of the current space's groups, then "New group" | `tabs/save` at the end of the group (or `groupId: null`) |
 | Item row (`ItemMenu`, the "More actions" trigger) | Move, a submenu of Move to group (the other groups), Move up and Move down | `item/move` with `beforeId` from `neighbourMoves` |
-| Column header (`EntityMenu`, `move`) | Move left, Move right | `group/move` with `beforeId` from `neighbourMoves` |
+| Column header (`EntityMenu`) | Move left, Move right | `group/move` with `beforeId` from `neighbourMoves` |
 
 ### Row actions
 
 A row has one hover action, the "More actions" trigger (`ItemMenu`, an ellipsis, `data-bm-item-menu`). Its
-menu holds Open in new tab (links only), Edit, Move (the submenu above) and Delete (after a separator).
-There is no separate Open in panel button: the row's own button opens a link in a panel (Mux `Button`,
-so Enter and Space open it too), and a note's button starts its edit. Five direct buttons covered
-most of a 236 px column, so titles and short notes disappeared under them; one trigger keeps the
-text readable.
+menu is `itemEntries`: for a link Open in panel, Open in new tab and Copy link, then Edit, for a to-do
+Mark done (Mark not done once ticked), Move (the submenu above) and Delete (after a separator). The
+right-click menu on a row shows the same list. There is no separate Open in panel button: the row's own
+button opens a link in a panel (Mux `Button`, so Enter and Space open it too), and a note's button starts
+its edit. Five direct buttons covered most of a 236 px column, so titles and short notes disappeared
+under them; one trigger keeps the text readable.
 
 The trigger sits over the row's right end and paints no background. The text under it is masked
 out: the row text, the note text and the to-do text carry a `mask-image` while the row is hovered,
@@ -267,6 +279,53 @@ submenu when there is no other group. The groups handed to the menus are `groupC
 reference-stable by `stableChoices` so memoized rows and columns do not re-render on every
 snapshot. After a move the view records a FLIP like a drag does, and the follow-up refocuses the
 moved element, which is a new DOM node when it changed column.
+
+### Context menus
+
+Firefox's page menu (Bookmark Page, Save Page As, Select All, View Page Source) means nothing in
+this view, so every `contextmenu` event in the document is handled by the root (`BookmarksView`;
+the failed-load root too). `routeContextMenu` (`contextMenuModel.ts`) walks up from the event target
+and decides:
+
+| Target | What happens |
+| --- | --- |
+| A text field (`textarea`, or an `input` that takes text: the search field, every inline editor) | Nothing is intercepted: the native menu stays for cut, copy, paste and spelling. A checkbox or button input is not a text field. |
+| An element with actions: a row (`data-bm-item-id`), an open-tab row (`data-bm-tab-id`), a column (`data-bm-group-id`, header or empty column area), a space (`data-bm-space-id`), the board (`data-bm-board`: the boards strip, or an empty space's box) | `preventDefault`, then the Bento menu opens at the pointer. The nearest mark wins, so a row inside a column is a row. |
+| Anything else (the title, the toolbar, search results, the drawer header, the toasts, the open menu itself) | `preventDefault` and nothing opens. |
+
+The menus are the `menuEntries.ts` lists the buttons use, so an action is defined once:
+
+| Element | Items |
+| --- | --- |
+| Link | Open in panel, Open in new tab, Copy link, Edit, Move (Move to group, Move up, Move down), separator, Delete |
+| Note | Edit, Move, separator, Delete |
+| To-do | Edit, Mark done or Mark not done, Move, separator, Delete |
+| Column (header or empty area) | Open all N in panels (only when it has links), Rename, Colour, Move left, Move right, separator, Delete group |
+| Space | Rename, Colour, separator, Delete space |
+| Open tab | Save to group (the groups, then New group) |
+| Board background | New group, and Save all open tabs to new group while tabs are open |
+
+Delete group and Delete space still ask in the Mux `Dialog`; Delete on a row still offers the undo
+toast; Edit, Rename and New group open the same inline editors as their buttons (New group is
+`onEdit({ kind: 'add-group' })`, the "+ Group" field), and a keyboard move refocuses the moved
+element. "Open all" is left out of a column with no links, in the column's "..." menu too.
+
+The menu is `ContextMenu.tsx`: a public Mux `Menu` with a controlled `open`, no trigger, and a
+`Menu.Popup` whose `anchorRef` is an empty absolutely positioned `span` the view places at the
+pointer (the recipe in the Mux README: a consumer-owned element at the point). The view fills the
+window, so the popup is an in-document popover and the chrome `menu` overlay is not used. It is
+modal like the other menus; Esc, a click outside and a choice close it, and the popup returns the
+focus to the element that had it when the menu opened. The open menu holds only the target's id:
+the items are rebuilt from the current snapshot, so a change shows at once and a target another
+window deleted closes the menu. A show or hide closes it.
+
+Keyboard: the Menu key and Shift+F10 on a focused element route like a right-click on it
+(`routeContextKey`, a capture-phase `keydown` on the root) and open the menu below that element, so
+a row's button, a to-do's checkbox, a column's "..." button or a space's button works; the key's
+default is prevented so the native menu does not also open. Copy link calls
+`navigator.clipboard.writeText` from the menu item's own click or key press (its user activation).
+The shell manifest holds only `storage`; Firefox allows `writeText` during user activation without
+`clipboardWrite`, but that is unverified in a built Bento (manual step 14 checks it).
 
 ### Inline editors
 
@@ -305,10 +364,42 @@ asks first, in a Mux `Dialog`, and is not undoable.
 ## Entry points
 
 - The command palette's "Open Bookmarks" Navigation command (`CommandPalette.tsx`, id
-  `nav:bookmarks`) calls `openBookmarksView()` and is hidden in a private window. There is no
+  `nav:bookmarks`) calls `openBookmarksView()` and is hidden in a private window and while the
+  Bookmarks manager is off. There is no
   sidebar footer button: the footer keeps exactly five buttons
   ([sidebar-native-surfaces.md](sidebar-native-surfaces.md#footer-buttons)). `Cmd/Ctrl+Shift+O` is handled by
   chrome ([overlay-documents.md](overlay-documents.md#bookmarks-view)).
+
+## Turning the manager off
+
+`BentoSettings.bookmarksEnabled` (default `true`) is the opt-out. It is an ordinary
+persisted Bento setting, so `bento-tools` owns it and every mirror is downstream:
+
+1. **Tools.** `SettingsStore` keeps it in the sparse `bento.settings` overrides (stored only
+   while `false`). `_shared/settings-rules.ts` lets the Settings palette write it
+   (`settings/update`, boolean only, from a regular or a private window: the setting is
+   profile-wide), and `_shared/export-schema.ts` accepts it in a stored patch and a backup
+   file. A backup exports it with the other overrides when it is off, an import applies it
+   with the rest of the settings, and Reset Bento turns it back on. When it changes,
+   `background.ts` re-sends `panels/sync` for every shown workspace, like the other
+   chrome-bound settings.
+2. **Shell.** `useSettingsStore` mirrors it. `forwardPanelsToChrome` (`bridge/useToolsPort.ts`)
+   adds `bookmarksEnabled` to the `BENTO_PANELS` payload. The command palette document reads the
+   store and leaves `nav:bookmarks` out while it is `false` (a missing snapshot counts as on).
+   The Settings palette row is the "Bookmarks manager" switch in the Workspaces category
+   (`settingsCatalog.ts`, `categories.ts`, `rows.ts`, description in `settingsCopy.ts`'s
+   `TOGGLE_DESCRIPTIONS`), shown in regular windows only, with a matching entry in the command
+   palette's `settingsIndex.ts`.
+3. **Chrome.** `handlePanelsTitle` hands the value to `applyChromeBookmarksEnabled`
+   ([overlay-documents.md](overlay-documents.md#bookmarks-view)): while it is off
+   `showBookmarksView` refuses every path (title routes, the key, the toggle), an open view
+   closes, and `Cmd/Ctrl+Shift+O` opens Firefox's Library again.
+
+The Bookmarks document does not react: chrome never shows it while the manager is off, and it
+keeps receiving snapshots, so turning the manager on again shows the same spaces, groups and
+links. Nothing is deleted or migrated in either direction, and `bookmarks/*` actions are still
+served (a window that has the view open for the instant before chrome hears about the change
+can still save). A window that has not heard from tools yet assumes the default (on).
 - The size ceiling for the document is the overlay target (200 KB gzip cold start):
   `bookmarks` is in that list in `scripts/check-size-budgets.mjs`.
 
@@ -341,6 +432,25 @@ asks first, in a Mux `Dialog`, and is not undoable.
 12. In a space with no groups, click "Group", type a name and press Enter.
 13. With a prompt or another overlay holding the focus, open the view: the search field does not
     take it.
+14. Settings, Workspaces, Bookmarks manager Off: "Open Bookmarks" is gone from the command palette,
+    `Cmd+Shift+O` opens Firefox's Library, and the sidebar and panels are as before. With the view
+    open and Settings opened over it (command palette, Open Settings), turning it Off closes the
+    view under Settings with its usual fade and leaves Settings open. Turn it On: the command and
+    `Cmd+Shift+O` open the view again, with every space, group and link still there. Repeat in a
+    second window: its view closes and its key changes without a restart. Quit and relaunch with
+    it Off: the setting and the Library key hold.
+15. Right-click a link, a note, a to-do, a column header (and the empty part of a column), a space, an
+    open tab in the drawer, and the board background (between and beside the columns, and in an empty
+    space). Each opens the menu listed under "Context menus" at the pointer, with no Firefox page menu.
+    Copy link puts the address on the clipboard (paste it into the search field); Mark done ticks the
+    to-do; New group opens the "+ Group" field; Delete group asks first.
+16. Right-click the search field and an open inline editor: the native menu (cut, copy, paste,
+    spelling) shows. Right-click the title, the toolbar and the drawer header: nothing shows, and
+    no Firefox page menu either.
+17. Tab to a row's button, a column's "..." button and a space, press Shift+F10 (or the Menu key):
+    the menu opens under it; Esc returns the focus to that element.
+18. Resize below about 1200 px: the Back button shows only its chevron, and a screen reader or the
+    tooltip still calls it "Back to browser"; wide, it reads "Back to browser".
 
 ## Pitfalls
 
@@ -377,3 +487,14 @@ asks first, in a Mux `Dialog`, and is not undoable.
   would take it a frame later; see `useFocusWhenReady` above.
 - The column list clips at its edge (`overflow-x: hidden`), so a trigger flush with the row's end
   has its focus ring cut; the actions are inset by the ring's width and offset.
+- Never `preventDefault` a `contextmenu` event whose target is a text field: the native menu is the
+  only route to paste and spelling there. `routeContextMenu` checks the target itself, not its
+  ancestors, because a row's editor is a text field inside an element that has actions.
+- The context menu's anchor is positioned relative to the view root (`position: absolute`, from the
+  event's client coordinates minus the root's rect), never `fixed`: the root is a size container, which
+  makes it the containing block of fixed descendants, and in a story the view is not at the window's
+  origin.
+- Two module files whose names differ only in case (`ContextMenu.tsx` and `contextMenu.ts`,
+  `MenuEntries.tsx` and `menuEntries.ts`) collide for TypeScript on a case-insensitive disk; the
+  pure modules are `menuEntries.ts` and `contextMenuModel.ts`, the components `EntryList.tsx` and
+  `ContextMenu.tsx`.

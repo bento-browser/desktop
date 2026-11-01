@@ -62,6 +62,54 @@ describe('SettingsStore durable commits', () => {
     }
   });
 
+  it('keeps the Bookmarks manager On by default, persists Off alone, and a reset turns it On', async () => {
+    let storage: Record<string, unknown> = {};
+    vi.stubGlobal('browser', {
+      storage: {
+        local: {
+          get: vi.fn(async () => storage),
+          set: vi.fn(async (payload: Record<string, unknown>) => {
+            storage = { ...storage, ...payload };
+          }),
+        },
+      },
+    });
+    const store = new SettingsStore();
+    await store.init();
+    expect(store.snapshot().bookmarksEnabled).toBe(true);
+    expect(DEFAULT_SETTINGS.bookmarksEnabled).toBe(true);
+
+    const seen: boolean[] = [];
+    store.onChange((settings) => seen.push(settings.bookmarksEnabled));
+    await store.update({ bookmarksEnabled: false });
+    expect(seen).toEqual([false]);
+    expect(storage).toEqual({
+      'bento.settings': { version: 2, overrides: { bookmarksEnabled: false } },
+    });
+
+    const reloaded = new SettingsStore();
+    await reloaded.init();
+    expect(reloaded.snapshot().bookmarksEnabled).toBe(false);
+    expect(reloaded.hasOverride('bookmarksEnabled')).toBe(true);
+
+    await reloaded.update({ bookmarksEnabled: true });
+    expect(storage).toEqual({ 'bento.settings': { version: 2, overrides: {} } });
+    await reloaded.update({ bookmarksEnabled: false });
+    await reloaded.reset();
+    expect(reloaded.snapshot().bookmarksEnabled).toBe(true);
+  });
+
+  it('accepts only booleans for the Bookmarks manager in stored patches and editable requests', () => {
+    for (const value of [true, false]) {
+      expect(isValidBentoSettingsPatch({ bookmarksEnabled: value })).toBe(true);
+      expect(validateSettingsChanges({ bookmarksEnabled: value })).toBe(true);
+    }
+    for (const value of ['false', 0, null, undefined]) {
+      expect(isValidBentoSettingsPatch({ bookmarksEnabled: value })).toBe(false);
+      expect(validateSettingsChanges({ bookmarksEnabled: value })).toBe(false);
+    }
+  });
+
   it('publishes only after storage acknowledges the commit', async () => {
     let finishWrite: (() => void) | undefined;
     const set = vi.fn(

@@ -775,17 +775,29 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
   fires `onActivate` from the click after the release (React Aria `usePress`), so a drag must
   never `stopPropagation` that click: the row's `onActivate` asks `isSuppressed()` instead, which
   stays true from the start of the drag through the release, however the drag ended.
-- **Keyboard menus use the public `Menu` parts.** A row's "More actions" (`ItemMenu`: Open in new
-  tab, Edit, a Move submenu of Move to group, Move up and Move down, and Delete), an open tab's
-  "Save to group" (`TabMenu`) and a column's "Move left" and "Move right" (`EntityMenu`) are
-  `Menu.Root`, `Trigger`, `Popup`, `List`, `Item`, `Separator` and, for submenus (Move, and the
-  group lists in `GroupSubmenu`), `Submenu` (an item and a popup). Their triggers carry
+- **Menus use the public `Menu` parts, drawn from data.** A row's "More actions" (`ItemMenu`: for a
+  link Open in panel, Open in new tab and Copy link, then Edit, for a to-do Mark done, a Move submenu
+  of Move to group, Move up and Move down, and Delete), an open tab's "Save to group" (`TabMenu`), a
+  column's and a space's "..." (`EntityMenu`: Rename, Colour, and for a column Open all, Move left and
+  Move right) are `Menu.Root`, `Trigger`, `Popup`, `List`, `Item`, `Separator` and, for submenus (Move,
+  Colour and the group lists), `Submenu` (an item and a popup). What each offers is a `MenuEntry` list
+  built in `menuEntries.ts` and drawn by `EntryList.tsx`, so the "..." menus and the right-click menu
+  never drift: add an action to the builder, not to a menu. Their triggers carry
   `.bento-bookmarks__more`, are sized as `--bento-control-size-sm` and show with the row's
   actions; a menu that is open keeps its row's actions and text mask through
   `:has([aria-expanded='true'], [data-muxui-state-open])`. An impossible direction is a disabled
   `Menu.Item`. The popups stay modal (`modal={false}` stops them closing on an outside click), so
   an editor a menu item opens takes the focus through `useFocusWhenReady`, not `autoFocus`: the
   closing popup keeps the page inert.
+- **A context menu is a controlled `Menu` at a point.** The Bookmarks view replaces the page's
+  right-click menu with `ContextMenu.tsx`: `Menu.Root` with `open` and `onOpenChange`, no
+  `Menu.Trigger`, and a `Menu.Popup` whose `anchorRef` is an empty, absolutely positioned
+  `.bento-bookmarks__context-anchor` that the view moves to the pointer (the documented recipe for
+  context coordinates). It is modal like the others and keeps drawing its last content while the
+  popup plays its exit. Routing, not the component, decides what opens (`contextMenuModel.ts`): text
+  fields keep the native menu, an element with actions gets its list, anything else gets nothing.
+  Reuse this shape for another context menu in an extension page that fills its window; a popup that
+  must leave the window goes through the chrome `menu` overlay instead.
 - **Colour tokens.** The seven space and group colours are `--bento-bookmark-color-{gray,red,
   orange,yellow,green,blue,purple}` in `bento-tokens.css` (the Mux reference hues at step 60;
   gray is the semantic neutral). Dimensions come from `--bento-bookmarks-*` tokens; the row or

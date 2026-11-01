@@ -31,7 +31,7 @@ export function EmptySpace({
   onDismissImport,
 }: EmptySpaceProps) {
   return (
-    <div className="bento-bookmarks__empty" data-bm-drop-zone="empty">
+    <div className="bento-bookmarks__empty" data-bm-drop-zone="empty" data-bm-board>
       <div className="bento-bookmarks__empty-box">
         <Text variant="label" size="md">
           Drop tabs here

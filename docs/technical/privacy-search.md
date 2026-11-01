@@ -250,6 +250,8 @@ parts, and it is split so each piece is testable without the browser:
   controls for global search and command-index parity. Category stages filter those
   controls by stable category ids. Shortcuts opens its existing reference directly.
   Tab appearance shows in regular and private windows, Backup and Reset keep their private-window gate,
+  the Bookmarks manager switch (Workspaces) is regular-only because the view is never available in a
+  private window ([bookmarks.md](bookmarks.md#turning-the-manager-off)),
   and Privacy and search requires both hydrated models. `categories.ts` shares category
   ancestry between command targets and root-search drilldowns, adding Advanced privacy
   before its enum pages. Its opener map seeds return focus for inserted ancestors and deep
@@ -257,7 +259,9 @@ parts, and it is split so each piece is testable without the browser:
   Category stage keys include their id, remounting the list on moves between categories.
 - Page descriptions and control option lines. Copy lives in `settingsCopy.ts`, typed by the
   catalog's keys (`NUMBER_DESCRIPTIONS`, `ENUM_DESCRIPTIONS`, `ENUM_OPTION_DESCRIPTIONS`,
-  `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text) plus
+  `ADVANCED_DESCRIPTIONS`, whose two choices reuse their page's text, and
+  `TOGGLE_DESCRIPTIONS`, a partial record for the switches whose label does not say what they
+  change: only the Bookmarks manager has one) plus
   `STAGE_DESCRIPTIONS`, `CONFIRM_DESCRIPTIONS`, `SIZE_ACTION_DESCRIPTIONS`,
   `BACKUP_ROW_DESCRIPTIONS` and `CUSTOM_PROTECTION_DESCRIPTION`. It is a module of its own so
   the catalog stays labels, keys and bounds; only `rows.ts` imports it. The protection levels' second
@@ -270,8 +274,9 @@ parts, and it is split so each piece is testable without the browser:
   parts register no description slot with React Aria and the item forwards no
   `aria-describedby`, so `describeOptions` (`SettingsPalette.tsx`, a `MutationObserver` on the
   list) sets each option's `aria-describedby` to its line (and the protection detail) on the
-  rendered element, and `rowAriaLabel` names such a row by its label, note and value only. The root
-  search results drop the advanced rows' lines, and a confirmation's explanation is its page
+  rendered element, and `rowAriaLabel` names such a row by its label, note and value only (a
+  switch row by its state). The root
+  search results drop the lines of the advanced rows and the switch, and a confirmation's explanation is its page
   description (its rows are only Cancel and the action). `rows.test.ts` asserts that every
   stage where a value or option changes has a description and that the listed rows carry
   lines, and `settingsCopy.test.ts` that the copy covers the catalog exactly and has no em

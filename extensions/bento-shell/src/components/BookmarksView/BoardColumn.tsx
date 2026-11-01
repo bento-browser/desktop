@@ -20,17 +20,13 @@ import { EntityMenu } from './EntityMenu';
 import { neighbourMoves } from './focus';
 import { InlineEditor } from './InlineEditor';
 import { ItemRow } from './ItemRow';
+import { groupEntries, type GroupHandlers, type ItemHandlers } from './menuEntries';
 import { parseAddInput } from './model';
-import {
-  isEditing,
-  type BookmarksAction,
-  type EditHandler,
-  type EditTarget,
-  type GroupChoice,
-} from './types';
+import { isEditing, type EditHandler, type EditTarget, type GroupChoice } from './types';
 import type { DragSource } from './useBoardDrag';
 
-export interface BoardColumnProps {
+/** The column's menu handlers (`GroupHandlers`) and the ones it hands to its rows (`ItemHandlers`). */
+export interface BoardColumnProps extends GroupHandlers, ItemHandlers {
   group: BookmarkGroup;
   items: BookmarkItem[];
   editing: EditTarget | null;
@@ -44,15 +40,7 @@ export interface BoardColumnProps {
   moveLeftBefore: string | undefined;
   /** The `beforeId` of "Move right" (null: the end), undefined for the last column. */
   moveRightBefore: string | null | undefined;
-  send: (action: BookmarksAction) => void;
-  onEdit: EditHandler;
   onCreateItem: (groupId: string, item: BookmarkItemInput) => void;
-  onMoveItem: (id: string, groupId: string, beforeId: string | null) => void;
-  onMoveGroup: (id: string, beforeId: string | null) => void;
-  onOpen: (id: string, where: 'panel' | 'tab') => void;
-  onDeleteItem: (item: BookmarkItem) => void;
-  onOpenAll: (items: BookmarkItem[]) => void;
-  onDeleteGroup: (group: BookmarkGroup, itemCount: number) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, source: DragSource) => void;
   isSuppressed: () => boolean;
 }
@@ -69,22 +57,20 @@ function BoardColumnImpl({
   send,
   onEdit,
   onCreateItem,
-  onMoveItem,
+  onMove,
   onMoveGroup,
   onOpen,
-  onDeleteItem,
+  onCopy,
+  onDelete,
   onOpenAll,
   onDeleteGroup,
   onPointerDown,
   isSuppressed,
 }: BoardColumnProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
   // Remounts the entry after an Enter so the next one can be typed straight away.
   const [entryKey, setEntryKey] = useState(0);
   const renaming = isEditing(editing, { kind: 'group', id: group.id });
   const adding = isEditing(editing, { kind: 'add-item', groupId: group.id });
-  const links = items.filter((item) => item.kind === 'link');
-
   const itemIds = items.map((item) => item.id);
 
   return (
@@ -128,24 +114,12 @@ function BoardColumnImpl({
         </Text>
         <EntityMenu
           label={`Actions for ${group.name}`}
-          deleteLabel="Delete group"
-          color={group.color}
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          openAll={{ count: links.length, onOpenAll: () => onOpenAll(links) }}
-          move={{
-            left:
-              moveLeftBefore === undefined
-                ? undefined
-                : () => onMoveGroup(group.id, moveLeftBefore),
-            right:
-              moveRightBefore === undefined
-                ? undefined
-                : () => onMoveGroup(group.id, moveRightBefore),
-          }}
-          onRename={() => onEdit({ kind: 'group', id: group.id })}
-          onColor={(color) => send({ type: 'bookmarks/group/update', id: group.id, color })}
-          onDelete={() => onDeleteGroup(group, items.length)}
+          entries={groupEntries(
+            group,
+            items,
+            { moveLeftBefore, moveRightBefore },
+            { send, onEdit, onMoveGroup, onOpenAll, onDeleteGroup },
+          )}
         />
       </header>
       <div className="bento-bookmarks__list" role="list" data-bm-list>
@@ -163,8 +137,9 @@ function BoardColumnImpl({
               send={send}
               onEdit={onEdit}
               onOpen={onOpen}
-              onDelete={onDeleteItem}
-              onMove={onMoveItem}
+              onCopy={onCopy}
+              onDelete={onDelete}
+              onMove={onMove}
               onPointerDown={onPointerDown}
               isSuppressed={isSuppressed}
             />

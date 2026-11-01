@@ -201,6 +201,14 @@ html[data-bento-document='bookmarks'] #root {
     gap: var(--muxui-semantic-layout-control-content-gap);
   }
 
+  /* The point a right-click menu opens at (ContextMenu.tsx): an empty box placed by the view. */
+  .bento-bookmarks__context-anchor {
+    position: absolute;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
   /* ---- Main: header, boards, results, empty ------------------------------------------- */
 
   .bento-bookmarks__main {

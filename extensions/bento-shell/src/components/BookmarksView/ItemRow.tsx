@@ -15,29 +15,17 @@ import { BentoIcon } from '../primitives';
 import { useFocusWhenReady } from './focusWhenReady';
 import { InlineEditor } from './InlineEditor';
 import { ItemMenu } from './ItemMenu';
+import { itemEntries, type ItemHandlers, type ItemSlots } from './menuEntries';
 import { hostnameOf, normalizeUrl } from './model';
-import type { BookmarksAction, EditHandler, GroupChoice } from './types';
+import type { BookmarksAction, EditHandler } from './types';
 import type { DragSource } from './useBoardDrag';
 
-export interface ItemRowProps {
+/** The handlers and slots of the row's menu (menuEntries.ts), plus the row's own state. */
+export interface ItemRowProps extends ItemHandlers, ItemSlots {
   item: BookmarkItem;
   editing: boolean;
   /** This row is the source of the drag in progress. */
   dragging: boolean;
-  send: (action: BookmarksAction) => void;
-  onEdit: EditHandler;
-  /** Opens the link and leaves the view. */
-  onOpen: (id: string, where: 'panel' | 'tab') => void;
-  /** Deletes the item and offers the undo. */
-  onDelete: (item: BookmarkItem) => void;
-  /** The groups of the current space, for "Move to group". */
-  groups: readonly GroupChoice[];
-  /** The `beforeId` of "Move up" (the item above), undefined for the first row. */
-  moveUpBefore: string | undefined;
-  /** The `beforeId` of "Move down" (null: the end), undefined for the last row. */
-  moveDownBefore: string | null | undefined;
-  /** Moves the item into `groupId` before `beforeId` (the end when null). */
-  onMove: (id: string, groupId: string, beforeId: string | null) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, source: DragSource) => void;
   /** True for the press that just ended a drag. */
   isSuppressed: () => boolean;
@@ -147,38 +135,11 @@ function LinkEditor({
   );
 }
 
-function RowActions({
-  item,
-  onOpen,
-  onEdit,
-  onDelete,
-  groups,
-  moveUpBefore,
-  moveDownBefore,
-  onMove,
-}: Pick<
-  ItemRowProps,
-  | 'item'
-  | 'onOpen'
-  | 'onEdit'
-  | 'onDelete'
-  | 'groups'
-  | 'moveUpBefore'
-  | 'moveDownBefore'
-  | 'onMove'
->) {
+function RowActions(props: ItemRowProps) {
+  const { item, groups, moveUpBefore, moveDownBefore } = props;
   return (
     <div className="bento-bookmarks__row-actions" data-bm-no-drag>
-      <ItemMenu
-        groups={groups}
-        groupId={item.groupId}
-        moveUpBefore={moveUpBefore}
-        moveDownBefore={moveDownBefore}
-        onMove={(groupId, beforeId) => onMove(item.id, groupId, beforeId)}
-        onOpenInTab={item.kind === 'link' ? () => onOpen(item.id, 'tab') : undefined}
-        onEdit={() => onEdit({ kind: 'item', id: item.id })}
-        onDelete={() => onDelete(item)}
-      />
+      <ItemMenu entries={itemEntries(item, { groups, moveUpBefore, moveDownBefore }, props)} />
     </div>
   );
 }

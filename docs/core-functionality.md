@@ -684,10 +684,22 @@ full-window Bookmarks view. It opens from the command palette's "Open Bookmarks"
 command or Cmd/Ctrl+Shift+O, and replaces the
 browser content while the toolbar strip stays in place. Back, Forward, Reload and the
 extension buttons slide up out of the toolbar and fade as the view opens, and slide back when it
-closes; with reduced motion they change at once. It is not available in private
+closes; with reduced motion they change at once. The top-left button reads "Back to browser" and shrinks to an arrow in a narrow
+window. Right-clicking in the view opens Bento's own menu for whatever is under the pointer: a link
+(open in a panel or new tab, copy the link, edit, move, delete), a note or to-do (edit, mark done,
+move, delete), a group column (open all in panels, rename, colour, reorder, delete), a space
+(rename, colour, delete), an open tab in the drawer (save to a group), or the board background (new
+group, save all open tabs). Text fields keep the normal cut, copy and paste menu, and Firefox's page
+menu no longer appears. The Menu key or Shift+F10 opens the same menu for the focused item. It is not available in private
 windows: the command is hidden there and the shortcut opens Firefox's Library instead.
 Esc, the Back button, or the shortcut again returns to the browser, with focus back
 where it was.
+
+The Bookmarks manager can be turned off in Settings (Workspaces, "Bookmarks manager", On by
+default, saved for the whole profile and included in backups). Off hides the "Open Bookmarks"
+command, gives Cmd/Ctrl+Shift+O back to Firefox's Library and closes the view if it is open;
+the bookmarks you saved are kept, and turning it back on brings them back as they were. The
+switch is not shown in private windows, where the view is never available.
 
 The view has three parts:
 
@@ -875,7 +887,8 @@ Bento Settings is a quick-pick palette over the window, not a page. The app menu
 onboarding dialog's Open Settings button open it; the command palette's
 Privacy command opens it on the protection level list, and a matching setting
 in the command palette's results opens it at that setting inside its category. The first
-list contains categories with short descriptions: Appearance, Performance, Workspaces,
+list contains categories with short descriptions: Appearance, Performance, Workspaces
+(the sidebar collapse type and the Bookmarks manager switch),
 Panels, Privacy and search, Backup and data, Keyboard shortcuts, and Reset Bento.
 Each category opens its controls with their current values; Keyboard shortcuts opens its
 reference directly. Search settings finds individual controls, advanced privacy settings
@@ -896,7 +909,9 @@ or a click on the track and follows the pointer exactly while dragged), Page key
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
 
-Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
+The Bookmarks manager switch is the one switch that carries a second, always visible line (it
+names the Cmd/Ctrl+Shift+O shortcut and says that Off keeps the saved bookmarks); search results
+show it on one line. Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
 are independent switches, both On by default and saved for the whole profile. Turning
 tints off removes the status backgrounds; turning custom icons off restores Bento's
 loading indicator, website favicon or empty placeholder. Sleeping-tab styling and

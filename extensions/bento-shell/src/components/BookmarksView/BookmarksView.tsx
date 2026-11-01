@@ -11,7 +11,9 @@
 // Every create carries a client id (actions.ts), and what follows a change (select the new space,
 // scroll to the new row, put the focus back after a keyboard move) waits for that id in a snapshot
 // (followups.ts). Everything a drag does has a menu on the keyboard: Save to group on an open tab,
-// Move in a row's More actions menu, Move left and right on a column.
+// Move in a row's More actions menu, Move left and right on a column. The page's own right-click
+// menu is replaced (contextMenuModel.ts): a row, column, space, open tab or the board gets a Bento menu
+// built from the same entries as those menus (menuEntries.ts), and a text field keeps the native one.
 
 import {
   useCallback,
@@ -20,6 +22,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import { Button, Dialog, SearchField, Text, ToggleButton } from '@muxui/react';
@@ -43,6 +47,13 @@ import {
 } from './actions';
 import { isGroupMoveNoop, isItemMoveNoop } from './drop';
 import { AddGroupColumn, BoardColumn } from './BoardColumn';
+import { ContextMenu } from './ContextMenu';
+import {
+  contextMenuFor,
+  routeContextKey,
+  routeContextMenu,
+  type ContextTarget,
+} from './contextMenuModel';
 import { EmptySpace } from './EmptySpace';
 import {
   editReturnSelector,
@@ -107,6 +118,13 @@ interface ConfirmRequest {
   run: () => void;
 }
 
+/** The open right-click menu: what it is about and where it opened (from the view's top left). */
+interface ContextMenuState {
+  target: ContextTarget;
+  x: number;
+  y: number;
+}
+
 const KIND_LABEL = { link: 'Link', note: 'Note', todo: 'To-do' } as const;
 /** Deleted-item toasts on screen at once; an older one goes when a newer arrives past this. */
 const MAX_TOASTS = 3;
@@ -154,6 +172,7 @@ export default function BookmarksView({
   const [editing, setEditing] = useState<EditTarget | null>(initialEditing ?? null);
   const [drawerOpen, setDrawerOpen] = useState(initialDrawerOpen);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const drawer = useDrawerPresence(drawerOpen);
 
   const board = useMemo(() => (snapshot ? buildBoard(snapshot) : null), [snapshot]);
@@ -264,6 +283,7 @@ export default function BookmarksView({
     setQuery('');
     setEditing(null);
     setConfirm(null);
+    setContextMenu(null);
     if (live.current.focusSearchOnOpen) searchRef.current?.focus();
   }, [openToken, cancelDrag]);
 
@@ -273,6 +293,7 @@ export default function BookmarksView({
     followupsRef.current = [];
     setEditing(null);
     setConfirm(null);
+    setContextMenu(null);
     setToasts([]);
   }, [hideToken, cancelDrag]);
 
@@ -442,6 +463,73 @@ export default function BookmarksView({
     [saveTabs],
   );
 
+  // ---- Context menu ------------------------------------------------------------------------
+
+  // Needs the Clipboard API's user activation, which the menu item's click or key press gives.
+  const copy = useCallback((text: string) => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+  }, []);
+
+  const contextContent =
+    contextMenu && board
+      ? contextMenuFor(contextMenu.target, {
+          board,
+          openTabs,
+          groups,
+          handlers: {
+            send,
+            onEdit: edit,
+            onOpen: open,
+            onCopy: copy,
+            onDelete: deleteItem,
+            onMove: moveItem,
+            onMoveGroup: moveGroup,
+            onOpenAll: openAll,
+            onDeleteGroup: deleteGroup,
+            onDeleteSpace: deleteSpace,
+            onSaveAllTabs: saveAllTabs,
+            onSaveTab: saveTab,
+          },
+        })
+      : null;
+
+  // The element the menu is about is gone (another window deleted it): the menu goes with it.
+  useEffect(() => {
+    if (contextMenu && !contextContent) setContextMenu(null);
+  }, [contextMenu, contextContent]);
+
+  const openContextMenu = (target: ContextTarget, clientX: number, clientY: number) => {
+    const origin = rootRef.current?.getBoundingClientRect();
+    setContextMenu({
+      target,
+      x: clientX - (origin?.left ?? 0),
+      y: clientY - (origin?.top ?? 0),
+    });
+  };
+
+  /** The page's menu never shows here. A text field keeps the native one; an element with actions
+   * gets the Bento menu at the pointer; anything else gets nothing. */
+  const onContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    const route = routeContextMenu(event.target instanceof Element ? event.target : null);
+    if (route.route === 'native') return;
+    event.preventDefault();
+    if (route.route === 'menu' && !drag.active) {
+      openContextMenu(route.target, event.clientX, event.clientY);
+    }
+  };
+
+  /** The Menu key and Shift+F10 open the menu of the focused element, below it. */
+  const onKeyDownCapture = (event: ReactKeyboardEvent<HTMLElement>) => {
+    const focused = event.target instanceof Element ? event.target : null;
+    const route = routeContextKey(event.nativeEvent, focused);
+    if (!focused || !route || route.route === 'native') return;
+    event.preventDefault();
+    if (route.route === 'menu' && !drag.active) {
+      const box = focused.getBoundingClientRect();
+      openContextMenu(route.target, box.left, box.bottom);
+    }
+  };
+
   // ---- Render ------------------------------------------------------------------------------
 
   let main: ReactNode;
@@ -464,7 +552,7 @@ export default function BookmarksView({
     );
   } else {
     main = (
-      <div ref={boardsRef} className="bento-bookmarks__boards">
+      <div ref={boardsRef} className="bento-bookmarks__boards" data-bm-board>
         {board.groups.map(({ group, items }, index) => {
           const { earlier, later } = neighbourMoves(
             board.groups.map((entry) => entry.group.id),
@@ -488,10 +576,11 @@ export default function BookmarksView({
               send={send}
               onEdit={edit}
               onCreateItem={createItem}
-              onMoveItem={moveItem}
+              onMove={moveItem}
               onMoveGroup={moveGroup}
               onOpen={open}
-              onDeleteItem={deleteItem}
+              onCopy={copy}
+              onDelete={deleteItem}
               onOpenAll={openAll}
               onDeleteGroup={deleteGroup}
               onPointerDown={drag.begin}
@@ -516,7 +605,12 @@ export default function BookmarksView({
 
   if (snapshot?.status === 'loadFailed') {
     return (
-      <div ref={rootRef} className="bento-bookmarks">
+      <div
+        ref={rootRef}
+        className="bento-bookmarks"
+        onContextMenu={onContextMenu}
+        onKeyDownCapture={onKeyDownCapture}
+      >
         <LoadFailed
           snapshot={snapshot}
           onRetry={() => send({ type: 'bookmarks/requestSnapshot' })}
@@ -527,7 +621,13 @@ export default function BookmarksView({
   }
 
   return (
-    <div ref={rootRef} className="bento-bookmarks" aria-busy={snapshot ? undefined : true}>
+    <div
+      ref={rootRef}
+      className="bento-bookmarks"
+      aria-busy={snapshot ? undefined : true}
+      onContextMenu={onContextMenu}
+      onKeyDownCapture={onKeyDownCapture}
+    >
       <div className="bento-bookmarks__frame" data-drawer={drawer.mounted ? 'open' : 'closed'}>
         <SpacesList
           spaces={board?.spaces ?? []}
@@ -596,6 +696,14 @@ export default function BookmarksView({
       </div>
       <div ref={drag.lineRef} className="bento-bookmarks__drop-line" hidden aria-hidden="true" />
       <UndoToasts toasts={toasts} onRemove={removeToast} />
+      <ContextMenu
+        request={
+          contextMenu && contextContent
+            ? { x: contextMenu.x, y: contextMenu.y, ...contextContent }
+            : null
+        }
+        onClose={() => setContextMenu(null)}
+      />
       {confirm ? (
         <Dialog
           open

@@ -158,6 +158,8 @@ const FUNCTIONS = [
   'recheckBookmarksViewDialogLater',
   'attachBookmarksViewDialogListener',
   'retargetLibraryKeyToBookmarksView',
+  'restoreLibraryKey',
+  'applyChromeBookmarksEnabled',
   'setAddrbarOverSidebarRow',
   'syncAddrbarOverSidebarRow',
   'handleSidebarAddressReadyTitle',
@@ -226,6 +228,7 @@ const CONSTANTS = [
   'BOOKMARKS_OPEN_PREFIX',
   'BOOKMARKS_CLOSE_PREFIX',
   'BOOKMARKS_VIEW_ATTR',
+  'LIBRARY_KEY_STOCK_ATTR',
   'BOOKMARKS_VIEW_HIGHER_OVERLAYS',
   'OVERLAY_READY_PREFIX',
   'ADDON_ID',
@@ -267,6 +270,8 @@ const EXPORTED = [
   'hideBookmarksView',
   'toggleBookmarksView',
   'retargetLibraryKeyToBookmarksView',
+  'restoreLibraryKey',
+  'applyChromeBookmarksEnabled',
   'attachBookmarksViewDialogListener',
   'attachPaletteCloseListener',
   'showAddrbar',
@@ -587,6 +592,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     let bookmarksLifecycleSeq = 0;
     let bookmarksViewReturnFocus = null;
     let bookmarksViewSelectedBrowser = null;
+    let currentBookmarksEnabled = true;
     let addrbarOpenSeq = 0;
     let pendingAddrbarReveal = null;
     let pendingAddrbarOpenRequest = null;
@@ -2760,6 +2766,188 @@ test('the Library key toggles the Bookmarks view, and the Library stays on its c
 
   // The menus and toolbar buttons keep Browser:ShowAllBookmarks; only the key is retargeted.
   assert.ok(!MOUNT.includes("'Browser:ShowAllBookmarks'"));
+});
+
+// ─── The Bookmarks manager setting ──────────────────────────────────────────
+
+test('with the Bookmarks manager off, no path opens the view: call, toggle, title and key', () => {
+  const world = bookmarksWorld();
+  const key = world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  world.applyChromeBookmarksEnabled(false);
+
+  world.showBookmarksView();
+  world.toggleBookmarksView();
+  world.titleChanged('bento-shell-frame', 'BENTO_OPEN_BOOKMARKS_1');
+  world.titleChanged('bento-palette-frame', 'BENTO_OPEN_BOOKMARKS_2');
+  key.dispatch('command');
+  world.advance(1000);
+
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.bookmarksShows(), []);
+  assert.equal(world.host('bookmarks').style.opacity, '0');
+  assert.deepEqual(world.focusLog(), []);
+});
+
+test('a refused open leaves the palettes as they are', () => {
+  const world = bookmarksWorld();
+  world.ready('palette');
+  world.applyChromeBookmarksEnabled(false);
+  world.showPalette();
+  world.showBookmarksView();
+  world.advance(1000);
+  assert.equal(world.isShown('palette'), true, 'the command palette is not dismissed');
+  assert.equal(world.isShown('bookmarks'), false);
+});
+
+test('turning the Bookmarks manager off puts Firefox\'s command back on the Library key, exactly', () => {
+  const world = bookmarksWorld();
+  const key = world.addLibraryKey();
+  const stock = key.getAttribute('command');
+  assert.ok(stock, 'the key starts with its stock command');
+  world.retargetLibraryKeyToBookmarksView();
+  assert.equal(key.hasAttribute('command'), false);
+  assert.equal(key.listenerCount(), 1);
+
+  world.applyChromeBookmarksEnabled(false);
+  assert.equal(key.getAttribute('command'), stock, 'the stock command, not a copy of its name');
+  assert.equal(key.listenerCount(), 0, 'the key no longer toggles the view');
+  assert.equal(key.hasAttribute('data-bento-library-command'), false, 'no trace is left');
+  key.dispatch('command');
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  assert.equal(world.isShown('bookmarks'), false);
+
+  // The same state again changes nothing.
+  world.applyChromeBookmarksEnabled(false);
+  assert.equal(key.getAttribute('command'), stock);
+});
+
+test('turning the Bookmarks manager back on retargets the key once and the view opens again', () => {
+  const world = bookmarksWorld();
+  const key = world.addLibraryKey();
+  const stock = key.getAttribute('command');
+  world.retargetLibraryKeyToBookmarksView();
+  world.applyChromeBookmarksEnabled(false);
+
+  world.applyChromeBookmarksEnabled(true);
+  world.applyChromeBookmarksEnabled(true);
+  assert.equal(key.hasAttribute('command'), false, 'the key raises command on itself again');
+  assert.equal(key.listenerCount(), 1, 'one listener, however often it is turned on');
+
+  key.dispatch('command');
+  assert.equal(world.isShown('bookmarks'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+  world.titleChanged('bento-bookmarks-frame', 'BENTO_CLOSE_BOOKMARKS_1');
+  world.advance(1000);
+
+  // A second off-on round trip restores the very same stock command.
+  world.applyChromeBookmarksEnabled(false);
+  assert.equal(key.getAttribute('command'), stock);
+  world.titleChanged('bento-shell-frame', 'BENTO_OPEN_BOOKMARKS_3');
+  assert.equal(world.isShown('bookmarks'), false);
+  world.applyChromeBookmarksEnabled(true);
+  world.titleChanged('bento-shell-frame', 'BENTO_OPEN_BOOKMARKS_4');
+  assert.equal(hasBookmarksAttr(world), true);
+});
+
+test('a key that is found only after the manager was turned off stays Firefox\'s', () => {
+  const world = makeWorld();
+  world.applyChromeBookmarksEnabled(false);
+  const key = world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  assert.equal(key.getAttribute('command'), 'Browser:ShowAllBookmarks');
+  assert.equal(key.listenerCount(), 0);
+  assert.equal(key.hasAttribute('data-bento-library-command'), false);
+
+  world.applyChromeBookmarksEnabled(true);
+  assert.equal(key.hasAttribute('command'), false, 'turning it on retargets the key that is there');
+  assert.equal(key.listenerCount(), 1);
+});
+
+test('turning the Bookmarks manager off closes an open view like any close, and stays off', () => {
+  const world = bookmarksWorld();
+  world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.setNativeFocus(sidebar);
+  world.showBookmarksView();
+  world.advance(1);
+  world.setNativeFocus(world.frame('bookmarks'));
+  assert.equal(hasBookmarksAttr(world), true);
+
+  world.applyChromeBookmarksEnabled(false);
+  assert.equal(hasBookmarksAttr(world), false, 'the chrome comes back under the fade-out');
+  assert.equal(world.bookmarksHides().length, 1, 'the document drops an open editor or search');
+  assert.equal(sidebar.focusCount, 1, 'the focus returns to where it was');
+  assert.equal(world.host('bookmarks').style.opacity, '0');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), false);
+
+  world.showBookmarksView();
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+});
+
+test('turning the Bookmarks manager off cancels an open that still waits for its document', () => {
+  const world = makeWorld();
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), true);
+
+  world.applyChromeBookmarksEnabled(false);
+  assert.equal(world.overlays.hasPendingOpen('bookmarks'), false);
+  world.ready('bookmarks');
+  world.advance(1000);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.deepEqual(world.bookmarksShows(), []);
+});
+
+test('turning the manager off while Settings is open over the view closes the view and leaves Settings alone', () => {
+  const world = bookmarksWorld();
+  world.ready('settings-palette');
+  world.showBookmarksView();
+  world.advance(1);
+  world.showSettingsPalette();
+  world.advance(1000);
+  world.setNativeFocus(world.frame('settings-palette'));
+  const page = world.selectedBrowser;
+  assert.equal(world.isShown('settings-palette'), true);
+  assert.equal(hasBookmarksAttr(world), true);
+
+  world.applyChromeBookmarksEnabled(false);
+  world.advance(1000);
+  assert.equal(hasBookmarksAttr(world), false);
+  assert.equal(world.isShown('bookmarks'), false);
+  assert.equal(world.isShown('settings-palette'), true, 'Settings stays open');
+  assert.equal(page.focusCount, 0, 'the focus is not moved from the overlay above the view');
+});
+
+test('turning the Bookmarks manager off while the view is already closed does nothing else', () => {
+  const world = bookmarksWorld();
+  world.applyChromeBookmarksEnabled(false);
+  assert.deepEqual(world.bookmarksHides(), [], 'no hide is sent to a view that was not shown');
+  assert.deepEqual(world.focusLog(), []);
+});
+
+test('a private window keeps the stock Library key whatever the setting says', () => {
+  const world = makeWorld({ privateWindow: true });
+  const key = world.addLibraryKey();
+  world.retargetLibraryKeyToBookmarksView();
+  world.applyChromeBookmarksEnabled(false);
+  world.applyChromeBookmarksEnabled(true);
+  assert.equal(key.getAttribute('command'), 'Browser:ShowAllBookmarks');
+  assert.equal(key.listenerCount(), 0);
+  world.showBookmarksView();
+  assert.equal(world.overlays.hasStarted('bookmarks'), false);
+});
+
+test('chrome reads the setting from the BENTO_PANELS payload, next to the other chrome-bound settings', () => {
+  assert.match(
+    MOUNT,
+    /if \(typeof decoded\.bookmarksEnabled === 'boolean'\) \{\s*applyChromeBookmarksEnabled\(decoded\.bookmarksEnabled\);\s*\}/,
+  );
 });
 
 test('a window without the Library key leaves Cmd+Shift+O alone and does not throw', () => {

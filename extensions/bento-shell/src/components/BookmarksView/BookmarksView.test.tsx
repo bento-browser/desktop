@@ -116,3 +116,33 @@ describe('keyboard alternatives to dragging', () => {
     expect(markup).not.toContain('data-bm-actions');
   });
 });
+
+describe('the Back button', () => {
+  const markup = render();
+
+  it('reads "Back to browser" and keeps that name when the stylesheet folds it to the arrow', () => {
+    expect(markup).toContain('<span class="bento-bookmarks__back-label">Back to browser</span>');
+    expect(markup).toContain('aria-label="Back to browser"');
+    expect(markup).not.toContain('>Browser<');
+  });
+});
+
+describe('the right-click menu', () => {
+  it('has marks to route on for rows, columns, spaces, open tabs and the board', () => {
+    const markup = render({ initialDrawerOpen: true });
+    for (const mark of [
+      'data-bm-item-id',
+      'data-bm-group-id',
+      'data-bm-space-id',
+      'data-bm-tab-id',
+      'data-bm-board',
+    ]) {
+      expect(markup).toContain(mark);
+    }
+    expect(render({ snapshot: EMPTY_SPACE_SNAPSHOT })).toContain('data-bm-board');
+  });
+
+  it('renders no menu until one is opened', () => {
+    expect(render()).not.toContain('muxui-menu__popup');
+  });
+});

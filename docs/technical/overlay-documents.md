@@ -207,8 +207,8 @@ bar, confirm and the tooltip (99994 and up) open above it and never close it.
 here; the document's data is `bento-tools`' bookmarks store, which chrome never reads.
 
 - **Opening.** `BENTO_OPEN_BOOKMARKS_<ts>` from the sidebar shell frame and the command
-  palette frame, or `Cmd/Ctrl+Shift+O`. `showBookmarksView` refuses in a private window,
-  records the focused element and selected tab (unless the view is already open, which the
+  palette frame, or `Cmd/Ctrl+Shift+O`. `showBookmarksView` refuses in a private window and
+  while the Bookmarks manager is off in Settings (below), records the focused element and selected tab (unless the view is already open, which the
   root attribute or a waiting open says; the host stays visible through the fade-out),
   dismisses the command palette, merge palette, workspace palette and Settings, and goes
   through `openOverlay` like every other overlay.
@@ -295,11 +295,29 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   still waits for its document or with the focus elsewhere in the window. The view is last in
   the Esc stack, so every overlay above it takes Esc first.
 - **Cmd/Ctrl+Shift+O.** `retargetLibraryKeyToBookmarksView` removes the `command` attribute
-  from Firefox's `manBookmarkKb` key (Show All Bookmarks, the Library) and listens for the
+  from Firefox's `manBookmarkKb` key (Show All Bookmarks, the Library), keeps its value on the
+  key in `data-bento-library-command` (`LIBRARY_KEY_STOCK_ATTR`), and listens for the
   `command` event the key then raises on itself, as the `mainKeyset` keys without a command
   do. The key's letter follows the locale. The menu items and toolbar buttons keep
   `Browser:ShowAllBookmarks`, so the Library stays reachable; they still show the key's
   accelerator text. A private window keeps the stock key.
+- **Bookmarks manager off.** `BentoSettings.bookmarksEnabled` arrives on every `BENTO_PANELS`
+  payload and `handlePanelsTitle` passes it to `applyChromeBookmarksEnabled`, which acts only
+  on a change of `currentBookmarksEnabled` (default `true`, so a window that has not heard from
+  tools yet behaves as before). Off: a view that is open or waiting for its document closes
+  through the usual `hideBookmarksView()` (fade, the document's hide, the focus returned unless
+  an overlay above the view, such as the Settings palette the switch was flipped in, is on
+  screen), and `restoreLibraryKey` removes the listener and the stock attribute and sets the
+  `command` attribute back to its saved value, so the key is the stock Library key (the mount
+  never names Firefox's command; a test keeps it that way). While it is off
+  `showBookmarksView` returns first thing, before it dismisses a palette or records a focus, so
+  the title routes, the key and `toggleBookmarksView` all refuse; hiding stays possible. On:
+  `retargetLibraryKeyToBookmarksView` points the key at the view again (idempotent: one
+  listener however often it is called). A window that finds its key only after the setting was
+  off (`retargetLibraryKeyToBookmarksView` waits for `DOMContentLoaded`) leaves it stock. A
+  private window never retargets or restores. The command palette hides "Open Bookmarks" for
+  the same setting from its own store, and tools keeps serving the bookmarks, so nothing the
+  user saved is lost or hidden from the data layer.
 - **Chrome under the view.** The `:root[bento-bookmarks-view]` block in
   `bento-shell-mount.css` (next to the `inDOMFullscreen` rules) hides the shell host,
   splitters, divider, strip container, side-panel host, tabbox, trailer, strip scrollbar, flat
