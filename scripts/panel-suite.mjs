@@ -372,12 +372,10 @@ function near(actual, expected) {
 
 /**
  * Judges collected facts against `expect.order`, the labels in render order
- * (the main slot first). `failures` empty means the state holds; `warnings` are
- * known deviations that do not fail the run.
+ * (the main slot first). Returns the failures; empty means the state holds.
  */
 export function checkState(facts, expect) {
   const failures = [];
-  const warnings = [];
   const fail = (message) => failures.push(message);
   const labelOf = (tab) => labelOfUrl(tab.url) ?? `<${tab.url.slice(0, 60)}>`;
   const split = expect.order.length > 1;
@@ -390,7 +388,7 @@ export function checkState(facts, expect) {
     if (matches.length !== 1)
       fail(`${expect.order[index]}: expected one tab with its page, found ${matches.length}`);
   });
-  if (failures.length) return { failures, warnings };
+  if (failures.length) return failures;
   const rendered = expectedTabs.map((matches) => matches[0]);
   const renderedIds = rendered.map((tab) => tab.linkedPanel);
 
@@ -437,25 +435,15 @@ export function checkState(facts, expect) {
   } else {
     if (hasAnySplitClass)
       fail(`tabpanels keeps split classes at main only (${tabpanels.classes.join(' ')})`);
-    // Closing the last panel leaves the closed panel's id behind: the teardown only removes ids of
-    // tabs that still exist, and Firefox keeps tabpanels [splitview] set while the list is not
-    // empty. A dead id is a warning (with the attribute named in it); a live panel still listed,
-    // or the attribute set with no id at all, is a failure.
-    const [live, dead] = [true, false].map((alive) =>
-      tabpanels.splitViewPanels.filter(
-        (id) => facts.panels.some((panel) => panel.id === id) === alive,
-      ),
-    );
-    if (live.length) fail(`tabpanels.splitViewPanels not cleared: [${live.join(', ')}]`);
-    if (dead.length)
-      warnings.push(
-        `tabpanels.splitViewPanels still lists removed panel(s) [${dead.join(', ')}] at main only` +
-          (tabpanels.splitviewAttr
-            ? ', and Firefox tabpanels [splitview] is still set because of it'
-            : ''),
+    // The main-only teardown must also drop the id of a panel that already closed, or
+    // Firefox keeps tabpanels [splitview] set (see "Panel suite" in chrome-panel-rendering.md).
+    if (tabpanels.splitViewPanels.length) {
+      const ids = tabpanels.splitViewPanels.map((id) =>
+        facts.panels.some((panel) => panel.id === id) ? id : `${id} (no element: a closed panel)`,
       );
-    else if (tabpanels.splitviewAttr && !live.length)
-      fail('tabpanels [splitview] attribute is still set at main only, with no panel id listed');
+      fail(`tabpanels.splitViewPanels not cleared at main only: [${ids.join(', ')}]`);
+    }
+    if (tabpanels.splitviewAttr) fail('tabpanels [splitview] attribute is still set at main only');
     if (facts.activeSplitView)
       fail(`gBrowser.activeSplitView not cleared: [${facts.activeSplitView.join(', ')}]`);
     if (tabpanels.trailer) fail('add-panel trailer still present at main only');
@@ -560,7 +548,7 @@ export function checkState(facts, expect) {
       fail(`closed panel ${entry.id} is still in the DOM with .${entry.classes.join(' .')}`);
     }
   }
-  return { failures, warnings };
+  return failures;
 }
 
 // ---------------------------------------------------------------------------
@@ -828,15 +816,15 @@ class Suite {
 
   /** Waits until a state holds twice in a row with unchanged geometry (panel enter motion is over). */
   async settle(state, expect) {
-    let last = { failures: ['not collected'], warnings: [] };
+    let failures = ['not collected'];
     let previous = null;
     const facts = await this.waitFor(
       `state "${state}" to satisfy its invariants`,
       async () => {
         const collected = await this.collect(state);
         this.lastFacts = collected;
-        last = checkState(collected, expect);
-        if (last.failures.length) {
+        failures = checkState(collected, expect);
+        if (failures.length) {
           previous = null;
           return undefined;
         }
@@ -850,10 +838,9 @@ class Suite {
         }
         return collected;
       },
-      { timeoutMs: 15_000, note: () => last.failures.join('; ') },
+      { timeoutMs: 15_000, note: () => failures.join('; ') },
     );
     this.step(`state "${state}": ok (${expect.order.join(', ')})`);
-    for (const warning of last.warnings) this.step(`warning: ${warning}`);
     return facts;
   }
 

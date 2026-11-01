@@ -13456,6 +13456,20 @@
     }
   }
 
+  // Takes every panel out of Firefox's split view for a main-only teardown. removeTabsFromSplitview
+  // strips the classes and listeners of panels whose tabs still exist, but it splices out only the
+  // ids it is given: the id of a tab that already closed would stay in splitViewPanels and keep
+  // tabpanels [splitview] set. Assigning an empty list drops those and sets the view inactive.
+  function clearSplitViewPanels(gBrowser, tabpanels) {
+    const liveTabs = (tabpanels.splitViewPanels || [])
+      .map((id) => gBrowser?.tabs?.find((t) => t.linkedPanel === id))
+      .filter((t) => !!t);
+    if (liveTabs.length && typeof tabpanels.removeTabsFromSplitview === 'function') {
+      tabpanels.removeTabsFromSplitview(liveTabs);
+    }
+    if (tabpanels.splitViewPanels?.length || !liveTabs.length) tabpanels.splitViewPanels = [];
+  }
+
   function forceMainOnlyChromeState(gBrowser, tabpanels) {
     cancelWorkspaceFadeForMainOnly();
     __bentoPendingCloseGapFlip = null;
@@ -13466,15 +13480,7 @@
 
     if (tabpanels) {
       try {
-        const previous = tabpanels.splitViewPanels || [];
-        const previousTabs = previous
-          .map((id) => gBrowser?.tabs?.find((t) => t.linkedPanel === id))
-          .filter((t) => !!t);
-        if (previousTabs.length && typeof tabpanels.removeTabsFromSplitview === 'function') {
-          tabpanels.removeTabsFromSplitview(previousTabs);
-        } else {
-          tabpanels.splitViewPanels = [];
-        }
+        clearSplitViewPanels(gBrowser, tabpanels);
       } catch (err) {
         console.warn('[bento-shell-mount] force main-only teardown failed:', err);
         try {
@@ -14834,24 +14840,13 @@
       clearFlatPanelLayout(tabpanels);
       syncInterPanelSplitters([]);
 
-      // Use Firefox's removeTabsFromSplitview to strip .split-view-
-      // panel + [column] from each previous panel container in one
-      // go. Then clear the deck's split state.
-      const previousTabs = previous
-        .map((id) => gBrowser.tabs.find((t) => t.linkedPanel === id))
-        .filter((t) => !!t);
-      if (previousTabs.length) {
-        try {
-          tabpanels.removeTabsFromSplitview(previousTabs);
-        } catch (err) {
-          console.warn('[bento-shell-mount] tear-down: removeTabsFromSplitview failed:', err);
-        }
-      } else {
-        try {
-          tabpanels.splitViewPanels = [];
-        } catch (err) {
-          console.warn('[bento-shell-mount] tear-down: clear splitViewPanels failed:', err);
-        }
+      // Strip .split-view-panel + [column] from each previous panel
+      // container and clear the deck's split state, including ids of
+      // panels whose tabs already closed.
+      try {
+        clearSplitViewPanels(gBrowser, tabpanels);
+      } catch (err) {
+        console.warn('[bento-shell-mount] tear-down: clearing split view panels failed:', err);
       }
 
       // Strip the Bento class from tabpanels so our overrides

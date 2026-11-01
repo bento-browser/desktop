@@ -137,19 +137,9 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
     no page-level-only fallback). The page-level snapshot renders the document wherever it is and cannot see a
     browser the compositor does not draw (a panel with `visibility: hidden` passes
     it); only the window-level sample does.
-  - Closing the last panel leaves the closed panel's id in `tabpanels.splitViewPanels`
-    (observed on 158.0: `[panel-3-3]` after both panels closed). Both main-only
-    teardown paths resolve the ids to tabs through `gBrowser.tabs`, so the id of a
-    tab that is already gone is never removed, and Firefox's `removeTabsFromSplitview`
-    drops only the ids it is given. A dead id has no element and the next panel
-    reconcile sanitises it, so the suite reports it as a warning; a live panel still
-    listed at main only fails. Because `removeTabsFromSplitview` then calls
-    `setSplitViewActive(true)` for the non-empty list, Firefox's `[splitview]`
-    attribute on `tabpanels` also stays set at main only (observed true at "back to
-    main only", true at "first panel closed" where two panels are rendered, false
-    at the first "main only"; assigning `splitViewPanels = []` cleared it). The
-    warning names the attribute; the attribute set with no id listed fails.
-    Tighten the check when the mount drops dead ids.
+  - At main only the suite fails on any id left in `tabpanels.splitViewPanels` (a
+    closed panel's id included) and on Firefox's `[splitview]` attribute still set on
+    `tabpanels`; the cause and fix are under "Chrome rendering pitfalls" below.
   - The suite does not check `docShellIsActive` or `renderLayers` on a tab that is not
     rendered, such as the main tab left behind by a switch.
 - Testing a worktree's chrome against a built app without touching the primary dev
@@ -651,6 +641,17 @@ contextTab` (or the multi-selection), and the new window adopts its first tab
 - Keep cleanup broad when tearing down to main-only mode. Stale split-view
   classes, inline sizing, and data attributes can make the next main tab render
   at fractional width.
+- Main-only teardown must empty `tabpanels.splitViewPanels` itself, not only call
+  `removeTabsFromSplitview`. Firefox's `removeTabsFromSplitview` splices out only the
+  ids it is given, and both teardown paths (the reconcile tear-down and
+  `forceMainOnlyChromeState`) give it the tabs they still find in `gBrowser.tabs`,
+  so the id of a panel whose tab had already closed stayed in the list and
+  `setSplitViewActive(true)` kept `tabpanels`' `[splitview]` attribute set at main
+  only (found by the panel suite on 158.0: `[panel-3-3]` after both panels closed;
+  the attribute went false once the list was assigned `[]`). `clearSplitViewPanels`
+  calls `removeTabsFromSplitview` for the live tabs, which strips their classes and
+  listeners, then assigns `splitViewPanels = []` when any id remains. Keep that
+  second step if the teardown is refactored.
 - The main-only "already torn down" fast path must first scan for stale Bento
   artifacts: `bento-flat-panel-layout`, the flat layout extent, overlay
   splitters/choosers, Bento data attributes, split-view classes, `column`, panel
