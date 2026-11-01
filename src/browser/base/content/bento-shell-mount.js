@@ -265,10 +265,10 @@
   // Runtime half of the firefox-compat check; scripts/firefox-compat-registry.mjs
   // holds the use, sites and locators, and a test keeps this list equal to its
   // runtime entries. After delayed startup each window probes the list once and
-  // logs '[bento-compat] missing <id>'. The probe is passive: it reads
-  // descriptors, never calls an accessor. A member anywhere on the prototype
-  // chain is present; a lazy-accessor owner is deferred, and a module is imported
-  // only if Cu.isESModuleLoaded. Patch sites call bentoCompatNoteNative;
+  // logs '[bento-compat] missing <id>'. The probe is passive: it reads descriptors
+  // and never calls an accessor. A member on the prototype chain is present; a
+  // lazy-accessor owner is deferred, and a module is imported only if
+  // Cu.isESModuleLoaded. Patch sites call bentoCompatNoteNative;
   // window.BentoFirefoxCompat.check() re-runs the probe.
   const BENTO_COMPAT_PROBES = {
     // owner: members. 'name()' is a method (a function when a data property);
@@ -289,19 +289,14 @@
       'gBrowser.tabpanels': ['splitViewPanels', 'removeTabsFromSplitview()', 'handleEvent()'],
       PopupNotifications: ['_isActiveBrowser()'],
       PanelUI: ['ensureReady()', 'panel', 'show()', 'hide()', '_ensureShortcutsShown()'],
-      PanelMultiView: ['openPopup()', 'hidePopup()'],
-      DownloadsButton: ['getAnchor()', 'releaseAnchor()'],
+      PanelMultiView: ['openPopup()', 'hidePopup()'], DownloadsButton: ['getAnchor()', 'releaseAnchor()'],
       DownloadsPanel: ['initialize()', 'panel', 'isPanelShowing', 'showPanel()', '_focusPanel()'],
-      DownloadsView: ['loading', '_visibleViewItems'],
-      PrivateDownloadsSubview: ['openWhenReady()'],
+      DownloadsView: ['loading', '_visibleViewItems'], PrivateDownloadsSubview: ['openWhenReady()'],
       gIdentityHandler: ['_initializePopup()', '_identityPopup', 'refreshIdentityPopup()'],
-      gDialogBox: ['isOpen'],
-      'FrameLoader.prototype': ['requestTabStateFlush()'],
+      gDialogBox: ['isOpen'], 'FrameLoader.prototype': ['requestTabStateFlush()'],
       gURLBar: ['view', 'untrimmedValue', 'value'],
-      'gURLBar.view': ['close()'],
-      '': ['OpenBrowserWindow()'],
-      'Element.prototype': ['moveBefore()'],
-      PlacesUIUtils: ['lastContextMenuTriggerNode'],
+      'gURLBar.view': ['close()'], '': ['OpenBrowserWindow()'], 'Element.prototype': ['moveBefore()'],
+      PlacesUIUtils: ['lastContextMenuTriggerNode'], PlacesCommandHook: ['bookmarkPage()'],
     },
     // ids Bento shadows on the instance: looked up on the prototype
     proto: ['MozTabbrowserTab.splitview', 'gBrowser.tabpanels.splitViewPanels'],
@@ -1468,6 +1463,10 @@
   // Set on the chrome root while the Bookmarks view is shown. bento-shell-mount.css hides the Bento
   // chrome under it (see showBookmarksView).
   const BOOKMARKS_VIEW_ATTR = 'bento-bookmarks-view';
+  // Set on the chrome root, in a regular window, once the first BENTO_PANELS payload says the
+  // Bookmarks manager is on: bento-shell-mount.css then swaps Firefox's bookmarks toolbar items
+  // for the Bento toolbar document (see applyBookmarksToolbar).
+  const BOOKMARKS_TOOLBAR_ATTR = 'bento-bookmarks-toolbar';
   // On the Library key while it is retargeted to the view: its stock command, to put back.
   const LIBRARY_KEY_STOCK_ATTR = 'data-bento-library-command';
 
@@ -1475,13 +1474,16 @@
   // (overlays.startEager()), `prewarm` rows at idle after the veil lifts, the rest
   // on first use. `created` rows have a host from ensureOverlayHost and get their
   // <browser> from createOverlayFrame; the rest are the <browser> elements the
-  // browser-box patch declares, navigated later.
+  // browser-box patch declares, navigated later. `canCreate` (created rows) is asked each time
+  // the frame would be created: false leaves the overlay absent, so a window that can never
+  // show it (a private window for the bookmark popup) does not load its document.
   function overlayEntry({
     id,
     navigate,
     eager = false,
     prewarm = false,
     created = false,
+    canCreate = () => true,
     remote = true,
     handshake,
     onReady,
@@ -1510,7 +1512,7 @@
       },
       frame: () => document.getElementById(frameId),
       create: created
-        ? () => createOverlayFrame('bento-' + id + '-host', frameId, remote)
+        ? () => (canCreate() ? createOverlayFrame('bento-' + id + '-host', frameId, remote) : null)
         : undefined,
     };
   }
@@ -1520,6 +1522,13 @@
       overlayEntry({ id: 'addrbar', prewarm: true, created: true, navigate: setBentoAddrbarSrc }),
       overlayEntry({ id: 'palette', prewarm: true, navigate: setBentoPaletteSrc }),
       overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
+      overlayEntry({
+        id: 'bookmarks-popup',
+        prewarm: true,
+        created: true,
+        canCreate: isBentoBookmarksActive,
+        navigate: setBentoBookmarksPopupSrc,
+      }),
       overlayEntry({ id: 'confirm', eager: true, navigate: setBentoConfirmSrc }),
       overlayEntry({
         id: 'edit-workspace',
@@ -1846,6 +1855,16 @@
 
   function setBentoBookmarksSrc() {
     setFrameSrc('bento-bookmarks-frame', '/dist/bookmarks.html');
+  }
+
+  function setBentoBookmarksPopupSrc() {
+    setFrameSrc('bento-bookmarks-popup-frame', '/dist/bookmarks-popup.html');
+  }
+
+  // The bookmarks toolbar frame sits in the toolbar, not in an overlay host, like the panel
+  // trailer's (createBookmarksToolbarHost).
+  function setBentoBookmarksToolbarSrc() {
+    setFrameSrc('bento-bookmarks-toolbar-frame', '/dist/bookmarks-toolbar.html');
   }
 
   function setBentoAddrbarSrc() {
@@ -2189,6 +2208,20 @@
     inlineFade: false,
   });
 
+  // The bookmark popup (Save/edit popover, group and space menus of the Bookmarks toolbar). The
+  // host is transparent and covers the whole window, toolbar strip included (a child of the
+  // chrome root like the tooltip's), so a click anywhere outside the popup lands in its
+  // document, which closes itself. It paints nothing of its own and hides nothing, in particular
+  // never #navigator-toolbox, #nav-bar or the window button box (the traffic lights). It stacks
+  // above the Bookmarks view and below every other overlay (the lowest of them is the address
+  // bar's, 99994), and appears and goes at once like the menu: the document animates the popover.
+  ensureOverlayHost({
+    hostId: 'bento-bookmarks-popup-host',
+    zIndex: 99993,
+    parentId: null,
+    inlineFade: false,
+  });
+
   ensureOverlayHost({
     hostId: 'bento-edit-workspace-host',
     zIndex: 99997,
@@ -2331,6 +2364,12 @@
   function openOverlay(id, reveal) {
     // The newest open wins: a Cmd+L still waiting for the sidebar row loses to this one.
     cancelAddrbarOpenRequest();
+    // The bookmark popup is a transient popover: any other overlay opening closes it, and a
+    // Cmd+D still waiting for the sidebar star loses to the overlay (showAddrbar does the same).
+    if (id !== 'bookmarks-popup') {
+      cancelBookmarkPopupRequest();
+      hideBookmarkPopup();
+    }
     if (!overlays.open(id, 'show', reveal)) {
       console.warn('[bento-shell-mount] overlay frame unavailable:', id);
     }
@@ -2581,7 +2620,8 @@
 
   // The overlays whose hosts stack above the view: all of them but the view and the tooltip, whose
   // host stays laid out and never takes the focus. scripts/overlay-surfaces.test.mjs keeps this
-  // equal to the overlay table.
+  // equal to the overlay table. The bookmark popup is one of them (99993) although it never
+  // shares the screen with the view: it refuses to open over it and the view closes it.
   const BOOKMARKS_VIEW_HIGHER_OVERLAYS = [
     'palette',
     'merge-palette',
@@ -2593,16 +2633,20 @@
     'edit-workspace',
     'workspace-switcher',
     'menu',
+    'bookmarks-popup',
     'embedded-import',
   ];
 
   // Whether an overlay above the view is on screen (a host fading out does not count). It has the
   // focus, or takes it as it reveals, so the view neither takes the focus from it nor gives the
-  // focus to the page under it.
-  function isOverlayAboveBookmarksViewShown() {
+  // focus to the page under it. `except` leaves one overlay out: the bookmark popup asks about the
+  // ones above itself.
+  function isOverlayAboveBookmarksViewShown(except = null) {
     return BOOKMARKS_VIEW_HIGHER_OVERLAYS.some((id) => {
       const host = document.getElementById('bento-' + id + '-host');
-      return !!host && host.style.display !== 'none' && host.style.opacity !== '0';
+      return (
+        id !== except && !!host && host.style.display !== 'none' && host.style.opacity !== '0'
+      );
     });
   }
 
@@ -2640,15 +2684,11 @@
     // A request while the view is already open (the command palette over it) shows it again but
     // keeps what the first request recorded.
     if (!isBookmarksViewOpen()) {
-      const active = document.activeElement;
-      const returnable =
-        !!active &&
-        active !== document.body &&
-        active !== document.documentElement &&
-        overlays.idForFrame(active.id) === null;
-      bookmarksViewReturnFocus = returnable ? active : null;
+      bookmarksViewReturnFocus = focusReturnTarget();
       bookmarksViewSelectedBrowser = window.gBrowser?.selectedBrowser ?? null;
     }
+    // The popup is a popover of the page; the view replaces the page.
+    hideBookmarkPopup();
     dismissPalette();
     dismissMergePalette();
     dismissWorkspacePalette();
@@ -2718,13 +2758,33 @@
     const opened = bookmarksViewSelectedBrowser;
     bookmarksViewReturnFocus = null;
     bookmarksViewSelectedBrowser = null;
-    if (!restore || isOverlayAboveBookmarksViewShown()) return;
+    if (restore) returnFocusAfterOverlay(target, opened, isOverlayAboveBookmarksViewShown());
+  }
+
+  // What an overlay that opens should give the focus back to when it closes: the element that has
+  // it now, unless that is nothing in particular or the frame of another overlay (the command
+  // palette that opened the overlay is closed by it).
+  function focusReturnTarget() {
+    const active = document.activeElement;
+    const returnable =
+      !!active &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      overlays.idForFrame(active.id) === null;
+    return returnable ? active : null;
+  }
+
+  // The focus goes back to `target` if the tab selected is still the one selected when the
+  // overlay opened (`opened`), else to the selected tab (a tab opened from the overlay is what the
+  // user came for). An overlay above that is on screen (`covered`) keeps the focus instead.
+  function returnFocusAfterOverlay(target, opened, covered) {
+    if (covered) return;
     try {
       const selected = window.gBrowser?.selectedBrowser;
       if (target?.isConnected && selected === opened) target.focus({ preventScroll: true });
       else selected?.focus({ preventScroll: true });
     } catch (err) {
-      console.warn('[bento-shell-mount] bookmarks view focus restore failed:', err);
+      console.warn('[bento-shell-mount] overlay focus restore failed:', err);
     }
   }
 
@@ -2817,14 +2877,436 @@
   // key back; showBookmarksView refuses from then on. On points the key at the view again. Stored
   // bookmarks are not touched: bento-tools keeps serving them.
   function applyChromeBookmarksEnabled(enabled) {
+    // The toolbar follows the payload, not a change: the first one confirms the default.
+    applyBookmarksToolbar(enabled);
     if (enabled === currentBookmarksEnabled) return;
     currentBookmarksEnabled = enabled;
     if (enabled) {
       retargetLibraryKeyToBookmarksView();
+    } else {
+      if (isBookmarksViewOpen()) hideBookmarksView();
+      cancelBookmarkPopupRequest();
+      hideBookmarkPopup();
+      restoreLibraryKey();
+    }
+    // The panel header stars switch between the Bento store and Places.
+    refreshPanelHeaderBookmarkButtons();
+  }
+
+  // ─── Bookmark popup ───────────────────────────────────────────────────
+  // The save/edit popover (star, Cmd+D) and the menus of the Bookmarks toolbar are one document in
+  // a transparent full-window host (extensions/bento-shell/src/bookmarks-popup). Shell documents
+  // ask for it by title (BENTO_BOOKMARK_POPUP_OPEN, a frame-local anchor), chrome-drawn surfaces
+  // (the panel header star, the Cmd+D fallback) ask for it directly with chrome-window
+  // coordinates; showBookmarkPopup sends the document `ui/bookmarkPopup/open` with the anchor in
+  // the host's own, and the document closes itself with BENTO_BOOKMARK_POPUP_CLOSE.
+  // Regular windows with the Bookmarks manager on only; everything else keeps Firefox's Places UI.
+
+  // The popup being shown or waiting for its document; closes name it, so a late close of an
+  // older popup is dropped.
+  let activeBookmarkPopupId = null;
+  let bookmarkPopupIdSeq = 0;
+  // What had the focus, and which tab was selected, when the popup opened; its close gives the
+  // focus back (unless the close is a tab change or another overlay).
+  let bookmarkPopupReturnFocus = null;
+  let bookmarkPopupSelectedBrowser = null;
+  // The Cmd+D waiting for the sidebar star's answer (requestBookmarkPopup).
+  let pendingBookmarkPopupRequest = null;
+  let bookmarkPopupRequestSeq = 0;
+  // WebExtension ids of the tabs whose URL a Bento bookmark has (BENTO_BOOKMARKED_TABS): the
+  // filled state of the panel header stars.
+  let currentBookmarkedTabIds = new Set();
+
+  // Whether stars, Cmd+D and the toolbar use the Bento store in this window. A private window
+  // and a window with the manager off keep Firefox's bookmarks.
+  function isBentoBookmarksActive() {
+    return currentBookmarksEnabled && !BentoPrivateBrowsingUtils.isWindowPrivate(window);
+  }
+
+  // Shown, or waiting for its document (a pending open counts, as for the other overlays).
+  function isBookmarkPopupOpen() {
+    return activeBookmarkPopupId !== null;
+  }
+
+  // {left, top, width, height} with finite numbers, or null; nothing else of the object is kept.
+  function readBookmarkPopupAnchor(anchor) {
+    if (!anchor || typeof anchor !== 'object') return null;
+    const { left, top, width, height } = anchor;
+    return [left, top, width, height].every((n) => Number.isFinite(n))
+      ? { left, top, width, height }
+      : null;
+  }
+
+  function shiftBookmarkPopupAnchor(anchor, dx, dy) {
+    return { left: anchor.left + dx, top: anchor.top + dy, width: anchor.width, height: anchor.height };
+  }
+
+  // The payload of BENTO_BOOKMARK_POPUP_OPEN (extensions/bento-shell/src/bridge/bookmarkPopup.ts)
+  // as { request, requestId }, or null for anything that is not one. Only the fields of the
+  // request's kind are kept. The anchor is still the sender frame's.
+  function readBookmarkPopupRequest(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const anchor = readBookmarkPopupAnchor(payload.anchor);
+    if (!anchor) return null;
+    let request = null;
+    if (payload.kind === 'edit') {
+      if (
+        Number.isInteger(payload.tabId) &&
+        typeof payload.url === 'string' &&
+        typeof payload.title === 'string'
+      ) {
+        request = { kind: 'edit', tabId: payload.tabId, url: payload.url, title: payload.title, anchor };
+      }
+    } else if (payload.kind === 'group') {
+      if (typeof payload.groupId === 'string' && payload.groupId) {
+        request = { kind: 'group', groupId: payload.groupId, anchor };
+      }
+    } else if (payload.kind === 'spaces') {
+      request = { kind: 'spaces', anchor };
+    } else if (payload.kind === 'overflow') {
+      if (Array.isArray(payload.groupIds) && payload.groupIds.every((id) => typeof id === 'string')) {
+        request = { kind: 'overflow', groupIds: [...payload.groupIds], anchor };
+      }
+    }
+    if (!request) return null;
+    return { request, requestId: typeof payload.requestId === 'string' ? payload.requestId : '' };
+  }
+
+  function nextBookmarkPopupId() {
+    bookmarkPopupIdSeq += 1;
+    return `bp_${Date.now().toString(36)}_${bookmarkPopupIdSeq}`;
+  }
+
+  // Opens the popup for `request`, whose anchor is in chrome-window coordinates. Returns whether
+  // it went ahead. Refused while the Bookmarks view or a tab dialog covers the page, or an
+  // overlay above the popup is on screen (it would open under it).
+  function showBookmarkPopup(request) {
+    if (!isBentoBookmarksActive() || isBookmarksViewOpen() || isTabDialogShowing()) return false;
+    if (isOverlayAboveBookmarksViewShown('bookmarks-popup')) return false;
+    const host = document.getElementById('bento-bookmarks-popup-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showBookmarkPopup: host missing');
+      return false;
+    }
+    // A request while the popup is open (Cmd+D again) replaces its content and keeps the
+    // first request's focus record.
+    if (!isBookmarkPopupOpen()) {
+      bookmarkPopupReturnFocus = focusReturnTarget();
+      bookmarkPopupSelectedBrowser = window.gBrowser?.selectedBrowser ?? null;
+    }
+    const popupId = nextBookmarkPopupId();
+    activeBookmarkPopupId = popupId;
+    openOverlay('bookmarks-popup', () => {
+      // A dialog can be showing by the time the document is ready.
+      if (isTabDialogShowing()) {
+        hideBookmarkPopup();
+        return;
+      }
+      host.style.display = 'flex';
+      host.style.opacity = '1';
+      host.removeAttribute('hidden');
+      // The anchor was measured in the chrome window; the document's origin is the host's.
+      const hostRect = host.getBoundingClientRect();
+      dispatchShellAction({
+        type: 'ui/bookmarkPopup/open',
+        popupId,
+        request: { ...request, anchor: shiftBookmarkPopupAnchor(request.anchor, -hostRect.left, -hostRect.top) },
+      });
+      focusOverlayFrame(document.getElementById('bento-bookmarks-popup-frame'));
+    });
+    return true;
+  }
+
+  // Hides the popup, or cancels one still waiting for its document. `restoreFocus` is for the
+  // popup's own close and Esc, which return the focus to where it was; a tab change, another
+  // overlay, a dialog or the Bookmarks view take the focus themselves.
+  function hideBookmarkPopup({ restoreFocus = false } = {}) {
+    if (!isBookmarkPopupOpen()) return;
+    overlays.cancel('bookmarks-popup');
+    activeBookmarkPopupId = null;
+    const host = document.getElementById('bento-bookmarks-popup-host');
+    if (host) {
+      host.style.display = 'none';
+      host.style.opacity = '0';
+      host.setAttribute('hidden', 'true');
+      overlays.setPresented('bookmarks-popup', false);
+    }
+    const target = bookmarkPopupReturnFocus;
+    const opened = bookmarkPopupSelectedBrowser;
+    bookmarkPopupReturnFocus = null;
+    bookmarkPopupSelectedBrowser = null;
+    if (restoreFocus) {
+      returnFocusAfterOverlay(target, opened, isOverlayAboveBookmarksViewShown('bookmarks-popup'));
+    }
+  }
+
+  // BENTO_BOOKMARK_POPUP_CLOSE:<ts>:<json {popupId}>, from the popup's document.
+  function handleBookmarkPopupCloseTitle(title) {
+    const payload = parseSidebarAddressTitlePayload(title, BOOKMARK_POPUP_CLOSE_PREFIX);
+    if (typeof payload?.popupId !== 'string' || payload.popupId !== activeBookmarkPopupId) return;
+    hideBookmarkPopup({ restoreFocus: true });
+  }
+
+  // BENTO_BOOKMARK_POPUP_OPEN:<ts>:<json>, from the sidebar shell frame or the Bookmarks toolbar
+  // frame (`senderFrameId`), with the anchor in that frame's CSS pixels. An answer to a
+  // bookmark-popup-request (it carries the request id) is acted on only while that request waits.
+  function handleBookmarkPopupOpenTitle(title, senderFrameId) {
+    const parsed = readBookmarkPopupRequest(
+      parseSidebarAddressTitlePayload(title, BOOKMARK_POPUP_OPEN_PREFIX),
+    );
+    if (!parsed || !isBentoBookmarksActive()) return;
+    const { request, requestId } = parsed;
+    if (requestId && !takeBookmarkPopupRequest(requestId)) return;
+    const sender = document.getElementById(senderFrameId)?.getBoundingClientRect();
+    if (!sender) return;
+    let anchor = shiftBookmarkPopupAnchor(request.anchor, sender.left, sender.top);
+    // The sidebar may have collapsed or started to hide since it answered, and its frame-local
+    // rect then names geometry that is moving away: the popup anchors to the page instead.
+    if (requestId && senderFrameId === 'bento-shell-frame' && !canAnchorAddrbarToSidebarRow()) {
+      anchor = getSelectedPanelBookmarkAnchor();
+    }
+    showBookmarkPopup({ ...request, anchor });
+  }
+
+  // BENTO_BOOKMARKED_TABS:<ts>:<json {tabIds}> from the sidebar: the tabs whose URL a Bento
+  // bookmark has, sent on change.
+  function handleBookmarkedTabsTitle(title) {
+    const payload = parseSidebarAddressTitlePayload(title, BOOKMARKED_TABS_PREFIX);
+    if (!Array.isArray(payload?.tabIds)) return;
+    currentBookmarkedTabIds = new Set(payload.tabIds.filter((id) => Number.isInteger(id)));
+    refreshPanelHeaderBookmarkButtons();
+  }
+
+  // The star of the selected tab's panel header, or the top right of its panel, or of the
+  // window: where the Cmd+D popup anchors when the sidebar star does not answer. Chrome-window
+  // coordinates.
+  function getSelectedPanelBookmarkAnchor() {
+    const tabId = getSelectedWebExtensionTabId();
+    const star = document.querySelector(
+      `.bento-panel-header-button--bookmark[data-bento-panel-bookmark-tab-id="${tabId}"]`,
+    );
+    const starRect = star?.getBoundingClientRect();
+    if (starRect && starRect.width > 0 && starRect.height > 0) {
+      return { left: starRect.left, top: starRect.top, width: starRect.width, height: starRect.height };
+    }
+    const panel =
+      document.getElementById(window.gBrowser?.selectedTab?.linkedPanel) ??
+      document.querySelector('[data-bento-main-panel="1"]');
+    const rect = panel?.getBoundingClientRect();
+    const right = rect && rect.width > 0 ? rect.right : window.innerWidth;
+    return { left: right - 1, top: rect && rect.width > 0 ? rect.top : 0, width: 1, height: 1 };
+  }
+
+  function cancelBookmarkPopupRequest() {
+    const pending = pendingBookmarkPopupRequest;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingBookmarkPopupRequest = null;
+  }
+
+  // Whether an answer to a bookmark-popup-request is still wanted; taking it ends the wait.
+  function takeBookmarkPopupRequest(requestId) {
+    if (pendingBookmarkPopupRequest?.requestId !== requestId) return false;
+    cancelBookmarkPopupRequest();
+    return true;
+  }
+
+  // The popup for the selected tab (its page, not a panel's), anchored to its panel header's star
+  // or the top right of its panel. The page must be one a bookmark can be made of.
+  function openBookmarkPopupForSelectedTab() {
+    const spec = normalizeBookmarkUrlSpec(activeMainBrowserSpec());
+    const tabId = getSelectedWebExtensionTabId();
+    if (tabId === null || !isBookmarkableUrlSpec(spec)) return false;
+    let title = spec;
+    try {
+      title = getActiveMainBrowser()?.contentTitle || spec;
+    } catch {
+      /* the spec stands in for the title */
+    }
+    return showBookmarkPopup({
+      kind: 'edit',
+      tabId,
+      url: spec,
+      title,
+      anchor: getSelectedPanelBookmarkAnchor(),
+    });
+  }
+
+  // Cmd+D and every other PlacesCommandHook.bookmarkPage entry point. Chrome cannot read the
+  // sidebar star's rect (the shell is a separate frame), so it asks the row over the sidebar
+  // address channel; the row answers with BENTO_BOOKMARK_POPUP_OPEN, the request id and the
+  // star's anchor when the star is laid out and the page can be saved, and says nothing
+  // otherwise. No answer in BOOKMARK_POPUP_REQUEST_MS opens the popup from chrome (the selected
+  // panel's star), and an answer that comes later finds no request and is dropped.
+  function requestBookmarkPopup() {
+    cancelBookmarkPopupRequest();
+    cancelAddrbarOpenRequest();
+    if (!canAnchorAddrbarToSidebarRow()) {
+      openBookmarkPopupForSelectedTab();
       return;
     }
-    if (isBookmarksViewOpen()) hideBookmarksView();
-    restoreLibraryKey();
+    bookmarkPopupRequestSeq += 1;
+    const requestId = `${Date.now()}-${bookmarkPopupRequestSeq}`;
+    const sent = dispatchSidebarAddressMessage({
+      kind: 'bookmark-popup-request',
+      windowId: getChromeWindowId(),
+      bridgeToken: getBentoSidebarAddressBridgeToken(),
+      messageId: Date.now(),
+      requestId,
+    });
+    if (!sent) {
+      openBookmarkPopupForSelectedTab();
+      return;
+    }
+    pendingBookmarkPopupRequest = {
+      requestId,
+      timer: setTimeout(() => {
+        if (pendingBookmarkPopupRequest?.requestId !== requestId) return;
+        pendingBookmarkPopupRequest = null;
+        openBookmarkPopupForSelectedTab();
+      }, BOOKMARK_POPUP_REQUEST_MS),
+    };
+  }
+
+  // The panel header star: in Bento mode a click opens the edit popup for the panel's tab, whose
+  // filled state is currentBookmarkedTabIds. Returns false outside Bento mode (Places toggles).
+  function openBookmarkPopupFromPanelHeader(bookmarkBtn, tabId, browserEl) {
+    if (!isBentoBookmarksActive() || !Number.isInteger(tabId)) return false;
+    let spec = '';
+    let title = '';
+    try {
+      spec = normalizeBookmarkUrlSpec(browserEl?.currentURI?.spec);
+      title = browserEl?.contentTitle || spec;
+    } catch {
+      /* no URL, nothing to save */
+    }
+    if (!isBookmarkableUrlSpec(spec)) return true;
+    const rect = bookmarkBtn.getBoundingClientRect();
+    showBookmarkPopup({
+      kind: 'edit',
+      tabId,
+      url: spec,
+      title,
+      anchor: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    });
+    return true;
+  }
+
+  // Redraws every panel header star: from the Bento set in Bento mode, from Places otherwise.
+  function refreshPanelHeaderBookmarkButtons() {
+    document.querySelectorAll('.bento-panel-header-button--bookmark').forEach((bookmarkBtn) => {
+      bookmarkBtn._bentoRefreshBookmarkState?.();
+    });
+  }
+
+  // PlacesCommandHook.bookmarkPage is the one function behind Cmd+D, the Bookmarks menu, the
+  // app menu, the page context menu and Firefox's own star. In a window that uses the Bento
+  // store it asks for the popup instead; any other window gets Firefox's. PlacesCommandHook is a
+  // global of browser-places.js, which global-scripts.js loads before this script runs.
+  function patchBookmarkPageCommand() {
+    const hook = window.PlacesCommandHook;
+    if (!hook) {
+      if (document.readyState !== 'complete') {
+        window.addEventListener('load', patchBookmarkPageCommand, { once: true });
+      } else {
+        console.warn('[bento-shell-mount] PlacesCommandHook missing; Cmd+D stays Firefox\'s');
+      }
+      return;
+    }
+    if (hook.__bentoBookmarkPagePatched) return;
+    const original = hook.bookmarkPage;
+    bentoCompatNoteNative('PlacesCommandHook.bookmarkPage', original);
+    // Without the native method there is nothing to fall back to.
+    if (typeof original !== 'function') return;
+    hook.__bentoBookmarkPagePatched = true;
+    hook.bookmarkPage = function (...args) {
+      if (!isBentoBookmarksActive()) return original.apply(this, args);
+      requestBookmarkPopup();
+      return Promise.resolve();
+    };
+  }
+
+  // The popup is anchored to geometry that moves: it closes with a tab change (TabSelect), a
+  // prompt (the events the Bookmarks view closes for), a window resize and a sidebar change
+  // (the push, collapse and hide attributes of the chrome root). Esc and the outside click are
+  // the document's.
+  function attachBookmarkPopupListeners() {
+    const close = () => hideBookmarkPopup();
+    window.addEventListener('TabSelect', close, true);
+    window.addEventListener('DOMWillOpenModalDialog', close, true);
+    window.addEventListener('dialogopen', close, true);
+    window.addEventListener('resize', (event) => {
+      if (event.target === window) hideBookmarkPopup();
+    });
+    if (window.MutationObserver) {
+      new MutationObserver(close).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: [SIDEBAR_PUSH_ATTR, SIDEBAR_RAIL_ATTR, 'bento-sidebar-hidden'],
+      });
+    }
+  }
+
+  // ─── Bookmarks toolbar ─────────────────────────────────────────────────
+  // Firefox's #PersonalToolbar keeps its place, visibility pref and Cmd+Shift+B; while the
+  // Bookmarks manager is on in a regular window, bento-shell-mount.css hides its bookmark items
+  // and shows #bento-bookmarks-toolbar-host instead, a <browser> with the shell's toolbar
+  // document (extensions/bento-shell/src/bookmarks-toolbar). The document is created when the
+  // toolbar first shows, so a profile that never shows it never loads it.
+  function applyBookmarksToolbar(enabled) {
+    const root = document.documentElement;
+    if (enabled && !BentoPrivateBrowsingUtils.isWindowPrivate(window)) {
+      if (!root.hasAttribute(BOOKMARKS_TOOLBAR_ATTR)) root.setAttribute(BOOKMARKS_TOOLBAR_ATTR, 'true');
+      createBookmarksToolbarHostWhenShown();
+      return;
+    }
+    root.removeAttribute(BOOKMARKS_TOOLBAR_ATTR);
+    removeBookmarksToolbarHost();
+  }
+
+  function isBookmarksToolbarShown(toolbar) {
+    return !toolbar.hidden && !toolbar.collapsed;
+  }
+
+  let bookmarksToolbarObserver = null;
+
+  function createBookmarksToolbarHostWhenShown() {
+    if (bookmarksToolbarObserver || document.getElementById('bento-bookmarks-toolbar-host')) return;
+    const toolbar = document.getElementById('PersonalToolbar');
+    if (!toolbar) return;
+    if (isBookmarksToolbarShown(toolbar)) {
+      createBookmarksToolbarHost(toolbar);
+      return;
+    }
+    // Firefox shows the toolbar by removing 'collapsed' (Cmd+Shift+B, the new tab page).
+    bookmarksToolbarObserver = new MutationObserver(() => {
+      if (!isBookmarksToolbarShown(toolbar)) return;
+      bookmarksToolbarObserver.disconnect();
+      bookmarksToolbarObserver = null;
+      createBookmarksToolbarHost(toolbar);
+    });
+    bookmarksToolbarObserver.observe(toolbar, {
+      attributes: true,
+      attributeFilter: ['collapsed', 'hidden'],
+    });
+  }
+
+  // The host is the toolbar's last child. skipintoolbarset keeps CustomizableUI from treating it
+  // as a placement. The frame is the usual overlay frame, created inside it.
+  function createBookmarksToolbarHost(toolbar) {
+    const host = document.createXULElement('hbox');
+    host.id = 'bento-bookmarks-toolbar-host';
+    host.setAttribute('skipintoolbarset', 'true');
+    host.setAttribute('removable', 'false');
+    host.setAttribute('flex', '1');
+    toolbar.appendChild(host);
+    createOverlayFrame('bento-bookmarks-toolbar-host', 'bento-bookmarks-toolbar-frame');
+    setBentoBookmarksToolbarSrc();
+  }
+
+  function removeBookmarksToolbarHost() {
+    bookmarksToolbarObserver?.disconnect();
+    bookmarksToolbarObserver = null;
+    document.getElementById('bento-bookmarks-toolbar-host')?.remove();
   }
 
   let mergePaletteOpenSeq = 0;
@@ -2906,6 +3388,8 @@
   const ADDRBAR_FRAME_GUTTER_BOTTOM_PX = 140;
   const ADDRBAR_ANCHOR_MARGIN_PX = 12;
   const ADDRBAR_OPEN_RETRY_MS = 120;
+  // How long a Cmd+D waits for the sidebar star to answer before chrome opens the popup itself.
+  const BOOKMARK_POPUP_REQUEST_MS = ADDRBAR_OPEN_RETRY_MS;
   const ADDRBAR_OPEN_RETRY_LIMIT = 8;
   const ADDRBAR_OPEN_FALLBACK_REVEAL_MS = 1400;
   const ADDRBAR_HOST_TRANSITION = 'opacity var(--muxui-semantic-motion-modal-transition)';
@@ -3234,6 +3718,9 @@
   function showAddrbar(mode, initialQuery = '', options = {}) {
     currentAddrbarMode = mode === 'newTab' ? 'newTab' : 'current';
     cancelAddrbarOpenRequest();
+    // Opens through overlays.open directly, not openOverlay (see the bookmark popup there).
+    cancelBookmarkPopupRequest();
+    hideBookmarkPopup();
     let openId = nextAddrbarOpenId();
     const placement = computeAddrbarAnchoredPlacement(options.anchorRect);
     // A centred open replaces an anchored palette at once, so the row's border returns.
@@ -4389,6 +4876,11 @@
   // The Bookmarks view: opened by the sidebar and the command palette, closed by its own document.
   const BOOKMARKS_OPEN_PREFIX = 'BENTO_OPEN_BOOKMARKS';
   const BOOKMARKS_CLOSE_PREFIX = 'BENTO_CLOSE_BOOKMARKS';
+  // The bookmark popup (showBookmarkPopup): opened by the sidebar and the Bookmarks toolbar,
+  // closed by its own document. BENTO_BOOKMARKED_TABS is the sidebar's list of bookmarked tabs.
+  const BOOKMARK_POPUP_OPEN_PREFIX = 'BENTO_BOOKMARK_POPUP_OPEN:';
+  const BOOKMARK_POPUP_CLOSE_PREFIX = 'BENTO_BOOKMARK_POPUP_CLOSE:';
+  const BOOKMARKED_TABS_PREFIX = 'BENTO_BOOKMARKED_TABS:';
   const APP_MENU_OPEN_PREFIX = 'BENTO_OPEN_APP_MENU:';
   const DOWNLOADS_OPEN_PREFIX = 'BENTO_OPEN_DOWNLOADS:';
   const DOWNLOADS_ANCHOR_PREFIX = 'BENTO_DOWNLOADS_ANCHOR:';
@@ -7159,9 +7651,11 @@
     }
   }
 
-  function setPanelBookmarkButtonState(bookmarkBtn, isBookmarked) {
+  // `filledTitle` is the title of a filled star: Firefox's star removes the bookmark, the Bento
+  // star opens its edit popup.
+  function setPanelBookmarkButtonState(bookmarkBtn, isBookmarked, filledTitle = 'Remove bookmark') {
     if (!bookmarkBtn) return;
-    const title = isBookmarked ? 'Remove bookmark' : 'Bookmark page';
+    const title = isBookmarked ? filledTitle : 'Bookmark page';
     bookmarkBtn.title = title;
     bookmarkBtn.setAttribute('aria-label', title);
     bookmarkBtn.classList.toggle('bento-panel-header-button--active', isBookmarked);
@@ -7660,9 +8154,24 @@
       }
     });
 
+    // In a window that uses the Bento store the star opens the edit popup and is filled from
+    // BENTO_BOOKMARKED_TABS; otherwise it toggles a Firefox bookmark (Places).
     const bookmarkBtn = makeHeaderButton('Bookmark page', ICONS.bookmark, () => {
+      if (openBookmarkPopupFromPanelHeader(bookmarkBtn, tabId, getActionBrowser())) return;
       togglePanelPageBookmark(getActionBrowser(), bookmarkBtn);
     });
+    bookmarkBtn.classList.add('bento-panel-header-button--bookmark');
+    if (Number.isFinite(tabId)) {
+      bookmarkBtn.setAttribute('data-bento-panel-bookmark-tab-id', String(tabId));
+    }
+    const refreshBookmarkState = () => {
+      if (isBentoBookmarksActive() && Number.isInteger(tabId)) {
+        setPanelBookmarkButtonState(bookmarkBtn, currentBookmarkedTabIds.has(tabId), 'Edit bookmark');
+      } else {
+        updatePanelBookmarkButtonState(getActionBrowser(), bookmarkBtn);
+      }
+    };
+    bookmarkBtn._bentoRefreshBookmarkState = refreshBookmarkState;
 
     // A private window stores nothing, so it has no pinned panels to pin to.
     let pinBtn = null;
@@ -7892,7 +8401,7 @@
         else backBtn.setAttribute('disabled', 'true');
         if (actionBrowser?.canGoForward) forwardBtn.removeAttribute('disabled');
         else forwardBtn.setAttribute('disabled', 'true');
-        updatePanelBookmarkButtonState(actionBrowser, bookmarkBtn);
+        refreshBookmarkState();
         if (audioBtn) setPanelAudioButtonState(audioBtn, tabId);
       } catch {
         // Browser not yet attached — refresh again on next tick.
@@ -9933,7 +10442,8 @@
     'addMessageListener("BentoShellAction", function(msg) {' +
     '  try {' +
     '    var actionType = msg.data && msg.data.type;' +
-    '    if (typeof actionType === "string" && actionType.indexOf("ui/") === 0) content.focus();' +
+    '    if (typeof actionType === "string" && actionType.indexOf("ui/") === 0 &&' +
+    '        actionType.indexOf("ui/bookmarkPopup/") !== 0) content.focus();' +
     '    var channel = new content.BroadcastChannel("bento-shell-bus");' +
     '    channel.postMessage({ kind: "action", action: msg.data });' +
     '    channel.close();' +
@@ -18178,6 +18688,9 @@
       else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) showWorkspacePalette();
       else if (title.startsWith(MERGE_PALETTE_OPEN_PREFIX)) showMergePalette();
       else if (title.startsWith(BOOKMARKS_OPEN_PREFIX)) showBookmarksView();
+      else if (title.startsWith(BOOKMARK_POPUP_OPEN_PREFIX)) {
+        handleBookmarkPopupOpenTitle(title, 'bento-shell-frame');
+      } else if (title.startsWith(BOOKMARKED_TABS_PREFIX)) handleBookmarkedTabsTitle(title);
       else if (title.startsWith(APP_MENU_OPEN_PREFIX)) handleAppMenuOpenTitle(title);
       else if (title.startsWith(DOWNLOADS_OPEN_PREFIX)) handleDownloadsOpenTitle(title);
       else if (title.startsWith(DOWNLOADS_ANCHOR_PREFIX)) handleDownloadsAnchorTitle(title);
@@ -18233,6 +18746,17 @@
         'bento-bookmarks-frame',
         (title) => {
           if (title.startsWith(BOOKMARKS_CLOSE_PREFIX)) hideBookmarksView();
+        },
+      ],
+      [
+        'bento-bookmarks-popup-frame',
+        (title) => {
+          if (title.startsWith(BOOKMARK_POPUP_CLOSE_PREFIX)) handleBookmarkPopupCloseTitle(title);
+          else if (title.startsWith(BOOKMARKS_OPEN_PREFIX)) {
+            // Open in Bookmarks: the popup goes first, so the view does not record its frame.
+            hideBookmarkPopup();
+            showBookmarksView();
+          }
         },
       ],
       [
@@ -18341,6 +18865,14 @@
       ],
       // The tooltip document only announces readiness (handled below).
       ['bento-panel-navigator-tooltip-frame', () => {}],
+      [
+        'bento-bookmarks-toolbar-frame',
+        (title) => {
+          if (title.startsWith(BOOKMARK_POPUP_OPEN_PREFIX)) {
+            handleBookmarkPopupOpenTitle(title, 'bento-bookmarks-toolbar-frame');
+          }
+        },
+      ],
     ]);
     const lastSeenTitleByFrameId = new Map();
 
@@ -18407,7 +18939,7 @@
         if (e.key !== 'Escape') return;
         // Stack precedence (top = highest): menu > confirm > edit-workspace >
         // workspace palette / settings palette > welcome > workspace-switcher > address bar >
-        // merge palette > palette > bookmarks view. An overlay whose open still waits for its
+        // merge palette > palette > bookmark popup > bookmarks view. An overlay whose open still waits for its
         // document counts as open: Esc cancels that open instead of letting it
         // appear afterwards. Welcome is mandatory onboarding: consume Esc there
         // without hiding it. Other overlays keep their normal Esc dismissal.
@@ -18473,6 +19005,14 @@
         }
         if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) {
           return consume(hidePalette);
+        }
+        // The bookmark popup handles its own Esc while its frame has focus (an unsaved name is
+        // put back before it closes). Chrome takes Esc for an open still waiting for its
+        // document, and for focus left elsewhere in the window; the focus then returns where it was.
+        if (isBookmarkPopupOpen()) {
+          const inPopupFrame = e.target?.id === 'bento-bookmarks-popup-frame';
+          if (inPopupFrame && !overlays.hasPendingOpen('bookmarks-popup')) return;
+          return consume(() => hideBookmarkPopup({ restoreFocus: true }));
         }
         // Like Settings, the Bookmarks view handles its own Esc while its frame has focus (it
         // leaves an inline editor before it closes, and sends BENTO_CLOSE_BOOKMARKS itself), and
@@ -19272,6 +19812,7 @@
           'bento-merge-palette-frame',
           'bento-settings-palette-frame',
           'bento-bookmarks-frame',
+          'bento-bookmarks-popup-frame',
           'bento-addrbar-frame',
           'bento-confirm-frame',
           'bento-edit-workspace-frame',
@@ -19280,6 +19821,7 @@
           'bento-menu-frame',
           'bento-panel-navigator-tooltip-frame',
           'bento-panel-trailer-frame',
+          'bento-bookmarks-toolbar-frame',
         ];
         for (const id of ids) {
           const frame = document.getElementById(id);
@@ -19302,6 +19844,7 @@
             else if (id === 'bento-merge-palette-frame') setBentoMergePaletteSrc();
             else if (id === 'bento-settings-palette-frame') setBentoSettingsPaletteSrc();
             else if (id === 'bento-bookmarks-frame') setBentoBookmarksSrc();
+            else if (id === 'bento-bookmarks-popup-frame') setBentoBookmarksPopupSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
             else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
             else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
@@ -19311,6 +19854,7 @@
             else if (id === 'bento-panel-navigator-tooltip-frame')
               setBentoPanelNavigatorTooltipSrc();
             else if (id === 'bento-panel-trailer-frame') setBentoPanelTrailerSrc();
+            else if (id === 'bento-bookmarks-toolbar-frame') setBentoBookmarksToolbarSrc();
           }
         }
       }, 100);
@@ -19749,6 +20293,8 @@
   attachPanelFocusTracker();
   attachRestoredPinnedTabUnload();
   patchPopupNotificationsForSplitView();
+  patchBookmarkPageCommand();
+  attachBookmarkPopupListeners();
   ensureExtensionsUIObservers();
   scheduleBentoFirefoxCompatChecks();
 })();

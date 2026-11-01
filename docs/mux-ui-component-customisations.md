@@ -820,6 +820,49 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
   gradient over an unregistered custom property, so it does not cross-fade with the theme; it is
   listed in `MUX_GRADIENT_RESIDUAL` in `scripts/mount-fade-css.test.mjs`.
 
+### Bookmark popup and bookmarks toolbar
+
+The save popover and the toolbar's menus (`components/BookmarkPopup/`, rendered by the
+`bookmarks-popup` overlay document) and the toolbar row (`components/BookmarksToolbar/`, rendered by
+the `bookmarks-toolbar` frame) use Mux `Popover`, `Menu` (Root, Trigger, Popup, List, Item, Submenu,
+Separator), `TextField`, `SelectNative`, `Button`, `IconButton`, `Text` and `Toolbar`. Their conventions:
+
+- **A popup anchors to an invisible trigger at the asking button's rect.** The overlay frame covers
+  the window and is transparent, so the popup document gets the rect of the button that asked
+  (already in window coordinates) and places a `Popover` `trigger` Button or a `Menu.Trigger` there
+  (`.bento-bookmark-popup__anchor`: fixed, no box, `opacity: 0`, `pointer-events: none`). Mux then
+  positions the popup against it. Popovers and menus stay modal, so a press anywhere outside lands
+  on Mux's underlay in the popup document and dismisses it.
+- **Esc runs before Mux and after it.** Mux closes a popup on Esc only while the focus is inside it
+  and stops the event there. The save popover captures Esc on its content first, because Esc must
+  drop an unsaved name before the close (Mux's close would otherwise commit it on the way out);
+  `useEscape` in `parts.tsx` is the bubble-phase fallback for an Esc that nothing inside handled,
+  such as the focus still being on the page behind the overlay.
+- **Space and Group are `SelectNative`.** The popover sits in a transparent overlay frame; the
+  platform select keeps its own popup and its keyboard behaviour there, where a Mux `Select` would
+  be a second popup layer inside one. Name is a `TextField` that commits on Enter or blur.
+- **The popover is a raised surface, not Mux's inverted one.** `.muxui-popover.bento-bookmark-popup__edit`
+  repaints the surface, border and text colour as the Private band note does.
+- **Mux `Toolbar` as a bare row.** `Toolbar` brings a bordered, padded surface and restyles its
+  direct `Button` children with a compact intent (`.muxui-toolbar > .muxui-button`: body-size
+  text, a taller box). The toolbar overrides the surface (`border`, `border-radius`, padding,
+  `background`) and puts the space button in a wrapper (`.bento-bookmarks-toolbar__end`) so every
+  button is styled alike. Mux's own small button is taller than the 30px bookmarks row, so the
+  buttons set `height` and `min-block-size` to `--bento-control-size-sm` (24px) with `padding-block: 0`.
+- **Overflow is measured, not guessed.** The group buttons and the overflow button are always in the
+  row. A button that does not fit gets `data-bm-out`: absolutely positioned, `visibility: hidden`,
+  out of the tab order, but still laid out, so its width can be measured again when the window
+  grows. `model.ts` (`visibleGroupCount`) turns the measured widths into how many fit, a
+  `ResizeObserver` on the row re-measures, and the overflow menu lists the groups that did not.
+- **Pressed state follows the popup, not the click.** The popup document tells the other shell
+  documents which popup is open on `bento-bookmark-popup-bus`, and a button shows
+  `data-bm-pressed` (`--bento-surface-active`) and `aria-expanded` while its popup is up, so a
+  refused open never leaves a button pressed.
+- **Tokens.** `--bento-bookmark-popup-width`, `--bento-bookmark-popup-menu-max-width` and
+  `--bento-bookmarks-toolbar-button-max-width` in `bento-tokens.css`; the colour dot and favicon
+  reuse `--bento-bookmarks-dot-size`, `--bento-bookmarks-favicon-size` and the
+  `--bento-bookmark-color-*` set.
+
 ### Pruning Mux component CSS
 
 The package has one stylesheet for all components. `mux-css-prune.ts` removes the

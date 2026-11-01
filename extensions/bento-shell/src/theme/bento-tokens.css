@@ -307,6 +307,14 @@
     --bento-bookmark-color-blue: var(--muxui-reference-color-sky-60);
     --bento-bookmark-color-purple: var(--muxui-reference-color-purple-60);
 
+    /* Bookmark popup (src/components/BookmarkPopup): the width of the save popover and the widest a
+       menu of links grows before its titles truncate. Bookmarks toolbar (BookmarksToolbar): the
+       widest a group button grows before its name truncates. Buttons are --bento-control-size-sm
+       high, so a row of them fits Firefox's 30px bookmarks toolbar. */
+    --bento-bookmark-popup-width: 18.75rem;
+    --bento-bookmark-popup-menu-max-width: 21.25rem;
+    --bento-bookmarks-toolbar-button-max-width: 9.375rem;
+
     /* System UI font stack for plain pages that load no Mux fonts. */
     --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 

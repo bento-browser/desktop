@@ -403,6 +403,47 @@ can still save). A window that has not heard from tools yet assumes the default 
 - The size ceiling for the document is the overlay target (200 KB gzip cold start):
   `bookmarks` is in that list in `scripts/check-size-budgets.mjs`.
 
+## Saving pages and the bookmarks toolbar
+
+With the manager on, in a regular window, the bookmark star, `Cmd/Ctrl+D` and the bookmarks toolbar
+work on the Bento store. Private windows and the opt-out keep Firefox's Places paths unchanged
+(the sidebar toggle title, the panel header star's Places toggle, the native toolbar).
+
+- **Source of truth.** The Bento store in `bento-tools`. No new action or stored field: a save is
+  `bookmarks/group/create` (only when the target space has no group, "Unsorted", client id) and
+  `bookmarks/tabs/save` with a client id; edits are `item/update`, `item/move`, `item/delete`; the
+  toolbar's space menu is `bookmarks/space/select`, so it moves the shared `lastSpaceId` (the view and
+  every window's toolbar follow).
+- **Default target** (`defaultSaveTarget`, `src/bookmarks/links.ts`): in the current space, the group
+  of its newest link, else its first group, else a new "Unsorted". A URL matches a link by
+  `urlKey` (`new URL(u).href`, fragment kept); the popover edits the newest match.
+- **Documents.** Two new shell entries, both reading the store mirror themselves (`initToolsPort()`),
+  so chrome passes only ids and anchors, never favicons:
+  - `bookmarks-popup` (prewarmed overlay, full-window transparent host): the edit popover (Mux
+    `Popover`, Name `TextField`, Space and Group `SelectNative`, Remove, Done) and the group, Spaces
+    and overflow menus (Mux `Menu`). Components in `components/BookmarkPopup/`.
+  - `bookmarks-toolbar` (persistent frame in `#PersonalToolbar`, the panel trailer pattern): group
+    buttons for `lastSpaceId`, the space button, the overflow button and the empty hint. Components
+    in `components/BookmarksToolbar/`.
+- **Bridges** (contract in `bridge/bookmarkPopup.ts`; chrome side in
+  [overlay-documents.md](overlay-documents.md#bookmark-popup-and-toolbar)):
+  - Shell to chrome titles: `BENTO_BOOKMARK_POPUP_OPEN:` (sidebar or toolbar frame, frame-local
+    anchor), `BENTO_BOOKMARK_POPUP_CLOSE:` (popup frame), `BENTO_OPEN_BOOKMARKS_<ts>` (popup frame,
+    Open in Bookmarks), `BENTO_BOOKMARKED_TABS:` (sidebar: the tab ids whose URL is saved, for the
+    panel header star).
+  - Chrome to documents: `ui/bookmarkPopup/open` on `bento-shell-bus` (document-local, window
+    stamped, anchor in host coordinates), and the sidebar-address bus message
+    `bookmark-popup-request` for `Cmd/Ctrl+D` and the other `PlacesCommandHook.bookmarkPage` entries.
+    The row answers with an `edit` open when its star is laid out; otherwise chrome anchors the
+    popover at the active panel after the timeout.
+  - Popup to toolbar and sidebar: `opened` and `closed` notices on `bento-bookmark-popup-bus` drive
+    the pressed state.
+- **Toolbar visibility.** The root attribute `bento-bookmarks-toolbar` swaps Firefox's toolbar
+  contents for the Bento frame; `Cmd/Ctrl+Shift+B` and the visibility pref (Bento default
+  `never`) are Firefox's own and unchanged. The frame is created the first time the toolbar shows.
+- **Not built.** Dropping links or tabs on the toolbar; address-bar results from the Bento store
+  (`AddressSearch.ts` still searches Places).
+
 ## Manual verification
 
 1. Bento window, regular: press `Cmd+Shift+O` (or run "Open Bookmarks" from the command palette). The sidebar and panels give way
@@ -451,6 +492,21 @@ can still save). A window that has not heard from tools yet assumes the default 
     the menu opens under it; Esc returns the focus to that element.
 18. Resize below about 1200 px: the Back button shows only its chevron, and a screen reader or the
     tooltip still calls it "Back to browser"; wide, it reads "Back to browser".
+19. Bento window, regular, manager on: press the sidebar star on a web page. The star fills and the
+    popover opens under it with the page title, the current space and its newest link's group.
+    Rename and press Enter, change Group, press Done: the view shows the link there.
+20. Press `Cmd+D` on a saved page with the page focused, then with the sidebar collapsed: the popover
+    opens at the sidebar star, then at the top right of the active panel. Esc after typing a new
+    name closes it and keeps the old name. Remove deletes the link and the star empties.
+21. In a split layout, the panel header star of each panel fills for saved pages and opens the
+    popover at that star.
+22. Press `Cmd+Shift+B`: the Bento toolbar shows the current space's groups. Open a group menu, open a
+    link, use Open all in panels, switch space from the right menu (the view follows), narrow the
+    window until the overflow button appears, and open an empty space for the hint.
+23. Repeat 19 and 22 in a private window and with the manager off: Firefox's star, `Cmd+D` and native
+    toolbar work as before.
+24. Check that the macOS window buttons stay visible and the window still drags from the top strip
+    while the popover and the toolbar menus are open and after they close.
 
 ## Pitfalls
 
@@ -498,3 +554,11 @@ can still save). A window that has not heard from tools yet assumes the default 
   `MenuEntries.tsx` and `menuEntries.ts`) collide for TypeScript on a case-insensitive disk; the
   pure modules are `menuEntries.ts` and `contextMenuModel.ts`, the components `EntryList.tsx` and
   `ContextMenu.tsx`.
+- The shell-action frame script runs in the sidebar frame and calls `content.focus()` for `ui/*`
+  actions; it skips `ui/bookmarkPopup/`, or opening the popup would pull the focus back to the
+  sidebar. Chrome focuses the popup frame itself, like the menu overlay.
+- Every popup close sends `BENTO_BOOKMARK_POPUP_CLOSE`, including after Open in Bookmarks, where
+  chrome has already hidden it: chrome drops a close whose `popupId` is not the active one, so it
+  never moves the focus twice.
+- The save target follows the current space, not the newest link anywhere: after a space switch in
+  the toolbar, a save landing in the previous space's group read as lost.

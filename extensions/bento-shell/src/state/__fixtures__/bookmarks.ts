@@ -167,6 +167,30 @@ export const EMPTY_SPACE_SNAPSHOT: BookmarksSnapshot = snapshotOf(
   false,
 );
 
+/** A first run: the one empty "Personal" space tools seeds, with no group and no link. */
+export const FIRST_RUN_SNAPSHOT: BookmarksSnapshot = snapshotOf(
+  [SPACES[0]!],
+  [],
+  'space-personal',
+  false,
+);
+
+/** Group names that are too long for a toolbar button, to check that they truncate. */
+export const LONG_NAMES_SNAPSHOT: BookmarksSnapshot = (() => {
+  const names = [
+    'Reading list for the long weekend away',
+    'Design references and inspiration from around the web',
+    'Short',
+    'Bouldering apps and training programmes worth trying before the season starts',
+  ];
+  const columns = names.map((name, index) =>
+    group(`group-long-${index}`, 'space-climbing', index, name, 'blue', [
+      { link: [`Link ${index + 1}`, `https://example${index}.com/`] },
+    ]),
+  );
+  return snapshotOf(SPACES, columns, 'space-climbing');
+})();
+
 /** Many columns and long lists, to scroll the board both ways. */
 export const MANY_SNAPSHOT: BookmarksSnapshot = (() => {
   const colors: BookmarkColor[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'];

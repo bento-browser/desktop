@@ -35,7 +35,7 @@ export const NUMBER_DESCRIPTIONS: Record<NumberSettingKey, string> = {
  * named by their label alone and have none. */
 export const TOGGLE_DESCRIPTIONS: Partial<Record<BooleanSettingKey, string>> = {
   bookmarksEnabled:
-    "Open it with Cmd/Ctrl+Shift+O or the command palette. Off keeps your saved bookmarks and gives the shortcut back to Firefox's Library.",
+    "Open it with Cmd/Ctrl+Shift+O or the command palette. The star, Cmd/Ctrl+D and the bookmarks toolbar use it too. Off keeps your saved bookmarks and gives all of these back to Firefox's bookmarks and Library.",
 };
 
 export const ENUM_DESCRIPTIONS: Record<EnumKey, string> = {

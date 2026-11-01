@@ -263,11 +263,31 @@ Firefox chrome and opens Firefox's native identity popup through
 `gIdentityHandler`/`PanelMultiView` anchored to a temporary chrome-owned element
 positioned over the sidebar button. Bento does not implement certificate or TLS
 details in React. The sidebar bookmark star uses chrome-side Places helpers and
-normal Firefox bookmarks only; the managed "Saved panels" folder is excluded
+normal Firefox bookmarks only in a private window and in a window whose
+Bookmarks manager is off; the managed "Saved panels" folder is excluded
 from regular bookmark fill/removal. Toggle payloads must match the current
 window token, selected WebExtension tab id, selected main-tab URL, and latest
 snapshot token before and after async Places reads; duplicate toggles for the
 same tab/URL are ignored while one is in flight.
+
+In a regular window with the Bookmarks manager on, the star belongs to the Bento
+store instead: its press sends `BENTO_BOOKMARK_POPUP_OPEN` (kind `edit`, the tab
+id, URL, title and the star's frame-local rect) and chrome opens the bookmark
+popup at it, and the star is filled from the shell's own mirror of the store.
+`Cmd+D` and Firefox's other bookmark-page entry points
+(`PlacesCommandHook.bookmarkPage`) reach the same popup through a second message
+on this sidebar address channel, `{ kind: 'bookmark-popup-request', windowId,
+bridgeToken, messageId, requestId }`: the row answers with the same
+`BENTO_BOOKMARK_POPUP_OPEN` plus the `requestId` when its star is laid out and
+the page can be saved, and chrome opens the popup itself after
+`BOOKMARK_POPUP_REQUEST_MS` of silence (anchored to the selected panel's header
+star), exactly as the `open-request` of `Cmd+L` falls back to the centred
+palette. The sidebar also reports which tabs have a Bento bookmark
+(`BENTO_BOOKMARKED_TABS`) for the panel header stars. The chrome side, the
+anchor translation and the focus and close rules are in
+[overlay-documents.md](overlay-documents.md#bookmark-popup-and-toolbar). Both
+messages keep the window token and bridge token scoping above; the Places toggle
+title handler stays for the private window and opt-out paths.
 The sidebar Copy URL button uses the same scoped title-IPC channel and must
 match the current window token, selected WebExtension tab id, selected main-tab
 URL, and latest snapshot token before chrome writes the URL to the global
@@ -326,7 +346,18 @@ visibility immediately when `[collapsed]`; otherwise Firefox presents
 intermediate toolbar heights that move sidebars before the compensation can
 settle. During manual sidebar resize, cache the strip-to-sidebar inset before
 the live resize loop and update the bookmark offset from the drag width; do not
-read strip geometry every drag frame. `attachNativeSidebarSplitterFeedback()`
+read strip geometry every drag frame. With the Bookmarks manager on in a regular
+window the toolbar's contents are Bento's own: `#personal-bookmarks` and
+`#personal-toolbar-empty` are hidden under the root attribute
+`bento-bookmarks-toolbar`, and `#bento-bookmarks-toolbar-host` (a `<browser>`
+with the shell's toolbar document, `--bento-bookmarks-toolbar-row-height` high) is
+the toolbar's one row. Nothing in the alignment code changes: it still measures
+`#PersonalToolbar` itself, whose height is now the host's, and the host is a flex
+child of the toolbar whose margin and width the offset already sets, so it follows
+the strip edge through a drag, a collapse and a push. A fluid sidebar push
+(`bento-sidebar-push-fluid`) animates the toolbar's width, so the toolbar frame
+resizes each frame there. That has not been checked in a running build; if it
+janks, give the host a fixed width for the length of the push instead of hiding it. `attachNativeSidebarSplitterFeedback()`
 takes over Firefox's `#sidebar-splitter` in the same mode so native sidebars
 such as Bookmarks can be resized independently of the Bento sidebar. It uses the
 same pointer-capture, rAF-batched width writer pattern, persists `#sidebar-box`

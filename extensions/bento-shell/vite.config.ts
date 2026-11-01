@@ -141,6 +141,8 @@ const shellConfig = defineConfig(({ mode }) => ({
         'merge-palette': resolve(__dirname, 'merge-palette.html'),
         'settings-palette': resolve(__dirname, 'settings-palette.html'),
         bookmarks: resolve(__dirname, 'bookmarks.html'),
+        'bookmarks-popup': resolve(__dirname, 'bookmarks-popup.html'),
+        'bookmarks-toolbar': resolve(__dirname, 'bookmarks-toolbar.html'),
         'address-bar': resolve(__dirname, 'address-bar.html'),
         confirm: resolve(__dirname, 'confirm.html'),
         'edit-workspace': resolve(__dirname, 'edit-workspace.html'),

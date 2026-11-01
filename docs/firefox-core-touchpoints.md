@@ -812,7 +812,8 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - No new Firefox patch.
 - Bento functionality: the sidebar shell, the panel trailer, and the confirm,
   edit-workspace, and workspace-switcher overlays load at window startup, as before.
-  The address bar, command palette, and menu are created at idle after the launch
+  The address bar, command palette, menu, and (regular windows with the Bookmarks manager on)
+  the bookmark popup are created at idle after the launch
   veil lifts. The workspace palette, merge palette, welcome, embedded import, and
   panel navigator tooltip are created on first use. Chrome reveals an overlay, and
   sends it anything, only after the document's `BENTO_OVERLAY_READY` title; a
@@ -1225,6 +1226,115 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 - Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
   entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` and
   `restoreLibraryKey` leave no persistent change (the key is edited in the window's DOM only).
+
+### Bookmark Popup, Bookmarks Toolbar And bookmarkPage Patch (mount script, stylesheet)
+
+- Status: Active
+- Last updated: 2026-11-01
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (the `bookmarks-popup` overlay entry
+    with `canCreate` and `ensureOverlayHost` for `bento-bookmarks-popup-host`;
+    `showBookmarkPopup`, `hideBookmarkPopup`, `handleBookmarkPopupOpenTitle`,
+    `handleBookmarkPopupCloseTitle`, `handleBookmarkedTabsTitle`, `requestBookmarkPopup`,
+    `openBookmarkPopupForSelectedTab`, `getSelectedPanelBookmarkAnchor`,
+    `openBookmarkPopupFromPanelHeader`, `refreshPanelHeaderBookmarkButtons`,
+    `attachBookmarkPopupListeners`, `patchBookmarkPageCommand`; `applyBookmarksToolbar`,
+    `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost`,
+    `removeBookmarksToolbarHost`; the popup and toolbar frames' title handlers, the Esc
+    branch, `openOverlay` and `showAddrbar` closing the popup, `focusReturnTarget` and
+    `returnFocusAfterOverlay` shared with the Bookmarks view, the panel header star in
+    `createPanelHeader`, and the `ui/bookmarkPopup/` exception in the `BentoShellAction` frame
+    script)
+  - `src/browser/base/content/bento-shell-mount.css` (`:root[bento-bookmarks-toolbar]` rules next
+    to the `#PersonalToolbar` alignment rules)
+  - `scripts/firefox-compat-registry.mjs` (new entries `PlacesCommandHook.bookmarkPage`,
+    `Browser:AddBookmarkAs`, `personal-bookmarks`, `personal-toolbar-empty` and
+    `skipintoolbarset`; `PersonalToolbar` gains sites), the regenerated table below, and the
+    `PlacesCommandHook` line of the mount's compact probe list
+  - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`,
+    `scripts/check-firefox-compat.test.mjs` (the native-note list)
+  - No Firefox patch.
+- Bento functionality: in a regular window with the Bookmarks manager on, the sidebar star,
+  `Cmd/Ctrl+D` (and Firefox's menu items and star that run the same command) and each panel's
+  header star open one popup document (the save/edit popover, plus the group, space and
+  overflow menus of the Bookmarks toolbar) anchored to the star or toolbar button; the data
+  lives in `bento-tools`' Bookmarks store, not in Places. The Bookmarks toolbar is a shell
+  document shown in `#PersonalToolbar` instead of Firefox's bookmark items. Private windows and
+  a window with the manager off keep Firefox's Places star, `Cmd+D` and toolbar untouched.
+- Vanilla Firefox surface touched or depended on:
+  - `PlacesCommandHook.bookmarkPage` (`browser-places.js`): replaced once per window, at the
+    mount script's evaluation. `global-scripts.js` loads `browser-places.js` before
+    `browser-main.js` and before the body (where `browser-box.inc.xhtml` includes the mount
+    script), so the global exists; if it is missing the patch waits for `load` and then warns.
+    The wrapper calls Firefox's original, with its arguments, whenever the window is private or
+    the manager is off (read at each call), and otherwise asks for the popup and returns a
+    resolved promise. Every entry point calls it through the global object at call time:
+    `Browser:AddBookmarkAs` (`browser-sets.js`: `Cmd/Ctrl+D`, the Bookmarks and app menus, the
+    page context menu) and `BookmarkingUI.onStarCommand` (Firefox's own star).
+    `bentoCompatNoteNative` records the original before it is replaced.
+  - `#PersonalToolbar` (`navigator-toolbox.inc.xhtml`): Bento appends
+    `#bento-bookmarks-toolbar-host` (an `hbox` with `skipintoolbarset="true"`,
+    `removable="false"`, `flex="1"`, holding a remote `<browser>`) as its last child, the first
+    time the toolbar shows (its `collapsed`/`hidden` attribute is observed, or at once when it
+    already shows). CustomizableUI skips `skipintoolbarset` children when it builds and saves
+    placements, so it does not treat the host as a widget. The toolbar keeps its place,
+    visibility pref (`browser.toolbars.bookmarks.visibility`, `never` in `prefs/bento.js`),
+    `Cmd+Shift+B` and the height compensation of `attachBookmarksToolbarAlignment`.
+  - `#personal-bookmarks` and `#personal-toolbar-empty`: hidden with `display: none` under the
+    root attribute `bento-bookmarks-toolbar` (Bento's own, no Firefox meaning), which the mount
+    sets only in a regular window after the first `BENTO_PANELS` payload says the manager is on
+    and removes when it is off, which also removes the host. Items a user placed in the toolbar
+    through customization stay visible beside the host.
+  - Chrome-side geometry: the popup host is a child of the chrome root (like the panel
+    navigator tooltip's), `position: absolute`, full window, transparent, `z-index: 99993`: above
+    the Bookmarks view (99000), below every other overlay (the lowest is 99994). It paints and
+    hides nothing, and never touches `#navigator-toolbox`, `#nav-bar` or the window button box,
+    so the macOS traffic lights are unaffected. It appears and goes at once, with no transition
+    (the document animates the popover), so it needs no colour-mode twin.
+  - Window events: `TabSelect`, `DOMWillOpenModalDialog` and `dialogopen` (capture) and the
+    window's own `resize` close the popup, as does a change of the root attributes
+    `bento-sidebar-push`, `bento-sidebar-rail` and `bento-sidebar-hidden` (a mutation observer),
+    because its anchor is on geometry that moves. A tab dialog showing in a shown browser
+    (`tabDialogShowing`) or the Bookmarks view being open keeps it from opening.
+  - The `BentoShellAction` frame script (`content.focus()` for `ui/*` actions, for the sidebar's
+    rename and select-all) now skips `ui/bookmarkPopup/`, so the open message does not take the
+    focus from the popup frame.
+- Why this cannot stay extension-only: `PlacesCommandHook.bookmarkPage` and the toolbar row are
+  Firefox chrome; the popup must cover the toolbar strip; the panel header star is chrome-drawn.
+  The documents themselves are extension pages.
+- Firefox update risk: if `PlacesCommandHook.bookmarkPage` is renamed or an entry point stops
+  calling it through the object, that entry point opens Firefox's own star panel again (the
+  `[bento-compat] missing PlacesCommandHook.bookmarkPage` probe and the engine check for
+  `Browser:AddBookmarkAs` catch both). If `skipintoolbarset` stops being honoured, CustomizableUI
+  can remove the host, and the toolbar row is then empty (Firefox's items stay hidden by the
+  stylesheet) until the next `BENTO_PANELS` payload creates it again. If `#personal-bookmarks` or `#personal-toolbar-empty` is renamed, the
+  Firefox items show beside the Bento toolbar. If Firefox starts setting `collapsed` before the
+  first `BENTO_PANELS` payload differently, the frame can be created for a toolbar nobody sees
+  (one unused document, no visible effect). A new top-layer popover in the toolbar would sit
+  above the popup host, as it does above every overlay.
+- Regression checks for future updates: on macOS, in a regular window, press `Cmd+D` on a
+  saved and an unsaved page with the sidebar expanded, collapsed and hidden: the popup anchors to
+  the sidebar star (expanded) or to the selected panel's header star (otherwise), once, and
+  Firefox's own panel never shows; use the Bookmarks menu item and the app menu item too. Click
+  the sidebar star and a panel header star: the popup opens at the button, and a header star of a
+  saved page is filled. Esc with the popup focused closes it and returns the focus; click
+  anywhere, including the empty top strip, to close it; the traffic lights stay visible and
+  clickable while it is open. Select another tab, resize the window, toggle the sidebar and open
+  the command palette with the popup open: it closes each time. With the Bookmarks view open
+  `Cmd+D` does nothing; the popup's Open in Bookmarks opens the view. Press `Cmd+Shift+B` with the
+  manager on: the Bento toolbar shows in the toolbar row and Firefox's bookmark items do not;
+  the sidebar and splitters keep their compensation (no gap above the sidebar address field);
+  drag the sidebar splitter and toggle the sidebar with the toolbar open and watch the toolbar's
+  left edge follow the strip. Turn the manager off in Settings: Firefox's toolbar, star and
+  `Cmd+D` return without a restart; turn it on again: the Bento ones. In a private window
+  `Cmd+D`, the star and the toolbar are Firefox's. Run `pnpm run firefox:compat:engine` and
+  confirm `PlacesCommandHook.bookmarkPage`, `Browser:AddBookmarkAs`, `personal-bookmarks`,
+  `personal-toolbar-empty` and `skipintoolbarset` are found, and watch the Browser Console for
+  `[bento-compat] missing`.
+- Rollback or migration notes: removing the surface is deleting the `bookmarks-popup` overlay
+  entry and host, the bookmarks toolbar functions and stylesheet block, and the
+  `patchBookmarkPageCommand` call (the original function is untouched; the patch lives on the
+  window object only). Nothing persists outside `bento-tools`' store.
 
 ### Search Engine Icons (bento-privacy Experiment)
 
@@ -3196,7 +3306,12 @@ below is generated; edit the registry, then run
 | `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:230` |
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |
 | `identity-popup` | source (engine only) | Native identity panel that Bento opens at a sidebar anchor. It sits inside template-identity-popup until gIdentityHandler._initializePopup() expands it, which Bento calls first. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:5` |
-| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. While the Bookmarks manager is on in a regular window it also holds the Bento bookmarks toolbar: Bento appends #bento-bookmarks-toolbar-host as its last child (skipintoolbarset), watches its collapsed and hidden attributes to create that host when the toolbar first shows, and bento-shell-mount.css hides its bookmark items. Its height is the host row, which attachBookmarksToolbarAlignment reads. | `attachBookmarksToolbarAlignment`, `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `personal-bookmarks` | source (engine only) | Firefox bookmark items of the bookmarks toolbar (the Places toolbar; a customizable toolbar item, so no runtime probe). While the Bookmarks manager is on in a regular window the stylesheet hides it (display: none) in favour of the Bento toolbar frame. If the id changes, both toolbars show side by side. | `src/browser/base/content/bento-shell-mount.css#personal-bookmarks` | `browser/base/content/navigator-toolbox.inc.xhtml:562` |
+| `personal-toolbar-empty` | source (engine only) | Firefox hint shown on an empty bookmarks toolbar. The stylesheet hides it (display: none) while the Bento toolbar frame is in use. If the id changes, an empty Firefox profile shows the hint under the Bento frame. | `src/browser/base/content/bento-shell-mount.css#personal-toolbar-empty` | `browser/base/content/navigator-toolbox.inc.xhtml:555` |
+| `skipintoolbarset` | source (engine only) | Attribute on #bento-bookmarks-toolbar-host. CustomizableUI skips such children of a customizable toolbar when it builds placements, saves them and resets, so the host is not mistaken for a widget and removed. | `createBookmarksToolbarHost` | `browser/components/customizableui/CustomizableUI.sys.mjs:1528` |
+| `PlacesCommandHook.bookmarkPage` | method (runtime) | The one function behind Cmd+D, the Bookmarks menu and app menu items, the page context menu and Firefox star. In a regular window with the Bookmarks manager on, Bento replaces it (once per window, at script start: browser-places.js loads before the mount script) with a request for the bookmark popup; private windows and the opt-out call the original. | `patchBookmarkPageCommand` | `browser/base/content/browser-places.js:410` |
+| `Browser:AddBookmarkAs` | source (engine only) | The command Cmd+D and the Bookmarks menu run. Its handler in browser-sets.js calls PlacesCommandHook.bookmarkPage(), which is where Bento intercepts it. If the handler stops calling it, Cmd+D bypasses the Bento popup. | `patchBookmarkPageCommand` | `browser/base/content/browser-sets.js:154` |
 | `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute (keeping the value on the key in data-bento-library-command) and listens for the command event the key then raises on itself, to toggle the Bookmarks view. Turning the Bookmarks manager off in Settings puts the command attribute back, so the key opens the Library again. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey` | `browser/base/content/browser-sets.inc.xhtml:290` |
 | `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:679` |

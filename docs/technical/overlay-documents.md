@@ -9,7 +9,9 @@ of the panel strip layout) load at window startup, and so do three overlays whos
 payloads travel between documents: confirm, edit workspace, and the workspace
 switcher. The other overlay documents are created at idle after the launch veil
 lifts or on first use, so a window pays for the ones it opens instead of eleven
-documents at startup (audit findings R-03, R-13, R-14, M-03).
+documents at startup (audit findings R-03, R-13, R-14, M-03). The Bookmarks toolbar
+document (`#bento-bookmarks-toolbar-frame`) is a frame in the toolbar like the trailer, not
+an overlay: see [Bookmark popup and toolbar](#bookmark-popup-and-toolbar).
 
 | Overlay (frame id `bento-<name>-frame`) | Document                                             | Opened by                                                                                                                 | Strategy                   | What the open depends on                                                                                                                                                               |
 | --------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -19,6 +21,7 @@ documents at startup (audit findings R-03, R-13, R-14, M-03).
 | `addrbar`                               | `address-bar.html`                                   | `Cmd/Ctrl+L/E/T`, native urlbar focus or click, `BentoKey:AddrbarOpen`, sidebar `BENTO_OPEN_ADDRBAR`                      | idle, 1st                  | Open message from chrome through the `BentoAddrbarOpen` frame script onto `bento-addrbar-bus`, named for its window; `BENTO_ADDRBAR_READY` reveals the host                            |
 | `palette`                               | `palette.html`                                       | `Cmd/Ctrl+Alt+P`, sidebar `BENTO_OPEN_PALETTE`                                                                            | idle, 2nd                  | Nothing: the dialog stays open inside the document, chrome only toggles the host                                                                                                       |
 | `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                                             | idle, 3rd                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script, with chrome's `__windowId`                                                                               |
+| `bookmarks-popup`                       | `bookmarks-popup.html`                               | Sidebar star and Bookmarks toolbar `BENTO_BOOKMARK_POPUP_OPEN`, `Cmd/Ctrl+D` (`PlacesCommandHook.bookmarkPage`), panel header star | idle, 4th (regular window, manager on) | `ui/bookmarkPopup/open` on `bento-shell-bus` through the `BentoShellAction` frame script, with chrome's `__windowId` and the anchor in host coordinates; never created in a private window or with the manager off |
 | `workspace-palette`                     | `workspace-palette.html`                             | Sidebar or switcher `BENTO_OPEN_WORKSPACE_PALETTE`                                                                        | first use                  | Nothing                                                                                                                                                                                |
 | `merge-palette`                         | `merge-palette.html`                                 | Command palette, Settings button, sidebar merge card (`BENTO_OPEN_MERGE_PALETTE`)                                         | first use                  | Open and close messages through the `BentoMergePaletteLifecycle` frame script onto `bento-merge-palette`, named for its window                                                         |
 | `settings-palette`                      | `settings-palette.html`                              | App menu "Bento Settings", command palette `BENTO_OPEN_SETTINGS` and `BENTO_OPEN_SETTINGS_PRIVACY`, welcome Open Settings | first use                  | A `bento-settings-show` DOM event (stage for the privacy link) through the `BentoSettingsPaletteShow` frame script; requests and results travel the BentoShellBus relay, not a channel |
@@ -473,6 +476,126 @@ palette stays focused; Esc then closes the palette and the page keeps working. T
 search field is focused when it opens with nothing over it, and is not when it appeared under
 the palette (the show event's `detail.focus` is `true` and `false`; if the field is never
 focused, the frame script's `content.wrappedJSObject.Object` detail is not reaching the page).
+
+## Bookmark popup and toolbar
+
+The popup (`bookmarks-popup`, `bookmarks-popup.html`) is the save/edit popover of the star and
+`Cmd+D`, and the group, space and overflow menus of the Bookmarks toolbar: one document, one
+kind of request. Its host `bento-bookmarks-popup-host` is transparent, covers the whole window
+(a child of the chrome root, like the tooltip's, so the toolbar strip is under it too, which
+makes any click outside the popover land in the document, which closes itself), and sits at
+`z-index: 99993`: above the Bookmarks view (99000), below every other overlay (the lowest is the
+address bar's 99994). `scripts/overlay-manager.test.mjs` fails if that order changes. Source of
+truth: `bento-tools`' Bookmarks store; chrome reads no bookmark. Regular windows with the
+Bookmarks manager on only: `canCreate` (`isBentoBookmarksActive`) keeps the frame from being
+created, prewarm included, in a private window and with the manager off, and every entry point
+below refuses there.
+
+- **Open.** Shell documents write `BENTO_BOOKMARK_POPUP_OPEN:<ts>:<json>`: the sidebar frame
+  (star) and `bento-bookmarks-toolbar-frame` (group, space and overflow buttons). The payload
+  is a `BookmarkPopupRequest` (`edit`, `group`, `spaces`, `overflow`; the shell's
+  `bridge/bookmarkPopup.ts`) with the anchor in the sender frame's CSS pixels and an optional
+  `requestId`. `readBookmarkPopupRequest` keeps a request only if its fields are those of its
+  kind and the anchor numbers are finite. `handleBookmarkPopupOpenTitle` moves the anchor by the
+  sender frame's rect into chrome-window coordinates; `showBookmarkPopup` moves it again by the
+  host's rect inside the reveal and sends the document
+  `dispatchShellAction({ type: 'ui/bookmarkPopup/open', popupId, request })`, stamped with
+  `__windowId` like `menu/open` (`ui/*` is document-local: the shell background drops it
+  instead of forwarding it to tools). Surfaces that are chrome-drawn (the panel header star,
+  the `Cmd+D` fallback) call `showBookmarkPopup` with chrome-window coordinates and no
+  sender. Each open gets a fresh `popupId` (`bp_<time>_<n>`); a repeated request while it is
+  open replaces the content in place and keeps the first request's focus record.
+- **Frame script and focus.** The `BentoShellAction` frame script calls `content.focus()` on
+  the sidebar for `ui/*` actions (rename, select all); it skips `ui/bookmarkPopup/`, or the
+  sidebar would take the focus back from the popup frame. The reveal focuses the popup frame on
+  the next tick (`focusOverlayFrame`).
+- **Refusals.** `showBookmarkPopup` returns, before it records anything, in a private window,
+  with the manager off, while the Bookmarks view is open or waiting (`isBookmarksViewOpen`),
+  while a tab dialog shows in a shown browser (`isTabDialogShowing`, checked again in the reveal),
+  and while an overlay above the popup is on screen (`isOverlayAboveBookmarksViewShown('bookmarks-popup')`;
+  `BOOKMARKS_VIEW_HIGHER_OVERLAYS` lists the popup too, since it stacks above the view).
+- **Close.** The document sends `BENTO_BOOKMARK_POPUP_CLOSE:<ts>:<json {popupId}>`; chrome hides
+  the host at once (no fade, like the menu), tells the document it is no longer presented and
+  returns the focus (`returnFocusAfterOverlay`, shared with the Bookmarks view: to the element
+  that had it, or to the selected tab if that changed, unless an overlay above is on screen). A
+  close that names an older `popupId` is dropped. `BENTO_OPEN_BOOKMARKS_<ts>` from the popup
+  frame (Open in Bookmarks) hides the popup, then opens the view; `showBookmarksView` also hides
+  the popup itself, so `Cmd+Shift+O` closes it.
+- **Chrome-initiated close.** `attachBookmarkPopupListeners` closes it, without moving the
+  focus, on `TabSelect`, `DOMWillOpenModalDialog`, `dialogopen`, the window's own `resize`, and
+  a change of the root attributes `bento-sidebar-push`, `bento-sidebar-rail` and
+  `bento-sidebar-hidden` (its anchor is on geometry that moves). Any other overlay opening
+  closes it too (`openOverlay` and `showAddrbar`). The document gets no message for these: it
+  sees `bento-host-presentation` (the `data-bento-host-presented` root attribute going false),
+  which it can use to commit an unfinished name edit.
+- **Esc.** The document owns it (it puts an unsaved name back, then closes). Like Settings,
+  `attachPaletteEscListener` returns for a key whose target is `bento-bookmarks-popup-frame`, and
+  consumes Esc for an open still waiting for its document or with the focus elsewhere in the
+  window (the popup then closes and returns the focus). In the stack it sits above the Bookmarks
+  view and below the palettes.
+- **Cmd+D.** `patchBookmarkPageCommand` replaces `PlacesCommandHook.bookmarkPage` once per
+  window, at the mount script's evaluation (`browser-places.js` is loaded by `global-scripts.js`
+  before it); the window's setting is read at each call, so a private window or a manager that is
+  off gets Firefox's function and its arguments. Otherwise `requestBookmarkPopup` does what
+  `requestAddrbarOpen` does for `Cmd+L`: when `canAnchorAddrbarToSidebarRow` says the row can
+  be on screen it sends the sidebar the address-channel message
+  `{ kind: 'bookmark-popup-request', windowId, bridgeToken, messageId, requestId }` and waits
+  `BOOKMARK_POPUP_REQUEST_MS` (the same 120 ms). The row answers with a
+  `BENTO_BOOKMARK_POPUP_OPEN` of kind `edit` that carries the `requestId` when its star is laid
+  out and the page can be saved, and says nothing otherwise. No answer opens kind `edit` from
+  chrome (`openBookmarkPopupForSelectedTab`: the selected tab's WebExtension id, URL and title;
+  nothing for a page that cannot be bookmarked) anchored to the star of the selected tab's panel
+  header or, with the header hidden, the top right of its panel (`getSelectedPanelBookmarkAnchor`).
+  An answer is acted on only while its request waits (`takeBookmarkPopupRequest`), so an open is
+  neither doubled nor lost, and one that arrives after the sidebar started to collapse or hide
+  anchors to the panel instead of the star's now moving rect. Another overlay opening, a newer
+  `Cmd+L` and the manager going off end a pending request.
+- **Panel header star.** `createPanelHeader` keeps Places' toggle for private windows and the
+  opt-out. In a regular window with the manager on, a click calls
+  `openBookmarkPopupFromPanelHeader` (kind `edit`, the panel's URL and title, the button's rect
+  as the anchor), and the filled state is `currentBookmarkedTabIds.has(tabId)`, the set of the
+  latest `BENTO_BOOKMARKED_TABS:<ts>:<json {tabIds}>` the sidebar sends on change (a filled star's
+  title is Edit bookmark). Every payload and every change of the setting calls
+  `refreshPanelHeaderBookmarkButtons`; a header star creates itself unfilled and reads the set on
+  its next location refresh.
+- **Bookmarks toolbar.** `bento-shell-mount.css` hides `#personal-bookmarks` and
+  `#personal-toolbar-empty` and shows `#bento-bookmarks-toolbar-host` (the toolbar's last child, a
+  `<browser>` loading `bookmarks-toolbar.html`, one row of `--bento-bookmarks-toolbar-row-height`)
+  while the root carries `bento-bookmarks-toolbar`. `applyChromeBookmarksEnabled` calls
+  `applyBookmarksToolbar` for every `BENTO_PANELS` payload that has `bookmarksEnabled`, so the first
+  one confirms the default: in a regular window with the setting on it sets the attribute, and the
+  host and frame are created when `#PersonalToolbar` first shows (at once if it shows already;
+  otherwise a mutation observer waits for `collapsed` and `hidden` to clear, since the default
+  visibility pref is `never` and most windows never show it). The setting off, or a private
+  window, removes the attribute and the host. The frame is not in the overlay table; its only title
+  is `BENTO_BOOKMARK_POPUP_OPEN`. `attachBookmarksToolbarAlignment` measures the toolbar's height
+  and strip offset as before, so the host's row height is what the sidebar compensates for.
+
+Pitfalls:
+
+- A repeated title from one frame is dropped, so the shell's open and close titles carry a
+  timestamp; a request written twice in a row is two titles only because of it.
+- Never put the host's colours or a fade on it. It is invisible, and an opacity transition on a
+  host loses to the colour-mode fade's `!important` catch-all (see the Bookmarks view); the
+  document owns the popover's motion.
+- A frame-local anchor is only good for the instant it was measured. Chrome translates it when
+  the title arrives (sender rect) and when the host reveals (host rect); never cache an anchor
+  across a sidebar push, a resize or a tab change, which all close the popup.
+- The `ui/bookmarkPopup/` exception in the `BentoShellAction` frame script is load-bearing: without
+  it the sidebar document takes the focus right after the popup frame gets it and Esc stops
+  reaching the popup.
+- A new overlay that can sit between the popup and the page needs to close it (through
+  `openOverlay`, which does) and to join `BOOKMARKS_VIEW_HIGHER_OVERLAYS`.
+- The `skipintoolbarset` attribute on the toolbar host keeps CustomizableUI from treating it as a
+  placement; do not give it an id that is a widget id.
+
+Manual verification (macOS, regular window, `--jsdebugger`): see the regression checks of the
+"Bookmark Popup, Bookmarks Toolbar And bookmarkPage Patch" entry in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md). In the Browser Toolbox Console,
+`window.BentoOverlayStats.overlays['bookmarks-popup']` reports `strategy: 'idle'` and
+`readyBy: 'signal'` in a regular window and `state: 'absent'` in a private one;
+`document.documentElement.hasAttribute('bento-bookmarks-toolbar')` is true in a regular window
+once the first payload arrived with the manager on.
 
 ## Onboarding import handoff
 

@@ -454,9 +454,11 @@ out the backup settings.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
 at the top of the sidebar above the tab list. It mirrors the active main
-tab's URL, loading state, Firefox security identity state, and regular Firefox
-bookmark state, with one-click actions to copy the current URL or toggle the
-regular bookmark state. The copy action shows a `Copied` tooltip after the URL
+tab's URL, loading state, Firefox security identity state, and bookmark state,
+with one-click actions to copy the current URL or bookmark the page. In a regular
+window the bookmark star works on Bento's bookmarks (see "Saving pages and the
+bookmarks toolbar"); in a private window, or with the Bookmarks manager off, it
+toggles the regular Firefox bookmark instead. The copy action shows a `Copied` tooltip after the URL
 has been written to the clipboard. Clicking the row, or pressing `Cmd/Ctrl+L` or
 `Cmd/Ctrl+E` while the expanded row is on screen, opens Bento's address entry as
 the row growing: the field sits exactly over the row, with the same height, a
@@ -740,6 +742,39 @@ declined once, it also offers to import the Firefox bookmarks into a space of th
 If the stored bookmarks cannot be read, the view says "Bookmarks couldn't load" with a
 Retry button instead of showing a board that could not save; nothing is changed meanwhile.
 
+### Saving pages and the bookmarks toolbar
+
+With the Bookmarks manager on, in a regular window, saving a page and the bookmarks toolbar use
+Bento's bookmarks rather than Firefox's. Private windows, and any window while the manager is off in
+Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, unchanged.
+
+- **Saving.** The star in the sidebar address row, Cmd/Ctrl+D, and the Bookmark Page entries of
+  the menu bar, the app menu and the page's context menu all save the page at once and open a small
+  popover under the star (or, when the sidebar row is not on screen, at the top right of the active
+  panel) with Name, Space and Group, Remove and Done. A page goes into the group of the most
+  recently saved link in the current space (the one the toolbar shows); in a space with no group,
+  into a group called "Unsorted".
+  Name saves on Enter or when the field loses focus. Choosing another Space moves the link to that
+  space's first group (making "Unsorted" if it has none), and choosing a Group moves it there.
+  Done, a click outside and Esc close the popover and keep the save; Esc also drops a name that
+  was typed but not saved. Remove deletes the link. If the stored bookmarks could not be read,
+  the popover says the page was not saved and offers Retry.
+- **The star.** It is filled for any page that is saved in any group. Pressing it, or Cmd/Ctrl+D,
+  on a saved page opens the popover on the most recent copy rather than saving again, and the star
+  shows as pressed while the popover is open. A page Bento does not save (Firefox's own pages and
+  other internal pages) leaves the star disabled. The panel header star follows the same rules.
+- **Bookmarks toolbar.** In place of Firefox's toolbar (it still shows and hides with
+  Cmd/Ctrl+Shift+B) the row lists the groups of the space the Bookmarks view last showed, each a
+  button with its colour dot, name and a chevron. A group's menu lists its links (favicon and
+  title; choosing one opens it as a new panel), then "Open all in panels" and "Open in
+  Bookmarks". The space button at the right shows the current space; its menu lists every space
+  with a check on the current one (choosing one switches the toolbar, the Bookmarks view and
+  every other window to it) and "Open Bookmarks". Groups that do not fit move behind an overflow
+  button at the end of the groups, each a submenu of its links. A space with no links shows "No
+  bookmarks in" and its name, and the row shows nothing until the stored bookmarks have loaded (or
+  if they could not be read). The button whose menu is open shows as pressed. Esc, a click
+  outside or choosing an item closes a menu.
+
 ## Primary user flows
 
 ### Build a persona workspace
@@ -910,8 +945,8 @@ it, and Back or Esc puts the previous value back, as on the field pages. A scree
 announces the value with its unit.
 
 The Bookmarks manager switch is the one switch that carries a second, always visible line (it
-names the Cmd/Ctrl+Shift+O shortcut and says that Off keeps the saved bookmarks); search results
-show it on one line. Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
+names the Cmd/Ctrl+Shift+O shortcut, says the star, Cmd/Ctrl+D and the bookmarks toolbar use the
+manager too, and says that Off keeps the saved bookmarks); search results show it on one line. Tab appearance comes after Appearance. Show tab state tints and Use custom tab state icons
 are independent switches, both On by default and saved for the whole profile. Turning
 tints off removes the status backgrounds; turning custom icons off restores Bento's
 loading indicator, website favicon or empty placeholder. Sleeping-tab styling and

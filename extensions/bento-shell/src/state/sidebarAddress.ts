@@ -39,6 +39,13 @@ export interface SidebarAddressOpenRequest {
   mode: AddrbarMode;
 }
 
+/** Chrome's request to open the bookmark popup over the star (Cmd+D and the other bookmark-page entry
+ * points; see useSidebarAddress.ts). */
+export interface SidebarBookmarkPopupRequest {
+  id: number;
+  requestId: string;
+}
+
 export interface SidebarAddressCopyResult {
   id: number;
   tabId: number | null;
@@ -53,12 +60,14 @@ interface SidebarAddressState {
   draftValue: string;
   pendingBookmarkToggleKey: string | null;
   openRequest: SidebarAddressOpenRequest | null;
+  bookmarkPopupRequest: SidebarBookmarkPopupRequest | null;
   /** The address palette is shown anchored over the row; the row fades its border out. */
   paletteOverRow: boolean;
   lastCopyResult: SidebarAddressCopyResult | null;
   applySnapshot: (snapshot: SidebarAddressSnapshot) => void;
   applyCopyResult: (result: Omit<SidebarAddressCopyResult, 'id'>) => void;
   requestOpen: (mode: AddrbarMode, requestId: string) => void;
+  requestBookmarkPopup: (requestId: string) => void;
   setPaletteOverRow: (over: boolean) => void;
   beginEdit: (mode: AddrbarMode, draftValue?: string) => void;
   cancelEdit: () => void;
@@ -68,6 +77,7 @@ interface SidebarAddressState {
 }
 
 let nextOpenRequestId = 1;
+let nextBookmarkPopupRequestId = 1;
 let nextCopyResultId = 1;
 
 function snapshotDraftValue(snapshot: SidebarAddressSnapshot | null): string {
@@ -89,6 +99,7 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
   draftValue: '',
   pendingBookmarkToggleKey: null,
   openRequest: null,
+  bookmarkPopupRequest: null,
   paletteOverRow: false,
   lastCopyResult: null,
   applySnapshot: (snapshot) => {
@@ -113,6 +124,10 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
     set({ openRequest: { id: nextOpenRequestId, requestId, mode } });
     nextOpenRequestId += 1;
   },
+  requestBookmarkPopup: (requestId) => {
+    set({ bookmarkPopupRequest: { id: nextBookmarkPopupRequestId, requestId } });
+    nextBookmarkPopupRequestId += 1;
+  },
   setPaletteOverRow: (paletteOverRow) => set({ paletteOverRow }),
   beginEdit: (mode, draftValue) => {
     set({
@@ -135,6 +150,7 @@ export const useSidebarAddressStore = create<SidebarAddressState>((set, get) => 
       draftValue: '',
       pendingBookmarkToggleKey: null,
       openRequest: null,
+      bookmarkPopupRequest: null,
       paletteOverRow: false,
       lastCopyResult: null,
     }),

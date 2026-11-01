@@ -273,6 +273,29 @@
   visibility: collapse !important;
   transition: none !important;
 }
+/* The Bento bookmarks toolbar. The mount script sets bento-bookmarks-toolbar on the root, in a
+   regular window, once the first BENTO_PANELS payload says the Bookmarks manager is on; it
+   creates #bento-bookmarks-toolbar-host (the shell's toolbar document in a <browser>) as the
+   last child of #PersonalToolbar when the toolbar first shows. Firefox's bookmark items and its
+   empty-toolbar hint give way to it; the toolbar keeps its place, its visibility pref and
+   Cmd+Shift+B. The host is the toolbar's one row, so the height attachBookmarksToolbarAlignment
+   reads for the sidebar compensation is the host's. The attribute off (manager off in Settings)
+   restores Firefox's toolbar. */
+:root {
+  --bento-bookmarks-toolbar-row-height: 30px;
+}
+#bento-bookmarks-toolbar-host {
+  display: none;
+}
+:root[bento-bookmarks-toolbar] #bento-bookmarks-toolbar-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: var(--bento-bookmarks-toolbar-row-height);
+}
+:root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty) {
+  display: none !important;
+}
 :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {
   display: none !important;
   visibility: collapse !important;

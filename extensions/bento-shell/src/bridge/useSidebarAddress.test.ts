@@ -111,6 +111,49 @@ describe('palette-over-row message', () => {
   });
 });
 
+describe('bookmark-popup-request message', () => {
+  const expected = { windowId: 7, bridgeToken: 'token-a' };
+  const message = (overrides: object = {}) =>
+    ({
+      kind: 'bookmark-popup-request',
+      windowId: 7,
+      bridgeToken: 'token-a',
+      requestId: 'req-1',
+      ...overrides,
+    }) as const;
+
+  beforeEach(() => {
+    useSidebarAddressStore.getState().reset();
+  });
+
+  it('is accepted only for the matching window and bridge token', () => {
+    expect(shouldAcceptSidebarAddressMessage(message(), expected)).toBe(true);
+    expect(shouldAcceptSidebarAddressMessage(message({ windowId: 8 }), expected)).toBe(false);
+    expect(shouldAcceptSidebarAddressMessage(message({ bridgeToken: 'other' }), expected)).toBe(
+      false,
+    );
+  });
+
+  it('sets a request for the star, apart from the address palette request', () => {
+    applySidebarAddressBusMessage(message());
+    const state = useSidebarAddressStore.getState();
+    expect(state.bookmarkPopupRequest).toMatchObject({ requestId: 'req-1' });
+    expect(state.openRequest).toBeNull();
+  });
+
+  it('numbers each request, so a repeat of the same id is a new one', () => {
+    applySidebarAddressBusMessage(message());
+    const first = useSidebarAddressStore.getState().bookmarkPopupRequest?.id ?? 0;
+    applySidebarAddressBusMessage(message());
+    expect(useSidebarAddressStore.getState().bookmarkPopupRequest?.id).toBe(first + 1);
+  });
+
+  it('ignores a request without an id', () => {
+    applySidebarAddressBusMessage(message({ requestId: '' }));
+    expect(useSidebarAddressStore.getState().bookmarkPopupRequest).toBeNull();
+  });
+});
+
 describe('signalSidebarAddressReady', () => {
   afterEach(() => {
     vi.restoreAllMocks();
