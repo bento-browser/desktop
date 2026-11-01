@@ -6,6 +6,7 @@
 
 import type { PrivacyAdvancedKey } from '@shared/protocol';
 import type { EditableSettings, SettingsPrivacy } from '@shared/settings-client-protocol';
+import { UI_SCALES, uiScaleLabel } from '@shared/ui-scale';
 
 export type NumberSettingKey = {
   [K in keyof EditableSettings]: EditableSettings[K] extends number ? K : never;
@@ -143,7 +144,11 @@ export const BOOLEAN_SPECS: Record<BooleanSettingKey, BooleanSpec> = {
 
 /** Settings that open a list of fixed choices. */
 export type EnumKey =
-  'uiColorMode' | 'sidebarShortcutBehavior' | 'webRTCIPHandlingPolicy' | 'httpsOnlyMode';
+  | 'uiColorMode'
+  | 'uiScale'
+  | 'sidebarShortcutBehavior'
+  | 'webRTCIPHandlingPolicy'
+  | 'httpsOnlyMode';
 
 export interface EnumOption<V extends string = string> {
   value: V;
@@ -155,6 +160,11 @@ export const COLOR_MODE_OPTIONS = [
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'Follow system' },
 ] as const satisfies readonly EnumOption<EditableSettings['uiColorMode']>[];
+
+/** One option per scale the rules accept, so the list cannot drift from them. */
+export const UI_SCALE_OPTIONS: readonly EnumOption<EditableSettings['uiScale']>[] = UI_SCALES.map(
+  (scale) => ({ value: scale, label: uiScaleLabel(scale) }),
+);
 
 export const SHORTCUT_BEHAVIOR_OPTIONS = [
   { value: 'collapse', label: 'Collapse the sidebar' },
@@ -184,6 +194,12 @@ export const ENUM_SPECS: Record<EnumKey, EnumSpec> = {
     label: 'Bento color mode',
     options: COLOR_MODE_OPTIONS,
     keywords: ['appearance', 'theme', 'dark mode', 'light mode'],
+  },
+  uiScale: {
+    key: 'uiScale',
+    label: 'Interface scale',
+    options: UI_SCALE_OPTIONS,
+    keywords: ['appearance', 'zoom', 'size', 'scale', 'larger', 'smaller', 'display'],
   },
   sidebarShortcutBehavior: {
     key: 'sidebarShortcutBehavior',

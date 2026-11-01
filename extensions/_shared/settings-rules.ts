@@ -8,6 +8,7 @@
 
 import type { PrivacyAdvancedKey } from './protocol';
 import type { EditableSettings, SettingsDomain } from './settings-client-protocol';
+import { UI_SCALES } from './ui-scale';
 
 export const SETTINGS_LIMITS = {
   /** Largest backup file, as text or as UTF-8 bytes. */
@@ -41,6 +42,7 @@ export const EDITABLE_SETTING_RULES = {
   tabSleepAfterMinutes: { type: 'integer', min: 1, max: 1440 },
   tabSleepKeepAlivePerWorkspace: { type: 'integer', min: 1, max: 50 },
   uiColorMode: { type: 'enum', values: ['light', 'dark', 'system'] },
+  uiScale: { type: 'enum', values: UI_SCALES },
   sidebarShortcutBehavior: { type: 'enum', values: ['collapse', 'hide'] },
   defaultPanelWidthPx: { type: 'integer', min: 200, max: 2400 },
   customPanelSizes: { type: 'integerArray', min: 120, max: 2400, maxItems: 64 },

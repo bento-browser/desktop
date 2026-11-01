@@ -68,6 +68,12 @@
         ]
       },
       {
+        "name": "applyUiScale",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "scale", "type": "number", "minimum": 1, "maximum": 2 }]
+      },
+      {
         "name": "notifyUiColorMode",
         "type": "function",
         "async": true,

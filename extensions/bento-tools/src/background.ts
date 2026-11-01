@@ -61,6 +61,7 @@ import { applyBootDefaultSearchEngine } from './privacy/BootSearchDefault';
 import { applyPrivacyLevel } from './privacy/ProtectionLevels';
 import { seedBootPrivacyLevel } from './privacy/BootPrivacyDefault';
 import type { BentoSettings, Event, PinnedPanelDelta } from '@shared/protocol';
+import { uiScaleFactor } from '@shared/ui-scale';
 import { isAuthorizedShellPort } from './messaging/external-port-auth';
 import { SettingsDomainService } from './settings-domain/SettingsDomainService';
 import { createSettingsClientTransport } from './settings-domain/SettingsClientTransport';
@@ -232,6 +233,17 @@ async function applyContentColorMode(mode: BentoSettings['contentColorMode']): P
     await browser.browserSettings.overrideContentColorScheme.set({ value: mode });
   } catch (err) {
     console.warn('[bento-tools] overrideContentColorScheme failed:', err);
+  }
+}
+
+// Scales the whole window by the saved `uiScale`. The experiment owns the work: it multiplies the
+// factor by the display's own size for Firefox's absolute layout.css.devPixelsPerPx, clears the
+// pref at 1, and re-reads the display as windows move (theming.md, "Interface scale").
+async function applyUiScale(scale: BentoSettings['uiScale']): Promise<void> {
+  try {
+    await browser.bentoPrivacy.applyUiScale(uiScaleFactor(scale));
+  } catch (err) {
+    console.warn('[bento-tools] applyUiScale failed:', err);
   }
 }
 
@@ -950,6 +962,9 @@ const bootReady = storesReady.then(async () => {
   // via settings.onChange below. Fire-and-forget: if the API errors
   // (rare), the user can re-toggle to retry.
   void applyContentColorMode(settings.snapshot().contentColorMode);
+  // Bento owns the scale pref: the stored scale is applied at every start, and 1.00x clears it, so
+  // a value set by hand in about:config does not outlive a restart.
+  void applyUiScale(settings.snapshot().uiScale);
   // A stored choice is applied at boot. A profile with none gets Standard on its first launch only
   // (`seedBootPrivacyLevel`); on later launches Firefox's prefs, and any switch changed since, stand.
   if (settings.hasOverride('privacyProtectionLevel')) {
@@ -962,6 +977,7 @@ const bootReady = storesReady.then(async () => {
   void applyBootDefaultSearchEngine(settings);
   await sweepStaleFolderIds();
   let lastUiColorMode: BentoSettings['uiColorMode'] = settings.snapshot().uiColorMode;
+  let lastUiScale: BentoSettings['uiScale'] = settings.snapshot().uiScale;
   let lastSidebarCollapsed: BentoSettings['sidebarCollapsed'] =
     settings.snapshot().sidebarCollapsed;
   let lastSidebarHidden: BentoSettings['sidebarHidden'] = settings.snapshot().sidebarHidden;
@@ -988,6 +1004,10 @@ const bootReady = storesReady.then(async () => {
   settings.onChange((next) => {
     signalChromeColorMode(next.uiColorMode, settings.colorStamp());
     void applyContentColorMode(next.contentColorMode);
+    if (next.uiScale !== lastUiScale) {
+      lastUiScale = next.uiScale;
+      void applyUiScale(next.uiScale);
+    }
     // Re-fire panels/sync for every active workspace whenever a
     // chrome-bound setting changes (uiColorMode, sidebarCollapsed,
     // sidebarHidden, sidebarShortcutBehavior, customPanelSizes,

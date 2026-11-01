@@ -16,6 +16,14 @@ describe('settings targets', () => {
       kind: 'enum',
       key: 'uiColorMode',
     });
+    expect(resolveSettingsTarget('setting:uiScale')).toEqual({
+      stages: [
+        { kind: 'root' },
+        { kind: 'category', id: 'appearance' },
+        { kind: 'enum', key: 'uiScale' },
+      ],
+      query: '',
+    });
     // A setting this build no longer has is not a target: it opens the first list.
     expect(resolveSettingsTarget('setting:defaultWorkspaceName')).toBeNull();
   });

@@ -5,6 +5,8 @@
 // performs the mutation against persistent state and broadcasts Event deltas
 // back. The shell's Zustand stores are downstream mirrors.
 
+import type { UiScale } from './ui-scale';
+
 export const SHELL_TOOLS_PORT = 'bento-shell<->bento-tools';
 
 /** Compact tab payload sent over the wire. */
@@ -208,6 +210,10 @@ export interface BentoSettings {
    * rest. 'system' resolves to the current OS color scheme at render time
    * while preserving the user-facing Auto setting. */
   uiColorMode: UiColorModePref;
+  /** Scale of the whole Bento window (chrome, shell UI and web content) relative to the display's
+   * own size: the text of the factor, '1' for none. One profile-wide value; tools turns it into
+   * Firefox's `layout.css.devPixelsPerPx` for every window. */
+  uiScale: UiScale;
   /** Show status tints on tab rows when the shell supports them. */
   tabStateTintsEnabled: boolean;
   /** Use custom tab-state artwork when the shell supports it. Independent of tints. */

@@ -23,6 +23,7 @@ function loadApi({
   },
   timers = { setTimeout, clearTimeout },
   windows = [],
+  services = {},
 } = {}) {
   const requested = [];
   const context = {
@@ -43,6 +44,7 @@ function loadApi({
           return { scheme: String(value).split(':', 1)[0].toLowerCase() };
         },
       },
+      ...services,
     },
     Uint8Array,
     console,
@@ -580,4 +582,194 @@ test('notifyUiColorMode fires the pref at every open browser window and refuses 
   await notifyUiColorMode('purple', stamp);
   await notifyUiColorMode(undefined, stamp);
   assert.deepEqual(events, []);
+});
+
+// ---- Interface scale ----
+
+const SCALE_PREF = 'layout.css.devPixelsPerPx';
+
+/** A fake profile: the pref store, the observer service, and browser windows with listeners. */
+function scaleHarness({ ratio = 2 } = {}) {
+  const prefs = new Map();
+  const writes = [];
+  const observers = new Map();
+  const makeWindow = (displayRatio, readyState = 'complete') => {
+    const listeners = new Map();
+    const rootListeners = new Map();
+    return {
+      closed: false,
+      document: { readyState },
+      desktopToDeviceScale: displayRatio,
+      listeners,
+      rootListeners,
+      // MozUpdateWindowPos goes to the window root and does not bubble to the window.
+      windowRoot: {
+        addEventListener: (type, listener) => rootListeners.set(type, listener),
+        removeEventListener: (type) => rootListeners.delete(type),
+      },
+      addEventListener: (type, listener) => listeners.set(type, listener),
+      removeEventListener: (type) => listeners.delete(type),
+      fire: (type) =>
+        (type === 'MozUpdateWindowPos' ? rootListeners : listeners)
+          .get(type)
+          ?.handleEvent({ type }),
+    };
+  };
+  const windows = [makeWindow(ratio)];
+  const harness = {
+    windows,
+    makeWindow,
+    writes,
+    prefs,
+    observers,
+    recent: windows[0],
+    notify(topic, subject) {
+      for (const observer of observers.get(topic) ?? []) observer.observe(subject, topic);
+    },
+  };
+  const api = loadApi({
+    services: {
+      prefs: {
+        getStringPref: (name, fallback) => prefs.get(name) ?? fallback,
+        setStringPref(name, value) {
+          prefs.set(name, value);
+          writes.push(['set', name, value]);
+        },
+        clearUserPref(name) {
+          prefs.delete(name);
+          writes.push(['clear', name]);
+        },
+      },
+      obs: {
+        addObserver: (observer, topic) =>
+          observers.set(topic, [...(observers.get(topic) ?? []), observer]),
+        removeObserver: (observer, topic) =>
+          observers.set(
+            topic,
+            (observers.get(topic) ?? []).filter((entry) => entry !== observer),
+          ),
+      },
+      wm: {
+        getEnumerator: () => windows,
+        getMostRecentWindow: () => harness.recent,
+      },
+    },
+  });
+  const experiment = new api.bentoPrivacy();
+  return Object.assign(harness, {
+    applyUiScale: experiment.getAPI({}).bentoPrivacy.applyUiScale,
+    onShutdown: (isAppShutdown) => experiment.onShutdown(isAppShutdown),
+  });
+}
+
+test('applyUiScale writes the factor times the display ratio, and clears the pref at 1', async () => {
+  const { UI_SCALES, uiScaleFactor } = await import('../extensions/_shared/ui-scale.ts');
+  for (const [ratio, values] of [
+    [1, ['1.25', '1.5', '1.75', '2']],
+    [2, ['2.5', '3', '3.5', '4']],
+    [1.5, ['1.875', '2.25', '2.625', '3']],
+  ]) {
+    const harness = scaleHarness({ ratio });
+    // Every scale tools can send is inside the experiment's range.
+    const written = [];
+    for (const scale of UI_SCALES.filter((entry) => entry !== '1')) {
+      await harness.applyUiScale(uiScaleFactor(scale));
+      written.push(harness.prefs.get(SCALE_PREF));
+    }
+    assert.deepEqual(written, values, `display ratio ${ratio}`);
+    await harness.applyUiScale(uiScaleFactor('1'));
+    assert.equal(harness.prefs.has(SCALE_PREF), false, 'a factor of 1 clears the override');
+  }
+});
+
+test('applyUiScale refuses a factor outside the offered range and leaves the pref alone', async () => {
+  const harness = scaleHarness();
+  for (const bad of [0.5, 2.5, Number.NaN, undefined, '1.5']) {
+    await assert.rejects(() => harness.applyUiScale(bad), /Unsupported UI scale/, String(bad));
+  }
+  assert.deepEqual(harness.writes, []);
+});
+
+test('the scale follows the display of the window in use, written only when it changes', async () => {
+  const harness = scaleHarness({ ratio: 2 });
+  await harness.applyUiScale(1.25);
+  assert.equal(harness.prefs.get(SCALE_PREF), '2.5');
+  assert.deepEqual([...harness.windows[0].listeners.keys()], ['activate']);
+  assert.deepEqual([...harness.windows[0].rootListeners.keys()], ['MozUpdateWindowPos']);
+
+  // The active window is dragged to a display of another density: macOS reports the move.
+  harness.windows[0].desktopToDeviceScale = 1;
+  harness.windows[0].fire('MozUpdateWindowPos');
+  assert.equal(harness.prefs.get(SCALE_PREF), '1.25');
+
+  // Same display: no write, so every step of a drag or an activation leaves the pref alone.
+  const count = harness.writes.length;
+  for (let step = 0; step < 50; step += 1) harness.windows[0].fire('MozUpdateWindowPos');
+  harness.windows[0].fire('activate');
+  assert.equal(harness.writes.length, count);
+
+  // A second window on a dense display becomes the one in use, and a new display setup is read.
+  const second = harness.makeWindow(2);
+  harness.windows.push(second);
+  harness.notify('browser-delayed-startup-finished', second);
+  harness.recent = second;
+  second.fire('activate');
+  assert.equal(harness.prefs.get(SCALE_PREF), '2.5');
+  harness.windows[0].desktopToDeviceScale = 3;
+  harness.recent = harness.windows[0];
+  harness.notify('screen-information-changed', null);
+  assert.equal(harness.prefs.get(SCALE_PREF), '3.75');
+});
+
+test('the scale waits for a window that has finished loading, since an unloaded one reports 1', async () => {
+  const harness = scaleHarness();
+  harness.windows.length = 0;
+  harness.recent = null;
+  await harness.applyUiScale(1.5);
+  assert.deepEqual(harness.writes, [], 'no window yet');
+
+  const loading = harness.makeWindow(1, 'loading');
+  harness.windows.push(loading);
+  harness.recent = loading;
+  harness.notify('browser-delayed-startup-finished', loading);
+  assert.deepEqual(harness.writes, [], 'a window that is still loading says nothing');
+
+  loading.document.readyState = 'complete';
+  loading.desktopToDeviceScale = 2;
+  harness.notify('browser-delayed-startup-finished', loading);
+  assert.equal(harness.prefs.get(SCALE_PREF), '3');
+});
+
+test('applying 1 at startup clears a pref set by hand, and nothing is watched at 1 or after shutdown', async () => {
+  const harness = scaleHarness();
+  harness.prefs.set(SCALE_PREF, '1.5'); // set by hand in about:config
+  const watching = () => [
+    harness.windows[0].listeners.size,
+    harness.windows[0].rootListeners.size,
+    ...[...harness.observers.values()].map((list) => list.length),
+  ];
+
+  // Before tools applies anything, display changes leave the pref alone.
+  harness.notify('screen-information-changed', null);
+  harness.windows[0].fire('activate');
+  assert.deepEqual(harness.writes, []);
+
+  // Tools applies the stored scale at every start, the default included: Bento owns the pref.
+  await harness.applyUiScale(1);
+  assert.equal(harness.prefs.has(SCALE_PREF), false);
+  assert.deepEqual(watching(), [0, 0], 'a factor of 1 has nothing to follow');
+
+  await harness.applyUiScale(1.25);
+  assert.equal(harness.prefs.get(SCALE_PREF), '2.5', 'a pick replaces a value set by hand');
+  assert.deepEqual(watching(), [1, 1, 1, 1]);
+  await harness.applyUiScale(1);
+  assert.equal(harness.prefs.has(SCALE_PREF), false);
+  assert.deepEqual(watching(), [0, 0, 0, 0]);
+
+  await harness.applyUiScale(1.5);
+  harness.onShutdown(true); // quitting: nothing to undo
+  assert.deepEqual(watching(), [1, 1, 1, 1]);
+  harness.onShutdown(false); // the extension reloads
+  assert.deepEqual(watching(), [0, 0, 0, 0]);
+  assert.equal(harness.prefs.get(SCALE_PREF), '3', 'the pref is left as it was');
 });

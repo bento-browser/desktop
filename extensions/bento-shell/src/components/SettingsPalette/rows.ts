@@ -12,6 +12,7 @@ import {
   ENUM_SPECS,
   HTTPS_OPTIONS,
   SHORTCUT_BEHAVIOR_OPTIONS,
+  UI_SCALE_OPTIONS,
   WEBRTC_OPTIONS,
   NUMBER_SPECS,
   PANEL_SIZE_EDITOR,
@@ -186,7 +187,7 @@ function numberRow(model: SettingsPaletteModel, group: string, key: NumberSettin
 function enumRow(
   model: SettingsPaletteModel,
   group: string,
-  key: 'uiColorMode' | 'sidebarShortcutBehavior',
+  key: 'uiColorMode' | 'uiScale' | 'sidebarShortcutBehavior',
 ): PaletteRow {
   const spec = ENUM_SPECS[key];
   return {
@@ -271,6 +272,7 @@ function searchLabel(model: SettingsPaletteModel): string {
 export function controlRows(model: SettingsPaletteModel): PaletteRow[] {
   const rows: PaletteRow[] = [
     enumRow(model, 'Appearance', 'uiColorMode'),
+    enumRow(model, 'Appearance', 'uiScale'),
     toggleRow(model, 'Tab appearance', 'tabStateTintsEnabled'),
     toggleRow(model, 'Tab appearance', 'customTabStateIconsEnabled'),
     toggleRow(model, 'Performance', 'tabSleepEnabled'),
@@ -480,6 +482,17 @@ function enumStageRows(model: SettingsPaletteModel, key: EnumKey): PaletteRow[] 
         radio: option.value === model.settings.uiColorMode ? 'on' : 'off',
         keywords: NO_KEYWORDS,
         intent: { type: 'change', changes: { uiColorMode: option.value } },
+      }));
+    case 'uiScale':
+      return UI_SCALE_OPTIONS.map((option) => ({
+        id: `option:${option.value}`,
+        group: ENUM_SPECS[key].label,
+        label: option.label,
+        description: ENUM_OPTION_DESCRIPTIONS[key][option.value],
+        note: option.value === model.settings.uiScale ? 'Current' : undefined,
+        radio: option.value === model.settings.uiScale ? 'on' : 'off',
+        keywords: NO_KEYWORDS,
+        intent: { type: 'change', changes: { uiScale: option.value } },
       }));
     case 'sidebarShortcutBehavior':
       return SHORTCUT_BEHAVIOR_OPTIONS.map((option) => ({

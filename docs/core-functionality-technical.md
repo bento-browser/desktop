@@ -35,5 +35,5 @@ renamed, or removed.
 - [Panel traversal and focus](technical/panel-traversal-focus.md): Keyboard and wheel traversal, the favicon navigator, and focus indicators.
 - [Bookmarks view](technical/bookmarks.md): The Bookmarks manager document: the snapshot mirror, board, drawer, drag and drop, undo toasts, and its entry points.
 - [Panel widgets, saved panels, and pinned panels](technical/panel-widgets.md): Pinned panels, saved panels, and the add-panel trailer.
-- [Theming and color mode](technical/theming.md): Color mode, themes, tokens, the shell stylesheet bundle, and theme pitfalls.
+- [Theming and color mode](technical/theming.md): Color mode, themes, tokens, the shell stylesheet bundle, the interface scale, and theme pitfalls.
 - [Manual regression areas](technical/manual-regression-areas.md): The manual checklist of regression areas, with submenu placement and palette search notes.

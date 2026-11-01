@@ -49,6 +49,18 @@ describe('SettingsStore durable commits', () => {
     expect(storage).toEqual({ 'bento.settings': { version: 2, overrides: {} } });
   });
 
+  it('accepts only the offered interface scales, as text', () => {
+    for (const scale of ['1', '1.25', '1.5', '1.75', '2']) {
+      expect(isValidBentoSettingsPatch({ uiScale: scale })).toBe(true);
+      expect(validateSettingsChanges({ uiScale: scale })).toBe(true);
+    }
+    for (const value of ['1.0', '3', '0.75', 1.5, 2, null, undefined]) {
+      expect(isValidBentoSettingsPatch({ uiScale: value })).toBe(false);
+      expect(validateSettingsChanges({ uiScale: value })).toBe(false);
+    }
+    expect(DEFAULT_SETTINGS.uiScale).toBe('1');
+  });
+
   it('accepts only booleans for tab appearance in stored patches and editable requests', () => {
     for (const key of ['tabStateTintsEnabled', 'customTabStateIconsEnabled']) {
       for (const value of [true, false]) {

@@ -896,6 +896,97 @@ certificate, a blocked-site test page, a crashed tab, `about:preferences#privacy
 `chrome://global/skin/icons/warning.svg`, which must keep that favicon), and relaunch the
 same profile to confirm persistence. Reset restores both to On.
 
+## Interface scale
+
+Settings, Appearance, Interface scale scales the whole Bento window (the chrome, the shell
+documents and web content) by 1.00x (default), 1.25x, 1.50x, 1.75x or 2.00x, live, in every
+window.
+
+- Source of truth: `BentoSettings.uiScale`, in `bento-tools` `SettingsStore`. It is the text of
+  the factor (`UiScale` in `extensions/_shared/ui-scale.ts`: `'1' | '1.25' | '1.5' | '1.75' |
+  '2'`, default `'1'`), so it fits the enum rules and the Settings palette's choice list
+  with no second kind of value. `EDITABLE_SETTING_RULES.uiScale` and the backup/import
+  schema (`isValidBentoSettingsPatch`) accept exactly `UI_SCALES`; the catalog's options are
+  built from the same list (`uiScaleLabel`: `1.25x`, so the labels cannot drift). The value
+  is profile-wide, not window-local: a private window's change is saved like any other
+  profile setting. It travels as an ordinary setting (`snapshot/get`, `settings/changed`,
+  backup, reset), persisted in the sparse `bento.settings` overrides; the shell and chrome
+  hold no copy of it.
+- Mechanism: Firefox's only whole-UI scale is the pref `layout.css.devPixelsPerPx`, device
+  pixels per CSS pixel, applied live by every presentation context (chrome and content
+  processes). It is absolute, and its default `-1` follows the display (2 on a Retina Mac),
+  so writing `1.25` would shrink the UI. `bento-tools` calls
+  `browser.bentoPrivacy.applyUiScale(Number(uiScale))` (`applyUiScale` in `background.ts`);
+  the experiment (`bento-privacy/api.js`) takes the factor only, never a pref name, so the
+  generic `setPrefs` allowlist is unchanged:
+  - factor 1: `clearUserPref`, exactly the unscaled browser;
+  - factor above 1: `setStringPref` with `String(round(factor x ratio, 3))`, where ratio is
+    `desktopToDeviceScale` of the most recently used browser window. That getter is the
+    screen's `contentsScaleFactor` and, unlike `devicePixelRatio` and
+    `nsIScreen.defaultCSSScaleFactor`, ignores the pref, so it reads the same before and after
+    the write. On macOS it is the display's CSS ratio (1 or 2). Only a window with
+    `document.readyState === 'complete'` is read: a document with no presentation answers 1.
+- When it is applied: at every `bento-tools` startup, whatever the stored value (1.00x included),
+  and on every `settings.onChange` whose `uiScale` differs from the last one. Bento owns the pref:
+  a value set by hand in about:config is replaced by a scale above 1 and cleared by 1.00x, at the
+  next start at the latest. The pref is also a Firefox user pref, so it persists in `prefs.js` and
+  the next start opens at the old size until tools applies the stored scale.
+- Re-applied as the display changes, because the written value is absolute for the display it was
+  computed on: while a factor above 1 is applied, the experiment re-reads the ratio on `activate`
+  of every browser window and on `MozUpdateWindowPos` of its window root (listeners added when
+  `applyUiScale` runs and on `browser-delayed-startup-finished`, removed again at a factor of 1),
+  and on the `screen-information-changed` topic (monitor attached or removed, resolution change).
+  `MozUpdateWindowPos` is how a window dragged to a display of another density is noticed:
+  `AppWindow::WindowMoved` dispatches it at `win.windowRoot` (not the window, and it does not
+  bubble) for every move report, and on macOS `windowDidChangeScreen:` runs
+  `BackingScaleFactorChanged()` and then `ReportMoveEvent()`, so the new screen already answers
+  `desktopToDeviceScale`. A drag fires it for every step, so a re-read is one display ratio read
+  and one pref read, and the pref is written only when the computed text differs (which is also
+  what stops a write from causing another). The experiment's `onShutdown` removes the observers
+  and listeners on a reload of the extension and leaves the pref alone.
+- Visible effects: web pages see a larger `devicePixelRatio` and a smaller CSS viewport, as with
+  browser zoom (responsive layouts can switch). Parts drawn by macOS (traffic lights, native
+  menus and dialogs) keep their size.
+- Verification: build with `pnpm --filter @bento/tools build && pnpm run import`, quit and relaunch
+  (the tools background and experiment evaluate once). In Settings, Appearance, pick each scale:
+  the sidebar, panels, Settings and pages resize at once in every open window. In the Browser
+  Toolbox Console read `Services.prefs.getStringPref('layout.css.devPixelsPerPx')`: `2.5` for
+  1.25x, `3` for 1.50x, `3.5` for 1.75x and `4` for 2.00x on a display with ratio 2, and
+  `Services.prefs.prefHasUserValue('layout.css.devPixelsPerPx')` is false after 1.00x. Quit and
+  relaunch to see the scale kept. With a second display of another density, drag the window
+  across and read the pref again without clicking (from `2.5` to `1.25` when 1.25x is picked and the
+  window goes from ratio 2 to ratio 1). Set the pref by hand in about:config and relaunch: the stored
+  scale replaces it, or clears it at 1.00x. At 1.25x and 1.75x (2.5 and 3.5 device pixels per CSS pixel)
+  check the panel frame hairlines and splitter seams, and the titlebar against the traffic lights.
+  Unit tests: `scripts/bento-privacy-security.test.mjs` (factor times ratio, the clear at 1 over a
+  hand-set pref, the re-read on a move, the unloaded window), `settingsCatalog.test.ts`, `rows.test.ts`,
+  `SettingsStore.test.ts`.
+
+### Interface scale pitfalls
+
+- The pref is absolute. Writing the factor itself shrinks the UI wherever the display ratio is
+  above 1 (`1.25` on a ratio-2 display is a 0.625x UI); always multiply, and clear the pref at a
+  factor of 1 instead of writing `1`.
+- Do not read the display ratio from `devicePixelRatio` or `nsIScreen.defaultCSSScaleFactor`:
+  both already include the pref, so a second apply would compound the scale.
+- One global pref means one absolute CSS ratio for every window. With displays of different
+  densities only the window in use is right: the experiment follows the most recently used
+  window, and a window on a display of another density shows the same absolute ratio, so it looks
+  too large on a less dense display and too small on a denser one until it is activated. Nothing
+  in Firefox scales per window.
+- macOS only. The display ratio is `contentsScaleFactor`, which equals the CSS ratio on macOS
+  (`ScreenHelperCocoa`) but is 1 on Windows and GTK/X11 even when the display's CSS ratio is
+  higher. Revisit `displayRatioOf` before enabling the setting on another platform.
+- Do not read the ratio of a window that has not finished loading (`desktopToDeviceScale` answers
+  1 without a presentation): the written value would shrink the UI until the next re-read.
+- The tools manifest version matters for the experiment: the built-in add-on's schema is cached by
+  version, so a profile with the old schema has no `applyUiScale`. The call fails and
+  `background.ts` logs `applyUiScale failed`; bump the version when the schema changes (0.1.15).
+- The re-reads are derived from the Firefox source (`nsFocusManager`, `AppWindow::WindowMoved`,
+  `nsCocoaWindow`), not recorded from a run. Listen for `MozUpdateWindowPos` on `win.windowRoot`:
+  a listener on the window never hears it. After a Firefox bump, drag a window between displays of
+  different density with a scale set and confirm the pref follows.
+
 ## Theme pitfalls
 
 - The dev server (`pnpm --filter @bento/shell dev`) once ranked `bento.app`

@@ -7,6 +7,7 @@ import type {
   PanelLayoutExportVerticalBottomNode,
   PanelLayoutExportVerticalTopNode,
 } from './protocol';
+import { isUiScale } from './ui-scale';
 
 export const MAX_BACKUP_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -167,6 +168,7 @@ const ALL_SETTING_KEYS = new Set<keyof BentoSettings>([
   ...BOOLEAN_SETTING_KEYS,
   ...(Object.keys(NUMERIC_SETTING_RANGES) as Array<keyof BentoSettings>),
   'uiColorMode',
+  'uiScale',
   'contentColorMode',
   'sidebarShortcutBehavior',
   'customPanelSizes',
@@ -203,6 +205,9 @@ export function isValidBentoSettingsPatch(value: unknown): value is Partial<Bent
         if (settingValue !== 'light' && settingValue !== 'dark' && settingValue !== 'system') {
           return false;
         }
+        break;
+      case 'uiScale':
+        if (!isUiScale(settingValue)) return false;
         break;
       case 'contentColorMode':
         if (settingValue !== 'light' && settingValue !== 'dark') return false;

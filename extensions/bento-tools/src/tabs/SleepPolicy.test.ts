@@ -40,6 +40,7 @@ function makeSettings(overrides: Partial<BentoSettings> = {}): SettingsStore {
     commandPaletteEnabled: true,
     welcomeSeen: true,
     uiColorMode: 'light',
+    uiScale: '1',
     contentColorMode: 'light',
     sidebarCollapsed: false,
     sidebarHidden: false,

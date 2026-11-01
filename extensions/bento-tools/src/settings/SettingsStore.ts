@@ -9,6 +9,7 @@
 
 import type { BentoSettings, ColorStamp } from '@shared/protocol';
 import { dropRetiredSettings, isValidBentoSettingsPatch } from '@shared/export-schema';
+import { DEFAULT_UI_SCALE } from '@shared/ui-scale';
 
 const STORAGE_KEY = 'bento.settings';
 
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   // from onboarding or the sidebar footer. Content defaults light because
   // most sites are designed light-bg-first.
   uiColorMode: 'light',
+  uiScale: DEFAULT_UI_SCALE,
   contentColorMode: 'light',
   sidebarCollapsed: false,
   sidebarHidden: false,
