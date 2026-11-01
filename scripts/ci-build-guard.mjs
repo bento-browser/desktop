@@ -1,7 +1,8 @@
 // Pattern guard behind `pnpm run security:check`: CI must never build the
-// application. Bento targets macOS only for now, and application builds run
-// locally on the maintainer's Mac. This is a text scan of workflow and composite
-// action files, not a YAML policy engine.
+// application or deploy and publish update infrastructure. Bento targets macOS
+// only for now, and application builds and update publishing run locally on the
+// maintainer's Mac. This is a text scan of workflow and composite action files,
+// not a YAML policy engine.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +11,8 @@ import path from 'node:path';
 // `download` is deliberately absent: the source-import job runs it.
 const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-addons)';
 
-// Direct native entry points: scripts, subcommands, mach, and release creation.
+// Direct native entry points: scripts, subcommands, mach, release creation, and
+// the update publish and Cloudflare deploy tools.
 const nativeCommands = [
   {
     description: 'a Bento native build command',
@@ -25,6 +27,9 @@ const nativeCommands = [
     pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
   },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },
+  // `ota-publish.test.mjs` on the node --test line is not the script (`.mjs` follows the name directly).
+  { description: 'the OTA publish script', pattern: /\bota-publish\.mjs\b/ },
+  { description: 'a wrangler (Cloudflare deploy) command', pattern: /\bwrangler\b/ },
 ];
 
 // Triggers, artifact uploads, and release steps that have no place in CI.

@@ -10,8 +10,9 @@
 //      row/drag hosts remain allowed; generic controls use public Mux parts.
 //      This config checks imports, not intrinsic JSX or CSS values (§3.1).
 //
-//   3. Repo-wide coverage: build scripts and agent skills run under Node, and
-//      the Firefox-side sources under src/browser get the globals that Firefox
+//   3. Repo-wide coverage: build scripts and agent skills run under Node, the
+//      update Worker under update-service runs on Cloudflare Workers, and the
+//      Firefox-side sources under src/browser get the globals that Firefox
 //      provides to system modules and to the browser window. `pnpm run
 //      lint:repo` lints those paths in CI.
 
@@ -115,6 +116,18 @@ export default tseslint.config(
       // Explicit 'node:process' style imports of Node globals are allowed.
       'no-redeclare': ['error', { builtinGlobals: false }],
     },
+  },
+
+  // The update Worker runs on Cloudflare Workers: web-standard globals only, no Node
+  // APIs. Its tests run under Node.
+  {
+    files: ['update-service/*.mjs'],
+    ignores: ['update-service/*.test.mjs'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
+    files: ['update-service/*.test.mjs'],
+    languageOptions: { globals: globals.node },
   },
 
   // JSWindowActor modules are Firefox system modules.
