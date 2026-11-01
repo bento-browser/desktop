@@ -97,8 +97,17 @@
     pointer-events: none;
   }
 
-  /* The button whose popup is open. */
-  .bento-bookmarks-toolbar [data-bm-pressed] {
+  /* States are translucent tints of the same colour as the strip under them (its fill is a
+     colour-mix too), so they read through the strip instead of as solid patches: hover, then press
+     and the button whose popup is open. Covers the group, spaces and overflow buttons (all ghost
+     Mux buttons). */
+  .bento-bookmarks-toolbar .muxui-button[data-muxui-variant='ghost'] {
+    --muxui-button-background-hover: var(--bento-surface-hover);
+    --muxui-button-background-pressed: var(--bento-surface-active);
+  }
+
+  .bento-bookmarks-toolbar [data-bm-pressed],
+  .bento-bookmarks-toolbar .muxui-button[data-muxui-variant='ghost'][data-muxui-state-pressed] {
     background-color: var(--bento-surface-active);
   }
 }

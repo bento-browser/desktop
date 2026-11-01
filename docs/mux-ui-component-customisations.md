@@ -873,6 +873,11 @@ Separator), `TextField`, `SelectNative`, `Button`, `IconButton`, `Text` and `Too
   documents which popup is open on `bento-bookmark-popup-bus`, and a button shows
   `data-bm-pressed` (`--bento-surface-active`) and `aria-expanded` while its popup is up, so a
   refused open never leaves a button pressed.
+- **States are colour-mix tints.** The strip's fill is a `color-mix` (`--bento-bookmarks-toolbar-fill`),
+  so the toolbar's ghost buttons set Mux's `--muxui-button-background-hover` and
+  `--muxui-button-background-pressed` to `--bento-surface-hover` and `--bento-surface-active`, both
+  `color-mix` tints of `--neutral-90`, and the open and pressed states paint `--bento-surface-active`.
+  Mux's own ghost press (5%) is lighter than its hover (10%) and mixes a different colour.
 - **Tokens.** `--bento-bookmark-popup-width`, `--bento-bookmark-popup-menu-max-width` and
   `--bento-bookmarks-toolbar-button-max-width` in `bento-tokens.css` (and
   `--bento-sidebar-top-inset` there, the sidebar's first row's top inset, shell-sized, which chrome
