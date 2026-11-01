@@ -293,7 +293,8 @@
   min-width: 0;
   height: var(--bento-bookmarks-toolbar-row-height);
 }
-:root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty) {
+/* Firefox places its 'Import bookmarks' button on this toolbar until Places has bookmarks. */
+:root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty, #import-button) {
   display: none !important;
 }
 :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {

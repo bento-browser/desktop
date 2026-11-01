@@ -1282,7 +1282,8 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     placements, so it does not treat the host as a widget. The toolbar keeps its place,
     visibility pref (`browser.toolbars.bookmarks.visibility`, `never` in `prefs/bento.js`),
     `Cmd+Shift+B` and the height compensation of `attachBookmarksToolbarAlignment`.
-  - `#personal-bookmarks` and `#personal-toolbar-empty`: hidden with `display: none` under the
+  - `#personal-bookmarks`, `#personal-toolbar-empty` and `#import-button` (Firefox puts its
+    Import bookmarks button on this toolbar until Places has bookmarks): hidden with `display: none` under the
     root attribute `bento-bookmarks-toolbar` (Bento's own, no Firefox meaning), which the mount
     sets only in a regular window after the first `BENTO_PANELS` payload says the manager is on
     and removes when it is off, which also removes the host. Items a user placed in the toolbar

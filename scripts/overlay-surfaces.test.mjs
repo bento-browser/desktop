@@ -3204,7 +3204,7 @@ test('the stylesheet swaps the toolbar contents for the host only under the root
   assert.match(rule('#bento-bookmarks-toolbar-host'), /display:\s*none/);
   assert.match(rule(':root[bento-bookmarks-toolbar] #bento-bookmarks-toolbar-host'), /display:\s*flex/);
   assert.match(
-    rule(':root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty)'),
+    rule(':root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty, #import-button)'),
     /display:\s*none\s*!important/,
   );
 });
