@@ -596,11 +596,13 @@ describe('workspace backup import/export', () => {
         autoBackupMaxCount: 5,
         tabStateTintsEnabled: false,
         customTabStateIconsEnabled: false,
+        bookmarksEnabled: false,
       },
       savedPanels: [],
     };
 
     expect(validateExportSchema(valid)).toBe(valid);
+    expect(validateExportSchema({ ...valid, settings: { bookmarksEnabled: 'no' } })).toBeNull();
     expect(
       validateExportSchema({
         ...valid,

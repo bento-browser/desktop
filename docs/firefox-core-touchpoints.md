@@ -576,7 +576,10 @@ Use this shape for new or changed touchpoints:
   the native bookmarks toolbar starts at the panel-strip edge and tracks
   sidebar resize/collapse without creating a gap above Bento's sidebar address
   field or Firefox's native Bookmarks sidebar search field, verify Cmd+Shift+B
-  show/hide does not visibly push sidebar contents before correcting, and verify
+  show/hide does not visibly push sidebar contents before correcting (and, for
+  the Bento bookmarks toolbar strip, that the panels shrink with it in one
+  motion while the sidebar stays still, and that its edges line up with the
+  workspace switcher and the panels), and verify
   that the native Bookmarks sidebar can be resized from its own right edge
   independently of the Bento sidebar handle, and that the navigator follows the
   sidebar divider continuously during
@@ -812,7 +815,8 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - No new Firefox patch.
 - Bento functionality: the sidebar shell, the panel trailer, and the confirm,
   edit-workspace, and workspace-switcher overlays load at window startup, as before.
-  The address bar, command palette, and menu are created at idle after the launch
+  The address bar, command palette, menu, and (regular windows with the Bookmarks manager on)
+  the bookmark popup are created at idle after the launch
   veil lifts. The workspace palette, merge palette, welcome, embedded import, and
   panel navigator tooltip are created on first use. Chrome reveals an overlay, and
   sends it anything, only after the document's `BENTO_OVERLAY_READY` title; a
@@ -1080,6 +1084,292 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   reverse.
 - Rollback or migration notes: none; the native pane and the rollback builds were
   retired with this surface.
+
+### Bookmarks View Host (mount script, stylesheet)
+
+- Status: Active
+- Last updated: 2026-11-01
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`bookmarks` overlay entry,
+    `ensureOverlayHost` for `bento-bookmarks-host`, `showBookmarksView` /
+    `hideBookmarksView` / `toggleBookmarksView`, `restoreBookmarksViewFocus`,
+    `isOverlayAboveBookmarksViewShown`, `shownBrowsers`, `isTabDialogShowing`,
+    `isPageContainerShown`, `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog`
+    and `closeBookmarksViewForShownDialog`,
+    `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey`,
+    `applyChromeBookmarksEnabled`, `dispatchBookmarksViewShow` / `Hide`,
+    `sendBookmarksViewMessage` and their
+    `BOOKMARKS_VIEW_FRAME_SCRIPT_URL`, the `bento-bookmarks-frame` title handler and the
+    `BENTO_OPEN_BOOKMARKS` routes of the sidebar and command palette frames, the Esc early
+    return in `attachPaletteEscListener`, `canAnchorAddrbarToSidebarRow`)
+  - `src/browser/base/content/bento-shell-mount.css` (the `:root[bento-bookmarks-view]`
+    block next to the `:root[inDOMFullscreen]` rules, and the host's own enter and exit
+    transition rules) and their generated twins in `bento-chrome-theme.css`
+  - `scripts/firefox-compat-registry.mjs` (new entries `manBookmarkKb`,
+    `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
+    `TabDialogBox._containerFor`, `tabDialogShowing` and `TabSplitViewActivate`;
+    `gBrowser.selectedBrowsers` and `TabSelect` gain a site; `nav-bar-customization-target`,
+    `back-button`, `forward-button` and `stop-reload-button` gain the top-bar motion site), the
+    regenerated table below
+  - `extensions/bento-shell/src/bridge/overlayReady.ts` (`bookmarks` in `OverlayName`)
+  - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`
+  - No Firefox patch.
+- Bento functionality: the Bookmarks view is a full-window view over the browser. While it
+  is open the sidebar, panels, splitters, panel navigator, trailer and the toolbar's
+  contents are hidden; the toolbar row stays as a strip that carries Firefox's own window
+  controls. The sidebar and the command palette open it, and so does `Cmd/Ctrl+Shift+O`,
+  which was Firefox's Library shortcut. Not opened in private windows. The Bookmarks manager
+  can be turned off in Settings (`BentoSettings.bookmarksEnabled`, carried to chrome by
+  `BENTO_PANELS`): the view then refuses to open, closes if open, and the Library shortcut is
+  Firefox's again.
+- Vanilla Firefox surface touched or depended on:
+  - `#nav-bar` and its `.titlebar-buttonbox-container` child (the nav-bar copy of
+    `titlebar-items.inc.xhtml`): every other child of `#nav-bar` is hidden with
+    `visibility`, `#PersonalToolbar` with `display: none`, and the toolbar gradient's custom
+    property stop `--bento-toolbar-left-bg` is overridden on `#navigator-toolbox`,
+    `#TabsToolbar` and `#nav-bar`. The button box, `#nav-bar` and `#navigator-toolbox` are
+    never hidden, faded or transformed, and no ancestor gets opacity, a transform or a filter.
+  - The direct children of `#nav-bar-customization-target` (`#back-button`, `#forward-button`,
+    `#stop-reload-button`, the extension buttons, and Bento's own `#bento-panel-nav`): they slide
+    up past the window's top edge and fade (`translate`, `opacity`, staggered, dismiss role) when
+    the view opens, and back (reveal role) when it closes, then end hidden with `visibility`. The
+    container is a sibling of `.titlebar-buttonbox-container`, so no ancestor of the window
+    buttons gets an effect. The left controls are named by id and the right ones counted from the
+    last child. No Firefox rule sets `translate` or `opacity` on these toolbar children, and
+    Bento's sidebar push uses `transform` there, which is why the slide uses `translate`.
+  - A root attribute, `bento-bookmarks-view` on `documentElement` (Bento's own, no Firefox
+    meaning).
+  - The `manBookmarkKb` key in `mainKeyset` (`browser-sets.inc.xhtml`): the mount removes its
+    `command` attribute at window load (keeping the value in `data-bento-library-command`) and
+    listens for the `command` event a key without one
+    raises on itself (the `mainKeyset` handler in `browser-sets.js` already relies on that for
+    keys such as `viewBookmarksSidebarKb`). With the Bookmarks manager off in Settings,
+    `restoreLibraryKey` sets the saved value back as `command` and removes the listener, so the
+    key is as `browser-sets.inc.xhtml` declares it (the attribute is read when the key fires,
+    so no restart is needed); turning it on retargets the key again. The `Browser:ShowAllBookmarks` command, the
+    `bookmarksShowAll` menu item, `panelMenu_showAllBookmarks` and the bookmarks toolbar
+    button menus are untouched, so the Library stays reachable from the menus; they still show
+    the key's accelerator text.
+  - Tab-modal prompts and tab dialogs: Firefox draws them in the page's
+    `.browserSidebarContainer` (`TabDialogBox._containerFor`, `browser.js`), which the view
+    hides. The mount listens on the window, in the capture phase, for `DOMWillOpenModalDialog`
+    (`PromptParent.sys.mjs`, `openPromptWithTabDialogBox`: fired through
+    `PromptUtils.fireDialogEvent` on the prompting `<browser>`, or on its window for a prompt in
+    this process, before the dialog exists; the Leave/Stay prompt of a tab or window close is
+    one) and for `dialogopen` (`SubDialog.sys.mjs`, dispatched on the dialog overlay once the
+    dialog is shown, for every tab dialog). It acts only when the event's browser or overlay
+    has a `.browserSidebarContainer` ancestor that is the page area of a browser the window
+    shows (`gBrowser.selectedBrowsers`), and closes the view at once, with no fade. A dialog of
+    a background tab is left alone. The order Firefox gives a Leave/Stay prompt of a background
+    tab is relied on only loosely: `Tabbrowser.sys.mjs` registers its own capture listener for
+    `DOMWillOpenModalDialog` on the tabbrowser (after the window's), which selects the tab
+    (`selectedTab = tabForEvent`, firing `TabSelect`) before `PromptParent` opens the dialog
+    box, and `TabDialogBox._onFirstDialogOpen` sets `tabDialogShowing` before the dialog
+    loads. Whichever signal first finds the tab shown with the attribute set closes the view:
+    the look after the event, `TabSelect` (for a dialog that already exists) or `dialogopen`.
+  - The `tabDialogShowing` attribute on a `<browser>` (`browser.js`, `TabDialogBox`
+    `_onFirstDialogOpen` / `_onLastDialogClose`): the view refuses to open, and cancels a
+    pending open at its reveal, while any browser in `gBrowser.selectedBrowsers` has it, and an
+    open view closes on `TabSelect` (`Tabbrowser.sys.mjs`, `updateCurrentBrowser` sets the
+    selected browser before it fires the event) and `TabSplitViewActivate` (Tabbrowser's window
+    listener stores the split view; Bento's panel reconcile dispatches the event too) when a
+    browser that is now shown has it. Firefox focuses an existing dialog on tab selection and
+    fires no dialog event for it, so the selection is the only signal.
+    Firefox reads the attribute for the selected browser itself (`shouldSuppressPopupNotifications`
+    in `browser.js`, `_adjustFocusAfterTabSwitch` in `Tabbrowser.sys.mjs`).
+- Why this cannot stay extension-only: the view must cover the window including the area of
+  the toolbox, which only chrome can hide or lay out, and Firefox's key and the chrome DOM are
+  not reachable from an extension document.
+- Firefox update risk: a rename of `.titlebar-buttonbox-container` would make the strip rule
+  hide the window controls (the `titlebar-buttonbox-container` registry entry checks it); on
+  macOS the traffic lights leave the window if the button box, `#nav-bar` or
+  `#navigator-toolbox` is hidden, or an ancestor gets an effect (Gecko registers the window
+  button rects from the display items of the laid-out, visible button frames in
+  `.titlebar-buttonbox`, `DealWithWindowsAppearanceHacks` and `SetWindowButtonRect` in
+  `layout/painting/nsDisplayList.cpp`; an empty rect places the lights above the window,
+  `widget/cocoa/nsCocoaWindow.mm`). A change of how a `<key>` without a `command`
+  attribute dispatches (`dom/events/KeyEventHandler.cpp`, `DispatchXULKeyCommand`) would stop
+  the shortcut, which then does nothing in a regular window. If Firefox stops firing
+  `DOMWillOpenModalDialog` or `dialogopen` for a prompt, or draws page prompts outside
+  `.browserSidebarContainer`, a Leave/Stay prompt opens under the view and waits invisibly. If
+  `TabDialogBox` stops setting `tabDialogShowing`, the view opens over a prompt that already
+  waits, and stays over one that existed in a tab selected afterwards. If Firefox stops
+  selecting the tab of a Leave/Stay prompt, or fires `TabSelect` after the attribute is set
+  instead of before, the checks above still cover it (each order has its own signal). A new
+  top-layer popover in the toolbar would show over the hidden strip (the native urlbar is one
+  today and is hidden). If the Back, Forward or Reload ids change, or the toolbar controls move
+  out of `#nav-bar-customization-target`, they stop sliding and only hide (the group falls to the
+  right-hand counting). A Firefox rule that sets `transition`, `translate` or `opacity` on the
+  toolbar's direct children would replace the slide's timing. If the window buttons are ever
+  placed inside `#nav-bar-customization-target`, the slide would take the traffic lights with it.
+- Regression checks for future updates: on macOS, open the Bookmarks view from the sidebar and
+  with `Cmd+Shift+O` in a regular window: the traffic lights stay visible, in place and
+  clickable, the empty strip drags the window, the Library window does not open, and
+  Bookmarks > Manage Bookmarks still does. Close it: the chrome returns without a shift.
+  Repeat in light and dark, with the sidebar collapsed, hidden and expanded. In a private
+  window the shortcut still opens the Library. With the view open and the focus in it, close a
+  tab of a page that has an unsaved form (`beforeunload`), and also press `Cmd+P`: the view
+  closes at once and the Leave/Stay prompt or print preview is visible and focused. With a
+  prompt left open in the selected tab, `Cmd+Shift+O` and the sidebar button do nothing. With a
+  `beforeunload` prompt left open in a background tab, open the view and select that tab from the
+  command palette: the view closes at once and the prompt is focused. With the view open, an
+  `alert()` of a background tab leaves it open, and closing a background tab that has a
+  `beforeunload` handler closes it and shows the Leave/Stay prompt. With the
+  command palette open over the view, `Cmd+Shift+O` closes the view and the palette keeps the
+  focus. Open and close the view and watch the strip: Back, Forward, Reload, the panel navigator
+  and the extension buttons slide up and fade, staggered from the outer edges, and slide back
+  down and fade in; the traffic lights stay visible and in place throughout, nothing
+  in the strip takes focus or a click once they are gone, and reduced motion changes them at
+  once. Turn the Bookmarks manager off in Settings (Workspaces) and press `Cmd+Shift+O` in a
+  regular window: the Library opens and the view does not; turn it on and the shortcut opens the
+  view; with the view open, turning it off closes the view. Run `pnpm run firefox:compat:engine`
+  and confirm `manBookmarkKb`,
+  `titlebar-buttonbox-container`, `DOMWillOpenModalDialog`, `dialogopen`,
+  `TabDialogBox._containerFor`, `tabDialogShowing` and `TabSplitViewActivate` are found.
+- Rollback or migration notes: removing the surface is deleting the `bookmarks` overlay
+  entry, host, handlers and the stylesheet block; `retargetLibraryKeyToBookmarksView` and
+  `restoreLibraryKey` leave no persistent change (the key is edited in the window's DOM only).
+
+### Bookmark Popup, Bookmarks Toolbar And bookmarkPage Patch (mount script, stylesheet)
+
+- Status: Active
+- Last updated: 2026-11-01
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (the `bookmarks-popup` overlay entry
+    with `canCreate` and `ensureOverlayHost` for `bento-bookmarks-popup-host`;
+    `showBookmarkPopup`, `hideBookmarkPopup`, `handleBookmarkPopupOpenTitle`,
+    `handleBookmarkPopupCloseTitle`, `handleBookmarkedTabsTitle`, `requestBookmarkPopup`,
+    `openBookmarkPopupForSelectedTab`, `getSelectedPanelBookmarkAnchor`,
+    `openBookmarkPopupFromPanelHeader`, `refreshPanelHeaderBookmarkButtons`,
+    `drawPanelBookmarkButton`, `canShowBookmarkPopup`, `isSelectedTabBookmarkTarget`,
+    `isBentoSavableUrlSpec`, `attachBookmarkPopupListeners`, `patchBookmarkPageCommand`;
+    `applyBookmarksToolbar`,
+    `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost`,
+    `removeBookmarksToolbarHost`; the popup and toolbar frames' title handlers, the Esc
+    branch, `openOverlay` and `showAddrbar` closing the popup, `focusReturnTarget` and
+    `returnFocusAfterOverlay` shared with the Bookmarks view, the panel header star in
+    `createPanelHeader`, and the `ui/bookmarkPopup/` exception in the `BentoShellAction` frame
+    script)
+  - `src/browser/base/content/bento-shell-mount.css` (`:root[bento-bookmarks-toolbar]` rules next
+    to the `#PersonalToolbar` alignment rules: the floating rounded strip, its reserve on
+    `#bento-strip-container`, the `#navigator-toolbox` z-index, and the show and hide motion)
+  - `extensions/bento-shell/src/theme/bento-tokens.css` (`--bento-sidebar-top-inset`, the
+    sidebar's first row's inset the strip's top aligns to; shell-sized, so chrome reads it pinned
+    in px)
+  - `scripts/firefox-compat-registry.mjs` (new entries `PlacesCommandHook.bookmarkPage`,
+    `Browser:AddBookmarkAs`, `personal-bookmarks`, `personal-toolbar-empty`,
+    `skipintoolbarset`, `:root[sessionrestored]` and `:root[inFullscreen]`; `PersonalToolbar`
+    gains sites), the regenerated table below, and the
+    `PlacesCommandHook` line of the mount's compact probe list
+  - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`,
+    `scripts/check-firefox-compat.test.mjs` (the native-note list)
+  - No Firefox patch.
+- Bento functionality: in a regular window with the Bookmarks manager on, the sidebar star,
+  `Cmd/Ctrl+D` (and Firefox's menu items and star that run the same command) and each panel's
+  header star open one popup document (the save/edit popover, plus the group, space and
+  overflow menus of the Bookmarks toolbar) anchored to the star or toolbar button; the data
+  lives in `bento-tools`' Bookmarks store, not in Places. The Bookmarks toolbar is a shell
+  document shown in `#PersonalToolbar` instead of Firefox's bookmark items. Private windows and
+  a window with the manager off keep Firefox's Places star, `Cmd+D` and toolbar untouched.
+- Vanilla Firefox surface touched or depended on:
+  - `PlacesCommandHook.bookmarkPage` (`browser-places.js`): replaced once per window, at the
+    mount script's evaluation. `global-scripts.js` loads `browser-places.js` before
+    `browser-main.js` and before the body (where `browser-box.inc.xhtml` includes the mount
+    script), so the global exists; if it is missing the patch waits for `load` and then warns.
+    The wrapper calls Firefox's original, with its arguments, whenever the window is private or
+    the manager is off (read at each call), and otherwise asks for the popup and returns a
+    resolved promise. Every entry point calls it through the global object at call time:
+    `Browser:AddBookmarkAs` (`browser-sets.js`: `Cmd/Ctrl+D`, the Bookmarks and app menus, the
+    page context menu) and `BookmarkingUI.onStarCommand` (Firefox's own star).
+    `bentoCompatNoteNative` records the original before it is replaced.
+  - `#PersonalToolbar` (`navigator-toolbox.inc.xhtml`): Bento appends
+    `#bento-bookmarks-toolbar-host` (an `hbox` with `skipintoolbarset="true"`,
+    `removable="false"`, `flex="1"`, holding a remote `<browser>`) as its last child, the first
+    time the toolbar shows (its `collapsed`/`hidden` attribute is observed, or at once when it
+    already shows). CustomizableUI skips `skipintoolbarset` children when it builds and saves
+    placements, so it does not treat the host as a widget. The toolbar keeps its place in the
+    toolbox, its visibility pref (`browser.toolbars.bookmarks.visibility`, `never` in
+    `prefs/bento.js`) and `Cmd+Shift+B`. While the root carries `bento-bookmarks-toolbar` the
+    stylesheet overrides its layout: `position: absolute` at the bottom of `#navigator-toolbox`
+    (which it raises to `z-index: 1` so `#browser`, a positioned sibling that paints after it, does
+    not cover the strip), `overflow: clip`, the panels' radius, no padding, and a `height` and
+    `margin-block-start` transition (the reveal spring pair) against Firefox's own `max-height` and
+    `min-height` slide, `[collapsed] { max-height: 0 }` and `visibility` rules; Firefox's
+    `[collapsed]` attribute still drives it. `#bento-strip-container` reserves the strip's room
+    with a top margin while it shows (`:root:has(#PersonalToolbar:not([collapsed], [hidden]))`), so
+    the sidebar's row never contains it and the height compensation of
+    `attachBookmarksToolbarAlignment` is 0 for it (it still applies to Firefox's own toolbar).
+    The strip's edges follow the panels' gutters and the sidebar's first row (see
+    [address-entry.md](technical/address-entry.md#bookmarks-toolbar-strip)). Firefox sets
+    `:root[sessionrestored]` after the windows are restored (the motion waits for it, as Firefox's
+    own slide does) and `:root[inFullscreen]` (the room is not reserved: Firefox pulls the toolbox
+    off screen with a negative margin). Regression checks for a Firefox update: the toolbar
+    still animates `max-height` under a `[collapsed]` rule that the Bento rules override, the
+    `sessionrestored` and `inFullscreen` attributes still exist, and the toolbar is still a child of
+    `#navigator-toolbox` after `#nav-bar`.
+  - `#personal-bookmarks`, `#personal-toolbar-empty` and `#import-button` (Firefox puts its
+    Import bookmarks button on this toolbar until Places has bookmarks): hidden with `display: none` under the
+    root attribute `bento-bookmarks-toolbar` (Bento's own, no Firefox meaning), which the mount
+    sets only in a regular window after the first `BENTO_PANELS` payload says the manager is on
+    and removes when it is off, which also removes the host. Items a user placed in the toolbar
+    through customization stay visible beside the host.
+  - Chrome-side geometry: the popup host is a child of the chrome root (like the panel
+    navigator tooltip's), `position: absolute`, full window, transparent, `z-index: 99993`: above
+    the Bookmarks view (99000), below every other overlay (the lowest is 99994). It paints and
+    hides nothing, and never touches `#navigator-toolbox`, `#nav-bar` or the window button box,
+    so the macOS traffic lights are unaffected. It appears and goes at once, with no transition
+    (the document animates the popover), so it needs no colour-mode twin.
+  - Window events: `TabSelect`, `DOMWillOpenModalDialog` and `dialogopen` (capture) and the
+    window's own `resize` close the popup, as does a change of the root attributes
+    `bento-sidebar-push`, `bento-sidebar-rail` and `bento-sidebar-hidden` (a mutation observer),
+    because its anchor is on geometry that moves. A tab dialog showing in a shown browser
+    (`tabDialogShowing`), the Bookmarks view being open, or an overlay above the popup being on
+    screen or loading keeps it from opening (checked again in the reveal). Every dismissal also
+    ends a `Cmd+D` still waiting for the sidebar star. Chrome opens it only for pages the
+    Bento store saves (http, https, file, ftp); the panel header star is drawn `disabled` on
+    other pages.
+  - The `BentoShellAction` frame script (`content.focus()` for `ui/*` actions, for the sidebar's
+    rename and select-all) now skips `ui/bookmarkPopup/`, so the open message does not take the
+    focus from the popup frame.
+- Why this cannot stay extension-only: `PlacesCommandHook.bookmarkPage` and the toolbar row are
+  Firefox chrome; the popup must cover the toolbar strip; the panel header star is chrome-drawn.
+  The documents themselves are extension pages.
+- Firefox update risk: if `PlacesCommandHook.bookmarkPage` is renamed or an entry point stops
+  calling it through the object, that entry point opens Firefox's own star panel again (the
+  `[bento-compat] missing PlacesCommandHook.bookmarkPage` probe and the engine check for
+  `Browser:AddBookmarkAs` catch both). If `skipintoolbarset` stops being honoured, CustomizableUI
+  can remove the host, and the toolbar row is then empty (Firefox's items stay hidden by the
+  stylesheet) until the next `BENTO_PANELS` payload creates it again. If `#personal-bookmarks` or `#personal-toolbar-empty` is renamed, the
+  Firefox items show beside the Bento toolbar. If Firefox starts setting `collapsed` before the
+  first `BENTO_PANELS` payload differently, the frame can be created for a toolbar nobody sees
+  (one unused document, no visible effect). A new top-layer popover in the toolbar would sit
+  above the popup host, as it does above every overlay.
+- Regression checks for future updates: on macOS, in a regular window, press `Cmd+D` on a
+  saved and an unsaved page with the sidebar expanded, collapsed and hidden: the popup anchors to
+  the sidebar star (expanded) or to the selected panel's header star (otherwise), once, and
+  Firefox's own panel never shows; use the Bookmarks menu item and the app menu item too. Click
+  the sidebar star and a panel header star: the popup opens at the button, and a header star of a
+  saved page is filled. Esc with the popup focused closes it and returns the focus; click
+  anywhere, including the empty top strip, to close it; the traffic lights stay visible and
+  clickable while it is open. Select another tab, resize the window, toggle the sidebar and open
+  the command palette with the popup open: it closes each time. With the Bookmarks view open
+  `Cmd+D` does nothing; the popup's Open in Bookmarks opens the view. Press `Cmd+D` on
+  `about:config` and on a `data:` page: nothing opens and the panel header star is disabled.
+  Press `Cmd+D` and, within a moment, `Cmd+L` or Esc, or switch tabs: no popup follows. Press
+  `Cmd+Shift+B` with the
+  manager on: the Bento toolbar shows in the toolbar row and Firefox's bookmark items do not;
+  the sidebar and splitters keep their compensation (no gap above the sidebar address field);
+  drag the sidebar splitter and toggle the sidebar with the toolbar open and watch the toolbar's
+  left edge follow the strip. Turn the manager off in Settings: Firefox's toolbar, star and
+  `Cmd+D` return without a restart; turn it on again: the Bento ones. In a private window
+  `Cmd+D`, the star and the toolbar are Firefox's. Run `pnpm run firefox:compat:engine` and
+  confirm `PlacesCommandHook.bookmarkPage`, `Browser:AddBookmarkAs`, `personal-bookmarks`,
+  `personal-toolbar-empty` and `skipintoolbarset` are found, and watch the Browser Console for
+  `[bento-compat] missing`.
+- Rollback or migration notes: removing the surface is deleting the `bookmarks-popup` overlay
+  entry and host, the bookmarks toolbar functions and stylesheet block, and the
+  `patchBookmarkPageCommand` call (the original function is untouched; the patch lives on the
+  window object only). Nothing persists outside `bento-tools`' store.
 
 ### Search Engine Icons (bento-privacy Experiment)
 
@@ -2948,6 +3238,8 @@ below is generated; edit the registry, then run
 | `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:607` |
 | `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule. | `src/browser/base/content/bento-shell-mount.css#split-view-footer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4114` |
 | `#navigator-toolbox[fullscreenShouldAnimate]` | source (engine only) | The sidebar push's colour transition on the toolbar surfaces replaces their transition list, so it skips #navigator-toolbox while Firefox's fullscreen reveal (`transition: 0.8s margin-top` on this attribute, set by browser-fullScreenAndPointerLock.js) runs. | `src/browser/base/content/bento-shell-mount.css#fullscreenShouldAnimate` | `browser/themes/shared/browser-shared.css:221` |
+| `:root[sessionrestored]` | source (engine only) | The Bento bookmarks toolbar's show and hide motion waits for it, as Firefox's own toolbar slide does, so a toolbar that is already open at startup, and the swap from Firefox's toolbar when the manager turns on, land without motion. browser-init.js sets it once every window has been restored. | `src/browser/base/content/bento-shell-mount.css#sessionrestored` | `browser/base/content/browser-init.js:742` |
+| `:root[inFullscreen]` | source (engine only) | The Bento bookmarks toolbar floats over the panel column and #bento-strip-container reserves its room; in a fullscreen window Firefox pulls the whole toolbox off screen with a negative margin and the content takes the window, so the stylesheet reserves nothing while the root carries it. | `src/browser/base/content/bento-shell-mount.css#inFullscreen` | `browser/base/content/browser-fullScreenAndPointerLock.js:442` |
 | `#navigator-toolbox[tabs-hidden]` | source (engine only) | The mode flip fade skips the native tab strip (#tabbrowser-tabs) only while Firefox marks the toolbox tabs-hidden, which TabBarVisibility.update() sets from the hidden-tabs state Bento turns on; a profile that shows the strip keeps the fade there. | `src/browser/base/content/bento-chrome-theme.css#tabs-hidden` | `browser/components/tabbrowser/content/tab-bar-visibility.js:36` |
 | `.browserSidebarContainer panel container` | source (engine only) | Every tab keeps a .browserSidebarContainer in #tabbrowser-tabpanels; the mode flip fade gives the ones that are neither selected nor split no transitions (hundreds of invisible elements with many tabs). | `src/browser/base/content/bento-chrome-theme.css#browserSidebarContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3120` |
 | `tabpanels .deck-selected class` | source (engine only) | The tabpanels deck marks the selected panel container .deck-selected; the mode flip fade keeps the selected container (and .split-view-panel and .split-view-panel-active ones) out of its exclusion. | `src/browser/base/content/bento-chrome-theme.css#deck-selected` | `toolkit/content/widgets/tabbox.js:218` |
@@ -2962,7 +3254,7 @@ below is generated; edit the registry, then run
 | `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `openFirefoxSearchSettings` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3559` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3682` |
 | `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1324` |
-| `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
+| `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. shownBrowsers hands the Bookmarks view the browsers the window shows (the selected browser alone outside a split view): isTabDialogShowing checks each for a showing tab dialog, and isPageContainerShown tells a dialog of a shown tab from one of a background tab. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers`, `shownBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:641` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8022` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8044` |
 | `gBrowser.replaceTabWithWindow` | method (runtime) | Hides Bento's split-view markers while Firefox picks the element it hands a torn-out window (aTab.splitview ?? aTab). | `hideBentoSplitViewMarkers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:7709` |
@@ -2980,6 +3272,10 @@ below is generated; edit the registry, then run
 | `BrowserElementParent DOMWindowClose` | source (engine only) | A tab's window.close() reaches the chrome window as a DOMWindowClose that bubbles from the browser element and is not cancelable. Bento acts only on one targeted at the window; notePageClose records the tab that asked, which is not handed over when the tabbrowser then closes the window for it (the window's only tab). | `notePageClose`, `handOverTabsBeforeClose` | `toolkit/actors/BrowserElementParent.sys.mjs:25` |
 | `window.onclose WindowIsClosing` | source (engine only) | The OS close button dispatches a cancelable close event, answered by window.onclose = WindowIsClosing (closing-tabs warning, beforeunload prompts). Bento adds its own listener after that handler and acts only when the event is not already cancelled. | `attachWindowCloseHandover`, `handOverTabsBeforeClose` | `browser/base/content/browser-main.js:44` |
 | `remote <browser> key events reach the parent first` | source (engine only) | The chrome process sees a key event for a remote <browser> before that browser's document does: EventStateManager dispatches it in the parent, with the <browser> element as event.target, and only then forwards it to the child with SendRealKeyEvent. The capture-phase Esc listener relies on this to skip an Esc aimed at the Settings frame (event.target.id) and leave it to the Settings document; if the order changed, it would either miss the frame or consume Esc for every stage. | `attachPaletteEscListener` | `dom/events/EventStateManager.cpp:2306` |
+| `DOMWillOpenModalDialog` | source (engine only) | Chrome-only bubbling event that PromptParent fires on the prompting <browser> (on its Window for a prompt in this process) just before a prompt opens, the Leave page prompt of a tab or window close included. Tab-modal prompts are drawn inside the page's .browserSidebarContainer, which the Bookmarks view hides, so the window listens in the capture phase and, for a browser the window shows, closes the view at once (no fade, no focus move) and cancels a pending open; the event comes before the dialog exists. A prompt of a background tab is left alone and looked at again after the event: tabbrowser's own capture listener for it (Tabbrowser.sys.mjs) selects the tab of a Leave page prompt right after Bento's, firing TabSelect before TabDialogBox sets tabDialogShowing, so by the second look that tab is shown and has the attribute. | `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog` | `browser/actors/PromptParent.sys.mjs:207` |
+| `dialogopen` | source (engine only) | Bubbling event SubDialog dispatches on a dialog's overlay once it is sized and shown, after TabDialogBox set tabDialogShowing. Every tab dialog fires it, also those that fire no DOMWillOpenModalDialog (print preview, share, screenshots), so the Bookmarks view closes for any dialog whose overlay sits in the .browserSidebarContainer of a browser the window shows. A window-level dialog (gDialogBox) is outside that container and leaves the view open, and so does a dialog of a background tab. | `attachBookmarksViewDialogListener`, `closeBookmarksViewForDialog` | `toolkit/modules/SubDialog.sys.mjs:501` |
+| `tabDialogShowing` | source (engine only) | Attribute on a <browser> while its TabDialogBox has a dialog open, tab-modal prompts and content prompts included: _onFirstDialogOpen sets it when the first dialog opens and _onLastDialogClose removes it with the last. Firefox reads it for the selected browser the same way (popup notification suppression, tab-switch focus). The Bookmarks view refuses to open while a browser the window shows has it, cancels a pending open at its reveal, and closes when a tab that has it is selected (TabSelect) or joins the split view, because the prompt is drawn in the .browserSidebarContainer that the view hides. Firefox focuses an existing dialog on selection and fires no dialog event for it. | `isTabDialogShowing` | `browser/base/content/browser.js:4594` |
+| `TabDialogBox._containerFor` | source (engine only) | Where a tab dialog is drawn: appended to browser.closest('.browserSidebarContainer, .webextension-popup-stack, .sidebar-browser-stack'). The Bookmarks view hides every .browserSidebarContainer under its host, so a dialog there is invisible; closeBookmarksViewForDialog tells that container from a window-level dialog by the same selector, and isPageContainerShown compares it with the container of each browser the window shows. If Firefox draws page prompts elsewhere, the view would stay open over them or close for dialogs it does not hide. | `closeBookmarksViewForDialog`, `isPageContainerShown` | `browser/base/content/browser.js:4466` |
 | `gFissionBrowser` | source (engine only) | A window runs with Fission or without; swapBrowsersAndCloseOther refuses to swap a tab between the two, so a window in another mode is not chosen to take tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:689` |
 | `gDialogBox.isOpen` | member (runtime) | A window-modal dialog is up in the candidate window (the closing-tabs warning is one): the window may be about to close, so it takes no tabs. | `findHandoverSurvivor` | `browser/base/content/browser.js:4770` |
 | `MozBrowser.prototype.docShellIsActive` | member (runtime) | Bento forces panel docShells active after Firefox deactivates them. | `reconcilePanelsSplitView` | `toolkit/content/widgets/browser-custom-element.mjs:523` |
@@ -3035,18 +3331,25 @@ below is generated; edit the registry, then run
 | `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |
 | `sidebar-splitter` | element (runtime) | Native sidebar splitter whose resize behavior Bento replaces. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:27` |
 | `navigator-toolbox` | element (runtime) | Native toolbox whose separators and offsets Bento adjusts. | `attachSidebarChromeDivider` | `browser/base/content/navigator-toolbox.inc.xhtml:5` |
-| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
-| `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget` | `browser/base/content/navigator-toolbox.inc.xhtml:127` |
+| `nav-bar` | element (runtime) | Native navigation toolbar; Bento aligns its controls with the Bento sidebar. While the Bookmarks view is open it stays laid out, visible and effect-free as the strip that carries the window controls, and every child but the button box is hidden with visibility (the controls inside #nav-bar-customization-target slide up and fade first). | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#bento-bookmarks-view` | `browser/base/content/navigator-toolbox.inc.xhtml:109` |
+| `titlebar-buttonbox-container` | source (engine only) | The window controls inside #nav-bar (the nav-bar copy of titlebar-items.inc.xhtml). The Bookmarks view hides every other child of #nav-bar and keeps this one visible and effect-free: macOS draws the traffic lights itself and Gecko positions them from the rects of the window buttons in the .titlebar-buttonbox inside, so hiding or fading this box, #nav-bar or #navigator-toolbox, or giving an ancestor opacity, a transform, a translate or a filter, makes them leave the window. If Firefox renames the class, the view would hide the controls. | `src/browser/base/content/bento-shell-mount.css#titlebar-buttonbox-container` | `browser/base/content/titlebar-items.inc.xhtml:5` |
+| `nav-bar-customization-target` | element (runtime) | Toolbar item container observed for placement changes. Its direct children are the strip controls that slide up and fade when the Bookmarks view opens (translate and opacity, staggered, hidden with visibility after); it is a sibling of the window button box, never an ancestor, so the traffic lights are unaffected. | `attachToolbarNavigationAlignment`, `getPanelNavigatorToolbarTarget`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:127` |
 | `urlbar` | element (runtime) | Native urlbar; Bento intercepts pointer and focus events on it and opens its own address overlay. | `attachTopUrlbarModalListener` | `browser/base/content/navigator-toolbox.inc.xhtml:165` |
 | `urlbar-input` | source (engine only) | Native urlbar text input; Bento blurs it and opens its own address overlay instead. | `attachTopUrlbarModalListener` | `browser/components/urlbar/content/UrlbarInputBase.mjs:402` |
-| `stop-reload-button` | source (engine only) | Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:142` |
-| `back-button` | source (engine only) | Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:128` |
-| `forward-button` | source (engine only) | Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. | `attachToolbarNavigationAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:135` |
+| `stop-reload-button` | source (engine only) | Native toolbar button positioned with the back/forward cluster; user-customizable, so no runtime probe. It is the third control of the Bookmarks view top-bar slide, named by id so the stagger order does not depend on the toolbar layout. | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:142` |
+| `back-button` | source (engine only) | Native back button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the first control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout). | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:128` |
+| `forward-button` | source (engine only) | Native forward button aligned with the Bento sidebar edge; user-customizable, so no runtime probe. It is the second control of the Bookmarks view top-bar slide (named by id, so the stagger order does not depend on the toolbar layout). | `attachToolbarNavigationAlignment`, `src/browser/base/content/bento-shell-mount.css#nav-bar-customization-target > *` | `browser/base/content/navigator-toolbox.inc.xhtml:135` |
 | `identity-box` | element (runtime) | Native identity box that Bento reads for security state. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:216` |
 | `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:230` |
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |
 | `identity-popup` | source (engine only) | Native identity panel that Bento opens at a sidebar anchor. It sits inside template-identity-popup until gIdentityHandler._initializePopup() expands it, which Bento calls first. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:5` |
-| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. | `attachBookmarksToolbarAlignment` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. While the Bookmarks manager is on in a regular window it also holds the Bento bookmarks toolbar: Bento appends #bento-bookmarks-toolbar-host as its last child (skipintoolbarset), watches its collapsed and hidden attributes to create that host when the toolbar first shows, and bento-shell-mount.css hides its bookmark items, takes the toolbar out of flow as a rounded strip over the panel column (its room reserved on #bento-strip-container) and animates its [collapsed] state, against Firefox's own max-height slide. attachBookmarksToolbarAlignment offsets the sidebar by the measured height of Firefox's toolbar and by 0 for the Bento strip. | `attachBookmarksToolbarAlignment`, `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `personal-bookmarks` | source (engine only) | Firefox bookmark items of the bookmarks toolbar (the Places toolbar; a customizable toolbar item, so no runtime probe). While the Bookmarks manager is on in a regular window the stylesheet hides it (display: none) in favour of the Bento toolbar frame. If the id changes, both toolbars show side by side. | `src/browser/base/content/bento-shell-mount.css#personal-bookmarks` | `browser/base/content/navigator-toolbox.inc.xhtml:562` |
+| `personal-toolbar-empty` | source (engine only) | Firefox hint shown on an empty bookmarks toolbar. The stylesheet hides it (display: none) while the Bento toolbar frame is in use. If the id changes, an empty Firefox profile shows the hint under the Bento frame. | `src/browser/base/content/bento-shell-mount.css#personal-toolbar-empty` | `browser/base/content/navigator-toolbox.inc.xhtml:555` |
+| `skipintoolbarset` | source (engine only) | Attribute on #bento-bookmarks-toolbar-host. CustomizableUI skips such children of a customizable toolbar when it builds placements, saves them and resets, so the host is not mistaken for a widget and removed. | `createBookmarksToolbarHost` | `browser/components/customizableui/CustomizableUI.sys.mjs:1528` |
+| `PlacesCommandHook.bookmarkPage` | method (runtime) | The one function behind Cmd+D, the Bookmarks menu and app menu items, the page context menu and Firefox star. In a regular window with the Bookmarks manager on, Bento replaces it (once per window, at script start: browser-places.js loads before the mount script) with a request for the bookmark popup; private windows and the opt-out call the original. | `patchBookmarkPageCommand` | `browser/base/content/browser-places.js:410` |
+| `Browser:AddBookmarkAs` | source (engine only) | The command Cmd+D and the Bookmarks menu run. Its handler in browser-sets.js calls PlacesCommandHook.bookmarkPage(), which is where Bento intercepts it. If the handler stops calling it, Cmd+D bypasses the Bento popup. | `patchBookmarkPageCommand` | `browser/base/content/browser-sets.js:154` |
+| `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute (keeping the value on the key in data-bento-library-command) and listens for the command event the key then raises on itself, to toggle the Bookmarks view. Turning the Bookmarks manager off in Settings puts the command attribute back, so the key opens the Library again. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey` | `browser/base/content/browser-sets.inc.xhtml:290` |
 | `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:679` |
 | `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |
@@ -3134,7 +3437,8 @@ below is generated; edit the registry, then run
 | `Selection.setNodeFront` | source (engine only) | Selects the inspected node in the inspector. | `selectNodeInToolbox` | `devtools/client/framework/selection.js:190` |
 | `AccessibilityPanel.selectAccessibleForNode` | source (engine only) | Selects the inspected node in the accessibility panel. | `selectNodeInToolbox` | `devtools/client/accessibility/panel.js:255` |
 | `ViewShowing` | source (engine only) | Bubbling event PanelMultiView dispatches on a panelview once it is in the panel and before it is measured. Bento listens on the app menu panel and adds its Settings item when the main view shows, which covers every way the menu can open. | `installBentoSettingsAppMenuItem` | `browser/components/customizableui/PanelMultiView.sys.mjs:1057` |
-| `TabSelect` | source (engine only) | Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes. | `attachTabSelectListener`, `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2009` |
+| `TabSelect` | source (engine only) | Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes. The Bookmarks view also closes if the tab now selected has a showing dialog: updateCurrentBrowser sets the selected browser before it fires the event, and Firefox focuses that dialog right after. | `attachTabSelectListener`, `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners`, `attachBookmarksViewDialogListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2009` |
+| `TabSplitViewActivate` | source (engine only) | Window event that Bento's panel reconcile and Firefox's split view both dispatch when a split view becomes the shown one; Tabbrowser's own window listener (on_TabSplitViewActivate) stores it, which is what gBrowser.selectedBrowsers lists. The Bookmarks view looks for a showing tab dialog among the new browsers (on a timer, so the order of the listeners does not matter). | `attachBookmarksViewDialogListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:265` |
 | `TabOpen` | source (engine only) | Reconciles panels when a tab opens (new-tab flows where TabSelect does not reach the listener). | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:5529` |
 | `TabAttrModified` | source (engine only) | Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes. | `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2314` |
 | `SSTabRestored` | source (engine only) | Refreshes the sidebar address snapshot after session restore fills a tab. | `attachSidebarAddressSnapshotListeners` | `browser/components/sessionstore/SessionStore.sys.mjs:8093` |

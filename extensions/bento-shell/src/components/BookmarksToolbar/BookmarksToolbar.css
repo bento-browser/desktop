@@ -1,0 +1,113 @@
+/* Layer-2 component: BookmarksToolbar.
+ *
+ * A transparent row inside the chrome frame that replaces Firefox's bookmarks toolbar. The frame's
+ * height is chrome's (the 30px bookmarks row); the buttons are Mux's small ghost buttons, 24px
+ * high, centred in it. Chrome draws the surface around it: a strip with the panels' corner radius,
+ * lined up with the panels, that clips this row and has no padding of its own (bento-shell-
+ * mount.css, 'The Bento bookmarks toolbar'). So this row's inline padding is the buttons' whole
+ * inset from the strip's rounded ends, and the first colour dot sits that plus the button's own
+ * padding in, about the 12px default radius, so it clears the arc of the corner. The group buttons
+ * share the row with the overflow button: a button that does not fit stays in the row but leaves
+ * the layout and the tab order (data-bm-out), so its width can still be measured when the window
+ * grows. Mux's own styles sit in the `muxui` layer, so the layered rules here win. */
+
+@layer bento.components {
+  /* Mux's toolbar is a bordered, padded surface and restyles its direct buttons; here it is a bare
+     row, and the spaces button sits in a wrapper so it is styled like the group buttons. */
+  .muxui-toolbar.bento-bookmarks-toolbar {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-tight-gap);
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    padding-block: 0;
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  .bento-bookmarks-toolbar__groups {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-tight-gap);
+    overflow: hidden;
+  }
+
+  .bento-bookmarks-toolbar__hint {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--muxui-semantic-layout-inset-tight);
+  }
+
+  .bento-bookmarks-toolbar__end {
+    display: flex;
+    flex: none;
+  }
+
+  /* Small buttons, sized to --bento-control-size-sm (Mux's own small is taller than the row). */
+  .muxui-button.bento-bookmarks-toolbar__button {
+    box-sizing: border-box;
+    flex: none;
+    height: var(--bento-control-size-sm);
+    min-block-size: var(--bento-control-size-sm);
+    max-width: var(--bento-bookmarks-toolbar-button-max-width);
+    padding-block: 0;
+    padding-inline: var(--muxui-semantic-layout-inset-tiny);
+  }
+
+  .muxui-button.bento-bookmarks-toolbar__button .muxui-button__label {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--muxui-semantic-layout-control-content-gap);
+  }
+
+  .bento-bookmarks-toolbar__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bento-bookmarks-toolbar__chevron {
+    flex: none;
+    color: var(--muxui-semantic-content-muted);
+  }
+
+  .muxui-icon-button.bento-bookmarks-toolbar__overflow {
+    flex: none;
+    width: var(--bento-control-size-sm);
+    height: var(--bento-control-size-sm);
+    min-width: var(--bento-control-size-sm);
+    min-height: var(--bento-control-size-sm);
+  }
+
+  /* Out of the row: not laid out, not seen, not reachable, but still measurable. */
+  .bento-bookmarks-toolbar__groups > [data-bm-out] {
+    position: absolute;
+    inset-inline-start: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* States are translucent tints of the same colour as the strip under them (its fill is a
+     colour-mix too), so they read through the strip instead of as solid patches: hover, then press
+     and the button whose popup is open. Covers the group, spaces and overflow buttons (all ghost
+     Mux buttons). */
+  .bento-bookmarks-toolbar .muxui-button[data-muxui-variant='ghost'] {
+    --muxui-button-background-hover: var(--bento-surface-hover);
+    --muxui-button-background-pressed: var(--bento-surface-active);
+  }
+
+  .bento-bookmarks-toolbar [data-bm-pressed],
+  .bento-bookmarks-toolbar .muxui-button[data-muxui-variant='ghost'][data-muxui-state-pressed] {
+    background-color: var(--bento-surface-active);
+  }
+}

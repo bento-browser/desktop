@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ADVANCED_PRIVACY_SPECS, ENUM_SPECS, NUMBER_SPECS } from './settingsCatalog';
+import { ADVANCED_PRIVACY_SPECS, BOOLEAN_SPECS, ENUM_SPECS, NUMBER_SPECS } from './settingsCatalog';
 import * as copy from './settingsCopy';
 
 /** Every string of the module, however nested. */
@@ -16,6 +16,13 @@ describe('Settings copy', () => {
     expect(Object.keys(copy.ADVANCED_DESCRIPTIONS).sort()).toEqual(
       ADVANCED_PRIVACY_SPECS.map((spec) => spec.key).sort(),
     );
+  });
+
+  it('describes only switches of the catalog, and the Bookmarks manager says its shortcut and what Off keeps', () => {
+    for (const key of Object.keys(copy.TOGGLE_DESCRIPTIONS))
+      expect(BOOLEAN_SPECS).toHaveProperty(key);
+    expect(copy.TOGGLE_DESCRIPTIONS.bookmarksEnabled).toContain('Cmd/Ctrl+Shift+O');
+    expect(copy.TOGGLE_DESCRIPTIONS.bookmarksEnabled).toContain('keeps your saved bookmarks');
   });
 
   it('has a line for each option of each choice, and no other', () => {

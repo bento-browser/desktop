@@ -149,6 +149,7 @@ const BOOLEAN_SETTING_KEYS = new Set<keyof BentoSettings>([
   'sidebarHidden',
   'panelCycleWraparound',
   'panelShadowsEnabled',
+  'bookmarksEnabled',
   'autoBackupEnabled',
 ]);
 

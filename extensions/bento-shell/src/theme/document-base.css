@@ -206,6 +206,32 @@ body {
       var(--bento-mode-fade-colours) !important;
   }
 
+  /* extensions/bento-shell/src/components/BookmarksView/BookmarksView.css */
+
+  [data-bento-mode-fade] .bento-bookmarks__more {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-bookmarks__add-item.muxui-button {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] .bento-bookmarks__row-actions {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] [data-bm-flipping] {
+    transition:
+      transform var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
   /* extensions/bento-shell/src/components/FolderRow/FolderRow.css */
 
   [data-bento-mode-fade] .bento-folder-row {

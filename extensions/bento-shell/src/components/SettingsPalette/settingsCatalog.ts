@@ -129,6 +129,11 @@ export const BOOLEAN_SPECS: Record<BooleanSettingKey, BooleanSpec> = {
     label: 'Show panel shadows',
     keywords: ['panel', 'shadow'],
   },
+  bookmarksEnabled: {
+    key: 'bookmarksEnabled',
+    label: 'Bookmarks manager',
+    keywords: ['bookmarks', 'links', 'library', 'cmd shift o', 'ctrl shift o'],
+  },
   autoBackupEnabled: {
     key: 'autoBackupEnabled',
     label: 'Automatic backups',

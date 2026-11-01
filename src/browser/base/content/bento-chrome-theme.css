@@ -250,6 +250,9 @@
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
+  :root[bento-bookmarks-toolbar] #PersonalToolbar {
+    background-color: var(--bento-bookmarks-toolbar-fill) !important;
+  }
   body {
     background-color: var(--neutral-5) !important;
   }
@@ -1426,13 +1429,47 @@
 
   /* src/browser/base/content/bento-shell-mount.css */
 
-  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'] #PersonalToolbar {
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar {
     transition:
       var(--bento-mode-fade-colours) !important;
   }
 
-  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar[collapsed] {
     transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition:
+      height var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      visibility var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view]) #bento-strip-container {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition),
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition),
+      opacity var(--muxui-semantic-motion-dismiss-transition),
       var(--bento-mode-fade-colours) !important;
   }
 
@@ -1445,6 +1482,18 @@
   [data-bento-mode-fade] #bento-palette-host,
   [data-bento-mode-fade] #bento-merge-palette-host,
   [data-bento-mode-fade] #bento-confirm-host {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #bento-bookmarks-host {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-dismiss-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #bento-bookmarks-host {
     transition:
       opacity var(--muxui-semantic-motion-modal-transition),
       var(--bento-mode-fade-colours) !important;
@@ -1542,6 +1591,75 @@
     transition:
       width var(--muxui-semantic-motion-state-transition),
       height var(--muxui-semantic-motion-state-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] :is( #bento-shell-host, #bento-shell-splitter, #bento-shell-splitter-affordance, #bento-sidebar-chrome-divider, #bento-strip-container, #bento-side-panel-host, #tabbrowser-tabbox, #bento-add-panel-trailer, #bento-strip-scrollbar, #bento-flat-layout-extent, #bento-panel-nav, #urlbar ),
+  :root[data-bento-mode-fade][bento-bookmarks-view] :is( #bento-shell-host, #bento-shell-splitter, #bento-shell-splitter-affordance, #bento-sidebar-chrome-divider, #bento-strip-container, #bento-side-panel-host, #tabbrowser-tabbox, #bento-add-panel-trailer, #bento-strip-scrollbar, #bento-flat-layout-extent, #bento-panel-nav, #urlbar ) *,
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container),
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container) * {
+    transition:
+      visibility var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #back-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #forward-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #stop-reload-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-view] #nav-bar-customization-target > :is( #bento-panel-nav, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4) ) {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      opacity var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      visibility var(--muxui-semantic-motion-dismiss-transition) calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #back-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #forward-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #stop-reload-button, :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #nav-bar-customization-target > :is( #bento-panel-nav:not(.bento-workspace-stabilizing), :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4) ) {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
+      opacity var(--muxui-semantic-motion-reveal-transition) calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
       var(--bento-mode-fade-colours) !important;
   }
 

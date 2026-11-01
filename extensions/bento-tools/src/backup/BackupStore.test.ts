@@ -78,6 +78,21 @@ describe('BackupStore privacy safety', () => {
     expect(JSON.stringify(snapshot)).not.toContain('private.example');
   });
 
+  it('exports the Bookmarks manager setting only when it is Off', async () => {
+    const collect = (settings: typeof DEFAULT_SETTINGS) =>
+      new BackupStore({
+        workspaces: { snapshot: () => ({ workspaces: [] }) },
+        tabs: { snapshot: () => [] },
+        settings: { snapshot: () => settings },
+        savedPanels: { list: () => [] },
+      } as unknown as BackupContext).collectSnapshot();
+
+    await expect(collect(DEFAULT_SETTINGS)).resolves.toMatchObject({ settings: undefined });
+    await expect(collect({ ...DEFAULT_SETTINGS, bookmarksEnabled: false })).resolves.toMatchObject({
+      settings: { bookmarksEnabled: false },
+    });
+  });
+
   it('marks untagged version-one backups as legacy unknown', async () => {
     vi.stubGlobal('browser', {
       storage: {

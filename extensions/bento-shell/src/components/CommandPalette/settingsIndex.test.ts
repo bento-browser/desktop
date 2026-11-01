@@ -14,6 +14,14 @@ describe('settings index of the command palette', () => {
     ).toEqual(['setting:tabStateTintsEnabled', 'setting:customTabStateIconsEnabled']);
   });
 
+  it('offers the Bookmarks manager switch under Workspaces, for regular windows only', () => {
+    expect(SETTINGS_INDEX.find(({ id }) => id === 'setting:bookmarksEnabled')).toMatchObject({
+      label: 'Bookmarks manager',
+      group: 'Workspaces',
+      regularOnly: true,
+    });
+  });
+
   it('lists the flat controls of the Settings palette, with their labels and groups', () => {
     const rows = controlRows(REGULAR_MODEL).filter((row) => !NOT_INDEXED.has(row.id));
     expect(SETTINGS_INDEX.map(({ id, label, group }) => ({ id, label, group }))).toEqual(

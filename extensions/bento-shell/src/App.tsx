@@ -15,6 +15,7 @@ import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddress
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
 import { startWelcomeRequests } from './bridge/useWelcome';
+import { useBookmarkedTabsSignal } from './bookmarks/useBookmarkManager';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';
@@ -182,6 +183,9 @@ export function App() {
 
   // Lets the New button show its open fill while its chrome-rendered menu is up.
   useEffect(trackNewMenuOpen, []);
+
+  // Chrome fills the panel header star for the tabs that are saved in Bento's bookmarks.
+  useBookmarkedTabsSignal();
 
   useEffect(() => {
     const channel = new BroadcastChannel('bento-shell-bus');

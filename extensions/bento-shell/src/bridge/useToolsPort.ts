@@ -56,6 +56,7 @@ import { usePanelsStore } from '../state/panels';
 import { usePinnedPanelsStore } from '../state/pinnedPanels';
 import { useTabFoldersStore } from '../state/tabFolders';
 import { useSavedPanelsStore } from '../state/savedPanels';
+import { useBookmarksStore } from '../state/bookmarks';
 import { usePrivacyStore } from '../state/privacy';
 import { useAddressBarStore } from '../state/addressBar';
 import { useSearchEnginesStore } from '../state/searchEngines';
@@ -187,6 +188,7 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
     panelShadowsEnabled?: boolean;
     panelCornerRadiusPx?: number;
     panelSplitterSizePx?: number;
+    bookmarksEnabled?: boolean;
     stripScrollLeft?: number;
     pinnedTabIdsInWorkspace?: number[];
     savedPanelCount?: number;
@@ -225,9 +227,10 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   // customPanelSizes populates
   // each side panel header's kebab "more" menu;
   // panelCornerRadiusPx sets split-view panel frame radius;
-  // panelSplitterSizePx sets split-view splitter/gap size; and
-  // defaultPanelWidthPx sets the main slot's default minimum
-  // width. Single channel = no race with separate title
+  // panelSplitterSizePx sets split-view splitter/gap size;
+  // bookmarksEnabled lets chrome open the Bookmarks view and keep
+  // Cmd/Ctrl+Shift+O on it; and defaultPanelWidthPx sets the main
+  // slot's default minimum width. Single channel = no race with separate title
   // writes (the COLOR_MODE channel was dropped earlier for
   // this reason).
   const cur = useSettingsStore.getState().current;
@@ -274,6 +277,9 @@ function forwardPanelsToChrome(event: PanelsSyncEvent): void {
   }
   if (typeof cur?.panelSplitterSizePx === 'number') {
     payload.panelSplitterSizePx = cur.panelSplitterSizePx;
+  }
+  if (typeof cur?.bookmarksEnabled === 'boolean') {
+    payload.bookmarksEnabled = cur.bookmarksEnabled;
   }
   // Pinned-panel set for THIS workspace (Set.has(tabId) drives
   // the chrome panel-header pin button state), per-panel audio
@@ -505,6 +511,9 @@ function ensureConnection(): void {
         return;
       case 'savedPanels/snapshot':
         useSavedPanelsStore.getState().apply(event.items);
+        return;
+      case 'bookmarks/snapshot':
+        useBookmarksStore.getState().apply(event.snapshot);
         return;
       case 'externalMerge/sources':
         useExternalMergeStore.getState().applySources(event, state.windowId);

@@ -746,6 +746,173 @@ instead, and the rules for doing it are in
   `--panel-shadow` are not read by Firefox, and the `--panel-list-*` tokens paint nothing
   inside a XUL panel. Read the computed value of the element Firefox paints.
 
+### Bookmarks view
+
+The Bookmarks view (`components/BookmarksView/`, see [technical/bookmarks.md](technical/bookmarks.md))
+uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbox`, `Menu`
+(Root, Trigger, Popup, List, Item, Submenu, Separator), `Dialog`, `Input.Input` and
+`TextArea.TextArea`. Its conventions:
+
+- **Layout in `bento.components`, Mux overrides unlayered.** Mux paints some control rules
+  outside a layer, so the view's overrides for a Mux control (a ghost button that left-aligns
+  its content, a row button that paints no fill because the row paints the hover) sit unlayered
+  at the end of `BookmarksView.css`, scoped by a Bento class and the Mux class
+  (`.bento-bookmarks__back.muxui-button`). Layout, surfaces and motion stay in the layer.
+- **Container query for the narrow mode.** The root is an inline-size container
+  (`bento-bookmarks`); below `75rem` (1200 px at the 16 px root; a container query cannot read
+  a token) the spaces fold to colour dots and the drawer overlays the board.
+- **Undo toasts are a Bento composite, not Mux `Toast`.** `UndoToasts` is built on `Button`,
+  `IconButton` and `Text`. Mux Toast added about 7 KB gzip to the cold start of every overlay
+  document, and the view needs one toast kind. It enters on `reveal`, leaves on `dismiss`
+  through `afterMotion`, and its countdown (`dismissTimer.ts`) holds for the pointer over it and
+  for the focus inside it as two separate holds, so leaving with the pointer does not expire a
+  toast whose Undo is focused.
+- **Confirmation is a Mux `Dialog`.** Deleting a group or space needs one question and one
+  answer, so no `AlertDialog` is used.
+- **No Mux drag.** Row, tab and column drag is a pointer hook (`useBoardDrag`) that begins in the
+  capture phase, because Mux Buttons stop `pointerdown` from bubbling. The ghost clone, insertion
+  line and autoscroll draw imperatively from one `requestAnimationFrame` loop. A Mux Button
+  fires `onActivate` from the click after the release (React Aria `usePress`), so a drag must
+  never `stopPropagation` that click: the row's `onActivate` asks `isSuppressed()` instead, which
+  stays true from the start of the drag through the release, however the drag ended.
+- **Menus use the public `Menu` parts, drawn from data.** A row's "More actions" (`ItemMenu`: for a
+  link Open in panel, Open in new tab and Copy link, then Edit, for a to-do Mark done, a Move submenu
+  of Move to group, Move up and Move down, and Delete), an open tab's "Save to group" (`TabMenu`), a
+  column's and a space's "..." (`EntityMenu`: Rename, Colour, and for a column Open all, Move left and
+  Move right) are `Menu.Root`, `Trigger`, `Popup`, `List`, `Item`, `Separator` and, for submenus (Move,
+  Colour and the group lists), `Submenu` (an item and a popup). What each offers is a `MenuEntry` list
+  built in `menuEntries.ts` and drawn by `EntryList.tsx`, so the "..." menus and the right-click menu
+  never drift: add an action to the builder, not to a menu. Their triggers carry
+  `.bento-bookmarks__more`, are sized as `--bento-control-size-sm` and show with the row's
+  actions; a menu that is open keeps its row's actions and text mask through
+  `:has([aria-expanded='true'], [data-muxui-state-open])`. An impossible direction is a disabled
+  `Menu.Item`. The popups stay modal (`modal={false}` stops them closing on an outside click), so
+  an editor a menu item opens takes the focus through `useFocusWhenReady`, not `autoFocus`: the
+  closing popup keeps the page inert.
+- **A context menu is a controlled `Menu` at a point.** The Bookmarks view replaces the page's
+  right-click menu with `ContextMenu.tsx`: `Menu.Root` with `open` and `onOpenChange`, no
+  `Menu.Trigger`, and a `Menu.Popup` whose `anchorRef` is an empty, absolutely positioned
+  `.bento-bookmarks__context-anchor` that the view moves to the pointer (the documented recipe for
+  context coordinates). It is modal like the others and keeps drawing its last content while the
+  popup plays its exit. Routing, not the component, decides what opens (`contextMenuModel.ts`): text
+  fields keep the native menu, an element with actions gets its list, anything else gets nothing.
+  Reuse this shape for another context menu in an extension page that fills its window; a popup that
+  must leave the window goes through the chrome `menu` overlay instead.
+- **Neutral fills on a surface are colour-mix tints; the base and floating surfaces stay opaque.**
+  This holds for the view, the save popover's form and the toolbar. A row, space, "..." trigger,
+  button state, menu highlight, drop target, field, unchecked to-do box, selected toggle and note
+  bar paints a translucent `color-mix` of `--muxui-semantic-color-neutral-90` into `transparent`
+  (`neutral-100` for the toggle's hover), never a solid neutral, so it reads through whatever is
+  under it like the toolbar strip does. Rows, spaces, "..." triggers and the empty-space drop
+  target use `--bento-surface-hover` and `--bento-surface-active`, as does a column's tonal "+"
+  (`.bento-bookmarks__add-item`, a ghost `Button` whose `--muxui-button-background` is set to
+  `--bento-surface-hover` at rest, so Mux's hover and press rules still repaint it); Mux `neutral` and `ghost`
+  buttons and the menu's `.muxui-menu__focus` highlight are already tints of the neutral. The rest
+  are `--bento-bookmarks-{field,checkbox,toggle-selected,toggle-selected-hover,note-bar}-fill`
+  (and `-toolbar-fill` for the strip) in `bento-tokens.css`, each weighted so its tint over
+  `--bento-brand-bg` matches the solid it replaced within about 3 RGB steps in light and dark
+  (field: none, since the old fill was the page colour itself, so its outline alone marks it;
+  checkbox 3.5%; toggle 90% and 92%; note bar 18%, 62% in dark). Mux's own defaults are overridden
+  where Mux has a property (`--muxui-field-bg` on `.bento-bookmarks` and on the popover,
+  `--muxui-component-checkbox-indicator-background` on `.bento-bookmarks__todo-box`) and by a scoped
+  rule where it has none (the selected `ToggleButton`, the `SearchField` input, whose dark rest
+  fill ignores `--muxui-field-bg`). Opaque on purpose: the page (`--bento-brand-bg` on `html`,
+  `body`, `#root` and `.bento-bookmarks`, which must cover the browser underneath), the drawer
+  where it overlays the boards (below 1200 px), and the floating layers whose content must not show
+  what is behind them (menus, the popover, the confirmation dialog, undo toasts, the drag ghost).
+  Colour fills (space and group dots, the workspace accent, danger) are not neutral and stay solid.
+  Check a change by reading `getComputedStyle(...).backgroundColor` (and `::before` and `::after`)
+  of every element in the three components' Ladle stories at rest, hovered and pressed, in light
+  and dark: no alpha-1 neutral should be left outside that list.
+- **Colour tokens.** The seven space and group colours are `--bento-bookmark-color-{gray,red,
+  orange,yellow,green,blue,purple}` in `bento-tokens.css` (the Mux reference hues at step 60;
+  gray is the semantic neutral). Dimensions come from `--bento-bookmarks-*` tokens; the row or
+  column being dragged dims to `--bento-bookmarks-dragging-opacity`.
+- **One hover action, without a background.** A row has a single action, its "More actions"
+  trigger, never a row of buttons: five buttons covered most of a 236 px column. The trigger paints
+  no fill and ends `--bento-bookmarks-actions-inset` (twice `--bento-focus-ring-width`) short of the
+  row's edge so its focus ring is not clipped by the column. The row text under it is masked out
+  with three `mask-image` layers whose lengths come from `mask-size` and `mask-position`, not from
+  gradient stops, because the fade check (`scripts/mount-fade-css.test.mjs`) and the motion check
+  read every `var()` inside a gradient. `canvas` is an opaque system colour keyword: only the alpha
+  matters. The mask applies only to rows that declare an action with `data-bm-actions` (an item row
+  or an open tab row), so search result rows, which have none, keep their full text. The mask's
+  percentages are of the masked element's own box, so the row text, note text and to-do text each
+  fill the row; a shrink-wrapped short note would otherwise be masked from its own edge.
+- **Reorder settle.** `[data-bm-flipping]` carries a `transform` transition on the `reveal`
+  role; `flip.ts` ends it with `afterMotion({ properties: ['transform'] })` and skips it under
+  reduced motion.
+- **Mux gradient residual.** A hovered or pressed Mux `Checkbox` (the to-do rows) tints with a
+  gradient over an unregistered custom property, so it does not cross-fade with the theme; it is
+  listed in `MUX_GRADIENT_RESIDUAL` in `scripts/mount-fade-css.test.mjs`.
+
+### Bookmark popup and bookmarks toolbar
+
+The save popover and the toolbar's menus (`components/BookmarkPopup/`, rendered by the
+`bookmarks-popup` overlay document) and the toolbar row (`components/BookmarksToolbar/`, rendered by
+the `bookmarks-toolbar` frame) use Mux `Popover`, `Menu` (Root, Trigger, Popup, List, Item, Submenu,
+Separator), `TextField`, `SelectNative`, `Button`, `IconButton`, `Text` and `Toolbar`. Their conventions:
+
+- **A popup anchors to an invisible trigger at the asking button's rect.** The overlay frame covers
+  the window and is transparent, so the popup document gets the rect of the button that asked
+  (already in window coordinates) and places a `Popover` `trigger` Button or a `Menu.Trigger` there
+  (`.bento-bookmark-popup__anchor`: fixed, `opacity: 0`, `pointer-events: none`, and
+  `min-block-size: 0` because a Button keeps a control-size minimum height, which would put the
+  popover that much below the asking button). Mux then positions the popup against it. Popovers
+  and menus stay modal, so a press anywhere outside lands on Mux's underlay in the popup document
+  and dismisses it. The save popover's `offset` is the 4px sidebar menus keep from their trigger,
+  plus the 4px the sidebar star sits inside the address row, plus the 1px Mux's Popover takes
+  back from a bottom placement.
+- **Esc runs before Mux and after it.** Mux closes a popup on Esc only while the focus is inside it
+  and stops the event there. The save popover captures Esc on its content first, because Esc must
+  drop an unsaved name before the close (Mux's close would otherwise commit it on the way out);
+  `useEscape` in `parts.tsx` is the bubble-phase fallback for an Esc that nothing inside handled,
+  such as the focus still being on the page behind the overlay.
+- **Space and Group are `SelectNative`.** The popover sits in a transparent overlay frame; the
+  platform select keeps its own popup and its keyboard behaviour there, where a Mux `Select` would
+  be a second popup layer inside one. Name is a `TextField` that commits on Enter or blur.
+- **The popover is a raised surface, not Mux's inverted one.** `.muxui-popover.bento-bookmark-popup__edit`
+  repaints the surface, border and text colour as the Private band note does.
+- **Its form text is text-xs, the sidebar's tab row and address field size.** Mux has no control
+  size below `sm`, and at `sm` a `TextField` or `SelectNative` still sets its value in body size
+  (16px). The popover sets `--muxui-field-font-size` to `text-xs-font-size`, and sets the labels
+  (`.muxui-field-label`, which ignores `--muxui-field-label-font-size`, and
+  `.muxui-select-native__label`) and the buttons to `label-xs-font-size`. Control heights stay the
+  `sm` 32px, the address row's height.
+- **Mux `Toolbar` as a bare row.** `Toolbar` brings a bordered, padded surface and restyles its
+  direct `Button` children with a compact intent (`.muxui-toolbar > .muxui-button`: body-size
+  text, a taller box). The toolbar overrides the surface (`border`, `border-radius`, padding,
+  `background`) and puts the space button in a wrapper (`.bento-bookmarks-toolbar__end`) so every
+  button is styled alike. Mux's own small button is taller than the 30px bookmarks row, so the
+  buttons set `height` and `min-block-size` to `--bento-control-size-sm` (24px) with `padding-block: 0`.
+  The document paints nothing: chrome draws the rounded strip behind and around it (the panels'
+  corner radius, lined up with the panels; `bento-shell-mount.css`, "The Bento bookmarks toolbar")
+  and clips the row, with Firefox's own padding on the toolbar zeroed, so the row's
+  `padding-inline` (`--muxui-semantic-layout-inset-tight`) is the buttons' inset from the strip's
+  rounded ends and the first dot clears the corner arc.
+- **Overflow is measured, not guessed.** The group buttons and the overflow button are always in the
+  row. A button that does not fit gets `data-bm-out`: absolutely positioned, `visibility: hidden`,
+  out of the tab order, but still laid out, so its width can be measured again when the window
+  grows. `model.ts` (`visibleGroupCount`) turns the measured widths into how many fit, a
+  `ResizeObserver` on the row re-measures, and the overflow menu lists the groups that did not.
+- **Pressed state follows the popup, not the click.** The popup document tells the other shell
+  documents which popup is open on `bento-bookmark-popup-bus`, and a button shows
+  `data-bm-pressed` (`--bento-surface-active`) and `aria-expanded` while its popup is up, so a
+  refused open never leaves a button pressed.
+- **States are colour-mix tints.** This is the fill rule of the Bookmarks view above, which also
+  covers the popover's form fields (`--muxui-field-bg` set to `--bento-bookmarks-field-fill` on
+  `.bento-bookmark-popup__edit`; the popover and the menus stay opaque, being floating). The strip's fill is a `color-mix` (`--bento-bookmarks-toolbar-fill`),
+  so the toolbar's ghost buttons set Mux's `--muxui-button-background-hover` and
+  `--muxui-button-background-pressed` to `--bento-surface-hover` and `--bento-surface-active`, both
+  `color-mix` tints of `--neutral-90`, and the open and pressed states paint `--bento-surface-active`.
+  Mux's own ghost press (5%) is lighter than its hover (10%) and mixes a different colour.
+- **Tokens.** `--bento-bookmark-popup-width`, `--bento-bookmark-popup-menu-max-width` and
+  `--bento-bookmarks-toolbar-button-max-width` in `bento-tokens.css` (and
+  `--bento-sidebar-top-inset` there, the sidebar's first row's top inset, shell-sized, which chrome
+  reads for the top of the strip); the colour dot and favicon
+  reuse `--bento-bookmarks-dot-size`, `--bento-bookmarks-favicon-size` and the
+  `--bento-bookmark-color-*` set.
+
 ### Pruning Mux component CSS
 
 The package has one stylesheet for all components. `mux-css-prune.ts` removes the
@@ -980,10 +1147,10 @@ Roles (values are the installed Mux RC4 defaults; they change with Mux, not in B
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `state`          | Colour, border, shadow, opacity of controls and indicators (hover, focus ring, active marker, workspace fade, sidebar card hover); the anchored address bar's result list, which fades in after the grow's visual duration; the hosted light/dark mode presentation, which uses one native old-root opacity image on the computed state pair while underlying colours/carriers settle instantly (`data-bento-mode-fade="settle"`); generated twins preserve geometry and opacity motion, including the highlight's 125 ms geometry and 250 ms opacity; standalone previews keep the local colour fade (see [theming.md](technical/theming.md#mode-flip-fade)); one stated exception, the sidebar row hover highlight's slide between rows; the palettes' one row highlight sliding between rows at half duration (`RowHighlight.css`) and the Settings slider's drawn thumb and fill for key presses and track clicks, not while dragging (`SettingsPalette.css`) | 250 ms spring; palette geometry 125 ms                                                   |
 | `interaction`    | Not used by Bento CSS today (the palettes' row highlight moved to `state`); Mux's own components use it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 150 ms, `ease`                                                   |
-| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter; its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, the onboarding-to-import card morph and the address palette's grow from the sidebar row (`clip-path`, with its elevation's `transform` and `opacity`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
-| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 120 ms, `ease-in`                                                |
+| `reveal`         | Geometry and appearance that follows a layout change: sidebar collapse and expand slide, hidden-sidebar slide-over, panel enter and reorder settles, header collapse, pinned rail, workspace slide, sidebar card enter, the Bookmarks view's top-bar controls sliding back in (staggered by `calc()` fractions of its duration, `bento-shell-mount.css`); its spring pair drives the sidebar Search peek and field, the sidebar collapse, expand and hide push, the hidden-sidebar edge-hover slide-over, the onboarding-to-import card morph and the address palette's grow from the sidebar row (`clip-path`, with its elevation's `transform` and `opacity`); the Bookmarks toolbar's show and hide (its strip's `height` and top margin, the strip container's top margin that the panels follow, on the spring pair, and the buttons sliding in on the plain pair, `bento-shell-mount.css`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 200 ms, `ease-out`; spring pair 400 ms (visual 200 ms), bounce 0 |
+| `dismiss`        | Something leaving: tab row removal, panel close fade, startup veil, sidebar card exit, the Bookmarks view's top-bar controls sliding up and fading out (staggered by `calc()` fractions of its duration; their `visibility` flip waits for the slide), the Bookmarks toolbar's buttons sliding up and fading out on a hide                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 120 ms, `ease-in`                                                |
 | `modal`          | Overlay hosts and scrims fading in and out, the address bar popup, and the sidebar address row's border fading with it (`SidebarAddressBar.css`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 180 ms, `cubic-bezier(0.16, 1, 0.3, 1)`                          |
-| `modal-dismiss`  | Modal exit; Bento fades hosts in and out on `modal` and does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 120 ms, modal easing                                             |
+| `modal-dismiss`  | Modal exit; the Bookmarks view host fades out on it (`bento-shell-mount.css`), and the other hosts fade in and out on `modal`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 120 ms, modal easing                                             |
 | `content-resize` | Content that changes size; Bento does not use it today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 600 ms, `ease`                                                   |
 | `progress`       | Progress updates; loops use `progress-spin-duration` (1000 ms), `progress-sweep-duration` (1200 ms) and `progress-travel-duration` (1500 ms) with `progress-easing` (`ease-in-out`) or `constant-easing` (`linear`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | per token                                                        |
 

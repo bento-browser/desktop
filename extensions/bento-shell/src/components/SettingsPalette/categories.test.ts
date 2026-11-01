@@ -42,7 +42,7 @@ describe('Settings categories', () => {
         }
       }
     }
-    expect(controlRows(REGULAR_MODEL)).toHaveLength(24);
+    expect(controlRows(REGULAR_MODEL)).toHaveLength(25);
     expect(rootRows(REGULAR_MODEL)).toHaveLength(9);
     expect(rootRows(PRIVATE_MODEL)).toHaveLength(7);
   });
@@ -65,7 +65,7 @@ describe('Settings categories', () => {
       expect(sizes.get('category:appearance')).toBe(1);
       expect(sizes.get('category:tabAppearance')).toBe(2);
       expect(sizes.get('category:performance')).toBe(3);
-      expect(sizes.get('category:workspaces')).toBe(1);
+      expect(sizes.get('category:workspaces')).toBe(model.isPrivate ? 1 : 2);
       expect(sizes.get('category:panels')).toBe(6);
       expect(sizes.get('category:privacy')).toBe(4);
       expect(sizes.get('category:backup')).toBe(model.isPrivate ? undefined : 5);

@@ -123,9 +123,11 @@ export async function loadChromeSubscribers(windowId: number | null) {
   const addrbar = await import('./useAddrbar');
   const merge = await import('./useMergePaletteBus');
   const menu = await import('./useMenuOpen');
+  const bookmarkPopup = await import('./bookmarkPopup');
   return {
     addrbar: addrbar.subscribeToAddrbarOpenRequests,
     mergePalette: merge.subscribeToMergePaletteLifecycle,
     menu: menu.subscribeToMenuOpen,
+    bookmarkPopup: bookmarkPopup.subscribeToBookmarkPopupOpen,
   };
 }

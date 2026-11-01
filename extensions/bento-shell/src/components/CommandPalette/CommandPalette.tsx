@@ -29,6 +29,7 @@ import {
 import { useShallow } from 'zustand/shallow';
 
 // Per-icon imports — barrel forbidden by eslint (bundle, §6.2).
+import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import SettingsIcon from 'lucide-react/dist/esm/icons/settings';
 import ShieldIcon from 'lucide-react/dist/esm/icons/shield';
 import MergeIcon from 'lucide-react/dist/esm/icons/merge';
@@ -44,6 +45,7 @@ import PanelRightCloseIcon from 'lucide-react/dist/esm/icons/panel-right-close';
 import { useTabsStore } from '../../state/tabs';
 import { useActiveWorkspaceIdForWindow, useWorkspacesStore } from '../../state/workspaces';
 import { usePrivateWindow } from '../../state/privateWindow';
+import { useSettingsStore } from '../../state/settings';
 import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
@@ -56,6 +58,7 @@ import {
 import './CommandPalette.css';
 import { sendChromeTitle } from '../../bridge/chromeTitle';
 import { SETTINGS_INDEX } from './settingsIndex';
+import { openBookmarksView } from '../../bookmarks/titles';
 
 export interface CommandPaletteProps {
   /** Invoked whenever the palette is dismissed (Esc, backdrop click, or
@@ -115,7 +118,8 @@ function resultLabel(count: number): string {
   return `${count} ${count === 1 ? 'result' : 'results'}`;
 }
 
-function useCommands(query: string): BentoCommand[] {
+/** The palette's commands for `query`. Exported for tests, which cannot render the portal. */
+export function useCommands(query: string): BentoCommand[] {
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   const tabs = useTabsStore(
     useShallow((s) => s.orderedIds.map((id) => s.byId[id]).filter((t) => !!t)),
@@ -126,6 +130,7 @@ function useCommands(query: string): BentoCommand[] {
   const activeWorkspaceId = useActiveWorkspaceIdForWindow(windowId);
   // A private window has one temporary workspace and merges nothing in.
   const isPrivate = usePrivateWindow();
+  const bookmarksEnabled = useSettingsStore((s) => s.current?.bookmarksEnabled ?? true);
   const searching = query.trim() !== '';
   const panelEntries = useMemo(
     () =>
@@ -151,6 +156,19 @@ function useCommands(query: string): BentoCommand[] {
       keywords: ['preferences', 'options'],
       action: () => signalOpenSettings(),
     });
+    // The Bookmarks view is for regular windows only, and only while the Bookmarks manager is on in
+    // Settings (chrome refuses the open otherwise). Chrome closes this palette as it opens.
+    if (!isPrivate && bookmarksEnabled) {
+      cmds.push({
+        id: 'nav:bookmarks',
+        title: 'Open Bookmarks',
+        subtitle: 'Browse and organise saved links, notes and to-dos.',
+        group: 'Navigation',
+        icon: commandIcon(BookmarkIcon),
+        keywords: ['bookmarks', 'links', 'boards', 'saved', 'spaces'],
+        action: () => openBookmarksView(),
+      });
+    }
     cmds.push({
       id: 'nav:privacy',
       title: 'Open Bento Privacy Settings',
@@ -362,6 +380,7 @@ function useCommands(query: string): BentoCommand[] {
     activeWorkspaceId,
     windowId,
     isPrivate,
+    bookmarksEnabled,
     searching,
   ]);
 }

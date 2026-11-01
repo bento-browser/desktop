@@ -69,7 +69,14 @@ const jsEntryBudgets = [
     entry: 'extensions/bento-shell/dist/assets/settings-palette.js',
     limit: '200 KB',
   },
-  ...['workspace-switcher', 'panel-trailer', 'panel-navigator-tooltip'].map((name) => ({
+  ...[
+    'workspace-switcher',
+    'panel-trailer',
+    'panel-navigator-tooltip',
+    'bookmarks',
+    'bookmarks-popup',
+    'bookmarks-toolbar',
+  ].map((name) => ({
     name: `bento-shell · ${name} cold-start JS (gz)`,
     entry: `extensions/bento-shell/dist/assets/${name}.js`,
     limit: '200 KB',

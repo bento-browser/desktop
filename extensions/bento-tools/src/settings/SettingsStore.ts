@@ -48,6 +48,7 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   panelShadowsEnabled: true,
   panelCornerRadiusPx: 12,
   panelSplitterSizePx: 14,
+  bookmarksEnabled: true,
   autoBackupEnabled: true,
   autoBackupIntervalMinutes: 30,
   autoBackupMaxCount: 5,

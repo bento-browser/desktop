@@ -243,6 +243,10 @@
   --bento-toolbar-nav-offset: 0px;
   --bento-bookmarks-toolbar-offset: 0px;
   --bento-bookmarks-toolbar-height: 0px;
+  /* How far the toolbar sits in from the strip's edges: none for Firefox's own, the panels' own
+     gutters for the Bento strip (see 'The Bento bookmarks toolbar' below). */
+  --bento-bookmarks-toolbar-edge-start: 0px;
+  --bento-bookmarks-toolbar-edge-end: 0px;
   --bento-tab-strip-width-min-effective: var(--bento-tab-strip-width-min);
 }
 :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
@@ -261,17 +265,181 @@
   top: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
 }
 :root[bento-sidebar-addressbar='true'] #PersonalToolbar {
-  margin-inline-start: var(--bento-bookmarks-toolbar-offset, 0px) !important;
-  width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
-  max-width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
+  margin-inline-start: calc(
+    var(--bento-bookmarks-toolbar-offset, 0px) + var(--bento-bookmarks-toolbar-edge-start)
+  ) !important;
+  width: calc(
+    100% - var(--bento-bookmarks-toolbar-offset, 0px) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
+  max-width: calc(
+    100% - var(--bento-bookmarks-toolbar-offset, 0px) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
-  transition: none !important;
   animation: none !important;
 }
-:root[bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
+/* Firefox's own toolbar (the Bento one is off, below): its vertical slide is pinned off. The
+   counter-offset of the sidebar is measured from the toolbar by the script, and intermediate
+   heights would move the sidebar before that measurement settled. */
+:root[bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar {
+  transition: none !important;
+}
+:root[bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar[collapsed] {
   visibility: collapse !important;
   transition: none !important;
+}
+/* The Bento bookmarks toolbar. The mount script sets bento-bookmarks-toolbar on the root, in a
+   regular window, once the first BENTO_PANELS payload says the Bookmarks manager is on; it
+   creates #bento-bookmarks-toolbar-host (the shell's toolbar document in a <browser>) as the
+   last child of #PersonalToolbar when the toolbar first shows. Firefox's bookmark items and its
+   empty-toolbar hint give way to it; the toolbar keeps its place, its visibility pref and
+   Cmd+Shift+B. The attribute off (manager off in Settings) restores Firefox's toolbar.
+
+   Layout. With the attribute on, #PersonalToolbar is a rounded strip that floats over the top of
+   the panel column instead of a row of the toolbox: it is out of flow, under the top bar, and
+   #bento-strip-container reserves its room with a top margin. The sidebar's row never contains
+   it, so the sidebar does not move when the toolbar shows or hides (the script's counter-offset
+   reads 0, attachBookmarksToolbarAlignment), and only the strip and the panels below it change.
+     - Top: the sidebar's first row (the workspace switcher) starts --bento-sidebar-top-inset
+       below the top bar, and the strip does too.
+     - Left and right: the strip lines up with the panels. The offset the script writes is the
+       strip container's edge; the edge variables add the panels' own gutters in it: with side
+       panels the tabpanels padding (--space-3xs at the start, --space-2xs at the end), with none
+       the main frame's margin (--space-2xs rounded, both sides, as the frame rounds them).
+     - Below: the gap to the panels is --bento-panel-gap, the gap between panels. The panels start
+       their own top gutter (--space-3xs, rounded with no side panels) below the reserved room, so
+       the room ends that gutter short of the gap.
+     - Corners: the panels' radius, so the strip reads as one more panel.
+   Windows in (OS) fullscreen reserve nothing: the toolbox is pulled off screen with its toolbar,
+   and the content takes the window. */
+:root {
+  --bento-bookmarks-toolbar-row-height: 30px;
+}
+:root[bento-bookmarks-toolbar] {
+  --bento-bookmarks-toolbar-edge-start: var(--space-3xs);
+  --bento-bookmarks-toolbar-edge-end: var(--space-2xs);
+  --bento-bookmarks-toolbar-gap: calc(var(--bento-panel-gap) - var(--space-3xs));
+  --bento-bookmarks-toolbar-reserve: calc(
+    var(--bento-sidebar-top-inset) + var(--bento-bookmarks-toolbar-row-height) +
+      var(--bento-bookmarks-toolbar-gap)
+  );
+}
+:root[bento-bookmarks-toolbar][bento-no-side-panels='true'] {
+  --bento-bookmarks-toolbar-edge-start: round(var(--space-2xs), 1px);
+  --bento-bookmarks-toolbar-edge-end: round(var(--space-2xs), 1px);
+  --bento-bookmarks-toolbar-gap: calc(var(--bento-panel-gap) - round(var(--space-3xs), 1px));
+}
+#bento-bookmarks-toolbar-host {
+  display: none;
+}
+:root[bento-bookmarks-toolbar] #bento-bookmarks-toolbar-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: var(--bento-bookmarks-toolbar-row-height);
+}
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+  position: absolute !important;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  height: var(--bento-bookmarks-toolbar-row-height) !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin-block: var(--bento-sidebar-top-inset) 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--bento-panel-corner-radius) !important;
+  overflow: clip !important;
+  transition: none !important;
+}
+/* The strip hangs below the toolbox over #browser, which is positioned and paints after the
+   toolbox at the toolbox's own level (0), so it would paint over the strip. One level up keeps
+   the strip above #browser's background and below every overlay host. Not in fullscreen, where
+   Firefox raises the toolbox itself for its reveal. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([inFullscreen]) #navigator-toolbox {
+  z-index: 1;
+}
+/* Hidden: no height, no margin, and out of the tab order once the motion below has run. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar[collapsed] {
+  height: 0 !important;
+  margin-block-start: 0 !important;
+  visibility: collapse !important;
+}
+/* The room the strip takes from the panel column, shown only while the toolbar is. The
+   :has() is on the root so the strip container and the toolbar both change in the style flush
+   that follows the toolbar's one attribute write, and their motions start together. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([inFullscreen]):has(
+    #PersonalToolbar:not([collapsed], [hidden])
+  )
+  #bento-strip-container {
+  margin-block-start: var(--bento-bookmarks-toolbar-reserve);
+}
+/* Motion. Showing or hiding the toolbar moves two boxes by the same amount over the same
+   curve: the strip's height and top margin, and the strip container's top margin (the panels
+   shrink or grow with it, and the sidebar does not move). All three are on the reveal role's
+   spring pair, the one the sidebar push uses for its layout change, so they cannot drift. The
+   toolbar's visibility flip (out of the tab order) rides the same pair, which holds it visible
+   until the hide has run. Not before the session is restored (Firefox's own gate for this
+   animation), so the toolbar that is already open at startup, and the swap from Firefox's toolbar
+   when the manager turns on, land at once. */
+:root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+  transition:
+    height var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    visibility var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing) !important;
+}
+/* The strip container's opacity fade (workspace switches) keeps its entry. Not under the
+   Bookmarks view, whose own rule gives the container a visibility transition on the modal role
+   (the view cross-fades over it) that this list would replace; the room it reserves does not
+   change there. */
+:root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+  #bento-strip-container {
+  transition:
+    opacity var(--muxui-semantic-motion-state-transition),
+    margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+/* The contents. Coming in they slide down out of the top edge (the strip clips them) and fade in
+   on the reveal role; going out they slide up and fade on the dismiss role, so they are gone well
+   before the strip has closed. The return is on the resting rule, so removing 'collapsed' is what
+   animates it. Pointer events stop at the first frame of the way out. */
+:root[bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition),
+    opacity var(--muxui-semantic-motion-reveal-transition);
+}
+:root[bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+  translate: 0 -100%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition),
+    opacity var(--muxui-semantic-motion-dismiss-transition);
+}
+/* Reduced motion: no slide, no fade, no resize motion. The chrome has no Mux reduced token set,
+   so this follows the other chrome rules and uses the media query. */
+@media (prefers-reduced-motion: reduce) {
+  :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition: none !important;
+  }
+  :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+    #bento-strip-container {
+    transition: none;
+  }
+  :root[bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host,
+  :root[bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+    translate: none;
+    transition: none;
+  }
+}
+/* Firefox places its 'Import bookmarks' button on this toolbar until Places has bookmarks. */
+:root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty, #import-button) {
+  display: none !important;
 }
 :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > toolbarspring {
   display: none !important;
@@ -429,11 +597,24 @@
 }
 /* Fade of the overlay hosts declared in browser-box.inc.xhtml (palette, merge
    palette, confirm). The hosts the mount script creates carry the same
-   transition inline. The show and hide functions read the computed value to
-   time their display:none cleanup, so no duration is repeated in script. */
+   transition inline, except the Bookmarks view host (below). The show and hide
+   functions read the computed value to time their display:none cleanup, so no
+   duration is repeated in script. */
 #bento-palette-host,
 #bento-merge-palette-host,
 #bento-confirm-host {
+  transition: opacity var(--muxui-semantic-motion-modal-transition);
+}
+/* The Bookmarks view host fades in on the modal role and out on modal-dismiss. A transition is
+   taken from the style a change arrives at, so the root attribute (set with the opacity that
+   shows the host, removed with the one that hides it, in the same style flush) picks the role.
+   Not inline: the colour-mode fade's catch-all would override an inline transition, and these two
+   rules have generated twins in bento-chrome-theme.css that keep the opacity fade through a
+   flip (scripts/fade-twins.mjs). */
+#bento-bookmarks-host {
+  transition: opacity var(--muxui-semantic-motion-modal-dismiss-transition);
+}
+:root[bento-bookmarks-view] #bento-bookmarks-host {
   transition: opacity var(--muxui-semantic-motion-modal-transition);
 }
 /* While the onboarding handoff owns the import host, its opacity changes are instant: the
@@ -1026,9 +1207,17 @@
   animation: bento-sidebar-push-progress
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
-  margin-inline-start: var(--bento-sidebar-push-bookmarks-inset) !important;
-  width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
-  max-width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
+  margin-inline-start: calc(
+    var(--bento-sidebar-push-bookmarks-inset) + var(--bento-bookmarks-toolbar-edge-start)
+  ) !important;
+  width: calc(
+    100% - var(--bento-sidebar-push-bookmarks-inset) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
+  max-width: calc(
+    100% - var(--bento-sidebar-push-bookmarks-inset) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
 }
 @keyframes bento-sidebar-push-progress {
   from {
@@ -2264,6 +2453,224 @@
   -moz-subtree-hidden-only-visually: 0 !important;
   visibility: inherit !important;
   opacity: 1 !important;
+}
+/* Bookmarks view. showBookmarksView sets bento-bookmarks-view on the root while
+   #bento-bookmarks-host (a full #browser overlay) is shown. Everything Bento draws below the
+   toolbox hides, and the toolbar row shrinks to a strip that keeps only Firefox's window
+   controls, so the view reads as the whole window.
+
+   Hiding uses visibility, not display: every box keeps its size, so no resize observer sees a
+   change and nothing persists a bogus width. The '*' half is needed because children with their
+   own visibility would otherwise stay. The flip waits for the host's fade-in (a visibility
+   transition on the modal role), so the view cross-fades over the browser; when the attribute
+   goes, the chrome is visible at once, under the host's fade-out. The strip's controls are the
+   exception: they slide out first (see 'Top-bar motion' below) and hide when the slide is over.
+
+   NEVER hide, fade or transform the toolbox, #nav-bar or .titlebar-buttonbox-container, and
+   never give one of their ancestors opacity, transform, translate or filter. macOS draws the
+   traffic lights itself and Gecko positions them from the rects of the window buttons inside
+   .titlebar-buttonbox, which are registered only while those are laid out, visible and have no
+   effect on an ancestor; if they are not, the lights leave the window. Only the strip's other
+   children hide, and #PersonalToolbar (a toolbar row, not window chrome) is removed so the
+   strip is one row. */
+:root[bento-bookmarks-view] :is(
+    #bento-shell-host,
+    #bento-shell-splitter,
+    #bento-shell-splitter-affordance,
+    #bento-sidebar-chrome-divider,
+    #bento-strip-container,
+    #bento-side-panel-host,
+    #tabbrowser-tabbox,
+    #bento-add-panel-trailer,
+    #bento-strip-scrollbar,
+    #bento-flat-layout-extent,
+    #bento-panel-nav,
+    #urlbar
+  ),
+:root[bento-bookmarks-view] :is(
+    #bento-shell-host,
+    #bento-shell-splitter,
+    #bento-shell-splitter-affordance,
+    #bento-sidebar-chrome-divider,
+    #bento-strip-container,
+    #bento-side-panel-host,
+    #tabbrowser-tabbox,
+    #bento-add-panel-trailer,
+    #bento-strip-scrollbar,
+    #bento-flat-layout-extent,
+    #bento-panel-nav,
+    #urlbar
+  ) *,
+:root[bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container),
+:root[bento-bookmarks-view] #nav-bar > :not(.titlebar-buttonbox-container) * {
+  visibility: hidden !important;
+  transition: visibility var(--muxui-semantic-motion-modal-transition);
+}
+:root[bento-bookmarks-view] #PersonalToolbar {
+  display: none !important;
+}
+/* One surface: both stops of the strip's gradient take the brand background (neutral-5), the
+   colour the view page paints, whether or not the window has side panels; they fade with the
+   host. (The gradient stops are the toolbar custom properties above; the inline gradient the
+   mount script writes reads them, so only they can be overridden.) */
+:root[bento-bookmarks-view] :is(#navigator-toolbox, #TabsToolbar, #nav-bar) {
+  --bento-toolbar-left-bg: var(--bento-brand-bg) !important;
+  --bento-toolbar-right-bg: var(--bento-brand-bg) !important;
+}
+/* Not on a toolbox whose fullscreen reveal is animating: its own transition would be replaced
+   (the same rule as the sidebar push colour transition above). */
+:root[bento-bookmarks-view]
+  :is(#navigator-toolbox:not([fullscreenShouldAnimate]), #TabsToolbar, #nav-bar) {
+  transition:
+    --bento-toolbar-left-bg var(--muxui-semantic-motion-modal-transition),
+    --bento-toolbar-right-bg var(--muxui-semantic-motion-modal-transition);
+}
+/* Top-bar motion. The strip's controls are the direct children of #nav-bar-customization-target:
+   Back, Forward, Reload (#stop-reload-button) and the panel navigator on the left, the extension
+   buttons on the right. Opening the view slides each up past the window's top edge (the window
+   clips it; nothing else is above the strip) as it fades out, on the dismiss role; closing slides
+   it back down as it fades in, on the reveal role. The return is on the resting rule, so removing
+   the attribute is what animates it.
+
+   Safety: only these children move. #nav-bar-customization-target is a sibling of
+   .titlebar-buttonbox-container, never an ancestor, so no effect reaches the window buttons. The
+   individual 'translate' property is used, not 'transform': the sidebar push and drag set
+   'transform' on Back, Forward, Reload and the navigator, and a transition on it here would
+   animate their end-of-push reset. The distance is the control's own height plus twice the
+   toolbar's top inset (a control's bottom edge sits one inset plus the outer padding below the
+   window top), so it clears the edge at any density.
+
+   Stagger: each group starts at its outer edge (left group: DOM order; right group: from the last
+   child) and each control starts a step of 0.08 of its role's duration after the one before it, up
+   to three steps. Left controls are named by id; the right group is counted from the end
+   (:nth-last-child), so a hidden trailing child shifts the counts but never the order. The two
+   selector halves never match one element (:not(...) lists the left ids), so no rule depends on
+   source order. The delays are literal fractions because lint:motion allows only plain numbers in
+   a calc(); that is also why each step has its own rule.
+
+   Hiding: the base rule above still ends on 'visibility: hidden' for these controls (no focus, no
+   hit-testing, no no-drag regions over the strip). Its flip waits for the last stagger and the
+   slide (the visibility entry: dismiss duration, delay of three steps). The return has no
+   visibility entry, so they are visible again at its first frame. Pointer events are off from the
+   first frame of the way out. Anything else the strip shows (the overflow button, a private
+   window's indicator) keeps the plain visibility flip. */
+:root[bento-bookmarks-view] #nav-bar-customization-target > * {
+  translate: 0 calc(-100% - 2 * var(--bento-toolbar-top-inset));
+  opacity: 0;
+  pointer-events: none;
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #back-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #forward-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.08),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #stop-reload-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.16),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+:root[bento-bookmarks-view]
+  #nav-bar-customization-target
+  > :is(
+    #bento-panel-nav,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+    opacity var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24),
+    visibility var(--muxui-semantic-motion-dismiss-transition)
+      calc(var(--muxui-semantic-motion-dismiss-transition-duration) * 0.24);
+}
+/* The return: the resting rules. The panel navigator keeps its own opacity fade (workspace
+   switches, state role, the plain '#bento-panel-nav' transition rule) while
+   .bento-workspace-stabilizing is on it, so its entry below does not match then. */
+#nav-bar-customization-target
+  > :is(
+    #back-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(1)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0);
+}
+#nav-bar-customization-target
+  > :is(
+    #forward-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(2)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.08);
+}
+#nav-bar-customization-target
+  > :is(
+    #stop-reload-button,
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(3)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.16);
+}
+#nav-bar-customization-target
+  > :is(
+    #bento-panel-nav:not(.bento-workspace-stabilizing),
+    :not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav):nth-last-child(n + 4)
+  ) {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24),
+    opacity var(--muxui-semantic-motion-reveal-transition)
+      calc(var(--muxui-semantic-motion-reveal-transition-duration) * 0.24);
+}
+/* Reduced motion: no slide and no fade. The controls change at once (the chrome has no Mux
+   reduced token set, so this follows the other chrome rules and uses the media query). */
+@media (prefers-reduced-motion: reduce) {
+  :root[bento-bookmarks-view] #nav-bar-customization-target > * {
+    translate: none;
+  }
+  #nav-bar-customization-target > * {
+    transition: none !important;
+  }
 }
 /* Injected per-panel header — sits above the browser, takes its
    natural height, doesn't flex. */

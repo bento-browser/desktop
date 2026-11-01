@@ -121,6 +121,48 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
     favIconUrl: 'data:image/png;base64,AAAA',
   },
   'savedPanels/requestSnapshot': { type: 'savedPanels/requestSnapshot' },
+  'bookmarks/requestSnapshot': { type: 'bookmarks/requestSnapshot' },
+  'bookmarks/space/create': { type: 'bookmarks/space/create', name: 'Work' },
+  'bookmarks/space/update': {
+    type: 'bookmarks/space/update',
+    id: 's-1',
+    name: 'Work',
+    color: 'blue',
+  },
+  'bookmarks/space/delete': { type: 'bookmarks/space/delete', id: 's-1' },
+  'bookmarks/space/select': { type: 'bookmarks/space/select', id: 's-1' },
+  'bookmarks/group/create': { type: 'bookmarks/group/create', spaceId: 's-1', name: 'Reading' },
+  'bookmarks/group/update': { type: 'bookmarks/group/update', id: 'g-1', color: 'purple' },
+  'bookmarks/group/delete': { type: 'bookmarks/group/delete', id: 'g-1' },
+  'bookmarks/group/move': {
+    type: 'bookmarks/group/move',
+    id: 'g-1',
+    spaceId: 's-2',
+    beforeId: null,
+  },
+  'bookmarks/item/create': {
+    type: 'bookmarks/item/create',
+    groupId: 'g-1',
+    beforeId: 'i-2',
+    item: { kind: 'link', url: 'https://example.com/', title: 'Example', favIconUrl: '' },
+  },
+  'bookmarks/item/update': {
+    type: 'bookmarks/item/update',
+    id: 'i-1',
+    text: 'Buy milk',
+    done: true,
+  },
+  'bookmarks/item/delete': { type: 'bookmarks/item/delete', id: 'i-1' },
+  'bookmarks/item/move': { type: 'bookmarks/item/move', id: 'i-1', groupId: 'g-2', beforeId: null },
+  'bookmarks/item/open': { type: 'bookmarks/item/open', id: 'i-1', where: 'panel' },
+  'bookmarks/tabs/save': {
+    type: 'bookmarks/tabs/save',
+    spaceId: 's-1',
+    groupId: null,
+    tabIds: [3, 4],
+  },
+  'bookmarks/import/firefox': { type: 'bookmarks/import/firefox' },
+  'bookmarks/import/dismiss': { type: 'bookmarks/import/dismiss' },
   'externalMerge/requestSources': { type: 'externalMerge/requestSources', requestId: 'r-1' },
   'externalMerge/merge': {
     type: 'externalMerge/merge',
@@ -348,6 +390,123 @@ describe('parseWireAction: malformed messages', () => {
     expect(
       parse(withFields('savedPanels/save', { favIconUrl: 'https://example.com/f.ico' })),
     ).not.toBeNull();
+  });
+
+  it('validates Bookmarks manager actions', () => {
+    const create = (item: unknown) => withFields('bookmarks/item/create', { item });
+    for (const item of [
+      { kind: 'link', url: 'https://example.com/', title: '' },
+      { kind: 'link', url: 'file:///tmp/a.html', title: 'Local' },
+      { kind: 'link', url: 'about:config', title: 'Config' },
+      { kind: 'note', text: 'n'.repeat(32_768) },
+      { kind: 'todo', text: 'Ship it' },
+      { kind: 'todo', text: 'Ship it', done: true },
+      { kind: 'todo', text: 't'.repeat(32_768), done: false },
+      { kind: 'link', url: 'https://example.com/', title: 't'.repeat(4_096) },
+    ]) {
+      expect(parse(create(item))).not.toBeNull();
+    }
+    for (const item of [
+      null,
+      'link',
+      {},
+      { kind: 'folder', text: 'x' },
+      { kind: 'toString' },
+      { kind: 'link', url: 'javascript:alert(1)', title: 'x' },
+      { kind: 'link', url: 'view-source:https://example.com/', title: 'x' },
+      { kind: 'link', url: 'moz-extension://abc/dist/settings.html', title: 'x' },
+      { kind: 'link', url: '', title: 'x' },
+      { kind: 'link', url: urlOfLength(MAX_URL_LENGTH + 1), title: 'x' },
+      { kind: 'link', url: 'https://example.com/' },
+      { kind: 'link', url: 'https://example.com/', title: 'x', favIconUrl: 'javascript:alert(1)' },
+      { kind: 'link', url: 'https://example.com/', title: 'x', extra: true },
+      { kind: 'note', text: 'n'.repeat(32_769) },
+      { kind: 'note', text: 5 },
+      { kind: 'todo', text: 'x', done: 'yes' },
+      { kind: 'todo', text: 't'.repeat(32_769) },
+      { kind: 'link', url: 'https://example.com/', title: 't'.repeat(4_097) },
+    ]) {
+      expect(parse(create(item))).toBeNull();
+    }
+    expect(parse(withFields('bookmarks/item/create', { beforeId: undefined }))).toBeNull();
+    expect(parse(withFields('bookmarks/item/create', { groupId: '' }))).toBeNull();
+
+    // Colors, names, ids and the nullable drop position.
+    for (const color of ['pink', '', 5, null, 'toString']) {
+      expect(parse(withFields('bookmarks/space/update', { color }))).toBeNull();
+      expect(parse(withFields('bookmarks/group/update', { color }))).toBeNull();
+    }
+    expect(parse({ type: 'bookmarks/space/update', id: 's-1' })).not.toBeNull();
+    expect(parse(withFields('bookmarks/space/create', { name: 'n'.repeat(1_025) }))).toBeNull();
+    expect(parse(withFields('bookmarks/group/create', { spaceId: '' }))).toBeNull();
+    expect(parse(withFields('bookmarks/group/move', { beforeId: 7 }))).toBeNull();
+    expect(parse(withFields('bookmarks/item/move', { beforeId: undefined }))).toBeNull();
+    expect(parse(withFields('bookmarks/item/open', { where: 'window' }))).toBeNull();
+    expect(parse(withFields('bookmarks/item/open', { where: 'tab' }))).not.toBeNull();
+
+    // item/update: bounded optional fields, link URLs held to the same schemes.
+    expect(parse({ type: 'bookmarks/item/update', id: 'i-1' })).not.toBeNull();
+    expect(parse(withFields('bookmarks/item/update', { url: 'javascript:alert(1)' }))).toBeNull();
+    expect(
+      parse(withFields('bookmarks/item/update', { url: 'https://example.com/b' })),
+    ).not.toBeNull();
+    expect(parse(withFields('bookmarks/item/update', { title: 't'.repeat(4_097) }))).toBeNull();
+    expect(parse(withFields('bookmarks/item/update', { done: 'yes' }))).toBeNull();
+
+    // One cap per field: whatever update accepts, create accepts, so undo is never refused.
+    expect(parse(withFields('bookmarks/item/update', { text: 't'.repeat(32_768) }))).not.toBeNull();
+    expect(parse(withFields('bookmarks/item/update', { text: 't'.repeat(32_769) }))).toBeNull();
+    expect(parse(withFields('bookmarks/space/create', { name: 'n'.repeat(1_024) }))).not.toBeNull();
+    expect(parse(withFields('bookmarks/space/update', { name: 'n'.repeat(1_025) }))).toBeNull();
+    expect(parse(withFields('bookmarks/group/create', { name: 'n'.repeat(1_025) }))).toBeNull();
+
+    // tabs/save: tab ids are non-negative integers, groupId may be null.
+    expect(parse(withFields('bookmarks/tabs/save', { tabIds: [1, -1] }))).toBeNull();
+    expect(parse(withFields('bookmarks/tabs/save', { tabIds: 'all' }))).toBeNull();
+    expect(parse(withFields('bookmarks/tabs/save', { groupId: undefined }))).toBeNull();
+    expect(parse(withFields('bookmarks/tabs/save', { groupId: 'g-1', tabIds: [] }))).not.toBeNull();
+    expect(parse(withFields('bookmarks/import/firefox', { force: true }))).toBeNull();
+  });
+
+  it('validates client ids on the create actions as lowercase UUIDs', () => {
+    const uuid = crypto.randomUUID();
+    for (const type of [
+      'bookmarks/space/create',
+      'bookmarks/group/create',
+      'bookmarks/item/create',
+    ] as const) {
+      expect(parse(VALID[type])).not.toBeNull(); // optional
+      expect(parse(withFields(type, { id: uuid }))).not.toBeNull();
+      expect(parse(withFields(type, { id: undefined }))).not.toBeNull();
+      for (const bad of ['', 'g-1', uuid.toUpperCase(), `${uuid}0`, uuid.slice(1), 7, null]) {
+        expect(parse(withFields(type, { id: bad }))).toBeNull();
+      }
+    }
+  });
+
+  it('validates the tabs/save drop position and client ids', () => {
+    const uuid = crypto.randomUUID();
+    const save = (fields: Record<string, unknown>) => withFields('bookmarks/tabs/save', fields);
+    for (const fields of [
+      { beforeId: 'i-1' },
+      { beforeId: null },
+      { beforeId: undefined },
+      { ids: [] },
+      { ids: [uuid, crypto.randomUUID()], tabIds: [1, 2] },
+      { beforeId: 'i-1', ids: [uuid], tabIds: [5] },
+    ]) {
+      expect(parse(save(fields))).not.toBeNull();
+    }
+    for (const fields of [
+      { beforeId: '' },
+      { beforeId: 4 },
+      { ids: 'x' },
+      { ids: ['not-a-uuid'] },
+      { ids: [uuid, 7] },
+      { ids: Array.from({ length: 20_001 }, () => uuid) },
+    ]) {
+      expect(parse(save(fields))).toBeNull();
+    }
   });
 
   it('validates settings patches, workspace changes, move targets, and advanced keys', () => {

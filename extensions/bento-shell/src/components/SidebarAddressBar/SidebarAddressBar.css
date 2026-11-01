@@ -89,6 +89,11 @@
     fill: currentColor;
   }
 
+  /* The save popover is open over the star. */
+  .bento-sidebar-address-bar__bookmark-button[data-popup-open='true'] {
+    background-color: var(--bento-surface-active);
+  }
+
   .bento-sidebar-address-bar__input {
     box-sizing: border-box;
     min-width: 0;

@@ -219,8 +219,8 @@ private windows cannot use that channel; see
   `handlePanelsTitle` in `bento-shell-mount.js` reads: `uiColorMode`,
   `sidebarCollapsed`, `sidebarHidden`, `sidebarShortcutBehavior`,
   `defaultPanelWidthPx`, `customPanelSizes`, `panelCycleWraparound`,
-  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`) and the
-  workspace theme. A replayed `panels/sync` can arrive before any of them, so
+  `panelShadowsEnabled`, `panelCornerRadiusPx`, `panelSplitterSizePx`,
+  `bookmarksEnabled`) and the workspace theme. A replayed `panels/sync` can arrive before any of them, so
   the sidebar keeps the latest incomplete sync per workspace
   (`pendingPanelsSync` in `bridge/useToolsPort.ts`): held while the active
   workspace is unknown, or kept after a forward that went out before settings
@@ -238,6 +238,14 @@ private windows cannot use that channel; see
   (`panels/PanelsSyncScheduler.ts`); the one-shot scroll target survives the
   merge. Boot and restore paths that must not continue before the broadcast has
   gone out call `emitPanelsSyncNow` directly.
+
+The Bookmarks document is not one of the 12 and takes no part in the boot replay: it calls
+`initToolsPort()` (a 13th document on the bus) but needs only one snapshot, so it sends
+`bookmarks/requestSnapshot` when its port is ready and on every show instead of waiting for
+`tools/booted`. Tools sends `bookmarks/snapshot` to regular windows only and broadcasts the
+whole snapshot after every bookmarks change. The event handler in `useToolsPort.ts` is shared,
+so every shell document applies it to its own copy of `state/bookmarks.ts`, which only the
+Bookmarks document reads. See [bookmarks.md](bookmarks.md).
 
 Message counts for one window with N documents joining one at a time after
 tools booted (`bridge/busBootstrap.test.ts`, N = 12 with the tooltip): 72

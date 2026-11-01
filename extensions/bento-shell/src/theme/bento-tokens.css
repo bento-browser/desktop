@@ -205,6 +205,12 @@
       calc(var(--muxui-reference-dimension-space-3xs) * var(--bento-chrome-rem-scale)),
       1px
     );
+    /* Where the sidebar's first row (the workspace switcher) starts below the top bar: the
+       shell's panel-gutter token at the shell's rem. Chrome reads it for the top of the Bento
+       bookmarks toolbar so the strip's top edge lines up with that row (bento-shell-mount.css);
+       the generator pins it in px for chrome like the other shell-sized lengths
+       (docs/chrome-tokens.md). The switcher's padding (app.css) reads this token. */
+    --bento-sidebar-top-inset: var(--muxui-reference-dimension-space-3xs);
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;
@@ -280,6 +286,60 @@
     --bento-welcome-line: 0.3125rem;
     --bento-welcome-source-height: 3.25rem;
     --bento-welcome-source-logo: 1.25rem;
+
+    /* Bookmarks view (src/components/BookmarksView). Widths: the spaces column, the icon-only
+       column it folds to below 1200px, one board column, and the open tabs drawer. The dot and
+       favicon sizes, a row's least height (a link's two lines make it taller), the height of the
+       header strip (the main header and the drawer's), the width of the search field and of a
+       deleted-item toast, and the opacity of the row being dragged. The seven colours of a space or group are Mux reference
+       hues at the 60 step (gray is the semantic neutral), so a dot reads the same in light and
+       dark. */
+    --bento-bookmarks-spaces-width: 14.5rem;
+    --bento-bookmarks-spaces-width-compact: 3.5rem;
+    --bento-bookmarks-column-width: 14.75rem;
+    --bento-bookmarks-drawer-width: 15.5rem;
+    --bento-bookmarks-dot-size: 0.5rem;
+    --bento-bookmarks-favicon-size: 1rem;
+    --bento-bookmarks-row-min-height: 1.75rem;
+    --bento-bookmarks-header-height: 3.5rem;
+    --bento-bookmarks-search-width: 17.5rem;
+    --bento-bookmarks-toast-width: 21rem;
+    --bento-bookmarks-dragging-opacity: 0.45;
+    --bento-bookmark-color-gray: var(--muxui-semantic-color-neutral-60);
+    --bento-bookmark-color-red: var(--muxui-reference-color-red-60);
+    --bento-bookmark-color-orange: var(--muxui-reference-color-orange-60);
+    --bento-bookmark-color-yellow: var(--muxui-reference-color-yellow-60);
+    --bento-bookmark-color-green: var(--muxui-reference-color-green-60);
+    --bento-bookmark-color-blue: var(--muxui-reference-color-sky-60);
+    --bento-bookmark-color-purple: var(--muxui-reference-color-purple-60);
+
+    /* Bookmark popup (src/components/BookmarkPopup): the width of the save popover and the widest a
+       menu of links grows before its titles truncate. Bookmarks toolbar (BookmarksToolbar): the
+       widest a group button grows before its name truncates. Buttons are --bento-control-size-sm
+       high, so a row of them fits Firefox's 30px bookmarks toolbar. */
+    --bento-bookmark-popup-width: 17rem;
+    --bento-bookmark-popup-menu-max-width: 21.25rem;
+    --bento-bookmarks-toolbar-button-max-width: 9.375rem;
+    /* The Bento bookmarks toolbar strip: a translucent tint over whatever sits behind it (the brand
+       background), weighted to read like the --neutral-18 fill it replaced. */
+    --bento-bookmarks-toolbar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 12%, transparent);
+    /* The Bookmarks manager's other neutral fills that sit on a surface (the view, and the popup's
+       form): translucent tints of the semantic neutral, like the strip above, each weighted to read
+       like the solid neutral it replaced over --bento-brand-bg (within about 3 RGB steps in light
+       and dark). Rows, spaces, button states and the empty-space drop target are
+       --bento-surface-hover and --bento-surface-active. Floating surfaces (menus, popovers, toasts,
+       the drag ghost) and the page itself stay opaque. A field's fill was the page colour itself
+       (neutral-5), so its tint is none: its outline marks it. Raise it here for a visible well. */
+    --bento-bookmarks-field-fill: transparent;
+    /* The unchecked to-do box (Mux's raised neutral-10 in light, neutral-98 in dark). */
+    --bento-bookmarks-checkbox-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 3.5%, transparent);
+    /* The open tabs toggle while on (Mux's neutral-80), and under the pointer (neutral-90, which a
+       tint of itself cannot exceed, so the next step, neutral-100, at a weight that reads the same). */
+    --bento-bookmarks-toggle-selected-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 90%, transparent);
+    --bento-bookmarks-toggle-selected-fill-hover: color-mix(in srgb, var(--muxui-semantic-color-neutral-100) 92%, transparent);
+    /* The bar down a note's left edge (Mux's border-strong, which is neutral-26 in light and a much
+       lighter step in dark, so a note bar's weight differs per mode; dark is set below). */
+    --bento-bookmarks-note-bar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 18%, transparent);
 
     /* System UI font stack for plain pages that load no Mux fonts. */
     --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -408,6 +468,7 @@
   [data-muxui-color-scheme='dark'] {
     --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-14);
     --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-18);
+    --bento-bookmarks-note-bar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 62%, transparent);
   }
 
   /* Per-element theme re-link. Critical for menu items that show

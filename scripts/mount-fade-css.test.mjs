@@ -35,6 +35,111 @@ test('the fade twins in both stylesheets are current', () => {
   }
 });
 
+test('the Bookmarks view host fades in on modal and out on modal-dismiss, and keeps both through a flip', () => {
+  // The host takes no inline transition (it would lose to the fade's catch-all, which is !important),
+  // so the fade lives in the mount stylesheet: the exit role on the host, the enter role while the
+  // root attribute is set. Each rule has a generated twin in the chrome theme's fade layer.
+  const mount = readRepo('src/browser/base/content/bento-shell-mount.js');
+  assert.match(mount, /hostId: 'bento-bookmarks-host',\s*zIndex: \d+,\s*inlineFade: false,/);
+
+  const transition = (path, selector) => {
+    const rule = [...rules(readRepo(path))].find((candidate) => candidate.selector === selector);
+    assert.ok(rule, `${path}: no rule for ${selector}`);
+    return /transition:\s*([^;]*)/.exec(rule.body)[1].replace(/\s+/g, ' ').trim();
+  };
+  const exit = 'opacity var(--muxui-semantic-motion-modal-dismiss-transition)';
+  const enter = 'opacity var(--muxui-semantic-motion-modal-transition)';
+  const mountSheet = 'src/browser/base/content/bento-shell-mount.css';
+  assert.equal(transition(mountSheet, '#bento-bookmarks-host'), exit);
+  assert.equal(transition(mountSheet, ':root[bento-bookmarks-view] #bento-bookmarks-host'), enter);
+
+  const chrome = 'src/browser/base/content/bento-chrome-theme.css';
+  const colours = 'var(--bento-mode-fade-colours) !important';
+  assert.equal(transition(chrome, '[data-bento-mode-fade] #bento-bookmarks-host'), `${exit}, ${colours}`);
+  // The enter twin is more specific than the exit twin, as the sources are.
+  assert.equal(
+    transition(chrome, ':root[data-bento-mode-fade][bento-bookmarks-view] #bento-bookmarks-host'),
+    `${enter}, ${colours}`,
+  );
+});
+
+test('the Bookmarks view top-bar controls slide out on dismiss and back on reveal, staggered from the outer edge', () => {
+  // Back, Forward, Reload and the panel navigator (left, by id) and the right-hand controls (counted
+  // from the last child) are children of #nav-bar-customization-target, a sibling of the window
+  // button box. Each step starts 0.08 of the role's duration after the one before; the way out
+  // hides them (visibility) after the last step, the way back has no visibility entry. Delays are
+  // literal fractions because lint:motion allows only plain numbers in a calc().
+  const mountSheet = 'src/browser/base/content/bento-shell-mount.css';
+  const chrome = 'src/browser/base/content/bento-chrome-theme.css';
+  const fractions = ['0', '0.08', '0.16', '0.24'];
+  const left = ['#back-button', '#forward-button', '#stop-reload-button', '#bento-panel-nav'];
+  const others = ':not(#back-button, #forward-button, #stop-reload-button, #bento-panel-nav)';
+  const fromEnd = ['nth-last-child(1)', 'nth-last-child(2)', 'nth-last-child(3)', 'nth-last-child(n + 4)'];
+  const selectorOf = (prefix, step, first = left[step]) =>
+    `${prefix}#nav-bar-customization-target > :is( ${first}, ${others}:${fromEnd[step]} )`;
+  const entries = (rule) =>
+    splitTop(/transition:\s*([^;]*)/.exec(rule.body)[1].replace(/\s*!important\s*$/, ''), /,/).map(
+      (entry) => entry.replace(/\s+/g, ' ').trim(),
+    );
+  const find = (path, selector, context = (c) => !c.some((at) => at.includes('reduced-motion'))) => {
+    const rule = [...rules(readRepo(path))].find(
+      (candidate) => candidate.selector === selector && context(candidate.context),
+    );
+    assert.ok(rule, `${path}: no rule for ${selector}`);
+    return rule;
+  };
+  const motion = (role, delay) =>
+    `var(--muxui-semantic-motion-${role}-transition) calc(var(--muxui-semantic-motion-${role}-transition-duration) * ${delay})`;
+  const colours = 'var(--bento-mode-fade-colours)';
+  const resting = [];
+  const dismissing = [];
+
+  for (let step = 0; step < 4; step += 1) {
+    const out = [
+      `translate ${motion('dismiss', fractions[step])}`,
+      `opacity ${motion('dismiss', fractions[step])}`,
+      // Hidden after the slowest control has arrived: the dismiss duration plus the last delay.
+      `visibility ${motion('dismiss', fractions[3])}`,
+    ];
+    const back = [
+      `translate ${motion('reveal', fractions[step])}`,
+      `opacity ${motion('reveal', fractions[step])}`,
+    ];
+    // The panel navigator hands its opacity fade to the workspace switch while it is stabilizing.
+    const restingFirst = step === 3 ? '#bento-panel-nav:not(.bento-workspace-stabilizing)' : left[step];
+    const view = ':root[bento-bookmarks-view] ';
+    const viewFade = ':root[data-bento-mode-fade][bento-bookmarks-view] ';
+    const fade = '[data-bento-mode-fade] ';
+    assert.deepEqual(entries(find(mountSheet, selectorOf(view, step))), out);
+    assert.deepEqual(entries(find(mountSheet, selectorOf('', step, restingFirst))), back);
+    // Twins keep the slide through a colour-mode flip and add the shared colour list.
+    assert.deepEqual(entries(find(chrome, selectorOf(viewFade, step))), [...out, colours]);
+    assert.deepEqual(entries(find(chrome, selectorOf(fade, step, restingFirst))), [...back, colours]);
+    dismissing.push(out);
+    resting.push(back);
+  }
+  // No step lets a control wait longer than the visibility flip, and the return never hides one.
+  for (const out of dismissing) assert.ok(out.at(-1).endsWith(`* ${fractions[3]})`));
+  for (const back of resting) assert.ok(back.every((entry) => !entry.startsWith('visibility')));
+
+  // Opening slides each control up by its own height plus twice the toolbar's top inset, fades it
+  // and takes away its pointer events at once; reduced motion keeps the controls in place and the
+  // change instant.
+  const open = find(mountSheet, ':root[bento-bookmarks-view] #nav-bar-customization-target > *');
+  assert.match(open.body, /translate:\s*0 calc\(-100% - 2 \* var\(--bento-toolbar-top-inset\)\)/);
+  assert.match(open.body, /opacity:\s*0/);
+  assert.match(open.body, /pointer-events:\s*none/);
+  const reduced = (context) => context.some((at) => at.includes('prefers-reduced-motion: reduce'));
+  assert.match(
+    find(mountSheet, ':root[bento-bookmarks-view] #nav-bar-customization-target > *', reduced).body,
+    /translate:\s*none/,
+  );
+  assert.match(
+    find(mountSheet, '#nav-bar-customization-target > *', reduced).body,
+    /transition:\s*none !important/,
+  );
+});
+
 test('settle zeros explicit colour/carrier duration and delay without replacing retained motion', () => {
   const zero = 'calc(var(--muxui-semantic-motion-state-transition-duration) * 0)';
   for (const target of TARGETS) {
@@ -218,6 +323,7 @@ const MUX_GRADIENT_RESIDUAL = {
   'toggle-button': 'Welcome only, a selected standalone toggle under the pointer',
   tabs: 'WorkspaceIconPicker only, the tabs__motion-edge overflow buttons under the pointer',
   'color-swatch': 'two-tone swatches take fixed theme metadata colours, which do not depend on the mode',
+  checkbox: 'Bookmarks view only, a hovered or pressed to-do checkbox',
 };
 
 test('every Mux gradient tint on a component the shell renders is carried or recorded', () => {

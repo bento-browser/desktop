@@ -29,6 +29,8 @@ import type { PanelRestoreLocation } from '../panels/PanelLayout';
 import { livePanelIds } from '../panels/PanelPromotion';
 import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
+import type { BookmarksStore } from '../bookmarks/BookmarksStore';
+import { handleBookmarksAction, isBookmarksAction } from '../bookmarks/bookmarksActions';
 import {
   shellPortCaller,
   type SettingsDomainService,
@@ -916,6 +918,7 @@ export interface HandlerContext {
   pinnedPanels: PinnedPanelsStore;
   tabFolders: TabFolderStore;
   savedPanels: SavedPanelsStore;
+  bookmarks: BookmarksStore;
   send: (event: Event) => void;
   /** Broadcast cross-document UI events to every connected shell document.
    * Falls back to `send` in tests and non-background callers. */
@@ -1000,6 +1003,8 @@ const PRIVATE_WINDOW_REFUSED_PREFIXES = [
   'externalMerge/',
   'tabFolder/',
   'pinnedPanel/',
+  // The Bookmarks manager is stored and, like the saved panels, shared with the regular windows.
+  'bookmarks/',
 ] as const;
 const PRIVATE_WINDOW_REFUSED_TYPES = new Set<Action['type']>([
   'tab/assignWorkspace',
@@ -1093,6 +1098,14 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
   const action: Action = wireAction;
   if (crossesPrivateBoundary(action, ctx)) {
     console.warn('[bento-tools] refused across the private boundary:', action.type);
+    return;
+  }
+  if (isBookmarksAction(action)) {
+    handleBookmarksAction(action, {
+      bookmarks: ctx.bookmarks,
+      reply: (event) => replyToSource(ctx, event),
+      run: (next) => handle(next, ctx),
+    });
     return;
   }
   switch (action.type) {

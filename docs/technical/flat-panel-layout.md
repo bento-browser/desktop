@@ -109,7 +109,10 @@ Top-level panel resizing:
   `computePanelLayoutGeometry` so stale `panels/sync` payload widths do not snap
   neighboring panels back to old widths or shift the strip while a splitter is
   moving. Subdivision ratio changes also preserve the current main rect width
-  while recomputing the group geometry.
+  while recomputing the group geometry. A panel in its enter animation
+  (`animatePanelEnter`, pending `'enter'` wait in `motionWaits`) is the exception:
+  its rendered width is mid-animation, so `liveWidthForTabId` skips it and the
+  payload width wins ([pitfall](#flat-layout-pitfalls)).
 - Manual verification surface: checklist item 17, root panel width resize.
 
 Panel header hiding:
@@ -412,6 +415,21 @@ Top-row splits and 2x2 groups:
 
 ## Flat layout pitfalls
 
+- A live refresh must not read the rendered width of a panel that is still entering.
+  `animatePanelEnter` grows a new panel from 0 to its width over the reveal role, and
+  `refreshFlatPanelLayoutFromLiveState` (run by the `tabpanels` `ResizeObserver` on any size
+  change of the panel column) prefers rendered widths, so a refresh that landed mid-animation
+  wrote the in-flight width (34 to 86 px) inline as the panel's size, and every later refresh
+  kept it: the panel stayed a few dozen pixels wide while `PanelStore` still held the default
+  width. It showed up when the Bento bookmarks toolbar was shown: the first panel flips
+  `bento-no-side-panels`, which changes `--bento-bookmarks-toolbar-reserve` by a fraction of a
+  pixel, and the strip container's margin transition resized the column every frame of the
+  enter animation. Any other resize of the column during those 400 ms would do the same.
+  `liveWidthForTabId` returns 0 while the panel's `'enter'` wait is pending, so the payload width
+  (the one `finishAddedPanel` set) is used and equals the animation's target. Covered by
+  `scripts/mount-panel-live-width.test.mjs`. Check by opening a panel (address bar open-in-panel,
+  trailer "+", a bookmark's "Open in panel") with the bookmarks toolbar shown: it must open at
+  the default width, with the toolbar shown and hidden.
 - The frame hairline is drawn by each frame's `::after` overlay above the remote page, not
   by the frame's own box-shadow; a stroke on the frame is overpainted at the arcs by the
   page's clip at some device-pixel phases (a fractional sidebar width or scroll offset is

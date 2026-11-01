@@ -5,6 +5,7 @@ import BookmarkIcon from 'lucide-react/dist/esm/icons/bookmark';
 import CopyIcon from 'lucide-react/dist/esm/icons/copy';
 import LockIcon from 'lucide-react/dist/esm/icons/lock';
 
+import { sendBookmarkPopupOpen, useOpenBookmarkPopupKey } from '../../bridge/bookmarkPopup';
 import { signalAddrbarOpen, type AddrbarMode } from '../../bridge/useAddrbar';
 import {
   signalSidebarAddressBookmarkToggle,
@@ -13,6 +14,9 @@ import {
   useSidebarAddressBridge,
   type SidebarAddressScope,
 } from '../../bridge/useSidebarAddress';
+import { isSavableUrl, urlKey } from '../../bookmarks/links';
+import { useBookmarkManagerOn, useLinkKeys } from '../../bookmarks/useBookmarkManager';
+import { useBookmarksStore } from '../../state/bookmarks';
 import { useSidebarAddressStore, type SidebarAddressSnapshot } from '../../state/sidebarAddress';
 import { BentoIcon } from '../primitives';
 import './SidebarAddressBar.css';
@@ -51,8 +55,12 @@ export function SidebarAddressBar() {
   const scope = useSidebarAddressBridge();
   const rowRef = useRef<HTMLFormElement>(null);
   const securityButtonRef = useRef<HTMLButtonElement>(null);
+  const bookmarkButtonRef = useRef<HTMLButtonElement>(null);
   const lastOpenAtRef = useRef(0);
   const lastAnsweredOpenRequestIdRef = useRef(useSidebarAddressStore.getState().openRequest?.id ?? 0);
+  const lastAnsweredBookmarkPopupIdRef = useRef(
+    useSidebarAddressStore.getState().bookmarkPopupRequest?.id ?? 0,
+  );
   const lastHandledCopyResultIdRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
   const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
@@ -60,6 +68,7 @@ export function SidebarAddressBar() {
   const pendingBookmarkToggleKey = useSidebarAddressStore((s) => s.pendingBookmarkToggleKey);
   const lastCopyResult = useSidebarAddressStore((s) => s.lastCopyResult);
   const openRequest = useSidebarAddressStore((s) => s.openRequest);
+  const bookmarkPopupRequest = useSidebarAddressStore((s) => s.bookmarkPopupRequest);
   const paletteOverRow = useSidebarAddressStore((s) => s.paletteOverRow);
 
   const clearCopyFeedbackTimer = useCallback(() => {
@@ -135,6 +144,51 @@ export function SidebarAddressBar() {
     });
   }, [openRequest]);
 
+  // A regular window with the manager on saves to Bento's store: the star fills from the mirror
+  // of it and opens the save popover. A private window and the opt-out keep Firefox's Places
+  // toggle below. App.tsx reports the saved tabs to chrome for the panel header star.
+  const managerOn = useBookmarkManagerOn();
+  const linkKeys = useLinkKeys(useBookmarksStore((s) => s.snapshot));
+  const pageKey = urlKey(snapshot?.url);
+  const bentoFilled = managerOn && pageKey !== null && linkKeys.has(pageKey);
+  const bentoSavable =
+    managerOn && snapshot !== null && snapshot.tabId !== null && isSavableUrl(snapshot.url);
+  const bookmarkPopupOpen = useOpenBookmarkPopupKey() === 'edit';
+
+  /** Opens the save popover over the star; false when the star is not on screen or the page cannot
+   * be saved. `requestId` marks the open as chrome's answer to a bookmark-page request. */
+  const openBookmarkPopup = useCallback(
+    (requestId?: string) => {
+      if (!bentoSavable || !snapshot || snapshot.tabId === null) return false;
+      const anchor = anchorRectFor(bookmarkButtonRef.current);
+      if (!anchor) return false;
+      sendBookmarkPopupOpen({
+        kind: 'edit',
+        tabId: snapshot.tabId,
+        url: snapshot.url,
+        title: snapshot.title,
+        anchor,
+        ...(requestId ? { requestId } : {}),
+      });
+      return true;
+    },
+    [bentoSavable, snapshot],
+  );
+
+  // Chrome's Cmd+D (and the other bookmark-page entries) ask the row to open the popup over the
+  // star, because chrome cannot read the star's rect itself. The row answers when it can and
+  // otherwise stays silent, so chrome falls back to anchoring the popup on the active panel.
+  useEffect(() => {
+    if (
+      !bookmarkPopupRequest ||
+      bookmarkPopupRequest.id <= lastAnsweredBookmarkPopupIdRef.current
+    ) {
+      return;
+    }
+    lastAnsweredBookmarkPopupIdRef.current = bookmarkPopupRequest.id;
+    openBookmarkPopup(bookmarkPopupRequest.requestId);
+  }, [bookmarkPopupRequest, openBookmarkPopup]);
+
   const handleBeginEdit = useCallback(() => {
     openAddressOverlay('current', snapshot?.url || '');
   }, [openAddressOverlay, snapshot?.url]);
@@ -175,6 +229,10 @@ export function SidebarAddressBar() {
   }, [scope, snapshot]);
 
   const handleBookmarkPress = useCallback(() => {
+    if (managerOn) {
+      openBookmarkPopup();
+      return;
+    }
     if (!snapshot?.bookmark.canBookmark || !canUseScope(scope)) return;
     const key = bookmarkKey(snapshot);
     if (!key || pendingBookmarkToggleKey === key) return;
@@ -186,7 +244,7 @@ export function SidebarAddressBar() {
       snapshotToken: snapshot.snapshotToken,
       title: snapshot.title,
     });
-  }, [pendingBookmarkToggleKey, scope, snapshot]);
+  }, [managerOn, openBookmarkPopup, pendingBookmarkToggleKey, scope, snapshot]);
 
   const handleCopyPress = useCallback(() => {
     if (!snapshot?.url || !canUseScope(scope)) return;
@@ -200,8 +258,20 @@ export function SidebarAddressBar() {
 
   const securityLabel = snapshot?.security.label || 'Site information';
   const bookmarkPending =
-    pendingBookmarkToggleKey !== null && pendingBookmarkToggleKey === bookmarkKey(snapshot);
-  const bookmarkLabel = snapshot?.bookmark.isBookmarked ? 'Remove bookmark' : 'Bookmark page';
+    !managerOn &&
+    pendingBookmarkToggleKey !== null &&
+    pendingBookmarkToggleKey === bookmarkKey(snapshot);
+  const bookmarkFilled = managerOn ? bentoFilled : snapshot?.bookmark.isBookmarked === true;
+  const bookmarkDisabled = managerOn
+    ? !bentoSavable
+    : !snapshot?.bookmark.canBookmark || bookmarkPending;
+  const bookmarkLabel = managerOn
+    ? bentoFilled
+      ? 'Edit bookmark'
+      : 'Bookmark page'
+    : snapshot?.bookmark.isBookmarked
+      ? 'Remove bookmark'
+      : 'Bookmark page';
   const copyLabel = 'Copy URL';
   const copyDisabled = !snapshot?.url || !canUseScope(scope);
   const securityKind = snapshot?.security.kind || 'unknown';
@@ -272,13 +342,17 @@ export function SidebarAddressBar() {
           }
         />
         <IconButton
+          ref={bookmarkButtonRef}
           variant="ghost"
           size="sm"
           aria-label={bookmarkLabel}
-          disabled={!snapshot?.bookmark.canBookmark || bookmarkPending}
+          aria-haspopup={managerOn ? 'dialog' : undefined}
+          aria-expanded={managerOn ? bookmarkPopupOpen : undefined}
+          disabled={bookmarkDisabled}
           pending={bookmarkPending}
           className="bento-sidebar-address-bar__bookmark-button"
-          data-bookmarked={snapshot?.bookmark.isBookmarked ? 'true' : 'false'}
+          data-bookmarked={bookmarkFilled ? 'true' : 'false'}
+          data-popup-open={managerOn && bookmarkPopupOpen ? 'true' : undefined}
           onActivate={handleBookmarkPress}
         >
           <BentoIcon icon={BookmarkIcon} size="sm" />

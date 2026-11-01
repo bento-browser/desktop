@@ -617,6 +617,7 @@ test('a wrapped member is judged by the original Firefox recorded before Bento r
     'DownloadsButton.releaseAnchor',
     'MozBrowser.prototype.removeProgressListener',
     'MozTabbrowserTab.isEmpty',
+    'PlacesCommandHook.bookmarkPage',
     'PopupNotifications._isActiveBrowser',
     'gBrowser._findTabToBlurTo',
     'gBrowser.on_visibilitychange',
