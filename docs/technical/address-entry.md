@@ -282,7 +282,10 @@ bridgeToken, messageId, requestId }`: the row answers with the same
 the page can be saved, and chrome opens the popup itself after
 `BOOKMARK_POPUP_REQUEST_MS` of silence (anchored to the selected panel's header
 star), exactly as the `open-request` of `Cmd+L` falls back to the centred
-palette. The sidebar also reports which tabs have a Bento bookmark
+palette. Chrome drops an `edit` whose tab id or URL is no longer the selected tab's, and
+opens nothing for a page outside the store's allowlist (http, https, file, ftp); the newest of
+a `Cmd+D` and a `Cmd+L` request wins, and a tab change or Esc ends a waiting `Cmd+D`. The
+sidebar also reports which tabs have a Bento bookmark
 (`BENTO_BOOKMARKED_TABS`) for the panel header stars. The chrome side, the
 anchor translation and the focus and close rules are in
 [overlay-documents.md](overlay-documents.md#bookmark-popup-and-toolbar). Both

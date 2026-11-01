@@ -1,5 +1,6 @@
 // Small parts the bookmark popup and the bookmarks toolbar share: a colour dot, a link's icon,
-// the invisible button a popup anchors to, and Esc handling for a popup with no focus inside it.
+// the invisible button a popup anchors to, and the ways a popup is dismissed without a press on it
+// (Esc with no focus inside it, chrome hiding the overlay).
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, Menu } from '@muxui/react';
@@ -7,6 +8,7 @@ import type { BookmarkColor } from '@shared/protocol';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 
 import type { PopupRect } from '../../bridge/bookmarkPopup';
+import { subscribeToHostHidden } from '../../bridge/hostPresentation';
 import { BentoIcon } from '../primitives';
 
 /** A space's or group's colour, drawn the way the Bookmarks view draws it. */
@@ -81,4 +83,15 @@ export function useEscape(onEscape: () => void): void {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+}
+
+/** Runs `onHidden` when chrome hides the overlay on its own (a resize, a tab change, another
+ * overlay). The popup then gets no click or key, so this is its only chance to keep unfinished
+ * work and to report that it is gone. */
+export function useHostHidden(onHidden: () => void): void {
+  const latest = useRef(onHidden);
+  useEffect(() => {
+    latest.current = onHidden;
+  });
+  useEffect(() => subscribeToHostHidden(() => latest.current()), []);
 }

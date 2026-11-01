@@ -509,11 +509,23 @@ below refuses there.
   the sidebar for `ui/*` actions (rename, select all); it skips `ui/bookmarkPopup/`, or the
   sidebar would take the focus back from the popup frame. The reveal focuses the popup frame on
   the next tick (`focusOverlayFrame`).
-- **Refusals.** `showBookmarkPopup` returns, before it records anything, in a private window,
-  with the manager off, while the Bookmarks view is open or waiting (`isBookmarksViewOpen`),
-  while a tab dialog shows in a shown browser (`isTabDialogShowing`, checked again in the reveal),
-  and while an overlay above the popup is on screen (`isOverlayAboveBookmarksViewShown('bookmarks-popup')`;
-  `BOOKMARKS_VIEW_HIGHER_OVERLAYS` lists the popup too, since it stacks above the view).
+- **Refusals.** `canShowBookmarkPopup` says no, and `showBookmarkPopup` returns before it records
+  anything, in a private window, with the manager off, while the Bookmarks view is open or waiting
+  (`isBookmarksViewOpen`), while a tab dialog shows in a shown browser (`isTabDialogShowing`), and
+  while an overlay above the popup is on screen or has an open still waiting for its document
+  (`isOverlayAboveBookmarksViewShown('bookmarks-popup', { pending: true })`;
+  `BOOKMARKS_VIEW_HIGHER_OVERLAYS` lists the popup too, since it stacks above the view). The same
+  check runs again in the reveal, which can come after a cold document loads, together with the
+  request's own `isCurrent` check (for an edit: the page is still the one it names). A reveal
+  that fails either hides the popup and shows nothing.
+- **Which page.** The store saves what bento-tools' `isSavableTabUrl` and the shell's
+  `isSavableUrl` accept: http, https, file and ftp (`isBentoSavableUrlSpec`, kept in step by hand).
+  Chrome opens nothing for any other page (`about:`, `data:`, `moz-extension:`, `view-source:`,
+  `blob:`...) from any of its entry points: the `Cmd+D` request, its fallback and the panel header
+  star. An `edit` from the sidebar is acted on only if its tab id is the selected tab's
+  WebExtension id and its URL, normalized with `Services.io.newURI`, is the selected browser's
+  (`isSelectedTabBookmarkTarget`): the sidebar answers from its own snapshot, which lags a tab
+  switch or a navigation. A stale one is dropped without ending a waiting request.
 - **Close.** The document sends `BENTO_BOOKMARK_POPUP_CLOSE:<ts>:<json {popupId}>`; chrome hides
   the host at once (no fade, like the menu), tells the document it is no longer presented and
   returns the focus (`returnFocusAfterOverlay`, shared with the Bookmarks view: to the element
@@ -525,14 +537,18 @@ below refuses there.
   focus, on `TabSelect`, `DOMWillOpenModalDialog`, `dialogopen`, the window's own `resize`, and
   a change of the root attributes `bento-sidebar-push`, `bento-sidebar-rail` and
   `bento-sidebar-hidden` (its anchor is on geometry that moves). Any other overlay opening
-  closes it too (`openOverlay` and `showAddrbar`). The document gets no message for these: it
+  closes it too (`openOverlay` and `showAddrbar`). Every one of them goes through
+  `hideBookmarkPopup`, which also ends a `Cmd+D` still waiting for the sidebar star, popup or not,
+  so a dismissal is never followed by an open from the older request. The document gets no
+  message for these: it
   sees `bento-host-presentation` (the `data-bento-host-presented` root attribute going false),
   which it can use to commit an unfinished name edit.
 - **Esc.** The document owns it (it puts an unsaved name back, then closes). Like Settings,
   `attachPaletteEscListener` returns for a key whose target is `bento-bookmarks-popup-frame`, and
   consumes Esc for an open still waiting for its document or with the focus elsewhere in the
-  window (the popup then closes and returns the focus). In the stack it sits above the Bookmarks
-  view and below the palettes.
+  window (the popup then closes and returns the focus). A `Cmd+D` still waiting for the sidebar
+  star counts as open: Esc ends it. In the stack it sits above the Bookmarks view and below the
+  palettes.
 - **Cmd+D.** `patchBookmarkPageCommand` replaces `PlacesCommandHook.bookmarkPage` once per
   window, at the mount script's evaluation (`browser-places.js` is loaded by `global-scripts.js`
   before it); the window's setting is read at each call, so a private window or a manager that is
@@ -546,18 +562,27 @@ below refuses there.
   chrome (`openBookmarkPopupForSelectedTab`: the selected tab's WebExtension id, URL and title;
   nothing for a page that cannot be bookmarked) anchored to the star of the selected tab's panel
   header or, with the header hidden, the top right of its panel (`getSelectedPanelBookmarkAnchor`).
-  An answer is acted on only while its request waits (`takeBookmarkPopupRequest`), so an open is
-  neither doubled nor lost, and one that arrives after the sidebar started to collapse or hide
-  anchors to the panel instead of the star's now moving rect. Another overlay opening, a newer
-  `Cmd+L` and the manager going off end a pending request.
+  An answer is acted on only while its request waits (`takeBookmarkPopupRequest`) and only if it
+  is an `edit` for the page the selected tab shows now, so an open is neither doubled nor lost, and
+  one that arrives after the sidebar started to collapse or hide anchors to the panel instead of
+  the star's now moving rect. Nothing is asked where the popup could not open (a page the store
+  does not save, the view, a prompt, a higher overlay or one still loading). The newest request
+  wins: another overlay opening, a tab change, a prompt, Esc, the manager going off and a newer
+  `Cmd+L` (`requestAddrbarOpen` ends the request when it is pressed, not when its own answer
+  arrives) end a pending request, and `Cmd+D` after `Cmd+L` replaces the waiting `Cmd+L`.
 - **Panel header star.** `createPanelHeader` keeps Places' toggle for private windows and the
   opt-out. In a regular window with the manager on, a click calls
   `openBookmarkPopupFromPanelHeader` (kind `edit`, the panel's URL and title, the button's rect
   as the anchor), and the filled state is `currentBookmarkedTabIds.has(tabId)`, the set of the
   latest `BENTO_BOOKMARKED_TABS:<ts>:<json {tabIds}>` the sidebar sends on change (a filled star's
-  title is Edit bookmark). Every payload and every change of the setting calls
+  title is Edit bookmark). `drawPanelBookmarkButton` draws it: on a page the store does not save
+  the star gets the `disabled` attribute (the header buttons' existing disabled look, like Back
+  when there is no history) and the click handler is inert for it, never falling through to
+  Places; in Places mode it is never disabled. Every payload and every change of the setting calls
   `refreshPanelHeaderBookmarkButtons`; a header star creates itself unfilled and reads the set on
-  its next location refresh.
+  its next location refresh. A Places lookup that finishes after the window went back to the
+  Bento store is dropped (`updatePanelBookmarkButtonState` and `togglePanelPageBookmark` check
+  `isBentoBookmarksActive()` after their awaits), so a stale empty answer cannot unfill the star.
 - **Bookmarks toolbar.** `bento-shell-mount.css` hides `#personal-bookmarks` and
   `#personal-toolbar-empty` and shows `#bento-bookmarks-toolbar-host` (the toolbar's last child, a
   `<browser>` loading `bookmarks-toolbar.html`, one row of `--bento-bookmarks-toolbar-row-height`)
@@ -586,6 +611,19 @@ Pitfalls:
   reaching the popup.
 - A new overlay that can sit between the popup and the page needs to close it (through
   `openOverlay`, which does) and to join `BOOKMARKS_VIEW_HIGHER_OVERLAYS`.
+- Admission to the popup counts the higher overlays whose open still waits, not only the ones on
+  screen: a cold palette requested before the popup reveals before it, and the popup revealing
+  over it would take the focus from the palette. Every reveal rechecks, since the document can
+  load long after the request.
+- Never end a popup by hiding its host alone: `hideBookmarkPopup` is the one dismissal because it
+  also cancels a `Cmd+D` waiting for the sidebar star. A path that only hid the host let the
+  older request open the popup after a tab change or Esc, on the wrong tab.
+- Never trust the sidebar's `edit` snapshot for identity: compare its tab id and URL with
+  chrome's selected tab, in the open and again in the reveal. The row can answer one tab switch
+  late.
+- Chrome's savable-page test is the Bento store's allowlist, not Firefox's bookmarkable test:
+  `about:config`, `data:` and `moz-extension:` pages pass Places' rules but the store refuses
+  them, and the popup would wait forever for a save that never lands.
 - The `skipintoolbarset` attribute on the toolbar host keeps CustomizableUI from treating it as a
   placement; do not give it an id that is a widget id.
 

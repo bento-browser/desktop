@@ -172,6 +172,13 @@ const FUNCTIONS = [
   'openBookmarkPopupForSelectedTab',
   'requestBookmarkPopup',
   'openBookmarkPopupFromPanelHeader',
+  'isBentoSavableUrlSpec',
+  'isSelectedTabBookmarkTarget',
+  'canShowBookmarkPopup',
+  'sidebarAddressUrlMatchesActiveMain',
+  'setPanelBookmarkButtonState',
+  'drawPanelBookmarkButton',
+  'updatePanelBookmarkButtonState',
   'refreshPanelHeaderBookmarkButtons',
   'patchBookmarkPageCommand',
   'attachBookmarkPopupListeners',
@@ -317,6 +324,9 @@ const EXPORTED = [
   'requestBookmarkPopup',
   'patchBookmarkPageCommand',
   'openBookmarkPopupFromPanelHeader',
+  'isBentoSavableUrlSpec',
+  'drawPanelBookmarkButton',
+  'updatePanelBookmarkButtonState',
   'handleBookmarkedTabsTitle',
   'refreshPanelHeaderBookmarkButtons',
   'readBookmarkPopupRequest',
@@ -538,6 +548,8 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
   };
   /** The tab and page `Cmd+D` is about. */
   const page = { tabId: 41, spec: 'https://example.com/a', title: 'Example' };
+  /** What a Places bookmark lookup answers; a test swaps in a promise it settles itself. */
+  let placesLookup = async () => [];
   const mutationObservers = [];
   class FakeMutationObserver {
     constructor(callback) {
@@ -651,8 +663,12 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     getSelectedWebExtensionTabId: () => page.tabId,
     activeMainBrowserSpec: () => page.spec,
     normalizeBookmarkUrlSpec: (url) => String(url || ''),
-    isBookmarkableUrlSpec: (spec) => !!spec && spec !== 'about:blank' && spec !== 'about:newtab',
     getActiveMainBrowser: () => ({ contentTitle: page.title }),
+    // Places, which the panel header star reads when the window does not use the Bento store.
+    getPlacesUtils: () => ({}),
+    getBookmarksForUrl: () => placesLookup(),
+    getSavedPanelsFolderGuid: async () => null,
+    isRealPanelUrl: (url) => !!url && url !== 'about:blank' && url !== 'about:newtab',
     bentoCompatNoteNative: (id, native) => events.noted.push({ id, native }),
     // A private window's tools-bound actions go to the BentoShellBus hub instead of
     // the frame script; the hub records what chrome posts to it.
@@ -887,6 +903,9 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
         .filter((data) => data.type === 'ui/bookmarkPopup/open'),
     /** The selected tab and its page: `Cmd+D` is about these. */
     page,
+    setPlacesLookup: (lookup) => {
+      placesLookup = lookup;
+    },
     /** What document.querySelector answers (the panel header star of the selected tab). */
     setQuery: (query) => {
       document.querySelector = query;
@@ -2513,7 +2532,7 @@ test('the document closes its own popup by id, and a late close of an older one 
   world.setNativeFocus(world.frame('bookmarks-popup'));
   const first = lastAction(world).popupId;
 
-  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, tabId: 42 }));
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, title: 'Renamed' }));
   const second = lastAction(world).popupId;
   assert.notEqual(first, second);
   assert.equal(world.popupOpens().length, 2, 'a second request replaces the content in place');
@@ -2778,6 +2797,270 @@ test('a newer overlay or request ends a pending Cmd+D request', () => {
     world.advance(10_000);
     assert.deepEqual(world.popupOpens(), [], 'the timer finds nothing to open');
   }
+});
+
+test('Esc ends a Cmd+D still waiting for the sidebar star, and no popup follows', () => {
+  const world = popupWorld();
+  world.patchBookmarkPageCommand();
+  world.placesCommandHook.bookmarkPage();
+  const [request] = askedForStar(world);
+
+  assert.equal(world.pressEscape('bento-shell-frame'), true, 'the waiting request is dismissed');
+  assert.equal(world.pressEscape('bento-shell-frame'), false, 'and nothing is left to dismiss');
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+  world.advance(10_000);
+  assert.deepEqual(world.popupOpens(), [], 'neither a late answer nor the timeout opens it');
+});
+
+test('a tab change ends a pending Cmd+D: the timeout does not open the new tab and a late answer not the old one', () => {
+  const world = popupWorld();
+  world.attachBookmarkPopupListeners();
+  world.patchBookmarkPageCommand();
+  world.placesCommandHook.bookmarkPage();
+  const [request] = askedForStar(world);
+  assert.equal(world.isBookmarkPopupOpen(), false, 'no popup yet: nothing for the old hide to cancel');
+
+  world.page.tabId = 42;
+  world.page.spec = 'https://example.com/b';
+  world.selectTab(world.makeBrowser());
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+  world.advance(10_000);
+  assert.deepEqual(world.popupOpens(), []);
+
+  // A Cmd+D pressed after the switch is a new request for the new tab.
+  world.placesCommandHook.bookmarkPage();
+  world.advance(world.BOOKMARK_POPUP_REQUEST_MS);
+  assert.deepEqual(plain(lastAction(world).request).tabId, 42);
+});
+
+test('an edit from a stale sidebar snapshot is dropped without ending the wait, and the timeout opens the current page', () => {
+  const world = popupWorld();
+  world.patchBookmarkPageCommand();
+  // The selected tab changed and the sidebar has not caught up (no TabSelect reached it yet).
+  world.page.tabId = 42;
+  world.page.spec = 'https://example.com/b';
+  world.page.title = 'B';
+  world.placesCommandHook.bookmarkPage();
+  const [request] = askedForStar(world);
+
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+  assert.deepEqual(world.popupOpens(), [], 'the old tab id and URL name another page');
+  world.titleChanged(
+    'bento-shell-frame',
+    titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId, tabId: 42 }),
+  );
+  assert.deepEqual(world.popupOpens(), [], 'the right tab with the old URL is stale too');
+  world.titleChanged(
+    'bento-shell-frame',
+    titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId, url: 'https://example.com/b' }),
+  );
+  assert.deepEqual(world.popupOpens(), [], 'and so is the right URL with the old tab id');
+
+  world.advance(world.BOOKMARK_POPUP_REQUEST_MS);
+  assert.deepEqual(plain(lastAction(world).request).url, 'https://example.com/b');
+  assert.equal(world.popupOpens().length, 1);
+
+  // A star press (no request) from a stale row is dropped the same way.
+  world.hideBookmarkPopup();
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.popupOpens().length, 1);
+  world.titleChanged(
+    'bento-shell-frame',
+    titleOf(POPUP_OPEN, { ...EDIT, tabId: 42, url: 'https://example.com/b' }),
+  );
+  assert.equal(world.popupOpens().length, 2, 'the current page opens');
+});
+
+test('a popup whose page changed while its document loaded is dropped in the reveal', () => {
+  const world = makeWorld();
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), true);
+
+  world.page.spec = 'https://example.com/elsewhere'; // navigated meanwhile
+  world.ready('bookmarks-popup');
+  assert.equal(world.isShown('bookmarks-popup'), false);
+  assert.deepEqual(world.popupOpens(), []);
+  assert.equal(world.isBookmarkPopupOpen(), false);
+  world.advance(10_000);
+  assert.deepEqual(world.focusLog(), [], 'the document never took the focus');
+});
+
+test('the popup is not admitted under an overlay still loading, and is dropped if one appears before its reveal', () => {
+  // A palette whose document is still loading is not on screen, but it will be.
+  const world = makeWorld();
+  world.showPalette();
+  assert.equal(world.overlays.hasPendingOpen('palette'), true);
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.isBookmarkPopupOpen(), false, 'refused at the request');
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), false);
+  world.ready('palette');
+  world.ready('bookmarks-popup');
+  world.advance(10_000);
+  assert.equal(world.isShown('palette'), true);
+  assert.equal(world.isShown('bookmarks-popup'), false);
+  assert.deepEqual(world.popupOpens(), []);
+  assert.deepEqual(world.focusLog().filter((id) => id === 'bento-bookmarks-popup-frame'), []);
+
+  // An overlay that shows without going through openOverlay (which would close the popup) while
+  // the popup waits for its document: the reveal sees it and does not show, or take the focus.
+  const late = makeWorld();
+  late.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(late.overlays.hasPendingOpen('bookmarks-popup'), true);
+  late.host('palette').style.display = 'flex';
+  late.host('palette').style.opacity = '1';
+  late.ready('bookmarks-popup');
+  late.advance(10_000);
+  assert.equal(late.isShown('bookmarks-popup'), false);
+  assert.deepEqual(late.popupOpens(), []);
+  assert.deepEqual(late.focusLog(), []);
+
+  // The same through a Cmd+D request, which asks nothing of the row in that case.
+  const cmd = popupWorld();
+  cmd.patchBookmarkPageCommand();
+  cmd.showPalette();
+  cmd.placesCommandHook.bookmarkPage();
+  assert.deepEqual(askedForStar(cmd), []);
+});
+
+test('a Cmd+L pressed after a Cmd+D wins, whichever the sidebar answers first, and a Cmd+D after a Cmd+L wins too', () => {
+  const world = popupWorld();
+  world.patchBookmarkPageCommand();
+  world.placesCommandHook.bookmarkPage();
+  const [bookmarkRequest] = askedForStar(world);
+  world.requestAddrbarOpen('current');
+  const addrbarRequest = world.sidebarMessages.find((message) => message.kind === 'open-request');
+
+  // The older request's reply comes first: it must not open, and must not cancel the Cmd+L.
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: bookmarkRequest.requestId }));
+  assert.deepEqual(world.popupOpens(), []);
+  assert.equal(world.takeAddrbarOpenRequest(addrbarRequest.requestId), true, 'the Cmd+L still waits');
+  world.advance(10_000);
+  assert.deepEqual(world.popupOpens(), [], 'and the Cmd+D timer is gone');
+
+  const reverse = popupWorld();
+  reverse.patchBookmarkPageCommand();
+  reverse.requestAddrbarOpen('current');
+  const older = reverse.sidebarMessages.find((message) => message.kind === 'open-request');
+  reverse.placesCommandHook.bookmarkPage();
+  const [newer] = askedForStar(reverse);
+  assert.equal(reverse.takeAddrbarOpenRequest(older.requestId), false, 'the older Cmd+L is replaced');
+  reverse.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: newer.requestId }));
+  assert.equal(reverse.popupOpens().length, 1);
+
+  // A Cmd+L also closes a popup that is open, at once.
+  reverse.setNativeFocus(reverse.frame('bookmarks-popup'));
+  reverse.requestAddrbarOpen('current');
+  assert.equal(reverse.isBookmarkPopupOpen(), false);
+  assert.equal(reverse.isShown('bookmarks-popup'), false);
+});
+
+test('a page the Bento store would not save opens nothing: Cmd+D, the sidebar answer and the panel star', () => {
+  const unsavable = [
+    'about:config',
+    'about:blank',
+    'data:text/html,hi',
+    'moz-extension://abc/page.html',
+    'view-source:https://example.com/',
+    'blob:https://example.com/1',
+    'chrome://browser/content/browser.xhtml',
+    'javascript:void(0)',
+  ];
+  for (const spec of unsavable) {
+    const world = popupWorld();
+    assert.equal(world.isBentoSavableUrlSpec(spec), false, spec);
+    world.patchBookmarkPageCommand();
+    world.page.spec = spec;
+
+    world.placesCommandHook.bookmarkPage();
+    world.setRowAnchorable(false);
+    world.placesCommandHook.bookmarkPage();
+    world.advance(10_000);
+    assert.deepEqual(askedForStar(world), [], `${spec}: the row is not asked`);
+    assert.deepEqual(world.popupOpens(), [], `${spec}: no popup from Cmd+D`);
+    assert.equal(world.isBookmarkPopupOpen(), false, spec);
+
+    // A sidebar that sends an edit for that page anyway is refused by chrome.
+    world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, url: spec }));
+    assert.deepEqual(world.popupOpens(), [], `${spec}: no popup from the sidebar star`);
+
+    const button = { getBoundingClientRect: () => ({ left: 1, top: 2, width: 3, height: 4 }) };
+    const browser = { currentURI: { spec }, contentTitle: 't' };
+    assert.equal(world.openBookmarkPopupFromPanelHeader(button, 55, browser), true, 'handled, not Places');
+    assert.deepEqual(world.popupOpens(), [], `${spec}: no popup from the panel star`);
+  }
+  for (const spec of ['http://a.test/', 'https://a.test/', 'file:///tmp/a.html', 'ftp://a.test/f']) {
+    assert.equal(makeWorld().isBentoSavableUrlSpec(spec), true, spec);
+  }
+});
+
+test('the panel header star is drawn disabled on a page the store would not save, and Places never disables it', () => {
+  const world = makeWorld();
+  const star = () => {
+    const attrs = new Map();
+    const classes = new Set();
+    return {
+      attrs,
+      classes,
+      title: '',
+      setAttribute: (name, value) => attrs.set(name, String(value)),
+      removeAttribute: (name) => attrs.delete(name),
+      classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)) },
+    };
+  };
+  const browserAt = (spec) => ({ currentURI: { spec } });
+  world.titleChanged('bento-shell-frame', titleOf(BOOKMARKED_TABS, { tabIds: [55] }));
+
+  const saved = star();
+  world.drawPanelBookmarkButton(saved, 55, browserAt('https://example.com/p'));
+  assert.equal(saved.attrs.has('disabled'), false);
+  assert.equal(saved.classes.has('bento-panel-header-button--active'), true, 'filled from the Bento set');
+  assert.equal(saved.title, 'Edit bookmark');
+
+  const config = star();
+  world.drawPanelBookmarkButton(config, 55, browserAt('about:config'));
+  assert.equal(config.attrs.get('disabled'), 'true');
+  assert.equal(config.classes.has('bento-panel-header-button--active'), false);
+  world.drawPanelBookmarkButton(config, 55, browserAt('https://example.com/p'));
+  assert.equal(config.attrs.has('disabled'), false, 'a navigation to a savable page enables it again');
+
+  world.applyChromeBookmarksEnabled(false);
+  const places = star();
+  places.attrs.set('disabled', 'true');
+  world.drawPanelBookmarkButton(places, 55, browserAt('about:config'));
+  assert.equal(places.attrs.has('disabled'), false, "Firefox's star is not the store's to disable");
+});
+
+test('a Places lookup still running when the Bento store takes the star back cannot unfill it', async () => {
+  const world = makeWorld();
+  world.applyChromeBookmarksEnabled(false); // Places draws the star
+  let settle;
+  world.setPlacesLookup(() => new Promise((resolve) => (settle = resolve)));
+  const classes = new Set();
+  const star = {
+    title: '',
+    setAttribute() {},
+    removeAttribute() {},
+    classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)) },
+  };
+  const browser = { currentURI: { spec: 'https://example.com/p' } };
+
+  const lookup = world.updatePanelBookmarkButtonState(browser, star);
+  world.applyChromeBookmarksEnabled(true); // the setting goes back on
+  world.titleChanged('bento-shell-frame', titleOf(BOOKMARKED_TABS, { tabIds: [55] }));
+  world.drawPanelBookmarkButton(star, 55, browser);
+  assert.equal(classes.has('bento-panel-header-button--active'), true, 'filled from the Bento set');
+
+  settle([]); // Places says: no bookmark
+  await lookup;
+  assert.equal(classes.has('bento-panel-header-button--active'), true, 'the stale answer is dropped');
+  assert.equal(star.title, 'Edit bookmark');
+
+  // In Places mode the answer still draws.
+  world.applyChromeBookmarksEnabled(false);
+  world.setPlacesLookup(async () => [{ guid: 'g', parentGuid: 'unfiled' }]);
+  await world.updatePanelBookmarkButtonState(browser, star);
+  assert.equal(classes.has('bento-panel-header-button--active'), true);
+  assert.equal(star.title, 'Remove bookmark');
 });
 
 test('the panel header star opens the edit popup in chrome coordinates, and is Firefox\'s outside Bento mode', () => {

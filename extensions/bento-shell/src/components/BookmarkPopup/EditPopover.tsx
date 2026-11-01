@@ -7,28 +7,23 @@
 //
 // Nothing renders until the link is in the snapshot, so the form never shows controls for a save
 // that did not happen; if it does not arrive, or the link is deleted elsewhere, the popover closes.
+// The save itself (and not saving twice when the popover is opened again before it lands) is in
+// saveFlow.ts.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Popover, SelectNative, Text, TextField } from '@muxui/react';
 import { BOOKMARK_LIMITS, type BookmarksSnapshot } from '@shared/protocol';
 
 import type { BookmarkPopupRequest } from '../../bridge/bookmarkPopup';
-import {
-  UNSORTED_GROUP_NAME,
-  defaultSaveTarget,
-  newestLinkFor,
-  urlKey,
-  type BookmarkLink,
-} from '../../bookmarks/links';
-import { groupCreate, newId, tabsSave } from '../BookmarksView/actions';
+import { UNSORTED_GROUP_NAME, urlKey, type BookmarkLink } from '../../bookmarks/links';
+import { groupCreate, newId } from '../BookmarksView/actions';
 import type { BookmarksAction } from '../BookmarksView/types';
 import { Column, Row } from '../primitives';
-import { PopoverAnchor, useEscape } from './parts';
+import { createNameCommitter } from './nameCommit';
+import { PopoverAnchor, useEscape, useHostHidden } from './parts';
+import { createSaveFlow, type SaveFlow } from './saveFlow';
 
 type EditRequest = Extract<BookmarkPopupRequest, { kind: 'edit' }>;
-
-/** How long a save may take to reach the snapshot before the popover gives up. */
-const SAVE_WAIT_MS = 3000;
 
 export interface EditPopoverProps {
   request: EditRequest;
@@ -39,8 +34,8 @@ export interface EditPopoverProps {
 }
 
 /**
- * The link this popover edits, saving the page first when it is not saved yet. The save runs once
- * per popover, as soon as the snapshot is ready. Null until the link is in the snapshot.
+ * The link this popover edits, saving the page first when it is not saved yet (see `createSaveFlow`
+ * for the one save per popover and its wait). Null until the link is in the snapshot.
  */
 function useEditedLink(
   request: EditRequest,
@@ -50,60 +45,30 @@ function useEditedLink(
 ): BookmarkLink | null {
   const key = urlKey(request.url);
   const [itemId, setItemId] = useState<string | null>(null);
-  const started = useRef(false);
-  const seen = useRef(false);
-  const failed = snapshot?.status === 'loadFailed';
+  const flow = useRef<SaveFlow | null>(null);
 
   useEffect(() => {
-    if (started.current) return;
     if (key === null) {
       close();
       return;
     }
-    if (snapshot?.status !== 'ready') return;
-    started.current = true;
-    const existing = newestLinkFor(snapshot, key);
-    if (existing) {
-      setItemId(existing.id);
-      return;
-    }
-    const target = defaultSaveTarget(snapshot);
-    if (!target) {
-      close();
-      return;
-    }
-    // A client id for each new thing, so the follow-ups name exactly what this popover made.
-    const id = newId();
-    let groupId = target.groupId;
-    if (groupId === null) {
-      groupId = newId();
-      send(groupCreate(target.spaceId, UNSORTED_GROUP_NAME, groupId));
-    }
-    send(tabsSave(target.spaceId, [request.tabId], { groupId, beforeId: null }, () => id));
-    setItemId(id);
-  }, [key, snapshot, request.tabId, send, close]);
+    const created = createSaveFlow({ key, tabId: request.tabId, send, close, onItem: setItemId });
+    flow.current = created;
+    return () => {
+      created.dispose();
+      flow.current = null;
+    };
+  }, [key, request.tabId, send, close]);
 
-  const link = useMemo(() => {
+  // After the flow exists: it saves on the first ready snapshot and watches every later one.
+  useEffect(() => {
+    flow.current?.update(snapshot);
+  }, [snapshot, key, request.tabId, send, close]);
+
+  return useMemo(() => {
     const item = itemId === null ? undefined : snapshot?.items.find((entry) => entry.id === itemId);
     return item?.kind === 'link' ? item : null;
   }, [itemId, snapshot]);
-
-  useEffect(() => {
-    if (link) {
-      seen.current = true;
-      return;
-    }
-    // Deleted from the Bookmarks view meanwhile.
-    if (seen.current) {
-      close();
-      return;
-    }
-    if (failed) return;
-    const timer = window.setTimeout(close, SAVE_WAIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [link, failed, close]);
-
-  return link;
 }
 
 export function EditPopover({ request, snapshot, send, close }: EditPopoverProps) {
@@ -176,23 +141,23 @@ function EditForm({ request, link, snapshot, send, close }: EditFormProps) {
   // carries the new title, so the field does not jump back to the old one meanwhile.
   const [draft, setDraft] = useState<string | null>(null);
   const reverting = useRef(false);
-  const lastCommitted = useRef<string | null>(null);
+  const [names] = useState(createNameCommitter);
 
   useEffect(() => {
     if (draft !== null && draft.trim() === link.title) setDraft(null);
   }, [draft, link.title]);
 
+  // A name that reached the snapshot is no longer on its way, so it can be committed again later.
+  useEffect(() => names.acknowledge(link.title), [names, link.title]);
+
   const commitName = useCallback(() => {
-    if (reverting.current || draft === null) return;
-    const next = draft.trim();
-    if (!next) {
-      setDraft(null);
-      return;
+    if (reverting.current) return;
+    const commit = names.commit(draft, link.title);
+    if (commit.kind === 'restore') setDraft(null);
+    else if (commit.kind === 'send') {
+      send({ type: 'bookmarks/item/update', id: link.id, title: commit.title });
     }
-    if (next === link.title || next === lastCommitted.current) return;
-    lastCommitted.current = next;
-    send({ type: 'bookmarks/item/update', id: link.id, title: next });
-  }, [draft, link.id, link.title, send]);
+  }, [names, draft, link.id, link.title, send]);
 
   // Esc drops an unsaved name, then closes; every other way out keeps it. Mux closes the popover
   // on Esc too, and only after this has run: the capture handler below runs first for an Esc
@@ -208,6 +173,8 @@ function EditForm({ request, link, snapshot, send, close }: EditFormProps) {
     commitName();
     close();
   };
+  // Chrome closed the popover itself (a resize, a tab change): the same as a click outside.
+  useHostHidden(dismiss);
 
   const group = snapshot.groups.find((entry) => entry.id === link.groupId);
   const space = snapshot.spaces.find((entry) => entry.id === group?.spaceId);
@@ -253,7 +220,10 @@ function EditForm({ request, link, snapshot, send, close }: EditFormProps) {
           label="Name"
           size="sm"
           value={draft ?? link.title}
-          onChange={setDraft}
+          onChange={(value) => {
+            names.edited();
+            setDraft(value);
+          }}
           maxLength={BOOKMARK_LIMITS.linkTitle}
           autoFocus
           inputProps={{

@@ -10,6 +10,7 @@ import type { BookmarkPopupRequest } from '../../bridge/bookmarkPopup';
 import type { BookmarksAction } from '../BookmarksView/types';
 import { GroupMenu, OverflowMenu, SpacesMenu, type MenuActions } from './BookmarkMenus';
 import { EditPopover } from './EditPopover';
+import { useHostHidden } from './parts';
 import './BookmarkPopup.css';
 
 /** How long a popup waits for the first snapshot before it closes. */
@@ -42,6 +43,10 @@ export function BookmarkPopup({
     closed.current = true;
     latestOnClose.current();
   }, []);
+
+  // Chrome hid the overlay itself: the popup is gone, so end it like any other close. An edit
+  // popover commits its unfinished name first (its own listener, on the same event).
+  useHostHidden(close);
 
   // No snapshot (tools not answering) leaves nothing to show; do not hold the overlay open.
   const hasSnapshot = snapshot !== null;

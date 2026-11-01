@@ -1238,7 +1238,9 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `handleBookmarkPopupCloseTitle`, `handleBookmarkedTabsTitle`, `requestBookmarkPopup`,
     `openBookmarkPopupForSelectedTab`, `getSelectedPanelBookmarkAnchor`,
     `openBookmarkPopupFromPanelHeader`, `refreshPanelHeaderBookmarkButtons`,
-    `attachBookmarkPopupListeners`, `patchBookmarkPageCommand`; `applyBookmarksToolbar`,
+    `drawPanelBookmarkButton`, `canShowBookmarkPopup`, `isSelectedTabBookmarkTarget`,
+    `isBentoSavableUrlSpec`, `attachBookmarkPopupListeners`, `patchBookmarkPageCommand`;
+    `applyBookmarksToolbar`,
     `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost`,
     `removeBookmarksToolbarHost`; the popup and toolbar frames' title handlers, the Esc
     branch, `openOverlay` and `showAddrbar` closing the popup, `focusReturnTarget` and
@@ -1295,7 +1297,11 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     window's own `resize` close the popup, as does a change of the root attributes
     `bento-sidebar-push`, `bento-sidebar-rail` and `bento-sidebar-hidden` (a mutation observer),
     because its anchor is on geometry that moves. A tab dialog showing in a shown browser
-    (`tabDialogShowing`) or the Bookmarks view being open keeps it from opening.
+    (`tabDialogShowing`), the Bookmarks view being open, or an overlay above the popup being on
+    screen or loading keeps it from opening (checked again in the reveal). Every dismissal also
+    ends a `Cmd+D` still waiting for the sidebar star. Chrome opens it only for pages the
+    Bento store saves (http, https, file, ftp); the panel header star is drawn `disabled` on
+    other pages.
   - The `BentoShellAction` frame script (`content.focus()` for `ui/*` actions, for the sidebar's
     rename and select-all) now skips `ui/bookmarkPopup/`, so the open message does not take the
     focus from the popup frame.
@@ -1321,7 +1327,10 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   anywhere, including the empty top strip, to close it; the traffic lights stay visible and
   clickable while it is open. Select another tab, resize the window, toggle the sidebar and open
   the command palette with the popup open: it closes each time. With the Bookmarks view open
-  `Cmd+D` does nothing; the popup's Open in Bookmarks opens the view. Press `Cmd+Shift+B` with the
+  `Cmd+D` does nothing; the popup's Open in Bookmarks opens the view. Press `Cmd+D` on
+  `about:config` and on a `data:` page: nothing opens and the panel header star is disabled.
+  Press `Cmd+D` and, within a moment, `Cmd+L` or Esc, or switch tabs: no popup follows. Press
+  `Cmd+Shift+B` with the
   manager on: the Bento toolbar shows in the toolbar row and Firefox's bookmark items do not;
   the sidebar and splitters keep their compensation (no gap above the sidebar address field);
   drag the sidebar splitter and toggle the sidebar with the toolbar open and watch the toolbar's

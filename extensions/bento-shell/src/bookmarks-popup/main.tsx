@@ -9,7 +9,10 @@
 //     document has announced it is ready sends `ui/bookmarkPopup/open` on the shell bus
 //     (bridge/bookmarkPopup.ts).
 //   - Every way out ends in `close`, which sends BENTO_BOOKMARK_POPUP_CLOSE with the popup id so
-//     chrome hides the overlay and returns the focus.
+//     chrome hides the overlay and returns the focus. That includes chrome hiding the overlay
+//     itself (a resize, a tab change): the popup hears it as `bento-host-presentation`
+//     (bridge/hostPresentation.ts) and closes the same way, so the buttons lose their pressed
+//     state. Chrome ignores the then stale close, which names a popup it no longer shows.
 //   - The popup also tells the other shell documents which popup is up (and when it is gone), so
 //     the button that opened it shows its pressed state.
 //   - Data comes over the shell bus like any other document: the `bookmarks/snapshot` mirror, and

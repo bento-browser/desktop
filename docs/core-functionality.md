@@ -757,12 +757,14 @@ Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, un
   Name saves on Enter or when the field loses focus. Choosing another Space moves the link to that
   space's first group (making "Unsorted" if it has none), and choosing a Group moves it there.
   Done, a click outside and Esc close the popover and keep the save; Esc also drops a name that
-  was typed but not saved. Remove deletes the link. If the stored bookmarks could not be read,
-  the popover says the page was not saved and offers Retry.
+  was typed but not saved. The popover also closes, keeping a typed name, when the window is
+  resized, the tab changes or another overlay opens. Remove deletes the link. If the stored
+  bookmarks could not be read, the popover says the page was not saved and offers Retry.
 - **The star.** It is filled for any page that is saved in any group. Pressing it, or Cmd/Ctrl+D,
   on a saved page opens the popover on the most recent copy rather than saving again, and the star
   shows as pressed while the popover is open. A page Bento does not save (Firefox's own pages and
-  other internal pages) leaves the star disabled. The panel header star follows the same rules.
+  other internal pages) leaves the star disabled, and Cmd/Ctrl+D does nothing there. The panel header
+  star follows the same rules.
 - **Bookmarks toolbar.** In place of Firefox's toolbar (it still shows and hides with
   Cmd/Ctrl+Shift+B) the row lists the groups of the space the Bookmarks view last showed, each a
   button with its colour dot, name and a chevron. A group's menu lists its links (favicon and
