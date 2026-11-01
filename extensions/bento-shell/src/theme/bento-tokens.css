@@ -320,6 +320,9 @@
     --bento-bookmark-popup-width: 17rem;
     --bento-bookmark-popup-menu-max-width: 21.25rem;
     --bento-bookmarks-toolbar-button-max-width: 9.375rem;
+    /* The Bento bookmarks toolbar strip: a translucent tint over whatever sits behind it (the brand
+       background), weighted to read like the --neutral-18 fill it replaced. */
+    --bento-bookmarks-toolbar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 12%, transparent);
 
     /* System UI font stack for plain pages that load no Mux fonts. */
     --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

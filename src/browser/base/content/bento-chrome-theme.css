@@ -250,6 +250,9 @@
     background-image: none !important;
     color: var(--neutral-90) !important;
   }
+  :root[bento-bookmarks-toolbar] #PersonalToolbar {
+    background-color: var(--bento-bookmarks-toolbar-fill) !important;
+  }
   body {
     background-color: var(--neutral-5) !important;
   }

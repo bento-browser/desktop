@@ -699,6 +699,9 @@ root attribute, so a manager toggle re-measures).
     `--bento-bookmarks-toolbar-gap` is `--bento-panel-gap` minus that gutter. The reserve is
     top inset + row height + that gap.
   - Corners: `--bento-panel-corner-radius`, the token the panels use, with `overflow: clip`.
+  - Fill: `--bento-bookmarks-toolbar-fill` (`bento-chrome-theme.css`), a `color-mix` of `--muxui-semantic-color-neutral-90`
+    at 12% into transparent over the brand background, not the solid `--neutral-18` Firefox's own
+    toolbar keeps. The pressed button's `--bento-surface-active` stacks on it.
     Firefox's own inline padding on the toolbar is zeroed, so the shell row's padding is the
     buttons' whole inset (about the 12px default radius to the first dot, past the corner arc).
 - **Motion.** One pair for every moving box: the reveal role's spring pair (400 ms, no overshoot,
