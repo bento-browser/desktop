@@ -10,7 +10,12 @@
  * Layout, surfaces and motion are in bento.components. The page paints --bento-brand-bg (neutral-5)
  * itself (bookmarks.html marks the document), so the view reads as one surface with the toolbar
  * strip above it. Hover states use the state role, the drawer its reveal and dismiss roles, and the
- * reorder settle the reveal role (data-bm-flipping, set by flip.ts). */
+ * reorder settle the reveal role (data-bm-flipping, set by flip.ts).
+ *
+ * Fills: the page (and the drawer, where it overlays the boards) and the floating layers (menus,
+ * the drag ghost, toasts) are opaque. Every other neutral fill sits on that surface and is a
+ * translucent colour-mix tint, from --bento-surface-hover and --bento-surface-active or one of the
+ * --bento-bookmarks-*-fill tokens, so a row, field or button never paints a solid patch on it. */
 
 /* The view surface is the brand background (neutral-5); chrome paints the strip above it the same. */
 html[data-bento-document='bookmarks'],
@@ -30,6 +35,8 @@ html[data-bento-document='bookmarks'] #root {
     background-color: var(--bento-brand-bg);
     color: var(--muxui-semantic-content-default);
     font-family: var(--bento-font-system);
+    /* Mux fields (the search field, the editors) fill with --muxui-field-bg. */
+    --muxui-field-bg: var(--bento-bookmarks-field-fill);
   }
 
   .bento-bookmarks--unavailable {
@@ -369,7 +376,7 @@ html[data-bento-document='bookmarks'] #root {
     inset-inline-start: 0;
     width: var(--bento-focus-ring-width);
     border-radius: var(--muxui-semantic-shape-pill-radius);
-    background-color: var(--muxui-semantic-border-strong);
+    background-color: var(--bento-bookmarks-note-bar-fill);
   }
 
   .bento-bookmarks__row-text {
@@ -523,7 +530,8 @@ html[data-bento-document='bookmarks'] #root {
     flex-direction: column;
     box-sizing: border-box;
     border-inline-start: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
-    background-color: var(--bento-brand-bg);
+    /* Beside the boards it sits on the page and paints nothing; over them (narrow, below) it is
+       opaque. */
     animation: bento-bookmarks-drawer-in var(--muxui-semantic-motion-reveal-transition) both;
   }
 
@@ -863,6 +871,7 @@ html[data-bento-document='bookmarks'] #root {
       inset-block: 0;
       inset-inline-end: 0;
       width: var(--bento-bookmarks-drawer-width);
+      background-color: var(--bento-brand-bg);
       box-shadow: var(--muxui-semantic-elevation-floating);
     }
   }
@@ -940,6 +949,12 @@ html[data-bento-document='bookmarks'] #root {
   color: var(--muxui-semantic-content-muted);
 }
 
+/* The search field. In the dark scheme Mux paints its rest state with a solid colour of its own,
+   outside --muxui-field-bg, so the fill is set on the input itself. */
+.bento-bookmarks__search .muxui-field-input {
+  background-color: var(--bento-bookmarks-field-fill);
+}
+
 /* Inline fields: the look of the sidebar's rename field, on this surface. */
 .bento-bookmarks__field {
   box-sizing: border-box;
@@ -951,7 +966,7 @@ html[data-bento-document='bookmarks'] #root {
   padding: var(--muxui-semantic-layout-tight-gap) var(--muxui-semantic-layout-inset-tight);
   border: var(--bento-border-hairline) solid var(--bento-workspace-accent);
   border-radius: var(--muxui-semantic-shape-option-radius);
-  background-color: var(--muxui-semantic-surface-background);
+  background-color: var(--bento-bookmarks-field-fill);
   color: var(--muxui-semantic-content-default);
   font: inherit;
   font-size: var(--muxui-semantic-typography-small-size);
@@ -963,6 +978,23 @@ html[data-bento-document='bookmarks'] #root {
 
 .bento-bookmarks__field[aria-invalid='true'] {
   border-color: var(--muxui-semantic-feedback-invalid-border);
+}
+
+/* The unchecked box is a faint tint, not Mux's solid raised neutral (its hover overlay stacks on it). */
+.bento-bookmarks__todo-box {
+  --muxui-component-checkbox-indicator-background: var(--bento-bookmarks-checkbox-fill);
+}
+
+/* The open tabs toggle while on: Mux fills it with solid neutral-80 (neutral-90 under the pointer).
+   Its text stays Mux's inverse pair, so the tint is as heavy as the solid it replaces. */
+.bento-bookmarks__drawer-toggle.muxui-toggle-button[data-muxui-state-selected] {
+  background-color: var(--bento-bookmarks-toggle-selected-fill);
+}
+
+.bento-bookmarks__drawer-toggle.muxui-toggle-button[data-muxui-state-selected]:hover:not(
+    [data-muxui-state-disabled]
+  ) {
+  background-color: var(--bento-bookmarks-toggle-selected-fill-hover);
 }
 
 /* The checkbox has no label of its own (the text is the row's), so it takes no gap for one. */

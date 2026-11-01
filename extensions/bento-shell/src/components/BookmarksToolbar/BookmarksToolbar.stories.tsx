@@ -24,7 +24,10 @@ import {
 import { BookmarkPopup } from '../BookmarkPopup/BookmarkPopup';
 import { BookmarksToolbar } from './BookmarksToolbar';
 
-/** The bookmarks toolbar row, 30px high, in a rounded strip `width` px wide (chrome draws the strip). */
+/**
+ * The bookmarks toolbar row, 30px high, in a rounded strip `width` px wide (chrome draws the strip
+ * with the same translucent tint).
+ */
 function Row({ width, children }: { width: number; children: ReactNode }) {
   return (
     <div
@@ -34,7 +37,7 @@ function Row({ width, children }: { width: number; children: ReactNode }) {
         display: 'flex',
         overflow: 'clip',
         borderRadius: 'var(--radius-l)',
-        background: 'var(--neutral-18)',
+        background: 'var(--bento-bookmarks-toolbar-fill)',
       }}
     >
       {children}

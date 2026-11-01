@@ -798,6 +798,30 @@ uses Mux `Button`, `IconButton`, `Text`, `SearchField`, `ToggleButton`, `Checkbo
   fields keep the native menu, an element with actions gets its list, anything else gets nothing.
   Reuse this shape for another context menu in an extension page that fills its window; a popup that
   must leave the window goes through the chrome `menu` overlay instead.
+- **Neutral fills on a surface are colour-mix tints; the base and floating surfaces stay opaque.**
+  This holds for the view, the save popover's form and the toolbar. A row, space, "..." trigger,
+  button state, menu highlight, drop target, field, unchecked to-do box, selected toggle and note
+  bar paints a translucent `color-mix` of `--muxui-semantic-color-neutral-90` into `transparent`
+  (`neutral-100` for the toggle's hover), never a solid neutral, so it reads through whatever is
+  under it like the toolbar strip does. Rows, spaces, "..." triggers and the empty-space drop
+  target use `--bento-surface-hover` and `--bento-surface-active`; Mux `neutral` and `ghost`
+  buttons and the menu's `.muxui-menu__focus` highlight are already tints of the neutral. The rest
+  are `--bento-bookmarks-{field,checkbox,toggle-selected,toggle-selected-hover,note-bar}-fill`
+  (and `-toolbar-fill` for the strip) in `bento-tokens.css`, each weighted so its tint over
+  `--bento-brand-bg` matches the solid it replaced within about 3 RGB steps in light and dark
+  (field: none, since the old fill was the page colour itself, so its outline alone marks it;
+  checkbox 3.5%; toggle 90% and 92%; note bar 18%, 62% in dark). Mux's own defaults are overridden
+  where Mux has a property (`--muxui-field-bg` on `.bento-bookmarks` and on the popover,
+  `--muxui-component-checkbox-indicator-background` on `.bento-bookmarks__todo-box`) and by a scoped
+  rule where it has none (the selected `ToggleButton`, the `SearchField` input, whose dark rest
+  fill ignores `--muxui-field-bg`). Opaque on purpose: the page (`--bento-brand-bg` on `html`,
+  `body`, `#root` and `.bento-bookmarks`, which must cover the browser underneath), the drawer
+  where it overlays the boards (below 1200 px), and the floating layers whose content must not show
+  what is behind them (menus, the popover, the confirmation dialog, undo toasts, the drag ghost).
+  Colour fills (space and group dots, the workspace accent, danger) are not neutral and stay solid.
+  Check a change by reading `getComputedStyle(...).backgroundColor` (and `::before` and `::after`)
+  of every element in the three components' Ladle stories at rest, hovered and pressed, in light
+  and dark: no alpha-1 neutral should be left outside that list.
 - **Colour tokens.** The seven space and group colours are `--bento-bookmark-color-{gray,red,
   orange,yellow,green,blue,purple}` in `bento-tokens.css` (the Mux reference hues at step 60;
   gray is the semantic neutral). Dimensions come from `--bento-bookmarks-*` tokens; the row or
@@ -873,7 +897,9 @@ Separator), `TextField`, `SelectNative`, `Button`, `IconButton`, `Text` and `Too
   documents which popup is open on `bento-bookmark-popup-bus`, and a button shows
   `data-bm-pressed` (`--bento-surface-active`) and `aria-expanded` while its popup is up, so a
   refused open never leaves a button pressed.
-- **States are colour-mix tints.** The strip's fill is a `color-mix` (`--bento-bookmarks-toolbar-fill`),
+- **States are colour-mix tints.** This is the fill rule of the Bookmarks view above, which also
+  covers the popover's form fields (`--muxui-field-bg` set to `--bento-bookmarks-field-fill` on
+  `.bento-bookmark-popup__edit`; the popover and the menus stay opaque, being floating). The strip's fill is a `color-mix` (`--bento-bookmarks-toolbar-fill`),
   so the toolbar's ghost buttons set Mux's `--muxui-button-background-hover` and
   `--muxui-button-background-pressed` to `--bento-surface-hover` and `--bento-surface-active`, both
   `color-mix` tints of `--neutral-90`, and the open and pressed states paint `--bento-surface-active`.

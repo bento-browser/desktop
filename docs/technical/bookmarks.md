@@ -113,7 +113,12 @@ visibility subscription is in place. It listens for `bento-bookmarks-show` and
 the open and close prefixes equal to the mount script's). The document background is opaque,
 `var(--bento-brand-bg)` (neutral-5), set by a rule keyed on `html[data-bento-document='bookmarks']`
 so it wins over the shared document rule: the view is one surface with the toolbar strip that
-stays visible above it.
+stays visible above it. That page colour and the floating layers (menus, the save popover, the
+confirmation dialog, undo toasts, the drag ghost, and the open tabs drawer while it overlays the
+boards in the narrow layout) are the only opaque neutral fills. Every neutral fill that sits on the
+page, in the view, the save popover's form and the toolbar, is a translucent `color-mix` tint, so
+nothing paints a solid patch on it (the rule and the tokens are under "Bookmarks view" in
+[../mux-ui-component-customisations.md](../mux-ui-component-customisations.md#bookmarks-view)).
 
 The top-left button reads "Back to browser" beside a left chevron and leaves the view. Below the
 narrow-width breakpoint the stylesheet hides the label and the button keeps only the chevron; its
@@ -536,6 +541,16 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
 - Mux `Checkbox` has a hover/press gradient tint over an unregistered custom property, so it
   does not cross-fade with the theme; it is recorded in `MUX_GRADIENT_RESIDUAL` in
   `scripts/mount-fade-css.test.mjs` (a to-do checkbox under the pointer only).
+- Mux paints several neutral fills as solids that no Bento rule asked for: the unchecked
+  `Checkbox` box (raised neutral-10, neutral-98 in dark), a selected `ToggleButton` (neutral-80, and
+  neutral-90 under the pointer), and every field (`--muxui-field-bg`, neutral-5; the `SearchField`
+  also has a dark-scheme rest fill of its own that ignores that variable). The view overrides each
+  (`--muxui-field-bg` on `.bento-bookmarks` and on the save popover, `--muxui-component-checkbox-indicator-background`
+  on `.bento-bookmarks__todo-box`, scoped rules for the toggle and the search input) with the
+  `--bento-bookmarks-*-fill` tokens. A new Mux control in these components needs the same check:
+  read its `background-color` at rest, hovered and pressed, in light and dark, and tint any solid
+  neutral. The note bar (`--bento-bookmarks-note-bar-fill`) has a dark weight in `bento-tokens.css`
+  because Mux's `border-strong` is neutral-26 in light and a much lighter step in dark.
 - A row's actions are one 24 px trigger (small control size) because five buttons covered most of
   a narrow row; do not add direct buttons back. A masked element's `mask-size` percentage is of
   its own box: a note text that shrink-wrapped to 70 px was masked from `100% - 88px`, fully

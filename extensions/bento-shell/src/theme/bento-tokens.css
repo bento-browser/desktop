@@ -323,6 +323,23 @@
     /* The Bento bookmarks toolbar strip: a translucent tint over whatever sits behind it (the brand
        background), weighted to read like the --neutral-18 fill it replaced. */
     --bento-bookmarks-toolbar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 12%, transparent);
+    /* The Bookmarks manager's other neutral fills that sit on a surface (the view, and the popup's
+       form): translucent tints of the semantic neutral, like the strip above, each weighted to read
+       like the solid neutral it replaced over --bento-brand-bg (within about 3 RGB steps in light
+       and dark). Rows, spaces, button states and the empty-space drop target are
+       --bento-surface-hover and --bento-surface-active. Floating surfaces (menus, popovers, toasts,
+       the drag ghost) and the page itself stay opaque. A field's fill was the page colour itself
+       (neutral-5), so its tint is none: its outline marks it. Raise it here for a visible well. */
+    --bento-bookmarks-field-fill: transparent;
+    /* The unchecked to-do box (Mux's raised neutral-10 in light, neutral-98 in dark). */
+    --bento-bookmarks-checkbox-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 3.5%, transparent);
+    /* The open tabs toggle while on (Mux's neutral-80), and under the pointer (neutral-90, which a
+       tint of itself cannot exceed, so the next step, neutral-100, at a weight that reads the same). */
+    --bento-bookmarks-toggle-selected-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 90%, transparent);
+    --bento-bookmarks-toggle-selected-fill-hover: color-mix(in srgb, var(--muxui-semantic-color-neutral-100) 92%, transparent);
+    /* The bar down a note's left edge (Mux's border-strong, which is neutral-26 in light and a much
+       lighter step in dark, so a note bar's weight differs per mode; dark is set below). */
+    --bento-bookmarks-note-bar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 18%, transparent);
 
     /* System UI font stack for plain pages that load no Mux fonts. */
     --bento-font-system: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -451,6 +468,7 @@
   [data-muxui-color-scheme='dark'] {
     --bento-palette-highlight-bg: var(--muxui-semantic-color-neutral-14);
     --bento-palette-highlight-pressed-bg: var(--muxui-semantic-color-neutral-18);
+    --bento-bookmarks-note-bar-fill: color-mix(in srgb, var(--muxui-semantic-color-neutral-90) 62%, transparent);
   }
 
   /* Per-element theme re-link. Critical for menu items that show

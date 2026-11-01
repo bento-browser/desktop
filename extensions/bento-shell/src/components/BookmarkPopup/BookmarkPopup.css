@@ -22,7 +22,10 @@
     min-block-size: 0;
   }
 
-  /* Mux's popover is a strong (inverted) surface; the save popover is a plain raised one. */
+  /* Mux's popover is a strong (inverted) surface; the save popover is a plain raised one. The
+     popover is an opaque floating surface (nothing behind it may show through), and the form
+     inside it sits on that surface: the fields take the Bookmarks manager's field fill, a tint,
+     where Mux paints them solid neutral-5. */
   .muxui-popover.bento-bookmark-popup__edit {
     box-sizing: border-box;
     width: var(--bento-bookmark-popup-width);
@@ -35,6 +38,7 @@
        control size below sm, and at sm it still sets field values in body size, so the values
        take Mux's field token and the labels and buttons the rule below. */
     --muxui-field-font-size: var(--muxui-semantic-typography-text-xs-font-size);
+    --muxui-field-bg: var(--bento-bookmarks-field-fill);
   }
 
   .muxui-popover.bento-bookmark-popup__edit
