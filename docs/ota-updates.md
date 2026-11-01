@@ -186,12 +186,13 @@ same SHA-256 and size.
   deploys. It needs no build output and no gate.
 
 Every run, `--withdraw` included, holds an exclusive lock file,
-`.bento/ota-publish.lock` (gitignored), created with the `wx` flag and holding
+`$TMPDIR/bento-ota-publish.lock` (per user, shared by every checkout and clone
+on the Mac, cleared on reboot), created with the `wx` flag and holding
 the pid and start time. It is removed when the run ends, successfully or not,
 and a second run that finds it stops at once and names the file. The lock is
 local only: object immutability is a HEAD followed by a PUT, so two publishers
 could both see "missing" and upload different bytes to one key, and the lock
-stops that on one machine. That is enough because one maintainer publishes from
+stops that on one machine, even across worktrees. That is enough because one maintainer publishes from
 one Mac; a second publisher or a CI publisher would need a lock in shared
 storage, and this script has none. A run that is killed (Ctrl-C, a crash)
 leaves the file behind: confirm no other run is active, delete the file named

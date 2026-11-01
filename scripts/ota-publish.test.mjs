@@ -119,6 +119,7 @@ function setup(t, options = {}) {
   const ctx = {
     root,
     serviceDir,
+    lockFile: options.lockFile ?? path.join(dir, 'ota-publish.lock'),
     run,
     fetch,
     log: () => {},
@@ -570,10 +571,9 @@ test('needs Cloudflare credentials before doing anything', async (t) => {
   assert.deepEqual(s.commands(), []);
 });
 
-test('a held lock refuses a second run, and every run releases its own lock', async (t) => {
+test('a held lock refuses a second run from any checkout, and every run releases its own lock', async (t) => {
   const s = setup(t);
-  const lock = path.join(s.root, '.bento', 'ota-publish.lock');
-  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  const lock = s.ctx.lockFile;
   const holder = '{"pid":1,"started":"2026-11-02T12:00:00.000Z"}\n';
   fs.writeFileSync(lock, holder);
 
@@ -584,6 +584,12 @@ test('a held lock refuses a second run, and every run releases its own lock', as
       flags.join(' '),
     );
   }
+  const otherCheckout = setup(t, { lockFile: lock });
+  await assert.rejects(
+    publish(otherCheckout.args(['--assets']), otherCheckout.ctx),
+    /ota-publish\.lock exists/,
+  );
+  assert.deepEqual(otherCheckout.commands(), []);
   assert.deepEqual(s.commands(), []);
   assert.deepEqual(s.requests, []);
   assert.equal(fs.readFileSync(lock, 'utf8'), holder, 'a refused run leaves the holder lock alone');

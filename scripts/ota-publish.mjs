@@ -19,12 +19,13 @@
  * --assets and --promote refuse an older or republished version before uploading or
  * deploying anything. Production operations other than --withdraw first run the public
  * release gate and require evidence that this exact artifact was tested. Every run
- * holds an exclusive local lock (.bento/ota-publish.lock). See docs/ota-updates.md.
+ * holds an exclusive per-user lock shared by every checkout. See docs/ota-updates.md.
  */
 
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
@@ -340,10 +341,11 @@ async function withdraw(ctx) {
  * Takes the exclusive local publish lock and returns the function that releases it.
  * Object immutability is a HEAD followed by a PUT, so two runs could both see "missing"
  * and upload different bytes to one key; the lock stops a second run from starting.
+ * The file lives outside the checkout so runs from different worktrees or clones share it.
  * A run that is killed leaves the file behind, and the error says how to clear it.
  */
 function acquireLock(ctx) {
-  const file = path.join(ctx.root, '.bento', 'ota-publish.lock');
+  const file = ctx.lockFile;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
     const holder = { pid: process.pid, started: new Date().toISOString() };
@@ -380,8 +382,8 @@ async function runOperations(args, context) {
 
 /**
  * Runs the requested operations under the publish lock. `ctx` carries everything
- * outside the repository (`root`, `serviceDir`, `run` for commands, `fetch`, `log`,
- * `processEnv`) so tests can fake it.
+ * outside the repository (`root`, `serviceDir`, `lockFile`, `run` for commands, `fetch`,
+ * `log`, `processEnv`) so tests can fake it.
  */
 export async function publish(args, ctx) {
   const context = { ...ctx, environment: args.environment };
@@ -402,6 +404,8 @@ function defaultContext() {
   return {
     root,
     serviceDir: path.join(root, 'update-service'),
+    // Per user ($TMPDIR on macOS), shared by every checkout, cleared on reboot.
+    lockFile: path.join(os.tmpdir(), 'bento-ota-publish.lock'),
     run: (command, args, options) =>
       execFileSync(command, args, { stdio: 'inherit', env, ...options }),
     fetch: globalThis.fetch,
