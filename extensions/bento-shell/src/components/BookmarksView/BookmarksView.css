@@ -317,10 +317,12 @@ html[data-bento-document='bookmarks'] #root {
     flex: 1 1 auto;
   }
 
+  /* Only as tall as its rows, so the "+" below sits right under the last one; a long list shrinks
+     to the column and scrolls, keeping the "+" in view. */
   .bento-bookmarks__list {
     display: flex;
     min-height: var(--bento-bookmarks-row-min-height);
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     flex-direction: column;
     overflow-y: auto;
     overflow-x: hidden;

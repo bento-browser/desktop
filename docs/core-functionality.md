@@ -715,8 +715,8 @@ The view has three parts:
   link opens it in a new panel. Hovering a row shows a "More actions" button with Open in new
   tab (links), Edit, Move and Delete; it leaves the row's text readable.
   Rows edit in place; Enter saves and Esc cancels, and the focus goes back to the row (or to
-  the button that began the edit). A full-width "+" at the foot of a
-  column, shown while the pointer is over the column or the focus is inside it, adds a link,
+  the button that began the edit). A full-width "+" under a column's
+  last row, shown while the pointer is over the column or the focus is inside it, adds a link,
   note or to-do by typing: a web address or bare domain becomes a link, text
   starting with `[]` becomes a to-do, anything else a note. A group's menu renames it,
   sets its colour, moves it left or right, opens all its links in panels, or deletes it.
