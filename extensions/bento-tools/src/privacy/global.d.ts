@@ -18,6 +18,13 @@ declare global {
        */
       consumeAddPanelGrant(tabId: number, token: string): Promise<unknown>;
       /**
+       * Scales every browser window (chrome, shell UI and web content) by `scale` times the
+       * display's own size, live; 1 clears Firefox's `layout.css.devPixelsPerPx` override. The
+       * experiment keeps the value current as windows move between displays. Pass
+       * `uiScaleFactor(settings.uiScale)`.
+       */
+      applyUiScale(scale: number): Promise<void>;
+      /**
        * Tells every browser window's mount script the new UI colour mode pref at once
        * (a `bento-ui-color-mode-set` window event, detail `{ mode, stamp }`); private windows
        * ignore it. `stamp` is SettingsStore.colorStamp(): it orders the change against the panels

@@ -41,6 +41,8 @@ export const TOGGLE_DESCRIPTIONS: Partial<Record<BooleanSettingKey, string>> = {
 export const ENUM_DESCRIPTIONS: Record<EnumKey, string> = {
   uiColorMode:
     "Light or dark for Bento's own interface: the sidebar, panels, and Settings. It does not change how websites look.",
+  uiScale:
+    'Makes the whole Bento window larger: the sidebar, panels, Settings, and web pages. Pages get less room, as with browser zoom. It applies to every window; with displays of different densities, the window you are using sets the base size.',
   sidebarShortcutBehavior:
     'How the sidebar collapses when you press Cmd/Ctrl+S. Pressing it again brings the full sidebar back.',
   webRTCIPHandlingPolicy:
@@ -55,6 +57,13 @@ export const ENUM_OPTION_DESCRIPTIONS: Record<EnumKey, Readonly<Record<string, s
     light: 'Always light.',
     dark: 'Always dark.',
     system: "Switches with your computer's appearance setting.",
+  },
+  uiScale: {
+    '1': "Your display's own size. Nothing is scaled.",
+    '1.25': '25 percent larger.',
+    '1.5': '50 percent larger.',
+    '1.75': '75 percent larger.',
+    '2': 'Twice the size.',
   },
   sidebarShortcutBehavior: {
     collapse: 'Shrinks it to a narrow rail of tab icons and the workspace avatar.',

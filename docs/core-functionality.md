@@ -927,8 +927,8 @@ Bento Settings is a quick-pick palette over the window, not a page. The app menu
 onboarding dialog's Open Settings button open it; the command palette's
 Privacy command opens it on the protection level list, and a matching setting
 in the command palette's results opens it at that setting inside its category. The first
-list contains categories with short descriptions: Appearance, Performance, Workspaces
-(the sidebar collapse type and the Bookmarks manager switch),
+list contains categories with short descriptions: Appearance, Tab appearance, Performance,
+Workspaces (the sidebar collapse type and the Bookmarks manager switch),
 Panels, Privacy and search, Backup and data, Keyboard shortcuts, and Reset Bento.
 Each category opens its controls with their current values; Keyboard shortcuts opens its
 reference directly. Search settings finds individual controls, advanced privacy settings
@@ -948,6 +948,16 @@ the value live (the panel corners follow the thumb, which glides between values 
 or a click on the track and follows the pointer exactly while dragged), Page keys move it by a tenth of the range, Home and End jump to the ends, Enter keeps
 it, and Back or Esc puts the previous value back, as on the field pages. A screen reader
 announces the value with its unit.
+
+Appearance holds Bento color mode and Interface scale. Interface scale (1.00x by default,
+1.25x, 1.50x, 1.75x, 2.00x) makes the whole Bento window larger: the sidebar, panels,
+Settings, palettes and web pages, in every window at once, as soon as it is picked, and it is
+kept across restarts. It is relative to the display's own size, so 1.25x looks a quarter larger
+than 1.00x on the same display. Web pages get less room, as with browser zoom, and parts drawn
+by macOS, such as the window buttons, keep their size. Choosing 1.00x restores the display's
+own size. It is one setting for the whole profile, private windows included; with displays
+of different pixel density, the window you are using sets the size, and windows on another
+display look larger or smaller until you use them.
 
 The Bookmarks manager switch is the one switch that carries a second, always visible line (it
 names the Cmd/Ctrl+Shift+O shortcut, says the star, Cmd/Ctrl+D and the bookmarks toolbar use the

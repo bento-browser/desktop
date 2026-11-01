@@ -1595,6 +1595,67 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `page-error events unavailable` once and report no page errors; nothing else depends on it.
   The experiment replaced an earlier `crashed` boolean API (manifest 0.1.13) before release.
 
+### Interface Scale (bento-privacy Experiment)
+
+- Status: Active
+- Last updated: 2026-10-31
+- Files or patches:
+  - `extensions/bento-tools/experiments/bento-privacy/api.js` (`applyUiScale`,
+    `syncUiScalePref`, `displayRatioOf`, the watcher) and `schema.json`
+  - `extensions/bento-tools/src/background.ts` (`applyUiScale`),
+    `extensions/_shared/ui-scale.ts`
+  - `scripts/bento-privacy-security.test.mjs` (the scale tests)
+  - `scripts/firefox-compat-registry.mjs` (`layout.css.devPixelsPerPx`,
+    `nsPresContext devPixelsPerPx change`, `Window.desktopToDeviceScale`,
+    `ScreenHelperCocoa default CSS scale`, `activate window event`,
+    `MozUpdateWindowPos window root event`, `Window.windowRoot`,
+    `nsCocoaWindow windowDidChangeScreen reports a move`,
+    `screen-information-changed observer topic`,
+    `browser-delayed-startup-finished observer topic`)
+  - No Firefox patch and no mount script change. The `bento-tools` manifest version was
+    bumped (0.1.15) because the experiment schema gained a function.
+- Bento functionality: Settings, Appearance, Interface scale (1.00x, 1.25x, 1.50x, 1.75x,
+  2.00x) scales the whole window (chrome, shell documents and web content) live, in every
+  window, and the choice persists. `bento-tools` stores `uiScale` and calls
+  `browser.bentoPrivacy.applyUiScale(factor)`; the experiment writes the pref (below).
+  Details and pitfalls: `docs/technical/theming.md`, "Interface scale".
+- Vanilla Firefox surface touched or depended on: the pref `layout.css.devPixelsPerPx`
+  (`modules/libpref/init/StaticPrefList.yaml`, an `AtomicFloat`, default `-1.0`). It is
+  absolute device pixels per CSS pixel and a value of 0 or less follows the display, so
+  Bento writes the chosen factor times the display's own ratio as a string pref and clears
+  the pref at a factor of 1. `nsPresContext::PreferenceChanged` re-reads it in every
+  presentation context, which is why a change is live. The display's own ratio is
+  `Window.desktopToDeviceScale` of the most recently used browser window (the screen's
+  `contentsScaleFactor`, which ignores the pref); on macOS that is the screen's default CSS
+  scale (`ScreenHelperCocoa`). The experiment re-reads it on the chrome window event `activate`
+  (`nsFocusManager`), on `MozUpdateWindowPos` at `Window.windowRoot` (`AppWindow::WindowMoved`;
+  macOS reports a change of screen as a move in `windowDidChangeScreen:`), on the
+  `screen-information-changed` topic (`ScreenManager`) and on `browser-delayed-startup-finished`
+  (`browser-init.js`).
+- Why this cannot stay extension-only: no WebExtension API sets Firefox's UI scale
+  (`tabs.setZoom` scales one page), so the experiment writes the pref from the parent process.
+- Firefox update risk: `layout.css.devPixelsPerPx` renamed, retyped or given other
+  semantics; `nsPresContext` no longer reacting to it (a change then needs a restart);
+  `desktopToDeviceScale` removed or made to include the pref (the experiment would then
+  compound the scale on every re-read); the macOS default CSS scale no longer equal to the
+  contents scale; the two observer topics, `activate` or `MozUpdateWindowPos` renamed or moved to
+  another target (a drag to another display would then keep the old scale until the next
+  activation); macOS no longer reporting a move after a change of screen. Non-macOS platforms are
+  not supported: there `contentsScaleFactor` is 1 while the display's CSS ratio is higher.
+- Regression checks for future updates: run
+  `node scripts/check-firefox-compat.mjs --engine <tree>` and
+  `node --test scripts/bento-privacy-security.test.mjs`. In a dev build, pick each scale in
+  Settings and read `Services.prefs.getStringPref('layout.css.devPixelsPerPx')` in the
+  Browser Toolbox Console (the factor times the display's ratio, for example `2.5` for 1.25x
+  at 2); pick 1.00x and confirm `Services.prefs.prefHasUserValue(...)` is false; set the pref
+  by hand in about:config, relaunch, and confirm the stored scale replaces it (cleared at
+  1.00x); with two windows, confirm both resize; drag the active window from a display of
+  ratio 2 to one of ratio 1 with 1.25x picked and confirm the pref goes from `2.5` to `1.25`
+  without activating anything.
+- Rollback or migration notes: removing the setting and the experiment method leaves a
+  `layout.css.devPixelsPerPx` user pref in profiles that used it, which Firefox keeps honouring
+  until it is cleared in about:config.
+
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
@@ -3384,6 +3445,16 @@ below is generated; edit the registry, then run
 | `resource://gre/modules/Timer.sys.mjs` | module (runtime) | Timers for the search icon fetch timeout. An experiment scope has no setTimeout or clearTimeout, and a missing export leaves every search icon empty. | `extensions/bento-tools/experiments/bento-privacy/api.js#setTimeout` | `toolkit/modules/Timer.sys.mjs:96` |
 | `Timer.clearTimeout` | source (engine only) | Cancels the search icon fetch timer once the icon has been read. | `extensions/bento-tools/experiments/bento-privacy/api.js#clearTimeout` | `toolkit/modules/Timer.sys.mjs:161` |
 | `IconHandler.createIconURL` | source (engine only) | Makes the blob:system/<uuid> object URLs that getIconURL returns for configured engines. The experiment fetches only that form; a change of origin or scheme leaves the search icons empty. | `extensions/bento-tools/experiments/bento-privacy/api.js#SYSTEM_BLOB_ICON_URL` | `toolkit/components/search/ConfigSearchEngine.sys.mjs:151` |
+| `layout.css.devPixelsPerPx` | source (engine only) | The interface scale. An absolute float, device pixels per CSS pixel, whose default -1 follows the display, so Bento writes the chosen factor times the display's own ratio (a string pref, which is how a float static pref is stored) and clears the pref at a factor of 1. A change of type, default or meaning breaks every scale. | `extensions/bento-tools/experiments/bento-privacy/api.js#UI_SCALE_PREF` | `modules/libpref/init/StaticPrefList.yaml:11000` |
+| `nsPresContext devPixelsPerPx change` | source (engine only) | Every presentation context re-reads layout.css.devPixelsPerPx when the pref changes, which is what makes a scale change reach the chrome, the shell documents and web content of every open window with no reload. | `extensions/bento-tools/experiments/bento-privacy/api.js#UI_SCALE_PREF` | `layout/base/nsPresContext.cpp:537` |
+| `Window.desktopToDeviceScale` | source (engine only) | Device pixels per desktop pixel of the screen a browser window is on, the display ratio the interface scale multiplies. Unlike devicePixelRatio and nsIScreen.defaultCSSScaleFactor it ignores layout.css.devPixelsPerPx, so it reads the same before and after Bento writes the pref. It answers 1 for a document with no presentation yet, so the experiment reads only a window that has finished loading. | `extensions/bento-tools/experiments/bento-privacy/api.js#desktopToDeviceScale` | `dom/webidl/Window.webidl:501` |
+| `ScreenHelperCocoa default CSS scale` | source (engine only) | On macOS a screen's default CSS scale is its backing scale, which is also its contentsScaleFactor, so Window.desktopToDeviceScale is the display's own CSS ratio there. On Windows and GTK/X11 the two differ (contents scale 1, CSS scale higher), so the interface scale is correct on macOS only. | `extensions/bento-tools/experiments/bento-privacy/api.js#desktopToDeviceScale` | `widget/cocoa/ScreenHelperCocoa.mm:83` |
+| `activate window event` | source (engine only) | Chrome-only event, bubbling, that a browser window receives when it becomes the active window. The interface scale reads the display ratio again then, since the pref it wrote is absolute and the window now in use may be on a display of another density. | `extensions/bento-tools/experiments/bento-privacy/api.js#activate` | `dom/base/nsFocusManager.cpp:1650` |
+| `MozUpdateWindowPos window root event` | source (engine only) | Dispatched at the window root (not the window, and it does not bubble) each time the widget reports a move; a drag fires it for every step. The interface scale reads the display ratio again, which is how a window dragged to a display of another density is noticed. The listener goes on Window.windowRoot. | `extensions/bento-tools/experiments/bento-privacy/api.js#MozUpdateWindowPos` | `xpfe/appshell/AppWindow.cpp:2539` |
+| `Window.windowRoot` | source (engine only) | The event target MozUpdateWindowPos is dispatched at, so the interface scale listens there. | `extensions/bento-tools/experiments/bento-privacy/api.js#windowRoot` | `dom/webidl/Window.webidl:579` |
+| `nsCocoaWindow windowDidChangeScreen reports a move` | source (engine only) | On macOS a window that changes screen updates its backing scale and then reports a move, so MozUpdateWindowPos follows a drag to a display of another density and Window.desktopToDeviceScale already answers for the new screen. If the move report went away, the scale would stay at the old display until the next activation. | `extensions/bento-tools/experiments/bento-privacy/api.js#MozUpdateWindowPos` | `widget/cocoa/nsCocoaWindow.mm:7846` |
+| `screen-information-changed observer topic` | source (engine only) | Notified when the display setup changes (a monitor added or removed, a resolution or arrangement change). The experiment reads the display ratio again, because the pref it wrote for the old setup is absolute. | `extensions/bento-tools/experiments/bento-privacy/api.js#screen-information-changed` | `widget/ScreenManager.cpp:71` |
+| `browser-delayed-startup-finished observer topic` | source (engine only) | Notified with a browser window once it has finished starting. The experiment adds its activate and MozUpdateWindowPos listeners to that window and applies the interface scale if no earlier window could. | `extensions/bento-tools/experiments/bento-privacy/api.js#browser-delayed-startup-finished` | `browser/base/content/browser-init.js:749` |
 | `resource:///modules/MigrationUtils.sys.mjs` | module (runtime) | Opens the migration wizard from the welcome flow. | `showEmbeddedBrowserImportFromWelcome`, `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:1206` |
 | `MigrationUtils.showMigrationWizard` | source (engine only) | Shows the migration wizard with the NEWTAB entrypoint. | `restartToBrowserImportFromWelcome` | `browser/components/migration/MigrationUtils.sys.mjs:593` |
 | `resource:///modules/ExtensionsUI.sys.mjs` | module (runtime) | Bento re-subscribes ExtensionsUI to the permission-prompt topics when startup missed them. | `ensureExtensionsUIObservers` | `browser/modules/ExtensionsUI.sys.mjs:65` |

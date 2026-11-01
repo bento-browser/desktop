@@ -23,6 +23,7 @@ export const FIXTURE_SETTINGS: EditableSettings = {
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
   uiColorMode: 'system',
+  uiScale: '1',
   defaultPanelWidthPx: 640,
   sidebarShortcutBehavior: 'collapse',
   customPanelSizes: [320, 480, 640, 768, 1280],

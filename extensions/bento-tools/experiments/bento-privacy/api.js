@@ -399,12 +399,130 @@ function consumeAddPanelGrant(extension, tabId, token) {
   return validSource ? { windowId, source } : null;
 }
 
+// ---- Interface scale ----
+//
+// layout.css.devPixelsPerPx is Firefox's only whole-UI scale: the device pixels per CSS pixel as an
+// absolute number, applied live to chrome and web content in every window. Its default, -1, follows
+// the display (2 on a Retina Mac), so writing the factor itself would shrink the UI there. A scale
+// is therefore applied as the factor times the display's own ratio, and a factor of 1 clears the
+// pref, which is exactly the unscaled browser.
+//
+// The pref is global, so one display's ratio serves every window: the one the user is working in.
+// It is read again whenever that could have changed: a window is activated, a window moves (on
+// macOS a change of display reports a move, so MozUpdateWindowPos covers a drag to another
+// display), the display setup changes, or a browser window finishes starting. Mixed-density setups
+// therefore follow the most recently used window; a window on a display of another density shows
+// that window's absolute ratio, so it looks too large or too small until it is the one in use.
+// A move fires for every step of a drag, so a re-read must stay cheap: one display ratio read and
+// one pref read, and a write only when the value differs, which also keeps it from looping.
+const UI_SCALE_PREF = 'layout.css.devPixelsPerPx';
+const MIN_UI_SCALE = 1;
+const MAX_UI_SCALE = 2;
+
+let uiScaleFactor = 1;
+let uiScaleWatching = false;
+let uiScaleWatchedWindows = new WeakSet();
+
+/** The pref text for a factor on a display, rounded to three decimals so float noise stays out. */
+function uiScalePrefValue(factor, displayRatio) {
+  return String(Math.round(factor * displayRatio * 1000) / 1000);
+}
+
+/**
+ * The device pixels per desktop pixel of the screen the window is on, which is the display's own
+ * CSS ratio on macOS (Screen::mDefaultCssScale is the backing scale there). Unlike devicePixelRatio
+ * and nsIScreen.defaultCSSScaleFactor it ignores the pref, so it is the same before and after the
+ * override is written. Null for a window that has not finished loading: without a presentation the
+ * getter answers 1, which would write a shrinking value.
+ */
+function displayRatioOf(win) {
+  if (!win || win.closed || win.document.readyState !== 'complete') return null;
+  try {
+    const ratio = win.desktopToDeviceScale;
+    return ratio > 0 ? ratio : null;
+  } catch {
+    return null;
+  }
+}
+
+function syncUiScalePref() {
+  if (uiScaleFactor === 1) {
+    Services.prefs.clearUserPref(UI_SCALE_PREF);
+    return;
+  }
+  const ratio = displayRatioOf(Services.wm.getMostRecentWindow('navigator:browser'));
+  // No window can say yet: the first one to finish starting calls this again.
+  if (ratio === null) return;
+  const value = uiScalePrefValue(uiScaleFactor, ratio);
+  if (Services.prefs.getStringPref(UI_SCALE_PREF, '') !== value) {
+    Services.prefs.setStringPref(UI_SCALE_PREF, value);
+  }
+}
+
+const uiScaleWatcher = {
+  observe(subject, topic) {
+    if (topic === 'browser-delayed-startup-finished') watchWindowForUiScale(subject);
+    if (uiScaleFactor !== 1) syncUiScalePref();
+  },
+  // activate of a watched window, MozUpdateWindowPos of its window root.
+  handleEvent() {
+    if (uiScaleFactor !== 1) syncUiScalePref();
+  },
+};
+
+/**
+ * Where a window's move event goes: AppWindow::WindowMoved dispatches MozUpdateWindowPos at the
+ * window root and it does not bubble, so a listener on the window itself never hears it.
+ */
+function windowRootOf(win) {
+  try {
+    return win.windowRoot;
+  } catch {
+    return null;
+  }
+}
+
+function watchWindowForUiScale(win) {
+  if (!win || uiScaleWatchedWindows.has(win)) return;
+  uiScaleWatchedWindows.add(win);
+  win.addEventListener('activate', uiScaleWatcher);
+  windowRootOf(win)?.addEventListener('MozUpdateWindowPos', uiScaleWatcher);
+}
+
+function startUiScaleWatch() {
+  if (!uiScaleWatching) {
+    uiScaleWatching = true;
+    Services.obs.addObserver(uiScaleWatcher, 'screen-information-changed');
+    Services.obs.addObserver(uiScaleWatcher, 'browser-delayed-startup-finished');
+  }
+  for (const win of Services.wm.getEnumerator('navigator:browser')) watchWindowForUiScale(win);
+}
+
+function stopUiScaleWatch() {
+  if (!uiScaleWatching) return;
+  uiScaleWatching = false;
+  Services.obs.removeObserver(uiScaleWatcher, 'screen-information-changed');
+  Services.obs.removeObserver(uiScaleWatcher, 'browser-delayed-startup-finished');
+  for (const win of Services.wm.getEnumerator('navigator:browser')) {
+    win.removeEventListener('activate', uiScaleWatcher);
+    windowRootOf(win)?.removeEventListener('MozUpdateWindowPos', uiScaleWatcher);
+  }
+  // Forget the windows, or a later start would skip them as already watched.
+  uiScaleWatchedWindows = new WeakSet();
+}
+
 // The window event the mount script (bento-shell-mount.js) listens for. detail is { mode, stamp }:
 // the pref and SettingsStore.colorStamp(), the order stamp chrome compares with the panels payload's
 // (run, seq) plus the time the change should show (flipAt, absent from an older caller).
 const UI_COLOR_MODE_EVENT = 'bento-ui-color-mode-set';
 
 this.bentoPrivacy = class extends ExtensionAPI {
+  onShutdown(isAppShutdown) {
+    // A reload of the extension starts a fresh scope: drop this one's observers and listeners. The
+    // pref stays as it is, so the UI keeps its size until the next start applies the setting again.
+    if (!isAppShutdown) stopUiScaleWatch();
+  }
+
   getAPI(context) {
     const extensionBaseURI = this.extension?.baseURI;
     return {
@@ -433,6 +551,22 @@ this.bentoPrivacy = class extends ExtensionAPI {
             if (win.closed) continue;
             win.dispatchEvent(new win.CustomEvent(UI_COLOR_MODE_EVENT, { detail }));
           }
+        },
+
+        // Scales the whole Bento window (chrome, shell UI and web content) by `scale` times the
+        // display's own size, live and in every window; 1 restores the unscaled browser. Bento owns
+        // layout.css.devPixelsPerPx: tools calls this at every start, so a value set by hand in
+        // about:config is replaced (or cleared, at 1). This takes the factor only and never a pref
+        // name or value, so it needs no allowlist entry.
+        async applyUiScale(scale) {
+          if (typeof scale !== 'number' || !(scale >= MIN_UI_SCALE && scale <= MAX_UI_SCALE)) {
+            throw new Error(`Unsupported UI scale: ${scale}`);
+          }
+          uiScaleFactor = scale;
+          // Nothing to follow at 1: the pref is cleared and the display decides on its own.
+          if (scale === 1) stopUiScaleWatch();
+          else startUiScaleWatch();
+          syncUiScalePref();
         },
 
         async getPrefs(names) {

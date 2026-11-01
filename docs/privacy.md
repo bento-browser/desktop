@@ -59,8 +59,8 @@ The low-level privileged privacy API is `browser.bentoPrivacy`, registered from
 `extensions/bento-tools/experiments/bento-privacy/`. It exposes allowlisted pref
 reads/writes/clears and default search engine operations. It rejects prefs
 outside the static allowlist. It also hosts `consumeAddPanelGrant`, the
-one-time check behind the Add panel button, which does not read or write
-privacy state.
+one-time check behind the Add panel button, and `applyUiScale`, which applies the
+interface scale; neither reads or writes privacy state.
 
 The Settings palette reaches these operations through the tools-owned settings
 domain service. The shell background relays a request from the palette's document

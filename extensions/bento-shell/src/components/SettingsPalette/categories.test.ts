@@ -42,7 +42,7 @@ describe('Settings categories', () => {
         }
       }
     }
-    expect(controlRows(REGULAR_MODEL)).toHaveLength(25);
+    expect(controlRows(REGULAR_MODEL)).toHaveLength(26);
     expect(rootRows(REGULAR_MODEL)).toHaveLength(9);
     expect(rootRows(PRIVATE_MODEL)).toHaveLength(7);
   });
@@ -62,7 +62,7 @@ describe('Settings categories', () => {
           row.intent.type === 'push' ? rowsForStage(row.intent.stage, model).length : 0,
         ]),
       );
-      expect(sizes.get('category:appearance')).toBe(1);
+      expect(sizes.get('category:appearance')).toBe(2);
       expect(sizes.get('category:tabAppearance')).toBe(2);
       expect(sizes.get('category:performance')).toBe(3);
       expect(sizes.get('category:workspaces')).toBe(model.isPrivate ? 1 : 2);
@@ -97,7 +97,7 @@ describe('Settings categories', () => {
       status: '9 categories',
     });
     expect(footerFor(ROOT_STAGE, PRIVATE_MODEL, 7).status).toBe('7 categories');
-    expect(footerFor({ kind: 'category', id: 'appearance' }, REGULAR_MODEL, 1).hints).toContain(
+    expect(footerFor({ kind: 'category', id: 'appearance' }, REGULAR_MODEL, 2).hints).toContain(
       'Enter open',
     );
     expect(footerFor({ kind: 'category', id: 'tabAppearance' }, REGULAR_MODEL, 2).hints).toContain(

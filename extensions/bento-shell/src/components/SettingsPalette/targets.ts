@@ -46,7 +46,7 @@ export function resolveSettingsTarget(id: string): SettingsTarget | null {
         query: '',
       };
     }
-    if (key === 'uiColorMode' || key === 'sidebarShortcutBehavior') {
+    if (key === 'uiColorMode' || key === 'uiScale' || key === 'sidebarShortcutBehavior') {
       return { stages: settingPath(id, { kind: 'enum', key: key as EnumKey }), query: '' };
     }
     // A switch has no list: filter its category to its own label.

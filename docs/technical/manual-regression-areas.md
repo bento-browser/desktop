@@ -251,6 +251,11 @@ When changing core functionality, manually verify at least the affected subset:
   Then Cmd+Q and relaunch:
   Firefox's restored tabs are not doubled, and a workspace with no restored tab
   still restores its list;
+- Interface scale (the steps are under "Interface scale" in [theming.md](theming.md#interface-scale)):
+  each scale resizes the chrome, the shell documents and the pages in every open window and
+  survives a relaunch; 1.00x clears `layout.css.devPixelsPerPx`; at 1.25x and 1.75x the panel
+  frame hairlines and splitter seams stay crisp and the titlebar still lines up with the
+  traffic lights; a window dragged to a display of another density moves the pref;
 - after any Firefox update, the Browser Console shows
   `[bento-compat] probed N members on Firefox <platform version>` (the Gecko
   version, for example `158.0`) and no `[bento-compat] missing` lines.

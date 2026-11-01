@@ -54,6 +54,10 @@ describe('control rows', () => {
       'Reset Bento',
     ]);
     expect(find(rows, 'setting:uiColorMode').value).toBe('Follow system');
+    expect(find(rows, 'setting:uiScale')).toMatchObject({
+      label: 'Interface scale',
+      value: '1.00x',
+    });
     expect(find(rows, 'setting:tabSleepEnabled').value).toBe('On');
     expect(find(rows, 'setting:tabSleepAfterMinutes').value).toBe('30 min');
     expect(find(rows, 'setting:tabSleepKeepAlivePerWorkspace').value).toBe('3');
@@ -280,6 +284,23 @@ describe('choice stages', () => {
       ['Follow system', 'on'],
     ]);
     expect(rows[1]!.intent).toEqual({ type: 'change', changes: { uiColorMode: 'dark' } });
+  });
+
+  it('lists the interface scales, marks the current one and applies a choice as a settings change', () => {
+    const model: SettingsPaletteModel = {
+      ...REGULAR_MODEL,
+      settings: { ...REGULAR_MODEL.settings, uiScale: '1.5' },
+    };
+    const rows = rowsForStage({ kind: 'enum', key: 'uiScale' }, model);
+    expect(rows.map((row) => [row.label, row.radio])).toEqual([
+      ['1.00x', 'off'],
+      ['1.25x', 'off'],
+      ['1.50x', 'on'],
+      ['1.75x', 'off'],
+      ['2.00x', 'off'],
+    ]);
+    expect(rows[3]!.intent).toEqual({ type: 'change', changes: { uiScale: '1.75' } });
+    expect(find(controlRows(model), 'setting:uiScale').value).toBe('1.50x');
   });
 
   it('sends the privacy choices as advanced privacy changes', () => {
