@@ -562,3 +562,8 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
   never moves the focus twice.
 - The save target follows the current space, not the newest link anywhere: after a space switch in
   the toolbar, a save landing in the previous space's group read as lost.
+- A chrome hide can land before the popup document accepts the open or mounts (chrome presents the
+  host first, and the open message and React's subscription come later), so the popup document
+  follows `bento-host-presentation` from startup (`observeHostPresentation`) and `useHostHidden`
+  closes at once when the host was hidden after the latest open's show; subscribing only after the
+  mount left the star pressed with the popup invisible.

@@ -12,7 +12,10 @@
 //     chrome hides the overlay and returns the focus. That includes chrome hiding the overlay
 //     itself (a resize, a tab change): the popup hears it as `bento-host-presentation`
 //     (bridge/hostPresentation.ts) and closes the same way, so the buttons lose their pressed
-//     state. Chrome ignores the then stale close, which names a popup it no longer shows.
+//     state. Chrome ignores the then stale close, which names a popup it no longer shows. A hide
+//     can land before the open is accepted or before the popup mounts, so the document follows
+//     presentations from startup and a popup that mounts into a host hidden after its show closes
+//     at once.
 //   - The popup also tells the other shell documents which popup is up (and when it is gone), so
 //     the button that opened it shows its pressed state.
 //   - Data comes over the shell bus like any other document: the `bookmarks/snapshot` mirror, and
@@ -31,6 +34,7 @@ import { BookmarkPopup } from '../components/BookmarkPopup/BookmarkPopup';
 import { useFirefoxTheme } from '../theme/useFirefoxTheme';
 import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { initToolsPort, dispatch } from '../bridge/useToolsPort';
+import { markOpenAccepted, observeHostPresentation } from '../bridge/hostPresentation';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 import {
   notifyBookmarkPopupClosed,
@@ -44,6 +48,8 @@ import { openBookmarksView } from '../bookmarks/titles';
 import { useBookmarksSnapshot } from '../bookmarks/useBookmarkManager';
 
 initToolsPort();
+// Before the ready announcement: chrome presents the host only after it.
+observeHostPresentation();
 
 function BookmarkPopupApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
@@ -61,6 +67,7 @@ function BookmarkPopupApp() {
         if (previous && previous.popupId !== next.popupId) {
           notifyBookmarkPopupClosed(popupKey(previous.request));
         }
+        markOpenAccepted();
         current.current = next;
         setPopup(next);
         notifyBookmarkPopupOpened(popupKey(next.request));

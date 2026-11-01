@@ -8,7 +8,7 @@ import type { BookmarkColor } from '@shared/protocol';
 import Globe from 'lucide-react/dist/esm/icons/globe';
 
 import type { PopupRect } from '../../bridge/bookmarkPopup';
-import { subscribeToHostHidden } from '../../bridge/hostPresentation';
+import { hostHiddenSinceOpen, subscribeToHostHidden } from '../../bridge/hostPresentation';
 import { BentoIcon } from '../primitives';
 
 /** A space's or group's colour, drawn the way the Bookmarks view draws it. */
@@ -87,11 +87,15 @@ export function useEscape(onEscape: () => void): void {
 
 /** Runs `onHidden` when chrome hides the overlay on its own (a resize, a tab change, another
  * overlay). The popup then gets no click or key, so this is its only chance to keep unfinished
- * work and to report that it is gone. */
+ * work and to report that it is gone. A hide that came before this subscribed (chrome hid the
+ * host while the open was on its way) runs it as soon as the popup mounts. */
 export function useHostHidden(onHidden: () => void): void {
   const latest = useRef(onHidden);
   useEffect(() => {
     latest.current = onHidden;
   });
-  useEffect(() => subscribeToHostHidden(() => latest.current()), []);
+  useEffect(() => {
+    if (hostHiddenSinceOpen()) latest.current();
+    return subscribeToHostHidden(() => latest.current());
+  }, []);
 }
