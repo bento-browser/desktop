@@ -44,6 +44,7 @@
     "test:agent-skills": "node --test .agents/skills/bento-upgrade-firefox/scripts/*.test.mjs",
     "test:panels": "node scripts/panel-suite.mjs",
     "check:product-identity": "node scripts/check-product-identity.mjs branding/bento",
+    "check:product-identity:built": "node scripts/check-product-identity.mjs extensions/bento-shell/dist extensions/bento-tools/dist",
     "security:check": "node scripts/check-security-invariants.mjs",
     "release:security-check": "node scripts/check-release-security.mjs --channel=preview",
     "release:security-check:shell": "node scripts/check-release-security.mjs --built-shell",

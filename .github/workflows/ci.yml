@@ -257,6 +257,13 @@ jobs:
           BENTO_RELEASE: '1'
         run: pnpm run ext:bundle
 
+      - name: Product identity in the built extensions
+        # The import check scans the installed add-ons for forbidden product
+        # identities. Extension source is the one import input a pull request may
+        # skip source-import for, and source only reaches the engine through
+        # dist, so the same scan runs on the bundles here.
+        run: pnpm run check:product-identity:built
+
       - name: Release shell has no dev-only reload command
         # The release bundle must not ship the Alt+Shift+R handler
         # (scripts/dev-reload.mjs).
@@ -276,10 +283,12 @@ jobs:
     # wait for the static or extension checks, which run beside it (minutes are
     # free on this public repo, and the run is as long as its slowest job). A
     # pull request whose changed files cannot affect the import skips this job.
-    # Every push to main runs it and seeds the engine source cache. An empty
-    # `changes` output runs it, so the skip fails open.
+    # Every push to main runs it and seeds the engine source cache. The skip
+    # fails open: a failed `changes` job or an empty answer runs it (the status
+    # functions below replace the implicit success() check, which would skip
+    # this job when `changes` fails). A failed security gate still stops it.
     needs: [security-gate, changes]
-    if: needs.changes.outputs.import != 'false'
+    if: ${{ !cancelled() && needs.security-gate.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.import != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

@@ -19,8 +19,10 @@ const SAFE_FILES = new Set([
   '.github/dependabot.yml',
 ]);
 
-// Extension source is built, linted, and tested on every PR by other jobs. The
-// experiments are Firefox-facing code that the import copies, so they stay unsafe.
+// Extension source is built, linted, and tested on every PR by other jobs, and
+// its bundles get the same product-identity scan the import check runs on the
+// installed add-ons. The experiments are Firefox-facing code that the import
+// copies, so they stay unsafe.
 const EXTENSION_SOURCE_ROOTS = ['extensions/bento-shell/src/', 'extensions/bento-tools/src/'];
 
 /** True when a change to `path` cannot alter whether source-import passes. */
