@@ -64,6 +64,105 @@ and the rest) is an entry in the firefox-compat registry
 (`scripts/firefox-compat-registry.mjs`). A new shim that reaches a private member
 adds its entry, and its id in the mount probe list, in the same change.
 
+## Panel suite
+
+`pnpm run test:panels -- --app <Bento.app or its Contents/MacOS/bento>` is a local
+behaviour test of this renderer in a real build (default app:
+`engine/obj-bento/dist/Bento.app`; `--headed` shows the window, `--keep-profile`
+keeps the temporary profile after a pass). Exit 0 passes, 1 fails (a stale build and
+an app that does not start included), 2 is a usage or setup error. It never runs in
+CI, which builds no application, and exits 2 when the `CI` environment variable is
+non-empty; run it after any change to the mount script's panel
+code and as the `panel-suite` gate of a Firefox upgrade (see the
+`bento-upgrade-firefox` skill).
+
+- Source of truth: `scripts/panel-suite.mjs` (launch, scenario, the pure `checkState`
+  invariants, and the chrome-side collectors it runs in the window) and
+  `scripts/marionette-client.mjs` (a dependency-free Marionette client, with its
+  framing covered by `scripts/marionette-client.test.mjs`, which CI runs).
+- Chrome bridge: Marionette in the chrome context (`--remote-allow-system-access`),
+  on a port Firefox picks (`marionette.port` 0; the port is read from the profile's
+  `MarionetteActivePort`). The app is launched headless with `--new-instance` on a
+  fresh temporary profile. Persistence: none; the profile is deleted after a pass
+  and kept after a failure, next to a state dump and a window screenshot in a
+  second temporary directory (both paths are printed).
+- Scenario, with a distinct solid-colour `data:` page per tab: main only; main plus
+  two panels; the main tab switched to another tab; each panel closed in turn,
+  back to main only. Panels are created through the real add-panel path (the panel
+  navigator's Add panel button runs `addNewPanel`, so the grant, the bento-tools
+  adoption and the panels/sync round trip all run) and closed through the panel
+  header's Close panel button; no split-view call is made directly.
+- At every state it asserts split-view membership and order
+  (`tabpanels.splitViewPanels`, `gBrowser.activeSplitView`, inline `order`, the
+  `bento-split-active` and `bento-flat-panel-layout` classes, the trailer, and
+  Firefox's `[splitview]` attribute on `tabpanels`, which must be set while more than
+  one panel is rendered), `docShellIsActive` and `renderLayers` on each rendered
+  browser, non-empty, non-overlapping panel rects inside `tabpanels`, each browser's
+  rect non-empty and inside both its panel and the window, unchanged browsing context ids across
+  the main-tab switch, no split-view classes, data attributes, inline order or
+  `tab.splitview` marker left on a panel that is not rendered (at main only that is
+  every tab, the surviving main tab included), and the split state cleared at main
+  only. Flags and geometry are not enough (the mount has painted
+  blank panels with all of them right), so each rendered browser is also sampled at
+  two levels, both required in every state: `drawSnapshot` of its page must be that
+  page's colour, and a `drawSnapshot` of the chrome window at the browser's centre
+  must be too. A missing sample or a snapshot error fails the state and says which.
+- Manual verification: the failure directory's `window.png` is a Marionette
+  screenshot of the whole window (remote content included), `state.json` holds the
+  last collected facts, and `launch.log` in the kept profile has the browser's output.
+- Pitfalls:
+  - The stale-build check compares the SHA-256 of `bento-shell-mount.js` and
+    `bento-shell-mount.css`, as the running app serves them from
+    `chrome://browser/content/`, with `src/browser/base/content/`. It names
+    `pnpm run build` to refresh. It does not cover the extension bundles (the
+    shell and tools `dist/`), and a dev build is current only while the primary
+    checkout's last `pnpm run import` was run from the same sources.
+  - The connection retries only while Marionette is not ready (no port file yet, or
+    the connection is refused or reset). A failure in the session handshake closes the
+    connection and is reported as it is: Firefox keeps an open session and rejects
+    later connections, which would otherwise surface as a startup timeout.
+  - There is no dev or test mechanism that skips onboarding on a fresh profile
+    (`welcomeSeen` lives in bento-tools' `storage.local`). The suite sends what
+    Start browsing sends (`finishOnboarding` in the shell's welcome page): a
+    `settings/update` with `welcomeSeen: true` on the `bento-shell-bus`
+    BroadcastChannel from inside the welcome frame, then the
+    `BENTO_CLOSE_WELCOME_<ts>` title, repeated every 3 s until the overlay is
+    hidden because the message can be lost while the shell background starts.
+  - The window's first tab has no `bento.workspaceId` custom tab value; tabs created
+    later get one. The suite waits for that value on the second main tab before
+    switching to it, as the sign bento-tools took the tab over.
+  - The window is resized to 2600x900 so every rendered browser's centre fits in it
+    for the window-level sample; a window that cannot be resized to that fails the
+    run, and a browser whose centre is outside the window fails its state (there is
+    no page-level-only fallback). The page-level snapshot renders the document wherever it is and cannot see a
+    browser the compositor does not draw (a panel with `visibility: hidden` passes
+    it); only the window-level sample does.
+  - Closing the last panel leaves the closed panel's id in `tabpanels.splitViewPanels`
+    (observed on 158.0: `[panel-3-3]` after both panels closed). Both main-only
+    teardown paths resolve the ids to tabs through `gBrowser.tabs`, so the id of a
+    tab that is already gone is never removed, and Firefox's `removeTabsFromSplitview`
+    drops only the ids it is given. A dead id has no element and the next panel
+    reconcile sanitises it, so the suite reports it as a warning; a live panel still
+    listed at main only fails. Because `removeTabsFromSplitview` then calls
+    `setSplitViewActive(true)` for the non-empty list, Firefox's `[splitview]`
+    attribute on `tabpanels` also stays set at main only (observed true at "back to
+    main only", true at "first panel closed" where two panels are rendered, false
+    at the first "main only"; assigning `splitViewPanels = []` cleared it). The
+    warning names the attribute; the attribute set with no id listed fails.
+    Tighten the check when the mount drops dead ids.
+  - The suite does not check `docShellIsActive` or `renderLayers` on a tab that is not
+    rendered, such as the main tab left behind by a switch.
+- Testing a worktree's chrome against a built app without touching the primary dev
+  build: copy the app outside every repo (`ditto`), remove each chrome-file symlink in
+  the copy before replacing it (otherwise a write goes through into the primary
+  engine), point `bento-shell-mount.{js,css}`, `bento-chrome-theme.css`, the
+  generated tokens (`node scripts/generate-chrome-tokens.mjs --output ... --themes-dir
+  ...`), the built-in add-ons' `dist`, `experiments` and `manifest.json`, and a copy
+  of the `src/browser/actors/` files at the worktree, and set `MozillaDeveloperObjPath`
+  in the copy's `Info.plist` to the worktree (the content sandbox reads the shell's
+  `dist` only under the repo and objdir paths recorded there; otherwise the shell
+  frames load blank with no error).
+
 ## Chrome rendering pitfalls
 
 - Chrome layout stylesheet. Source of truth: `src/browser/base/content/bento-shell-mount.css`,
