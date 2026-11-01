@@ -406,10 +406,8 @@ pnpm run test:panels -- --app engine/obj-bento/dist/Bento.app
 Require a zero exit. Exit 1 with "stale build" means the app does not serve the
 repo's mount script or stylesheet: refresh with `pnpm run build` and rerun. Any
 other exit 1 prints the failed invariants, a state dump, and a window screenshot;
-fix the cause rather than loosening the suite. Its warning about a dead panel id in
-`tabpanels.splitViewPanels` at main only is known and not a failure (see "Panel suite"
-in `docs/technical/chrome-panel-rendering.md`). The suite needs no Firefox display and
-is never run in CI. Record the pass as the `panel-suite` checkpoint gate.
+fix the cause rather than loosening the suite. The suite needs no Firefox display
+and is never run in CI. Record the pass as the `panel-suite` checkpoint gate.
 
 ## Land the upgrade
 

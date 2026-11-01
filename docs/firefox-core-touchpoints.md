@@ -62,7 +62,7 @@ Use this shape for new or changed touchpoints:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-10-17
+- Last updated: 2026-11-02
 - Firefox 158.0 review (2026-10-14): `pnpm run firefox:compat:engine` found all
   202 registry members of that date in the vanilla and in the patched tree; 60 `at`
   lines moved and `BASELINE` is 158.0. Re-run 2026-10-17 after the window-handover
@@ -115,6 +115,19 @@ Use this shape for new or changed touchpoints:
   shortcuts therefore reach chrome only from privileged pages until the
   registration changes; see the traversal pitfalls in
   [panel-traversal-focus.md](technical/panel-traversal-focus.md).
+- Main-only split-view teardown (2026-11-02): both teardown paths in the mount script
+  (the reconcile tear-down for a workspace with no panels and
+  `forceMainOnlyChromeState`) passed `tabpanels.removeTabsFromSplitview` only the tabs
+  still in `gBrowser.tabs`. That method (`toolkit/content/widgets/tabbox.js`) splices
+  out just the ids it is given and then calls `setSplitViewActive(!!list.length)`, so
+  the id of a panel whose tab had already closed stayed in `splitViewPanels` and kept
+  `tabpanels`' `[splitview]` attribute set at main only. `clearSplitViewPanels` now
+  also assigns `tabpanels.splitViewPanels = []` when an id remains (the setter calls
+  `setSplitViewActive(false)`). No new Firefox member: `splitViewPanels` and
+  `removeTabsFromSplitview()` are already registry entries. Regression check: the
+  panel suite's "back to main only" state; by hand, close the last panel and read
+  `gBrowser.tabpanels.splitViewPanels` and `hasAttribute('splitview')` in the Browser
+  Toolbox Console. A Firefox update that changes either tabbox member must re-check it.
 - Window close handover (2026-10-14): closing a window destroyed every tab it
   hosted, so the tabs of a workspace that a second window had claimed (and the
   hidden tabs of other workspaces) lost their page state and were recreated from
@@ -503,7 +516,7 @@ Use this shape for new or changed touchpoints:
   built app, run `pnpm run test:panels -- --app <built app>` (the panel suite: it
   builds two panels through the add-panel path, switches the main tab and closes both
   headless, and checks split-view state, activity flags, geometry and each panel's
-  pixels; a warning about a dead id in `splitViewPanels` is known, see
+  pixels, including `splitViewPanels` empty and `[splitview]` clear at main only, see
   [chrome-panel-rendering.md](technical/chrome-panel-rendering.md#panel-suite)), run
   the flat panels manual checklist in
   `plans/flat-panels-browser-verification-checklist.md`, verify a workspace
