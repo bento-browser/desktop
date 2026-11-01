@@ -17,11 +17,12 @@ commands exposed through [`scripts/bento-env.sh`](../scripts/bento-env.sh):
   and the version files only when their content changes) and invoke `mach build`
   or `mach build faster`;
 - `package` invokes the Firefox package and multi-locale package steps and
-  writes `dist/bento-artifacts.json`. While the updater is enabled it also
-  creates a MAR and writes browser and add-on update metadata; with the updater
-  disabled (the default) it writes none and removes any left in `dist/`;
+  writes `dist/bento-artifacts.json`. When the updater is on for the build
+  (`updates.enabled` in a release build) it also creates a MAR and writes browser
+  and add-on update metadata; otherwise (dev and debug builds, or `updates.enabled`
+  false) it writes none and removes any left in `dist/`;
 - `updates-browser` and `updates-addons` regenerate update metadata from an
-  existing package; they refuse to run while the updater is disabled;
+  existing package; they refuse to run for a build without the updater;
 - `license-check` checks source-overlay headers; `verify` and `record` protect
   generated engine state;
 - `native-check` verifies the full-native-build receipt and prints its exact
@@ -104,7 +105,7 @@ stale Bento-owned overlays and refuse to overwrite user changes.
 - `pnpm run build:ui`: write the mozconfig and run `mach build faster`, the
   incremental Firefox UI build. It does not run `pnpm run import`.
 - `pnpm run package`: produce platform packages and locales, plus the MAR and
-  update XML when the updater is enabled (see [Updater](#updater)). A release
+  update XML when the updater is on for the build (see [Updater](#updater)). A release
   build first refuses an object directory whose shell still has the dev-only
   reload command (see [Dev-only reload command](#dev-only-reload-command)).
   Since Firefox 158, a macOS dev or debug build (developer options on) packages
@@ -112,7 +113,8 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   `.dmg`.
 - `pnpm run artifacts:check`: verify the packaged application against
   `dist/bento-artifacts.json`, and the MAR contents and update XML when the
-  updater is enabled. With the updater disabled it fails if a MAR or update
+  updater is on for the recorded build mode, plus the update host and certificate
+  checks under [Updater](#updater). Without the updater it fails if a MAR or update
   metadata exists. A `.mac.tar` package is opened: it must be a readable archive
   holding `Bento.app/Contents/Resources/application.ini` whose `[App] BuildID`
   equals the staged application's.
@@ -209,9 +211,10 @@ options when it writes `engine/mozconfig`:
 | `debug`         | `--enable-debug --disable-optimize --disable-release`, and on macOS `--enable-macos-target=11.0` |
 | `release`       | `--disable-debug --enable-optimize --enable-rust-simd --enable-release`                          |
 
-Every mode also gets the branding, the `bento` update channel, `--disable-updater`
-(see [Updater](#updater)), and the `MOZ_OBJDIR` line described under
-[Object directory](#object-directory).
+Every mode also gets the branding, the `bento` update channel, the update host, and
+the `MOZ_OBJDIR` line described under [Object directory](#object-directory). Dev and
+debug always get `--disable-updater`; release gets it while `updates.enabled` is
+false (see [Updater](#updater)).
 
 `--disable-release` turns on Firefox's developer options. Compared with
 `--enable-release` that skips the final-crate Rust LTO link (a serial tail that
@@ -232,92 +235,182 @@ the generated mozconfig changed (`--disable-release`, `--disable-updater`).
 
 ## Updater
 
-The updater is compiled out. The generated `engine/mozconfig` contains
-`--disable-updater` because `updates.enabled` in `bento.json` is `false`, and the
-release tooling treats a build as unable to update:
+The updater is compiled in only when two things hold: `bento.json` `updates.enabled`
+is `true` and the build mode is `release`. Dev and debug builds always get
+`--disable-updater`, so the daily build cannot update itself or be offered an
+update into `engine/obj-bento`. `updates.enabled` is `false` today, so no build
+has an updater yet.
 
+`effectiveUpdaterState(config, mode)` in
+[`scripts/update-readiness.mjs`](../scripts/update-readiness.mjs) is the single
+answer. The mozconfig writer, `package`, `updates-browser`, `updates-addons`, the
+`updates` record in `dist/bento-artifacts.json` and `pnpm run artifacts:check` all
+call it, so they cannot disagree. The mode comes from `scripts/build-mode.mjs`
+(see [Dev-only reload command](#dev-only-reload-command)).
+
+| Mode            | `updates.enabled: false` | `updates.enabled: true` |
+| --------------- | ------------------------ | ----------------------- |
+| `dev`, `debug`  | updater out              | updater out             |
+| `release`       | updater out              | updater in              |
+
+### A build without the updater
+
+- The generated `engine/mozconfig` contains `--disable-updater`.
 - `package` writes no MAR, update XML, or add-on update XML, deletes any
   `dist/output.mar` and `dist/update/` an earlier package left, and records
-  `"updates": { "enabled": false }` in `dist/bento-artifacts.json`. It records the
-  updater state the build was configured with, and refuses to package when that
-  disagrees with `updates.enabled` (run `pnpm run build`), so an object directory
-  configured with a different updater setting is never described by the wrong
-  metadata. Two sources are read: the last `--enable-updater` or `--disable-updater`
-  (or `--with` and `--without`) in `engine/mozconfig`, because configure keeps the
-  last occurrence of an option and a first-match scan would miss a later flag, and
-  `MOZ_UPDATER` in the object directory's `config.status.json`, which is what
-  configure actually built and cannot be disguised by how a mozconfig spells a flag.
-  It also refuses a `config.status.json` whose `MOZ_UPDATE_CHANNEL` is not
-  `updates.channel` (configure lowercases it).
-- `updates-browser` and `updates-addons` fail with a message naming the switch.
+  `"updates": { "enabled": false, "mode": "<mode>" }` in `dist/bento-artifacts.json`.
+  It records the updater state the build was configured with, and refuses to package
+  when that disagrees with the state its mode requires (run `pnpm run build`), so an
+  object directory configured with a different updater setting is never described
+  by the wrong metadata. Two sources are read: the last `--enable-updater` or
+  `--disable-updater` (or `--with` and `--without`) in `engine/mozconfig`, because
+  configure keeps the last occurrence of an option and a first-match scan would miss
+  a later flag, and `MOZ_UPDATER` in the object directory's `config.status.json`,
+  which is what configure actually built and cannot be disguised by how a mozconfig
+  spells a flag. It also refuses a `config.status.json` whose `MOZ_UPDATE_CHANNEL` is
+  not `updates.channel` (configure lowercases it).
+- `updates-browser` and `updates-addons` fail with a message naming the mode and
+  the switch.
 - `pnpm run artifacts:check` expects the primary packages and a matching
   `bento-artifacts.json`, still requires the application's `precomplete` file
   (Firefox's packager writes it whether or not the updater is built, and the
   Windows installer and uninstaller read it to remove files), checks that the
-  object directory's `config.status.json` agrees with `updates.enabled` and
-  `updates.channel`, and fails if a MAR or update metadata exists in `dist/` or
-  the manifest.
-- `configs/common/mozconfig`, the platform fragment and the root `mozconfig`
-  are appended to `engine/mozconfig` after Bento's options, so they may not set
-  the updater, MAR signature verification or the update channel: any active line
-  that mentions one (`--enable-updater`, `--disable-updater`, `--with-updater`,
-  `--without-updater`, the same four spellings of `unverified-updates` and of
-  `update-channel`, a `MOZ_UPDATER`, `MOZ_VERIFY_MAR_SIGNATURE` or
-  `MOZ_UPDATE_CHANNEL` export, `MAR_CHANNEL_ID`, `ACCEPTED_MAR_CHANNEL_IDS`) makes
-  the mozconfig writer fail, the same way a `MOZ_OBJDIR` line does. Full-line and
-  trailing `#` comments are ignored first, so a note that names an option is
-  fine. `updates.enabled` and `updates.channel` are the only switches: unverified
-  updates would bypass MAR signature checks if the updater were re-enabled, and a
-  channel such as `release` compiles Mozilla's certificates into the updater.
+  object directory's `config.status.json` agrees with the state the recorded mode
+  requires and with `updates.channel`, and fails if a MAR or update metadata exists
+  in `dist/` or the manifest. The recorded mode decides, not the checking
+  process's environment: `build-release.sh` packages with `BENTO_RELEASE=1` and runs
+  the check without it.
 - `scripts/build-release.sh` collects no MAR or update XML and fails if
   `release-out/` or `dist/` holds one.
 
-The update channel (`--enable-update-channel=bento`), the MAR channel exports,
-`MOZ_APPUPDATE_HOST`, and all update tooling (`createMar`, update XML writers,
-the MAR checks in `validate-bento-artifacts.mjs`) stay in place for when the
-updater returns.
+### A build with the updater
 
-Why it is off (2026-10-12 audit, findings S-02, S-03, F-18): any channel other
-than Mozilla's release, beta, esr, nightly and aurora ones compiles Mozilla's
-`dep1.der` and `dep2.der` certificates into the updater as MAR trust anchors, so
-`bento` is not a trust boundary of its own;
-nothing signs Bento's MARs; `MOZ_APPUPDATE_HOST` has no consumer in stock Firefox,
-so an updater-enabled build asks `aus5.mozilla.org`; and the release gate checked
-configuration rather than artifacts.
+`package` also creates the MAR, writes the browser and add-on update XML, and
+records `"updates": { "enabled": true, "mode": "release" }`. `artifacts:check` then
+proves the update path from the build's own bytes:
 
-### Re-enabling the updater
+- `config.status.json` has `MOZ_APPUPDATE_HOST` equal to `updates.hostname` and
+  `ACCEPTED_MAR_CHANNEL_IDS` equal to `updates.channel`;
+- `[AppUpdate] URL` in the generated `<objdir>/dist/bin/application.ini` and in the
+  packaged `application.ini` starts with `https://<hostname>/update/6/`, and that
+  prefix appears as a literal in the shipped main binary, because the runtime URL
+  comes from the application data compiled into it, not from the packaged INI;
+- both committed update certificates (`primary.der` and `secondary.der`) appear as
+  byte sequences inside `updater.app/Contents/MacOS/org.mozilla.updater`;
+- `updater.app` carries `UpdateSettings.framework`. The framework formats the
+  accepted channel at runtime, so only its presence is checked here; the
+  wrong-channel MAR fixture in the isolated round trip is the functional proof;
+- the MAR contents, digest, size and update XML, as before.
 
-`updates.enabled` is a single switch that three places refuse to turn on until
-`config/release-security.json` records every input below: the release gate
-(`pnpm run release:security-check`, run by CI), the mozconfig writer (so
-`pnpm run build` fails before compiling), and `package` and the `updates-*`
-commands. The checks live in
-[`scripts/update-readiness.mjs`](../scripts/update-readiness.mjs).
+Fragments may not set the update host either: see the next section.
 
-| Input in `config/release-security.json` `updateService` | Means                                                                                                                                    |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `marSigningKeyFingerprint`                              | SHA-256 fingerprint of the real MAR signing key (private key kept outside the repository)                                                |
-| `updaterCertificateFingerprint`                         | Fingerprint of the certificate compiled into the updater; it must equal the signing key's, so the compiled certificate verifies the MARs |
-| `hostCompiledIn`                                        | `true` once `updates.hostname` reaches configure and `application.ini` before compilation                                                |
-| `isolatedRoundTripVerified`                             | `true` once a signed update installed from one build to the next against an isolated update host                                         |
+### Trust anchors and update host
 
-`bento.json` `updates.channel` must also be a Bento-owned name; `release`, `beta`,
-`esr`, `nightly*`, `aurora` and `default` select Mozilla's certificates and are
-refused. configure lowercases the channel before choosing certificates, so the
-check compares the lowercased, trimmed name (`Release`, `NIGHTLY` and `nightly`
-with padding are refused), and a channel that is not already lowercase and
-trimmed is refused as well. A public release additionally requires `updates.enabled`
-(`pnpm run release:security-check:public`).
+Stock Firefox compiles Mozilla's `dep1.der` and `dep2.der` into the updater for any
+channel it does not name, and asks `aus5.mozilla.org` because no configure code
+defines `MOZ_APPUPDATE_HOST`. Two patches in the `experiments` group fix both:
 
-These fields are recorded attestations. Nothing yet checks them against a built
-artifact, and the work they stand for does not exist in the repository: patching
-`toolkit/mozapps/update/updater/moz.build` to compile Bento's certificate for the
-`bento` channel, wiring the update host, adding a `signmar` step to `package`, and
-extending `artifacts:check` to verify the MAR signature against the committed
-certificate. Do that work, log every Firefox core surface it touches in
-[firefox-core-touchpoints.md](firefox-core-touchpoints.md), run the isolated round
-trip, record the inputs, and only then set `updates.enabled` to `true`. The next
-build reconfigures with the updater compiled in.
+- `patches/experiments/03-appupdate-host-configure.patch` adds the
+  `MOZ_APPUPDATE_HOST` configure option and config key, so the value the generated
+  mozconfig exports from `updates.hostname` reaches `build/moz.build` and
+  `application.ini`.
+- `patches/experiments/04-updater-bento-certificates.patch` adds a `bento` branch to
+  `toolkit/mozapps/update/updater/moz.build`, ahead of Mozilla's channels, that
+  compiles `branding/bento/update-certificates/primary.der` and `secondary.der`
+  into the updater. `pnpm run import` copies that directory into
+  `engine/browser/branding/bento/` with the rest of the branding.
+
+Only the shipped `org.mozilla.updater` takes these certificates. The `updater-dep`
+and `updater-xpcshell` programs that Firefox also builds (`DEP_UPDATER` and
+`TEST_UPDATER`, with Mozilla's `dep1.der`, `dep2.der` and the test certificate) land
+under `dist/_tests`, not in the application.
+
+The certificates are public (RSA-4096, SHA-384, ten years) and described in
+[`branding/bento/update-certificates/README.md`](../branding/bento/update-certificates/README.md).
+Each MAR is signed with the primary (active) key. The updater accepts a MAR that
+verifies against either certificate, so the secondary (offline backup) key can
+introduce a new key if the primary is lost. The private keys never enter a
+repository.
+
+The mozconfig writer validates `updates.hostname` in every mode (a bare lowercase
+hostname: no scheme, port, path or whitespace) because configure now consumes it,
+and the fragments `configs/common/mozconfig`, the platform fragment and the root
+`mozconfig` are appended after Bento's options. They therefore may not set the
+updater, MAR signature verification, the update channel or the update host: any
+active line that mentions one (`--enable-updater`, `--disable-updater`,
+`--with-updater`, `--without-updater`, the same four spellings of
+`unverified-updates` and of `update-channel`, a `MOZ_UPDATER`,
+`MOZ_VERIFY_MAR_SIGNATURE`, `MOZ_UPDATE_CHANNEL` or `MOZ_APPUPDATE_HOST` export,
+`MAR_CHANNEL_ID`, `ACCEPTED_MAR_CHANNEL_IDS`) makes the mozconfig writer fail, the
+same way a `MOZ_OBJDIR` line does. Full-line and trailing `#` comments are ignored
+first, so a note that names an option is fine. `updates.enabled`, `updates.channel`
+and `updates.hostname` are the only switches.
+
+### Enabling the updater
+
+Turning `updates.enabled` on is refused, for any mode, until the structural inputs
+hold. The release gate (`pnpm run release:security-check`, run by CI) checks them
+whenever `updates.enabled` is `true`; the mozconfig writer, `package` and the
+`updates-*` commands check them when the build's mode would compile the updater in.
+The checks are in `updaterReadinessProblems` and read only committed files:
+
+- `updates.channel` is exactly `bento`. configure lowercases the channel, and every
+  other name selects Mozilla's certificates or `dep1.der`, so a name that is merely
+  lowercase and Bento-like is still refused.
+- `updates.hostname` is a bare lowercase hostname.
+- `updateService.marSigningKeyFingerprint` and `updaterCertificateFingerprint` equal
+  the lowercase SHA-256 of `primary.der`, and `backupCertificateFingerprint` equals
+  that of `secondary.der`, so a fingerprint can never describe a certificate other
+  than the one compiled in.
+- Both patches above are listed in `patches/series.json`.
+
+`updateService.signingNickname` (`bento-mar-a`) names the key in the signing NSS
+database for the MAR signing step. `config/release-security.json` keeps
+`isolatedRoundTripVerified` and `publicReleaseReady` at `false`.
+
+### Publishing
+
+A built release reaches users only through `publishReadinessProblems` and the public
+gate. `pnpm run release:security-check:public` requires `publicReleaseReady`, an
+enabled updater, and a signing identity for each platform listed in
+`bento.json` `brands.bento.release.platforms` (`["macos"]` today; Linux and Windows
+identities are not asked for), then `isolatedRoundTripVerified` with a recorded
+`updateService.roundTrip` (`{ date, fromVersion, toVersion, buildIds: { from, to }, marSha256, host }`).
+`publishReadinessProblems(security, { version, buildId, marSha256 })` also binds that
+record to one exact artifact, which the publish tooling uses before any production
+operation. Building does not need the round trip, because the round trip itself needs
+real release builds with the updater on.
+
+### Version policy and update client facts
+
+Every published build has a unique, strictly higher version, and a version is never
+republished. The client skips an offered update whose version is lower, or equal with
+the same BuildID (`updateIsAtLeastAsOldAs` in `UpdateService.sys.mjs`), and the
+updater refuses a MAR whose product version is lower, so the update service orders by
+version alone.
+
+A release build honors the `AppUpdateURL` enterprise policy, which replaces the
+compiled URL (`AppUpdateURL` is read directly by `UpdateService.sys.mjs`; on macOS
+the provider reads `NSUserDefaults` for the bundle id when `EnterprisePoliciesEnabled`
+is set). The isolated round trip uses it to point a production-host build at a test
+update host, so no test hostname is ever compiled in.
+
+Elevated updates (installs the user cannot write to) are deferred. A stock build
+assumes the privileged helper can elevate (`getCanApplyUpdates`), and Bento has no
+helper of its own yet; a later patch makes that function report false on macOS when
+the install is not writable, which turns into the manual-update notification.
+
+Developer ID signing and notarization (`mach macos-sign`) and MAR signing are separate
+changes. Until they land, `updates.enabled` stays `false`.
+
+### Build trees for update work
+
+A release build with the updater on uses its own object directory,
+`BENTO_OBJDIR=obj-bento-release`, so the daily `engine/obj-bento` dev tree is not
+reconfigured (switching modes in one tree makes mach reconfigure and rebuild close to
+everything). `build-release.sh` refuses a non-empty `release-out/`, so move each
+build's `release-out/` to a dated directory outside the repository before the next
+one; the round trip needs build N preserved while N+1 is built.
 
 ## Object directory
 
@@ -725,7 +818,7 @@ normal signing requirements.
 Releases are built locally on the maintainer's Mac; CI has no release workflow.
 Every release stays a private prerelease build and must pass
 `pnpm run release:security-check`, which also refuses `updates.enabled: true`
-while the updater readiness inputs are missing (see [Updater](#updater)).
+while the updater's structural inputs do not hold (see [Updater](#updater)).
 
 `pnpm run build:release` (`scripts/build-release.sh`) is the only release path.
 It runs, in order:
@@ -754,11 +847,12 @@ The removed release workflow also created GitHub artifact provenance attestation
 uploaded and downloaded per-platform artifacts, and created the draft GitHub
 Release. None of that runs locally. Run
 `pnpm run release:security-check:public` before changing a release to a public,
-non-prerelease channel. That gate remains blocked until the non-secret
-fingerprints and identities for MAR signing, Linux manifest signing, macOS
-Developer ID, and Windows Authenticode are recorded in
-`config/release-security.json` and `bento.json` has `updates.enabled: true`.
-Signing private keys never belong in the repository.
+non-prerelease channel. That gate remains blocked until `publicReleaseReady` is
+set, `bento.json` has `updates.enabled: true`, the non-secret signing identity for
+each platform in `brands.bento.release.platforms` (macOS Developer ID today) is
+recorded in `config/release-security.json`, and the isolated update round trip is
+recorded (see [Publishing](#publishing)). Signing private keys never belong in the
+repository.
 
 `pnpm run security:check` protects repository-owned navigation, preference,
 profile-import, icon-fetching, bundled-add-on, signing, and release invariants.

@@ -5,8 +5,10 @@
  * Validate the package outputs produced by Bento's direct mach wrapper.
  * This intentionally checks metadata against the bytes on disk so a release
  * job cannot pass with an application package and an unrelated MAR/XML set.
- * While the updater is disabled (bento.json updates.enabled), the build cannot
- * update, so the check expects no MAR or update metadata and fails if any exists.
+ * A build can update only when the updater is on for its mode (effectiveUpdaterState:
+ * bento.json updates.enabled, release builds only). Without it the check expects no
+ * MAR or update metadata and fails if any exists. With it the check also looks inside
+ * the shipped binaries for the update host and both update certificates.
  * The package still carries `precomplete`: Firefox's packager writes it
  * unconditionally and the Windows installer and uninstaller read it.
  */
@@ -17,8 +19,14 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { readApplicationBuildId, updateMarUrl } from './bento-build.mjs';
-import { configuredUpdateState, isBentoChannel } from './update-readiness.mjs';
+import { readApplicationBuildId, readIniValue, updateMarUrl } from './bento-build.mjs';
+import { BUILD_MODES } from './build-mode.mjs';
+import {
+  configuredUpdateState,
+  effectiveUpdaterState,
+  isBentoChannel,
+  readUpdateCertificates,
+} from './update-readiness.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, '..');
@@ -152,6 +160,67 @@ function assertMarContents(manifest, root) {
   return { marPath, marHash: sha512(marPath), marSize: fs.statSync(marPath).size };
 }
 
+/** Where the shipped application keeps the files the updater checks look into. */
+function shippedUpdaterFiles(application, binaryName) {
+  if (path.basename(application).endsWith('.app')) {
+    const updater = path.join(application, 'Contents', 'MacOS', 'updater.app');
+    return {
+      main: path.join(application, 'Contents', 'MacOS', binaryName),
+      updater: path.join(updater, 'Contents', 'MacOS', 'org.mozilla.updater'),
+      framework: path.join(updater, 'Contents', 'Frameworks', 'UpdateSettings.framework'),
+    };
+  }
+  const exe = process.platform === 'win32' ? '.exe' : '';
+  return { main: path.join(application, `${binaryName}${exe}`), updater: path.join(application, `updater${exe}`) };
+}
+
+function readShipped(file, label) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) fail(`${label} is missing: ${file}`);
+  return fs.readFileSync(file);
+}
+
+/**
+ * What an updater-enabled build must prove from its own bytes: configure recorded
+ * Bento's host and accepted MAR channel, the update URL in the generated and the
+ * packaged application.ini and compiled into the main binary starts with Bento's
+ * host, both committed update certificates are inside the shipped updater, and the
+ * macOS updater carries the framework that holds the accepted channel (a runtime
+ * format string, so only its presence is checked here).
+ */
+function assertUpdaterShipped(root, config, manifest, application, objDist, configured) {
+  if (!configured) fail('the updater is on, but the object directory has no config.status.json to prove the update host and accepted MAR channel; rebuild and rerun pnpm run package');
+  const { hostname, channel } = config.updates;
+  if (configured.host !== hostname) {
+    fail(`configure recorded the update host ${JSON.stringify(configured.host)}, but bento.json updates.hostname is ${JSON.stringify(hostname)}; rebuild and rerun pnpm run package`);
+  }
+  if (configured.acceptedChannels !== channel) {
+    fail(`configure recorded the accepted MAR channels ${JSON.stringify(configured.acceptedChannels)}, but bento.json updates.channel is ${JSON.stringify(channel)}; rebuild and rerun pnpm run package`);
+  }
+
+  const prefix = `https://${hostname}/update/6/`;
+  for (const [file, label] of [
+    [path.join(objDist, 'bin', 'application.ini'), 'the generated application.ini'],
+    [path.resolve(root, manifest.applicationIni), 'the packaged application.ini'],
+  ]) {
+    const url = readIniValue(readShipped(file, label).toString('utf8'), 'AppUpdate', 'URL');
+    if (!url?.startsWith(prefix)) fail(`${label} has [AppUpdate] URL ${JSON.stringify(url)}, not one starting with ${prefix}`);
+  }
+
+  const files = shippedUpdaterFiles(application, config.binaryName);
+  if (!readShipped(files.main, 'the main binary').includes(prefix)) {
+    fail(`the main binary does not contain the update URL ${prefix}; the compiled application data does not use the Bento host`);
+  }
+  const updater = readShipped(files.updater, 'the updater binary');
+  const certificates = readUpdateCertificates(root);
+  for (const name of ['primary', 'secondary']) {
+    if (!certificates[name]) fail(`branding/bento/update-certificates/${name}.der is missing`);
+    if (!updater.includes(certificates[name])) fail(`the updater binary does not contain the committed ${name}.der update certificate`);
+  }
+  if (files.framework && !fs.statSync(files.framework, { throwIfNoEntry: false })?.isDirectory()) {
+    fail(`the updater has no UpdateSettings.framework: ${files.framework}`);
+  }
+}
+
 /** The MAR and update XML checks that apply only to a build with the updater compiled in. */
 function validateUpdateOutputs(manifest, config, root, release, packagedId) {
   if (path.basename(manifest.mar?.path ?? '') !== 'output.mar') fail('MAR metadata path must be dist/output.mar');
@@ -190,10 +259,14 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   if (manifest.displayVersion !== release.displayVersion || manifest.firefoxVersion !== config.firefox.version) {
     fail('artifact versions do not match bento.json');
   }
-  const updates = config.updates?.enabled === true;
-  if (typeof manifest.updates?.enabled !== 'boolean') fail('artifact metadata does not record the updater state; rerun pnpm run package');
+  // The recorded mode, not this process's environment, says what the build was: the
+  // release script packages with BENTO_RELEASE=1 but runs this check without it.
+  if (typeof manifest.updates?.enabled !== 'boolean' || !BUILD_MODES.includes(manifest.updates.mode)) {
+    fail('artifact metadata does not record the updater state and build mode; rerun pnpm run package');
+  }
+  const updates = effectiveUpdaterState(config, manifest.updates.mode).enabled;
   if (manifest.updates.enabled !== updates) {
-    fail(`artifact metadata was produced with the updater ${manifest.updates.enabled ? 'enabled' : 'disabled'}, but bento.json updates.enabled is ${updates}; rerun pnpm run package`);
+    fail(`artifact metadata records the updater as ${manifest.updates.enabled ? 'enabled' : 'disabled'} for a ${manifest.updates.mode} build, but bento.json updates.enabled is ${config.updates?.enabled === true}, so such a build has it ${updates ? 'enabled' : 'disabled'}; rerun pnpm run package`);
   }
   if (!manifest.application) fail('artifact metadata is incomplete');
   if (!updates) {
@@ -214,7 +287,7 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   const objDir = path.dirname(objDist);
   const configured = configuredUpdateState(objDir);
   if (configured && configured.updater !== updates) {
-    fail(`${path.relative(root, objDir)} was configured with the updater ${configured.updater ? 'in' : 'out'}, but bento.json updates.enabled is ${updates}; rebuild and rerun pnpm run package`);
+    fail(`${path.relative(root, objDir)} was configured with the updater ${configured.updater ? 'in' : 'out'}, but a ${manifest.updates.mode} build with bento.json updates.enabled ${config.updates?.enabled === true} has it ${updates ? 'in' : 'out'}; rebuild and rerun pnpm run package`);
   }
   if (configured && !isBentoChannel(configured.channel, config)) {
     fail(`${path.relative(root, objDir)} was configured with the update channel ${JSON.stringify(configured.channel)}, but bento.json updates.channel is ${JSON.stringify(config.updates?.channel)}; rebuild and rerun pnpm run package`);
@@ -230,6 +303,7 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
     process.stdout.write(`validate-bento-artifacts: verified ${packages.length} package(s); the updater is disabled, so no MAR or update metadata is expected\n`);
     return { updates, packages };
   }
+  assertUpdaterShipped(root, config, manifest, application, objDist, configured);
   const { marPath, marSize, targets } = validateUpdateOutputs(manifest, config, root, release, packagedId);
   const result = { updates, mar: path.relative(root, marPath), marSize, updateTargets: targets, packages };
   process.stdout.write(`validate-bento-artifacts: verified ${result.mar}, ${targets.length} update target(s), and ${packages.length} package(s)\n`);

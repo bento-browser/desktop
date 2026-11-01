@@ -1,0 +1,31 @@
+From d50edbe6e84f078c6d8e9f32678b784c4f48303f Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Mon, 2 Nov 2026 03:08:39 +1100
+Subject: [PATCH] Compile Bento update certificates for the bento channel
+
+---
+ toolkit/mozapps/update/updater/moz.build | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/toolkit/mozapps/update/updater/moz.build b/toolkit/mozapps/update/updater/moz.build
+index 1f997ef0cad1e477c591257c0a41c4a873c2e708..a444eca4d473a79e287e391b1eb70e7cf9c5a0ab 100644
+--- a/toolkit/mozapps/update/updater/moz.build
++++ b/toolkit/mozapps/update/updater/moz.build
+@@ -107,7 +107,13 @@ xpcshell_cert.script = "gen_cert_header.py:create_header"
+ dep1_cert.script = "gen_cert_header.py:create_header"
+ dep2_cert.script = "gen_cert_header.py:create_header"
+ 
+-if CONFIG["MOZ_UPDATE_CHANNEL"] in ("beta", "release", "esr"):
++if CONFIG["MOZ_UPDATE_CHANNEL"] == "bento":
++    # Bento's own MAR trust anchors, copied from branding/bento by the import.
++    primary_cert.inputs += ["/browser/branding/bento/update-certificates/primary.der"]
++    secondary_cert.inputs += [
++        "/browser/branding/bento/update-certificates/secondary.der"
++    ]
++elif CONFIG["MOZ_UPDATE_CHANNEL"] in ("beta", "release", "esr"):
+     primary_cert.inputs += ["release_primary.der"]
+     secondary_cert.inputs += ["release_secondary.der"]
+ elif CONFIG["MOZ_UPDATE_CHANNEL"] in (
+-- 
+2.54.0 (Apple Git-157)
+

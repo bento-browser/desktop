@@ -27,6 +27,7 @@
       "brandFullName": "Bento Browser",
       "release": {
         "displayVersion": "0.0.1",
+        "platforms": ["macos"],
         "github": {
           "repo": "Bento-Browser/desktop"
         }

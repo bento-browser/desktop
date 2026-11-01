@@ -1,66 +1,139 @@
 /**
- * Readiness inputs for compiling the updater in (bento.json `updates.enabled`), and
- * how the updater state a build was configured with is read back.
+ * What must hold before the updater is compiled in (bento.json `updates.enabled`),
+ * what a build of a given mode compiles, and how the state a build was configured
+ * with is read back.
  *
- * Bento ships with the updater compiled out until it owns a signed update path.
- * The release gate (check-release-security.mjs) and the build driver
- * (bento-build.mjs) both refuse `updates.enabled: true` while any input below is
- * missing from config/release-security.json. The inputs are recorded
- * attestations, so a person must have done the work they claim before setting them.
+ * Firefox's updater trusts the certificates compiled into it, so enabling it is
+ * gated on structural facts that can be checked from committed files: the
+ * channel that selects Bento's certificates, the certificates themselves, the
+ * update host, and the patches that wire both in. Artifact-level proof (the host
+ * and both certificates inside the shipped binaries) lives in
+ * validate-bento-artifacts.mjs. Whether a published release may reach users is a
+ * separate question: publishReadinessProblems.
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Firefox compiles Mozilla's own update certificates into the updater for any
-// channel except the ones Bento could patch, and these names select Mozilla's keys.
-// configure lowercases the channel (build/moz.configure/init.configure), so
-// 'Release' and 'NIGHTLY' select them too.
-const MOZILLA_CHANNELS = new Set(['default', 'release', 'beta', 'esr', 'aurora']);
-const SHA256_HEX = /^[a-f0-9]{64}$/i;
+/** The only channel patches/experiments/04 maps to Bento's own update certificates. */
+export const BENTO_CHANNEL = 'bento';
+export const UPDATE_CERTIFICATE_DIR = 'branding/bento/update-certificates';
+// The patches that make the updater trust Bento's certificates and ask Bento's host.
+const UPDATER_PATCHES = [
+  'patches/experiments/03-appupdate-host-configure.patch',
+  'patches/experiments/04-updater-bento-certificates.patch',
+];
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+const HOSTNAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 
-/** Returns what is missing, as one sentence per problem; an empty list means ready. */
-export function updaterReadinessProblems(bento, security) {
-  const channel = bento.updates?.channel;
+/**
+ * The updater state a build of `mode` must have: the one answer for every consumer
+ * (mozconfig writer, package, update commands, artifact check). Only a release
+ * build compiles the updater in, and only while bento.json enables it; dev and
+ * debug builds never do, so the daily build cannot update itself.
+ */
+export function effectiveUpdaterState(config, mode) {
+  return { enabled: config.updates?.enabled === true && mode === 'release', mode };
+}
+
+/**
+ * Why `hostname` cannot be the update host, or undefined. It lands in a mozconfig
+ * export and in the compiled update URL, so it must be a bare lowercase hostname:
+ * no scheme, port, path, whitespace or quote.
+ */
+export function hostnameProblem(hostname) {
+  return typeof hostname === 'string' && HOSTNAME.test(hostname)
+    ? undefined
+    : `updates.hostname (${JSON.stringify(hostname)}) must be a bare lowercase hostname with no scheme, port, path or whitespace`;
+}
+
+const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+
+/** The committed update certificates (DER bytes) of the repository at `root`; a missing file is undefined. */
+export function readUpdateCertificates(root) {
+  const read = (name) => {
+    const file = path.join(root, UPDATE_CERTIFICATE_DIR, name);
+    return fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+  };
+  return { primary: read('primary.der'), secondary: read('secondary.der') };
+}
+
+/**
+ * What is wrong with enabling the updater, as one sentence per problem; an empty
+ * list means the structural inputs hold. `root` is the repository holding the
+ * committed certificates and patches/series.json.
+ */
+export function updaterReadinessProblems(bento, security, root) {
   const service = security.updateService ?? {};
-  const signingKey = service.marSigningKeyFingerprint;
-  const compiledCertificate = service.updaterCertificateFingerprint;
+  const certificates = readUpdateCertificates(root);
   const problems = [];
 
-  const normalizedChannel = typeof channel === 'string' ? channel.trim().toLowerCase() : '';
-  if (!normalizedChannel || MOZILLA_CHANNELS.has(normalizedChannel) || normalizedChannel.startsWith('nightly')) {
+  const channel = bento.updates?.channel;
+  if (channel !== BENTO_CHANNEL) {
     problems.push(
-      `updates.channel (${JSON.stringify(channel)}) must be a Bento-owned channel, not one of Mozilla's`,
+      `updates.channel (${JSON.stringify(channel)}) must be exactly "${BENTO_CHANNEL}": configure lowercases the channel, and every name but this one selects Mozilla's update certificates`,
     );
   }
-  if (normalizedChannel && channel !== normalizedChannel) {
-    problems.push(
-      `updates.channel (${JSON.stringify(channel)}) must be lowercase with no surrounding whitespace; configure lowercases it before choosing certificates`,
-    );
+  const hostProblem = hostnameProblem(bento.updates?.hostname);
+  if (hostProblem) problems.push(hostProblem);
+
+  for (const [name, bytes] of Object.entries(certificates)) {
+    if (!bytes) problems.push(`${UPDATE_CERTIFICATE_DIR}/${name}.der is missing`);
   }
-  if (!SHA256_HEX.test(signingKey ?? '')) {
-    problems.push(
-      'updateService.marSigningKeyFingerprint must be the SHA-256 fingerprint of the MAR signing key',
-    );
+  for (const [field, name] of [
+    ['marSigningKeyFingerprint', 'primary'],
+    ['updaterCertificateFingerprint', 'primary'],
+    ['backupCertificateFingerprint', 'secondary'],
+  ]) {
+    const bytes = certificates[name];
+    if (bytes && service[field] !== sha256(bytes)) {
+      problems.push(
+        `updateService.${field} must be the lowercase SHA-256 of ${UPDATE_CERTIFICATE_DIR}/${name}.der (${sha256(bytes)})`,
+      );
+    }
   }
-  if (
-    !SHA256_HEX.test(compiledCertificate ?? '') ||
-    compiledCertificate.toLowerCase() !== signingKey?.toLowerCase()
-  ) {
-    problems.push(
-      'updateService.updaterCertificateFingerprint must equal marSigningKeyFingerprint: the certificate compiled into the updater has to be the one that signs the MARs',
-    );
+
+  let listed = [];
+  try {
+    listed = JSON.parse(fs.readFileSync(path.join(root, 'patches/series.json'), 'utf8')).series.map((entry) => entry.path);
+  } catch {
+    // An unreadable series lists nothing, so both patches are reported missing.
   }
-  if (service.hostCompiledIn !== true) {
-    problems.push(
-      'updateService.hostCompiledIn must be true once the update host reaches configure before compilation',
-    );
+  for (const patch of UPDATER_PATCHES) {
+    if (!listed.includes(patch)) problems.push(`${patch} must be listed in patches/series.json`);
   }
+  return problems;
+}
+
+/**
+ * What stands between a built release and users: an isolated round trip, attested
+ * and recorded, and, when `artifact` (`{ version, buildId, marSha256 }`) is given,
+ * recorded for that exact artifact. The public gate and the publish script run
+ * this; building does not.
+ */
+export function publishReadinessProblems(security, artifact) {
+  const service = security.updateService ?? {};
   if (service.isolatedRoundTripVerified !== true) {
-    problems.push(
+    return [
       'updateService.isolatedRoundTripVerified must be true once a signed update has installed against an isolated update host',
-    );
+    ];
   }
+  const trip = service.roundTrip;
+  const recorded = trip
+    && [trip.date, trip.fromVersion, trip.toVersion, trip.host].every((value) => typeof value === 'string' && value)
+    && [trip.buildIds?.from, trip.buildIds?.to].every((value) => typeof value === 'string' && value)
+    && SHA256_HEX.test(trip.marSha256);
+  if (!recorded) {
+    return [
+      'updateService.roundTrip must record the round trip as { date, fromVersion, toVersion, buildIds: { from, to }, marSha256, host }',
+    ];
+  }
+  if (!artifact) return [];
+  const problems = [];
+  if (trip.toVersion !== artifact.version) problems.push(`updateService.roundTrip is for version ${trip.toVersion}, not ${artifact.version}`);
+  if (trip.buildIds.to !== artifact.buildId) problems.push(`updateService.roundTrip updated to build ${trip.buildIds.to}, not ${artifact.buildId}`);
+  if (trip.marSha256 !== artifact.marSha256) problems.push('updateService.roundTrip is for a different MAR than this artifact (marSha256 differs)');
   return problems;
 }
 
@@ -96,15 +169,17 @@ export function activeMozconfigLines(text) {
 /**
  * Whether an active mozconfig line sets something Bento's generator owns about updates:
  * the updater (--enable-updater, --without-updater, an export of MOZ_UPDATER), MAR
- * signature verification (--enable-unverified-updates, MOZ_VERIFY_MAR_SIGNATURE), or
- * the update channel (--enable-update-channel, MOZ_UPDATE_CHANNEL, MAR_CHANNEL_ID,
- * ACCEPTED_MAR_CHANNEL_IDS), in any spelling. bento.json `updates.enabled` and
- * `updates.channel` are the only switches: unverified updates would bypass signature
- * checks if the updater came back, and a channel such as 'release' compiles Mozilla's
- * certificates into the updater. Bento's fragments may carry none of them.
+ * signature verification (--enable-unverified-updates, MOZ_VERIFY_MAR_SIGNATURE), the
+ * update channel (--enable-update-channel, MOZ_UPDATE_CHANNEL, MAR_CHANNEL_ID,
+ * ACCEPTED_MAR_CHANNEL_IDS), or the update host (MOZ_APPUPDATE_HOST), in any spelling.
+ * bento.json `updates.enabled`, `updates.channel` and `updates.hostname` are the only
+ * switches: unverified updates would bypass signature checks if the updater came back,
+ * a channel such as 'release' compiles Mozilla's certificates into the updater, and
+ * another host would send every update check there. Bento's fragments may carry none
+ * of them.
  */
 export function overridesUpdateSettings(line) {
-  return /updater|unverified[-_]updates|verify_mar_signature|update[-_]channel|mar_channel_id/i.test(line);
+  return /updater|unverified[-_]updates|verify_mar_signature|update[-_]channel|mar_channel_id|appupdate_host/i.test(line);
 }
 
 // configure keys its arguments by option name, so the last updater flag wins;
@@ -130,15 +205,21 @@ export function mozconfigUpdaterState(text) {
 
 /**
  * What configure recorded in an object directory's config.status.json, or undefined
- * before the first configure: whether the updater is built (MOZ_UPDATER is '1') and
- * the update channel (MOZ_UPDATE_CHANNEL, already lowercased by configure). It is the
- * ground truth: a mozconfig can set either in ways a text scan misses.
+ * before the first configure: whether the updater is built (MOZ_UPDATER is '1'), the
+ * update channel (MOZ_UPDATE_CHANNEL, already lowercased by configure), the update
+ * host and the accepted MAR channels. It is the ground truth: a mozconfig can set
+ * any of them in ways a text scan misses.
  */
 export function configuredUpdateState(objDir) {
   const file = path.join(objDir, 'config.status.json');
   if (!fs.existsSync(file)) return undefined;
   const substs = JSON.parse(fs.readFileSync(file, 'utf8')).substs ?? {};
-  return { updater: Boolean(substs.MOZ_UPDATER), channel: substs.MOZ_UPDATE_CHANNEL };
+  return {
+    updater: Boolean(substs.MOZ_UPDATER),
+    channel: substs.MOZ_UPDATE_CHANNEL,
+    host: substs.MOZ_APPUPDATE_HOST,
+    acceptedChannels: substs.ACCEPTED_MAR_CHANNEL_IDS,
+  };
 }
 
 /** Whether a channel recorded by configure is the one bento.json names (configure lowercases it). */

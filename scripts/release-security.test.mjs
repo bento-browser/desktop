@@ -9,6 +9,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { parse, stringify } from 'yaml';
 
+import { publishReadinessProblems, updaterReadinessProblems } from './update-readiness.mjs';
+
 const root = path.resolve(import.meta.dirname, '..');
 const releaseGate = path.join(root, 'scripts/check-release-security.mjs');
 const sbomGenerator = path.join(root, 'scripts/generate-release-sbom.mjs');
@@ -172,17 +174,28 @@ test('preview releases pass while public and mismatched-tag releases stay blocke
   assert.match(wrongTag.stderr, /Release tag must be/);
 });
 
-/** Runs the release gate against a temporary copy of bento.json and release-security.json. */
-function gateWith({ channel = 'preview', bento = () => {}, security = () => {} }) {
+/**
+ * Runs the release gate against a temporary copy of bento.json, release-security.json,
+ * the committed update certificates and patches/series.json. `tree` edits the copy
+ * before the run.
+ */
+function gateWith({ channel = 'preview', bento = () => {}, security = () => {}, series = () => {}, tree = () => {} }) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bento-release-gate-'));
   try {
-    const bentoJson = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
-    const securityJson = JSON.parse(fs.readFileSync(path.join(root, 'config/release-security.json'), 'utf8'));
+    const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+    const bentoJson = readJson('bento.json');
+    const securityJson = readJson('config/release-security.json');
+    const seriesJson = readJson('patches/series.json');
     bento(bentoJson);
     security(securityJson);
+    series(seriesJson);
     fs.mkdirSync(path.join(tempDir, 'config'));
+    fs.mkdirSync(path.join(tempDir, 'patches'));
+    fs.cpSync(path.join(root, 'branding/bento/update-certificates'), path.join(tempDir, 'branding/bento/update-certificates'), { recursive: true });
     fs.writeFileSync(path.join(tempDir, 'bento.json'), JSON.stringify(bentoJson));
     fs.writeFileSync(path.join(tempDir, 'config/release-security.json'), JSON.stringify(securityJson));
+    fs.writeFileSync(path.join(tempDir, 'patches/series.json'), JSON.stringify(seriesJson));
+    tree(tempDir);
     return spawnSync(process.execPath, [releaseGate, `--channel=${channel}`, `--root=${tempDir}`], {
       cwd: root,
       encoding: 'utf8',
@@ -192,83 +205,78 @@ function gateWith({ channel = 'preview', bento = () => {}, security = () => {} }
   }
 }
 
-const readyUpdater = (security) => {
-  Object.assign(security.updateService, {
-    marSigningKeyFingerprint: 'c'.repeat(64),
-    updaterCertificateFingerprint: 'C'.repeat(64),
-    hostCompiledIn: true,
-    isolatedRoundTripVerified: true,
-  });
-};
 const enableUpdates = (bento) => {
   bento.updates.enabled = true;
 };
+const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex');
+const primary = 'branding/bento/update-certificates/primary.der';
+const secondary = 'branding/bento/update-certificates/secondary.der';
 
-test('the repository ships with the updater disabled and its readiness inputs unset', () => {
+test('the repository ships with the updater disabled and its trust anchors committed', () => {
   const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
   assert.equal(bento.updates.enabled, false);
+  assert.equal(bento.updates.channel, 'bento');
+  assert.deepEqual(bento.brands.bento.release.platforms, ['macos']);
   const security = JSON.parse(fs.readFileSync(path.join(root, 'config/release-security.json'), 'utf8'));
+  assert.equal(security.publicReleaseReady, false);
   assert.deepEqual(security.updateService, {
     hostname: bento.updates.hostname,
-    marSigningKeyFingerprint: '',
-    updaterCertificateFingerprint: '',
-    hostCompiledIn: false,
+    marSigningKeyFingerprint: sha256Of(primary),
+    updaterCertificateFingerprint: sha256Of(primary),
+    backupCertificateFingerprint: sha256Of(secondary),
+    signingNickname: 'bento-mar-a',
     isolatedRoundTripVerified: false,
+  });
+  // The structural inputs already hold; only the signed update path is missing.
+  assert.deepEqual(updaterReadinessProblems(bento, security, root), []);
+  assert.deepEqual(security.platformSigning, {
+    linuxManifestKeyFingerprint: '',
+    macosDeveloperIdTeam: '',
+    windowsCertificateThumbprint: '',
   });
 });
 
-test('the release gate refuses to enable the updater until every readiness input is recorded', () => {
+test('the release gate refuses to enable the updater until its structural inputs hold', () => {
   const disabled = gateWith({});
   assert.equal(disabled.status, 0, disabled.stderr);
   assert.match(disabled.stdout, /updater disabled/);
 
-  for (const channel of ['preview', 'public']) {
-    const unready = gateWith({ channel, bento: enableUpdates });
-    assert.notEqual(unready.status, 0, channel);
-    assert.match(unready.stderr, /updates\.enabled is true, but the updater is not ready/);
-    for (const input of [
-      'marSigningKeyFingerprint',
-      'updaterCertificateFingerprint',
-      'hostCompiledIn',
-      'isolatedRoundTripVerified',
-    ]) {
-      assert.match(unready.stderr, new RegExp(input), `${channel} names ${input}`);
-    }
-  }
-
-  const ready = gateWith({ bento: enableUpdates, security: readyUpdater });
+  const ready = gateWith({ bento: enableUpdates });
   assert.equal(ready.status, 0, ready.stderr);
   assert.match(ready.stdout, /updater enabled/);
 
-  for (const [name, edit, message] of [
-    ['a certificate other than the signing key', (security) => { security.updateService.updaterCertificateFingerprint = 'd'.repeat(64); }, /updaterCertificateFingerprint must equal/],
-    ['an unrecorded host', (security) => { security.updateService.hostCompiledIn = false; }, /hostCompiledIn/],
-    ['no isolated round trip', (security) => { security.updateService.isolatedRoundTripVerified = false; }, /isolatedRoundTripVerified/],
-    ['a malformed signing fingerprint', (security) => { security.updateService.marSigningKeyFingerprint = 'abc'; }, /marSigningKeyFingerprint must be the SHA-256/],
-  ]) {
-    const result = gateWith({
-      bento: enableUpdates,
-      security: (security) => {
-        readyUpdater(security);
-        edit(security);
-      },
-    });
-    assert.notEqual(result.status, 0, name);
-    assert.match(result.stderr, message, name);
+  const wrongDigest = 'd'.repeat(64);
+  const cases = [
+    ['no signing fingerprint', { security: (security) => { security.updateService.marSigningKeyFingerprint = ''; } }, /marSigningKeyFingerprint must be the lowercase SHA-256 of branding\/bento\/update-certificates\/primary\.der/],
+    ['a compiled certificate other than the signing key', { security: (security) => { security.updateService.updaterCertificateFingerprint = wrongDigest; } }, /updaterCertificateFingerprint must be the lowercase SHA-256/],
+    ['a backup fingerprint of the primary certificate', { security: (security) => { security.updateService.backupCertificateFingerprint = sha256Of(primary); } }, /backupCertificateFingerprint must be the lowercase SHA-256 of branding\/bento\/update-certificates\/secondary\.der/],
+    ['an uppercase fingerprint', { security: (security) => { security.updateService.marSigningKeyFingerprint = sha256Of(primary).toUpperCase(); } }, /marSigningKeyFingerprint must be the lowercase SHA-256/],
+    ['a changed certificate file', { tree: (dir) => fs.appendFileSync(path.join(dir, primary), 'x') }, /marSigningKeyFingerprint must be the lowercase SHA-256/],
+    ['a missing certificate file', { tree: (dir) => fs.rmSync(path.join(dir, secondary)) }, /secondary\.der is missing/],
+    ['a series without the host patch', { series: (series) => { series.series = series.series.filter((entry) => !entry.path.includes('03-appupdate-host')); } }, /patches\/experiments\/03-appupdate-host-configure\.patch must be listed in patches\/series\.json/],
+    ['a series without the certificate patch', { series: (series) => { series.series = series.series.filter((entry) => !entry.path.includes('04-updater-bento')); } }, /patches\/experiments\/04-updater-bento-certificates\.patch must be listed in patches\/series\.json/],
+    ['an invalid host', { bento: (bento) => { bento.updates.hostname = 'https://Updates.example'; }, security: (security) => { security.updateService.hostname = 'https://Updates.example'; } }, /updates\.hostname .* must be a bare lowercase hostname/],
+  ];
+  for (const channel of ['preview', 'public']) {
+    for (const [name, edits, message] of cases) {
+      const result = gateWith({ channel, ...edits, bento: (bento) => { enableUpdates(bento); edits.bento?.(bento); } });
+      assert.notEqual(result.status, 0, `${channel}: ${name}`);
+      assert.match(result.stderr, /updates\.enabled is true, but the updater is not ready/, `${channel}: ${name}`);
+      assert.match(result.stderr, message, `${channel}: ${name}`);
+    }
   }
 
-  // Mozilla's channel names compile Mozilla's update certificates into the updater,
-  // and configure lowercases the channel first, so case and padding do not escape this.
-  for (const channel of ['release', 'Release', 'NIGHTLY', ' nightly ']) {
-    const mozillaChannel = gateWith({
+  // Mozilla's channel names compile Mozilla's update certificates into the updater, configure
+  // lowercases the channel first, and any other name falls back to Mozilla's dep1.der, so only "bento" passes.
+  for (const channel of ['release', 'Release', 'NIGHTLY', ' nightly ', 'Bento', 'bento-beta', '']) {
+    const wrongChannel = gateWith({
       bento: (bento) => {
         enableUpdates(bento);
         bento.updates.channel = channel;
       },
-      security: readyUpdater,
     });
-    assert.notEqual(mozillaChannel.status, 0, JSON.stringify(channel));
-    assert.match(mozillaChannel.stderr, /must be a Bento-owned channel/, JSON.stringify(channel));
+    assert.notEqual(wrongChannel.status, 0, JSON.stringify(channel));
+    assert.match(wrongChannel.stderr, /must be exactly "bento"/, JSON.stringify(channel));
   }
 
   const malformed = gateWith({ bento: (bento) => { bento.updates.enabled = 'yes'; } });
@@ -276,31 +284,86 @@ test('the release gate refuses to enable the updater until every readiness input
   assert.match(malformed.stderr, /updates\.enabled must be true or false/);
 });
 
-test('a public release also needs the updater enabled, not only the signing identities', () => {
-  const identities = (security) => {
-    security.publicReleaseReady = true;
-    security.updateService.marSigningKeyFingerprint = 'c'.repeat(64);
-    security.platformSigning = {
-      linuxManifestKeyFingerprint: 'e'.repeat(64),
-      macosDeveloperIdTeam: 'ABCDE12345',
-      windowsCertificateThumbprint: 'f'.repeat(40),
-    };
-  };
-  const updaterOff = gateWith({ channel: 'public', security: identities });
+test('release.platforms names the shipped platforms, each checked by the preview and public gates', () => {
+  for (const platforms of [undefined, [], ['macos', 'macos'], ['macos', 'beos'], ['constructor'], 'macos']) {
+    for (const channel of ['preview', 'public']) {
+      const result = gateWith({ channel, bento: (bento) => { bento.brands.bento.release.platforms = platforms; } });
+      assert.notEqual(result.status, 0, `${channel} ${JSON.stringify(platforms)}`);
+      assert.match(result.stderr, /release\.platforms must list each shipped platform once, from macos, linux, windows/);
+    }
+  }
+});
+
+const roundTrip = {
+  date: '2026-11-20',
+  fromVersion: '0.0.2',
+  toVersion: '0.0.3',
+  buildIds: { from: '20261120010000', to: '20261120020000' },
+  marSha256: 'e'.repeat(64),
+  host: 'updates-test.example.invalid',
+};
+const macosIdentity = (security) => {
+  security.publicReleaseReady = true;
+  security.platformSigning.macosDeveloperIdTeam = 'ABCDE12345';
+};
+const recordRoundTrip = (security) => {
+  security.updateService.isolatedRoundTripVerified = true;
+  security.updateService.roundTrip = roundTrip;
+};
+
+test('a public release needs the updater, the identity of each shipped platform and a recorded round trip', () => {
+  const withUpdater = { channel: 'public', bento: enableUpdates };
+  // Without the updater, the macOS identity alone is not enough.
+  const updaterOff = gateWith({ channel: 'public', security: (security) => { macosIdentity(security); recordRoundTrip(security); } });
   assert.notEqual(updaterOff.status, 0);
   assert.match(updaterOff.stderr, /Public release is blocked until .*bento\.json updates\.enabled/);
 
-  const updaterOn = gateWith({
-    channel: 'public',
-    bento: enableUpdates,
-    security: (security) => {
-      identities(security);
-      readyUpdater(security);
-      security.updateService.marSigningKeyFingerprint = 'c'.repeat(64);
-    },
-  });
-  assert.equal(updaterOn.status, 0, updaterOn.stderr);
-  assert.match(updaterOn.stdout, /Public release security gate passed/);
+  // Only the platforms listed in release.platforms need an identity: Linux and Windows are empty here.
+  const noRoundTrip = gateWith({ ...withUpdater, security: macosIdentity });
+  assert.notEqual(noRoundTrip.status, 0);
+  assert.doesNotMatch(noRoundTrip.stderr, /linuxManifestKeyFingerprint|windowsCertificateThumbprint/);
+  assert.match(noRoundTrip.stderr, /Public release is blocked until the update round trip is recorded/);
+  assert.match(noRoundTrip.stderr, /isolatedRoundTripVerified/);
+
+  const attestationOnly = gateWith({ ...withUpdater, security: (security) => { macosIdentity(security); security.updateService.isolatedRoundTripVerified = true; } });
+  assert.notEqual(attestationOnly.status, 0);
+  assert.match(attestationOnly.stderr, /updateService\.roundTrip must record the round trip as/);
+
+  const ready = gateWith({ ...withUpdater, security: (security) => { macosIdentity(security); recordRoundTrip(security); } });
+  assert.equal(ready.status, 0, ready.stderr);
+  assert.match(ready.stdout, /Public release security gate passed/);
+
+  const notReady = gateWith({ ...withUpdater, security: (security) => { macosIdentity(security); recordRoundTrip(security); security.publicReleaseReady = false; } });
+  assert.match(notReady.stderr, /Public release is blocked until .*publicReleaseReady/);
+
+  const badTeam = gateWith({ ...withUpdater, security: (security) => { macosIdentity(security); recordRoundTrip(security); security.platformSigning.macosDeveloperIdTeam = 'abc'; } });
+  assert.match(badTeam.stderr, /macOS Developer ID team must be a ten-character team identifier/);
+
+  // A platform added to release.platforms is asked for its own identity, in its own format.
+  const withLinux = (security) => { macosIdentity(security); recordRoundTrip(security); };
+  const linuxListed = (bento) => { enableUpdates(bento); bento.brands.bento.release.platforms = ['macos', 'linux']; };
+  const missingLinux = gateWith({ channel: 'public', bento: linuxListed, security: withLinux });
+  assert.match(missingLinux.stderr, /Public release is blocked until .*platformSigning\.linuxManifestKeyFingerprint/);
+  const badLinux = gateWith({ channel: 'public', bento: linuxListed, security: (security) => { withLinux(security); security.platformSigning.linuxManifestKeyFingerprint = 'abc'; } });
+  assert.match(badLinux.stderr, /Linux manifest key fingerprint must be a SHA-256 hex digest/);
+  const goodLinux = gateWith({ channel: 'public', bento: linuxListed, security: (security) => { withLinux(security); security.platformSigning.linuxManifestKeyFingerprint = 'f'.repeat(64); } });
+  assert.equal(goodLinux.status, 0, goodLinux.stderr);
+});
+
+test('publish readiness binds the recorded round trip to one exact artifact', () => {
+  const artifact = { version: '0.0.3', buildId: '20261120020000', marSha256: 'e'.repeat(64) };
+  const security = (change = {}) => ({ updateService: { isolatedRoundTripVerified: true, roundTrip, ...change } });
+
+  assert.deepEqual(publishReadinessProblems(security()), []);
+  assert.deepEqual(publishReadinessProblems(security(), artifact), []);
+  assert.match(publishReadinessProblems({})[0], /isolatedRoundTripVerified must be true/);
+  assert.match(publishReadinessProblems(security({ isolatedRoundTripVerified: false }))[0], /isolatedRoundTripVerified must be true/);
+  for (const incomplete of [undefined, {}, { ...roundTrip, buildIds: { from: '20261120010000' } }, { ...roundTrip, marSha256: 'abc' }, { ...roundTrip, host: '' }]) {
+    assert.match(publishReadinessProblems(security({ roundTrip: incomplete }))[0], /roundTrip must record the round trip as/);
+  }
+  assert.match(publishReadinessProblems(security(), { ...artifact, version: '0.0.4' }).join('\n'), /is for version 0\.0\.3, not 0\.0\.4/);
+  assert.match(publishReadinessProblems(security(), { ...artifact, buildId: '20261121000000' }).join('\n'), /updated to build 20261120020000, not 20261121000000/);
+  assert.match(publishReadinessProblems(security(), { ...artifact, marSha256: 'a'.repeat(64) }).join('\n'), /different MAR/);
 });
 
 test('release metadata covers the lockfile SBOM with valid checksums', () => {

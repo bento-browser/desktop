@@ -123,6 +123,16 @@
       "subject": "Use ThinLTO for hosted release Rust linking"
     },
     {
+      "path": "patches/experiments/03-appupdate-host-configure.patch",
+      "id": "appupdate-host-configure",
+      "subject": "Wire MOZ_APPUPDATE_HOST through configure"
+    },
+    {
+      "path": "patches/experiments/04-updater-bento-certificates.patch",
+      "id": "updater-bento-certificates",
+      "subject": "Compile Bento update certificates for the bento channel"
+    },
+    {
       "path": "patches/core-ui/18-native-root-view-transition-capture.patch",
       "id": "native-root-view-transition-capture",
       "subject": "Capture native no-scroll browser roots for view transitions"
