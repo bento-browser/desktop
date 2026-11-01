@@ -3,6 +3,7 @@ import { ADVANCED_PRIVACY_RULES, EDITABLE_SETTING_RULES } from '@shared/settings
 import {
   ADVANCED_PRIVACY_SPECS,
   BOOLEAN_SPECS,
+  ENUM_SPECS,
   NUMBER_SPECS,
   PANEL_SIZE_EDITOR,
   PANEL_SIZE_LIMITS,
@@ -43,6 +44,19 @@ describe('catalog against the tools rules', () => {
       max: PANEL_SIZE_LIMITS.max,
       maxItems: PANEL_SIZE_LIMITS.maxItems,
     });
+  });
+
+  it('offers exactly the interface scales the rules accept, labelled as factors', () => {
+    const rule = EDITABLE_SETTING_RULES.uiScale;
+    const options = ENUM_SPECS.uiScale.options;
+    expect(options.map((option) => option.value)).toEqual(rule.values);
+    expect(options.map((option) => option.label)).toEqual([
+      '1.00x',
+      '1.25x',
+      '1.50x',
+      '1.75x',
+      '2.00x',
+    ]);
   });
 
   it('lists every advanced privacy key of the rules once', () => {

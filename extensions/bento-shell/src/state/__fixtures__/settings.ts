@@ -16,6 +16,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   // welcome banner. The WelcomeBanner stories provide their own state.
   welcomeSeen: true,
   uiColorMode: 'light',
+  uiScale: '1',
   contentColorMode: 'light',
   defaultPanelWidthPx: 640,
   sidebarCollapsed: false,

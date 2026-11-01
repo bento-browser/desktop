@@ -2,7 +2,7 @@
 import { ROOT_STAGE, stageKey, type Stage } from './stageStack';
 
 export const SETTINGS_CATEGORIES = [
-  { id: 'appearance', label: 'Appearance', description: 'Bento interface color mode' },
+  { id: 'appearance', label: 'Appearance', description: 'Interface color mode and scale' },
   {
     id: 'tabAppearance',
     label: 'Tab appearance',
@@ -29,6 +29,7 @@ export type SettingsCategoryId = (typeof SETTINGS_CATEGORIES)[number]['id'];
 
 const ROW_CATEGORIES: Readonly<Record<string, SettingsCategoryId>> = {
   'setting:uiColorMode': 'appearance',
+  'setting:uiScale': 'appearance',
   'setting:tabStateTintsEnabled': 'tabAppearance',
   'setting:customTabStateIconsEnabled': 'tabAppearance',
   'setting:tabSleepEnabled': 'performance',

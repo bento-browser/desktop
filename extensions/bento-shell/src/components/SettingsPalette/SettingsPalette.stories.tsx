@@ -221,6 +221,9 @@ ResetConfirmation.storyName = '8 Reset confirmation';
 export const EnumStage = () => <Story stages={at({ kind: 'enum', key: 'uiColorMode' })} />;
 EnumStage.storyName = 'Choice (color mode)';
 
+export const UiScaleChoice = () => <Story stages={at({ kind: 'enum', key: 'uiScale' })} />;
+UiScaleChoice.storyName = 'Choice (interface scale, five options)';
+
 export const SizeEdit = () => (
   <Story
     stages={at(

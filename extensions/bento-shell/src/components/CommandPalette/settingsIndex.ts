@@ -24,6 +24,12 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
     keywords: ['theme', 'dark mode', 'light mode'],
   },
   {
+    id: 'setting:uiScale',
+    label: 'Interface scale',
+    group: 'Appearance',
+    keywords: ['zoom', 'size', 'scale', 'larger', 'smaller', 'display'],
+  },
+  {
     id: 'setting:tabStateTintsEnabled',
     label: 'Show tab state tints',
     group: 'Tab appearance',

@@ -77,6 +77,9 @@ privileged surface that normal WebExtension APIs cannot provide:
 - `consumeAddPanelGrant(tabId, token)`, the single-use check for the Add panel
   handshake (see "Add-panel grant" below). It is not a privacy operation; it
   lives here because this experiment is present in every shipped tools manifest.
+- `applyUiScale(scale)`, the interface scale (theming.md, "Interface scale"). It takes a factor
+  from 1 to 2, never a pref name, and writes `layout.css.devPixelsPerPx` itself, so the pref is not
+  in the allowlist. Like `consumeAddPanelGrant` it is not a privacy operation.
 
 The experiment rejects prefs outside its static allowlist. Search writes use
 `SearchService.getEngineById`, `SearchService.setDefault(..., USER)`, and also
