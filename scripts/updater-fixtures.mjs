@@ -20,7 +20,8 @@ export function writeCertificates(root) {
 /**
  * Writes what an updater-enabled build ships beside the application the fixture already
  * made: the update URL in the generated and packaged application.ini and in the main
- * binary, both certificates in the updater, and (in an app bundle) UpdateSettings.framework.
+ * binary, both certificates in the updater, and (in an app bundle) UpdateSettings.framework
+ * with its executable.
  */
 export function shipUpdater({ application, objDist, hostname = 'updates.example.invalid', binaryName = 'bento' }) {
   const bundle = path.basename(application).endsWith('.app');
@@ -43,5 +44,11 @@ export function shipUpdater({ application, objDist, hostname = 'updates.example.
     path.join(updaterDirectory, bundle ? 'org.mozilla.updater' : `updater${exe}`),
     Buffer.concat([CERTIFICATES.primary, Buffer.from('\0'), CERTIFICATES.secondary]),
   );
-  if (bundle) fs.mkdirSync(path.join(updaterApp, 'Contents', 'Frameworks', 'UpdateSettings.framework'), { recursive: true });
+  if (bundle) {
+    // The layout updater/moz.build gives the bundle: the framework executable and its Info.plist.
+    const framework = path.join(updaterApp, 'Contents', 'Frameworks', 'UpdateSettings.framework');
+    fs.mkdirSync(path.join(framework, 'Resources'), { recursive: true });
+    fs.writeFileSync(path.join(framework, 'UpdateSettings'), 'framework executable');
+    fs.writeFileSync(path.join(framework, 'Resources', 'Info.plist'), '<plist/>');
+  }
 }

@@ -297,9 +297,11 @@ proves the update path from the build's own bytes:
   comes from the application data compiled into it, not from the packaged INI;
 - both committed update certificates (`primary.der` and `secondary.der`) appear as
   byte sequences inside `updater.app/Contents/MacOS/org.mozilla.updater`;
-- `updater.app` carries `UpdateSettings.framework`. The framework formats the
-  accepted channel at runtime, so only its presence is checked here; the
-  wrong-channel MAR fixture in the isolated round trip is the functional proof;
+- `updater.app` carries `UpdateSettings.framework` with its
+  `UpdateSettings` executable, which the updater links, so it cannot launch
+  without it. The framework formats the accepted channel at runtime, so only the
+  executable's presence is checked here; the wrong-channel MAR fixture in the
+  isolated round trip is the functional proof;
 - the MAR contents, digest, size and update XML, as before.
 
 Fragments may not set the update host either: see the next section.
@@ -467,7 +469,8 @@ or changed component fails with its name and `pnpm run build` guidance.
 
 The receipt fingerprints the Firefox source/base identity, the whole ordered
 patch manifest and patch files, compiled native source/build-definition overlays,
-native branding definitions, the canonical common/platform/local mozconfig
+native branding definitions and the two updater certificates under
+`branding/bento/update-certificates/`, the canonical common/platform/local mozconfig
 inputs, resolved mode/object directory/host target, Rust pin and explicitly
 declared compiler/toolchain environment. Every patch change requires a full
 build, including patches that only affect runtime resources; there is no patch

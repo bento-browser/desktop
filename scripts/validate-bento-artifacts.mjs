@@ -185,7 +185,7 @@ function readShipped(file, label) {
  * packaged application.ini and compiled into the main binary starts with Bento's
  * host, both committed update certificates are inside the shipped updater, and the
  * macOS updater carries the framework that holds the accepted channel (a runtime
- * format string, so only its presence is checked here).
+ * format string, so only the framework's executable is checked here).
  */
 function assertUpdaterShipped(root, config, manifest, application, objDist, configured) {
   if (!configured) fail('the updater is on, but the object directory has no config.status.json to prove the update host and accepted MAR channel; rebuild and rerun pnpm run package');
@@ -216,8 +216,12 @@ function assertUpdaterShipped(root, config, manifest, application, objDist, conf
     if (!certificates[name]) fail(`branding/bento/update-certificates/${name}.der is missing`);
     if (!updater.includes(certificates[name])) fail(`the updater binary does not contain the committed ${name}.der update certificate`);
   }
-  if (files.framework && !fs.statSync(files.framework, { throwIfNoEntry: false })?.isDirectory()) {
-    fail(`the updater has no UpdateSettings.framework: ${files.framework}`);
+  if (files.framework) {
+    // The updater links this framework (@rpath), so an empty directory cannot launch.
+    const executable = path.join(files.framework, 'UpdateSettings');
+    if (!fs.statSync(executable, { throwIfNoEntry: false })?.isFile()) {
+      fail(`the updater has no UpdateSettings.framework executable: ${executable}`);
+    }
   }
 }
 

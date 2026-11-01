@@ -378,9 +378,11 @@ test('with the updater on, artifact validation finds the update host and both ce
       }
       if (options.appBundle) {
         const framework = path.join(executables, 'updater.app', 'Contents', 'Frameworks', 'UpdateSettings.framework');
-        await fsp.rm(framework, { recursive: true });
-        assert.throws(() => validateArtifacts(root), /the updater has no UpdateSettings\.framework/);
-        await fsp.mkdir(framework, { recursive: true });
+        const executable = path.join(framework, 'UpdateSettings');
+        // The directory alone is not enough: the updater cannot launch without the framework executable.
+        await fsp.rename(executable, `${executable}.moved`);
+        assert.throws(() => validateArtifacts(root), /the updater has no UpdateSettings\.framework executable/);
+        await fsp.rename(`${executable}.moved`, executable);
       }
       await fsp.rm(configStatus);
       assert.throws(() => validateArtifacts(root), /no config\.status\.json to prove the update host/);

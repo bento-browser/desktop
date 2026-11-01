@@ -45,13 +45,18 @@ function isNativeSource(relative) {
     || /(?:^|\/)(?:moz\.build|Makefile(?:\.[^/]+)?|Cargo\.(?:toml|lock)|configure(?:\.sh)?)$/.test(relative);
 }
 
-function filesUnder(directory, prefix = '') {
+// The updater's MAR trust anchors: patch 04 compiles these two DER files into
+// the updater, so they are native inputs even though they are not source code.
+const isBrandingNativeInput = (relative) => isNativeSource(relative)
+  || /^update-certificates\/(?:primary|secondary)\.der$/.test(relative);
+
+function filesUnder(directory, include = isNativeSource, prefix = '') {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap((entry) => {
     const relative = `${prefix}${entry.name}`;
-    if (entry.isDirectory()) return filesUnder(path.join(directory, entry.name), `${relative}/`);
+    if (entry.isDirectory()) return filesUnder(path.join(directory, entry.name), include, `${relative}/`);
     if (entry.isSymbolicLink()) throw new Error(`native build source must not be a symlink: ${relative}`);
-    return entry.isFile() && isNativeSource(relative) ? [relative] : [];
+    return entry.isFile() && include(relative) ? [relative] : [];
   });
 }
 
@@ -59,7 +64,7 @@ function overlays(root) {
   const entries = filesUnder(path.join(root, 'src')).map((relative) => ({
     source: `src/${relative}`, destination: relative,
   }));
-  for (const relative of filesUnder(path.join(root, 'branding', 'bento'))) {
+  for (const relative of filesUnder(path.join(root, 'branding', 'bento'), isBrandingNativeInput)) {
     entries.push({ source: `branding/bento/${relative}`, destination: `browser/branding/bento/${relative}` });
   }
   return entries;

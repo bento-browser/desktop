@@ -162,6 +162,22 @@ test('patch bytes, order, base, source, config, mode and declared toolchains inv
   }
 });
 
+test('the compiled update certificates are native inputs and must be imported before compiling', async (t) => {
+  const f = fixture(t);
+  for (const name of ['primary', 'secondary']) {
+    put(f.root, `branding/bento/update-certificates/${name}.der`, Buffer.from(`${name} certificate`));
+    put(f.root, `engine/browser/branding/bento/update-certificates/${name}.der`, Buffer.from(`${name} certificate`));
+  }
+  await withNativeBuildReceipt(f.root, f.output);
+  assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+  const file = 'branding/bento/update-certificates/secondary.der';
+  put(f.root, file, Buffer.from('replacement certificate'));
+  await assert.rejects(assertNativeBuildFresh(f.root), new RegExp(`native input changed: ${file.replaceAll('.', '\\.')}`));
+  let ran = false;
+  await assert.rejects(withNativeBuildReceipt(f.root, () => { ran = true; f.output(); }), /native import.*secondary\.der.*run pnpm run import/);
+  assert.equal(ran, false, 'a replaced certificate that was not imported never compiles');
+});
+
 test('stale current native imports block compilation even if engine state was recorded', async (t) => {
   const f = fixture(t);
   for (const [file, pattern] of [['engine/layout/one.cpp', /native import.*one.cpp/], ['engine/layout/overlay.cpp', /native import.*overlay.cpp/]]) {
