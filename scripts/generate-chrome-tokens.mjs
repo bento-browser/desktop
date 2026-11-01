@@ -135,6 +135,7 @@ const SHELL_SIZED_TOKENS = [
   '--bento-panel-trailer-wide-width',
   '--bento-panel-url-font-size',
   '--bento-panel-nav-menu-font-size',
+  '--bento-sidebar-top-inset',
 ];
 
 // A resolver for the custom properties declared in `css`: each token's value with its

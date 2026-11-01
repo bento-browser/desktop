@@ -576,7 +576,10 @@ Use this shape for new or changed touchpoints:
   the native bookmarks toolbar starts at the panel-strip edge and tracks
   sidebar resize/collapse without creating a gap above Bento's sidebar address
   field or Firefox's native Bookmarks sidebar search field, verify Cmd+Shift+B
-  show/hide does not visibly push sidebar contents before correcting, and verify
+  show/hide does not visibly push sidebar contents before correcting (and, for
+  the Bento bookmarks toolbar strip, that the panels shrink with it in one
+  motion while the sidebar stays still, and that its edges line up with the
+  workspace switcher and the panels), and verify
   that the native Bookmarks sidebar can be resized from its own right edge
   independently of the Bento sidebar handle, and that the navigator follows the
   sidebar divider continuously during
@@ -1248,10 +1251,15 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `createPanelHeader`, and the `ui/bookmarkPopup/` exception in the `BentoShellAction` frame
     script)
   - `src/browser/base/content/bento-shell-mount.css` (`:root[bento-bookmarks-toolbar]` rules next
-    to the `#PersonalToolbar` alignment rules)
+    to the `#PersonalToolbar` alignment rules: the floating rounded strip, its reserve on
+    `#bento-strip-container`, the `#navigator-toolbox` z-index, and the show and hide motion)
+  - `extensions/bento-shell/src/theme/bento-tokens.css` (`--bento-sidebar-top-inset`, the
+    sidebar's first row's inset the strip's top aligns to; shell-sized, so chrome reads it pinned
+    in px)
   - `scripts/firefox-compat-registry.mjs` (new entries `PlacesCommandHook.bookmarkPage`,
-    `Browser:AddBookmarkAs`, `personal-bookmarks`, `personal-toolbar-empty` and
-    `skipintoolbarset`; `PersonalToolbar` gains sites), the regenerated table below, and the
+    `Browser:AddBookmarkAs`, `personal-bookmarks`, `personal-toolbar-empty`,
+    `skipintoolbarset`, `:root[sessionrestored]` and `:root[inFullscreen]`; `PersonalToolbar`
+    gains sites), the regenerated table below, and the
     `PlacesCommandHook` line of the mount's compact probe list
   - `scripts/overlay-surfaces.test.mjs`, `scripts/overlay-manager.test.mjs`,
     `scripts/check-firefox-compat.test.mjs` (the native-note list)
@@ -1279,9 +1287,26 @@ token)` finds a live grant for that exact tab and token, deletes it, and
     `removable="false"`, `flex="1"`, holding a remote `<browser>`) as its last child, the first
     time the toolbar shows (its `collapsed`/`hidden` attribute is observed, or at once when it
     already shows). CustomizableUI skips `skipintoolbarset` children when it builds and saves
-    placements, so it does not treat the host as a widget. The toolbar keeps its place,
-    visibility pref (`browser.toolbars.bookmarks.visibility`, `never` in `prefs/bento.js`),
-    `Cmd+Shift+B` and the height compensation of `attachBookmarksToolbarAlignment`.
+    placements, so it does not treat the host as a widget. The toolbar keeps its place in the
+    toolbox, its visibility pref (`browser.toolbars.bookmarks.visibility`, `never` in
+    `prefs/bento.js`) and `Cmd+Shift+B`. While the root carries `bento-bookmarks-toolbar` the
+    stylesheet overrides its layout: `position: absolute` at the bottom of `#navigator-toolbox`
+    (which it raises to `z-index: 1` so `#browser`, a positioned sibling that paints after it, does
+    not cover the strip), `overflow: clip`, the panels' radius, no padding, and a `height` and
+    `margin-block-start` transition (the reveal spring pair) against Firefox's own `max-height` and
+    `min-height` slide, `[collapsed] { max-height: 0 }` and `visibility` rules; Firefox's
+    `[collapsed]` attribute still drives it. `#bento-strip-container` reserves the strip's room
+    with a top margin while it shows (`:root:has(#PersonalToolbar:not([collapsed], [hidden]))`), so
+    the sidebar's row never contains it and the height compensation of
+    `attachBookmarksToolbarAlignment` is 0 for it (it still applies to Firefox's own toolbar).
+    The strip's edges follow the panels' gutters and the sidebar's first row (see
+    [address-entry.md](technical/address-entry.md#bookmarks-toolbar-strip)). Firefox sets
+    `:root[sessionrestored]` after the windows are restored (the motion waits for it, as Firefox's
+    own slide does) and `:root[inFullscreen]` (the room is not reserved: Firefox pulls the toolbox
+    off screen with a negative margin). Regression checks for a Firefox update: the toolbar
+    still animates `max-height` under a `[collapsed]` rule that the Bento rules override, the
+    `sessionrestored` and `inFullscreen` attributes still exist, and the toolbar is still a child of
+    `#navigator-toolbox` after `#nav-bar`.
   - `#personal-bookmarks`, `#personal-toolbar-empty` and `#import-button` (Firefox puts its
     Import bookmarks button on this toolbar until Places has bookmarks): hidden with `display: none` under the
     root attribute `bento-bookmarks-toolbar` (Bento's own, no Firefox meaning), which the mount
@@ -3213,6 +3238,8 @@ below is generated; edit the registry, then run
 | `tabpanels [splitview] attribute` | source (engine only) | setSplitViewActive toggles [splitview]; Bento CSS and on_visibilitychange read it. | `forceMainOnlyChromeState`, `attachTabSelectListener` | `toolkit/content/widgets/tabbox.js:607` |
 | `split-view-footer element` | source (engine only) | showSplitViewPanels inserts a footer into each panel; Bento hides it with a mount stylesheet rule. | `src/browser/base/content/bento-shell-mount.css#split-view-footer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4114` |
 | `#navigator-toolbox[fullscreenShouldAnimate]` | source (engine only) | The sidebar push's colour transition on the toolbar surfaces replaces their transition list, so it skips #navigator-toolbox while Firefox's fullscreen reveal (`transition: 0.8s margin-top` on this attribute, set by browser-fullScreenAndPointerLock.js) runs. | `src/browser/base/content/bento-shell-mount.css#fullscreenShouldAnimate` | `browser/themes/shared/browser-shared.css:221` |
+| `:root[sessionrestored]` | source (engine only) | The Bento bookmarks toolbar's show and hide motion waits for it, as Firefox's own toolbar slide does, so a toolbar that is already open at startup, and the swap from Firefox's toolbar when the manager turns on, land without motion. browser-init.js sets it once every window has been restored. | `src/browser/base/content/bento-shell-mount.css#sessionrestored` | `browser/base/content/browser-init.js:742` |
+| `:root[inFullscreen]` | source (engine only) | The Bento bookmarks toolbar floats over the panel column and #bento-strip-container reserves its room; in a fullscreen window Firefox pulls the whole toolbox off screen with a negative margin and the content takes the window, so the stylesheet reserves nothing while the root carries it. | `src/browser/base/content/bento-shell-mount.css#inFullscreen` | `browser/base/content/browser-fullScreenAndPointerLock.js:442` |
 | `#navigator-toolbox[tabs-hidden]` | source (engine only) | The mode flip fade skips the native tab strip (#tabbrowser-tabs) only while Firefox marks the toolbox tabs-hidden, which TabBarVisibility.update() sets from the hidden-tabs state Bento turns on; a profile that shows the strip keeps the fade there. | `src/browser/base/content/bento-chrome-theme.css#tabs-hidden` | `browser/components/tabbrowser/content/tab-bar-visibility.js:36` |
 | `.browserSidebarContainer panel container` | source (engine only) | Every tab keeps a .browserSidebarContainer in #tabbrowser-tabpanels; the mode flip fade gives the ones that are neither selected nor split no transitions (hundreds of invisible elements with many tabs). | `src/browser/base/content/bento-chrome-theme.css#browserSidebarContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3120` |
 | `tabpanels .deck-selected class` | source (engine only) | The tabpanels deck marks the selected panel container .deck-selected; the mode flip fade keeps the selected container (and .split-view-panel and .split-view-panel-active ones) out of its exclusion. | `src/browser/base/content/bento-chrome-theme.css#deck-selected` | `toolkit/content/widgets/tabbox.js:218` |
@@ -3316,7 +3343,7 @@ below is generated; edit the registry, then run
 | `identity-icon` | element (runtime) | Native identity icon read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:230` |
 | `identity-icon-label` | element (runtime) | Native identity label read for the sidebar security button. | `readSidebarAddressSecurity` | `browser/base/content/navigator-toolbox.inc.xhtml:231` |
 | `identity-popup` | source (engine only) | Native identity panel that Bento opens at a sidebar anchor. It sits inside template-identity-popup until gIdentityHandler._initializePopup() expands it, which Bento calls first. | `openNativeIdentityPopupForSidebar` | `browser/components/controlcenter/content/identityPanel.inc.xhtml:5` |
-| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. While the Bookmarks manager is on in a regular window it also holds the Bento bookmarks toolbar: Bento appends #bento-bookmarks-toolbar-host as its last child (skipintoolbarset), watches its collapsed and hidden attributes to create that host when the toolbar first shows, and bento-shell-mount.css hides its bookmark items. Its height is the host row, which attachBookmarksToolbarAlignment reads. | `attachBookmarksToolbarAlignment`, `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
+| `PersonalToolbar` | element (runtime) | Native bookmarks toolbar aligned with the panel strip start edge. The Bookmarks view removes it (display: none) so the toolbar strip is one row. While the Bookmarks manager is on in a regular window it also holds the Bento bookmarks toolbar: Bento appends #bento-bookmarks-toolbar-host as its last child (skipintoolbarset), watches its collapsed and hidden attributes to create that host when the toolbar first shows, and bento-shell-mount.css hides its bookmark items, takes the toolbar out of flow as a rounded strip over the panel column (its room reserved on #bento-strip-container) and animates its [collapsed] state, against Firefox's own max-height slide. attachBookmarksToolbarAlignment offsets the sidebar by the measured height of Firefox's toolbar and by 0 for the Bento strip. | `attachBookmarksToolbarAlignment`, `createBookmarksToolbarHostWhenShown`, `createBookmarksToolbarHost` | `browser/base/content/navigator-toolbox.inc.xhtml:546` |
 | `personal-bookmarks` | source (engine only) | Firefox bookmark items of the bookmarks toolbar (the Places toolbar; a customizable toolbar item, so no runtime probe). While the Bookmarks manager is on in a regular window the stylesheet hides it (display: none) in favour of the Bento toolbar frame. If the id changes, both toolbars show side by side. | `src/browser/base/content/bento-shell-mount.css#personal-bookmarks` | `browser/base/content/navigator-toolbox.inc.xhtml:562` |
 | `personal-toolbar-empty` | source (engine only) | Firefox hint shown on an empty bookmarks toolbar. The stylesheet hides it (display: none) while the Bento toolbar frame is in use. If the id changes, an empty Firefox profile shows the hint under the Bento frame. | `src/browser/base/content/bento-shell-mount.css#personal-toolbar-empty` | `browser/base/content/navigator-toolbox.inc.xhtml:555` |
 | `skipintoolbarset` | source (engine only) | Attribute on #bento-bookmarks-toolbar-host. CustomizableUI skips such children of a customizable toolbar when it builds placements, saves them and resets, so the host is not mistaken for a widget and removed. | `createBookmarksToolbarHost` | `browser/components/customizableui/CustomizableUI.sys.mjs:1528` |

@@ -3209,6 +3209,47 @@ test('the stylesheet swaps the toolbar contents for the host only under the root
   );
 });
 
+test('the Bento toolbar is a floating rounded strip whose room the strip container reserves, in step with it', () => {
+  const css = fs.readFileSync(
+    path.join(ROOT, 'src/browser/base/content/bento-shell-mount.css'),
+    'utf8',
+  );
+  /** The body of the first rule whose selector (whitespace squeezed) contains `selector`. */
+  const body = (selector) => {
+    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (match[1].replace(/\s+/g, ' ').includes(selector)) return match[2];
+    }
+    assert.fail(`no rule for ${selector}`);
+  };
+  const strip = body(":root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar ");
+  assert.match(strip, /position:\s*absolute\s*!important/, 'out of flow: the sidebar row never holds it');
+  assert.match(strip, /border-radius:\s*var\(--bento-panel-corner-radius\)/, "the panels' radius");
+  assert.match(strip, /margin-block:\s*var\(--bento-sidebar-top-inset\)/, "level with the sidebar's first row");
+
+  const reserve = body('#PersonalToolbar:not([collapsed], [hidden])');
+  assert.match(reserve, /margin-block-start:\s*var\(--bento-bookmarks-toolbar-reserve\)/);
+  assert.ok(
+    css.replace(/\s+/g, ' ').includes(':not([inFullscreen]):has( #PersonalToolbar:not([collapsed], [hidden]) ) #bento-strip-container'),
+    'the room is reserved only while the toolbar shows and the window is not fullscreen',
+  );
+
+  // The geometry of the strip and of the room it takes share one pair, so the panels follow it.
+  const pair = /var\(--muxui-semantic-motion-reveal-transition-spring-duration\)\s+var\(--muxui-semantic-motion-reveal-transition-spring-easing\)/;
+  const toolbarMotion = body(':root[sessionrestored][bento-sidebar-addressbar=\'true\'][bento-bookmarks-toolbar] #PersonalToolbar ');
+  const stripMotion = body(':root[sessionrestored][bento-sidebar-addressbar=\'true\'][bento-bookmarks-toolbar]:not([bento-bookmarks-view]) #bento-strip-container ');
+  for (const property of ['height', 'margin-block-start']) {
+    assert.match(toolbarMotion, new RegExp(`${property}\\s+${pair.source}`));
+  }
+  assert.match(stripMotion, new RegExp(`margin-block-start\\s+${pair.source}`));
+  assert.doesNotMatch(toolbarMotion + stripMotion, /var\(--muxui-semantic-motion-(?!reveal-|state-)/);
+
+  // Firefox's own toolbar keeps its slide pinned off; the Bento strip must not inherit that.
+  assert.match(
+    body(":root[bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar "),
+    /transition:\s*none\s*!important/,
+  );
+});
+
 // ─── Tab dialogs under the view ─────────────────────────────────────────────
 
 test('a before-unload prompt closes the view at once, with no fade and no focus move', () => {

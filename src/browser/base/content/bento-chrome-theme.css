@@ -1426,13 +1426,47 @@
 
   /* src/browser/base/content/bento-shell-mount.css */
 
-  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'] #PersonalToolbar {
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar {
     transition:
       var(--bento-mode-fade-colours) !important;
   }
 
-  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar[collapsed] {
     transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition:
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition:
+      height var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      visibility var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view]) #bento-strip-container {
+    transition:
+      opacity var(--muxui-semantic-motion-state-transition),
+      margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration) var(--muxui-semantic-motion-reveal-transition-spring-easing),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host {
+    transition:
+      translate var(--muxui-semantic-motion-reveal-transition),
+      opacity var(--muxui-semantic-motion-reveal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  :root[data-bento-mode-fade][bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+    transition:
+      translate var(--muxui-semantic-motion-dismiss-transition),
+      opacity var(--muxui-semantic-motion-dismiss-transition),
       var(--bento-mode-fade-colours) !important;
   }
 

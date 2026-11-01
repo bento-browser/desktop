@@ -593,8 +593,9 @@ below refuses there.
   otherwise a mutation observer waits for `collapsed` and `hidden` to clear, since the default
   visibility pref is `never` and most windows never show it). The setting off, or a private
   window, removes the attribute and the host. The frame is not in the overlay table; its only title
-  is `BENTO_BOOKMARK_POPUP_OPEN`. `attachBookmarksToolbarAlignment` measures the toolbar's height
-  and strip offset as before, so the host's row height is what the sidebar compensates for.
+  is `BENTO_BOOKMARK_POPUP_OPEN`. Under the attribute the toolbar floats over the panel column (it is out of flow), so
+  `attachBookmarksToolbarAlignment` reports a height of 0 to the sidebar compensation and only the
+  panel column makes room; see [address-entry.md](address-entry.md#bookmarks-toolbar-strip).
 
 Pitfalls:
 

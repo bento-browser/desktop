@@ -47,6 +47,7 @@ const CONSTANTS = [
   'SIDEBAR_PUSH_FLUID_ANIMATION',
   'SIDEBAR_PUSH_REDUCED_MOTION',
   'SIDEBAR_PUSH_SLIDE_ANIMATION',
+  'BOOKMARKS_TOOLBAR_ATTR',
 ];
 const FUNCTIONS = [
   'isBentoWindowResizing',
@@ -571,4 +572,27 @@ test('showing right after a hide starts the divider and the toolbar from the hid
   world.runFrames();
   assert.equal(world.toolbarState().bookmarks, '300px');
   assert.equal(world.root.hasAttribute('bento-sidebar-push'), false);
+});
+
+test("the sidebar counter-offset follows Firefox's bookmarks toolbar and is 0 for the floating Bento strip", () => {
+  const world = makeWorld({ expandedWidth: 300, railWidth: 64 });
+  const height = () => world.root.props.get('--bento-bookmarks-toolbar-height');
+  // Firefox's toolbar is a row of the toolbox: the sidebar offsets its measured height.
+  assert.equal(height(), '28px');
+  // The Bento strip is out of flow and reserves its room in the strip container instead, so the
+  // sidebar must not offset anything while it shows, hides, or moves through that motion.
+  world.root.setAttribute('bento-bookmarks-toolbar', 'true');
+  for (const callback of world.mutationCallbacks) callback();
+  assert.equal(height(), '0px');
+  world.runFrames();
+  assert.equal(height(), '0px');
+  world.bookmarks.collapsed = true;
+  for (const callback of world.mutationCallbacks) callback();
+  world.bookmarks.collapsed = false;
+  for (const callback of world.mutationCallbacks) callback();
+  assert.equal(height(), '0px');
+  // The manager turning off gives the toolbar back to Firefox's layout and its measured height.
+  world.root.removeAttribute('bento-bookmarks-toolbar');
+  for (const callback of world.mutationCallbacks) callback();
+  assert.equal(height(), '28px');
 });

@@ -205,6 +205,12 @@
       calc(var(--muxui-reference-dimension-space-3xs) * var(--bento-chrome-rem-scale)),
       1px
     );
+    /* Where the sidebar's first row (the workspace switcher) starts below the top bar: the
+       shell's panel-gutter token at the shell's rem. Chrome reads it for the top of the Bento
+       bookmarks toolbar so the strip's top edge lines up with that row (bento-shell-mount.css);
+       the generator pins it in px for chrome like the other shell-sized lengths
+       (docs/chrome-tokens.md). The switcher's padding (app.css) reads this token. */
+    --bento-sidebar-top-inset: var(--muxui-reference-dimension-space-3xs);
     --bento-workspace-palette-width: 47.5rem;
     --bento-workspace-palette-height: 35rem;
     --bento-workspace-palette-max-inline: 94vw;
@@ -311,7 +317,7 @@
        menu of links grows before its titles truncate. Bookmarks toolbar (BookmarksToolbar): the
        widest a group button grows before its name truncates. Buttons are --bento-control-size-sm
        high, so a row of them fits Firefox's 30px bookmarks toolbar. */
-    --bento-bookmark-popup-width: 18.75rem;
+    --bento-bookmark-popup-width: 17rem;
     --bento-bookmark-popup-menu-max-width: 21.25rem;
     --bento-bookmarks-toolbar-button-max-width: 9.375rem;
 

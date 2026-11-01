@@ -243,6 +243,10 @@
   --bento-toolbar-nav-offset: 0px;
   --bento-bookmarks-toolbar-offset: 0px;
   --bento-bookmarks-toolbar-height: 0px;
+  /* How far the toolbar sits in from the strip's edges: none for Firefox's own, the panels' own
+     gutters for the Bento strip (see 'The Bento bookmarks toolbar' below). */
+  --bento-bookmarks-toolbar-edge-start: 0px;
+  --bento-bookmarks-toolbar-edge-end: 0px;
   --bento-tab-strip-width-min-effective: var(--bento-tab-strip-width-min);
 }
 :root[bento-sidebar-addressbar='true'] #nav-bar-customization-target > #back-button {
@@ -261,15 +265,28 @@
   top: calc(-1 * var(--bento-bookmarks-toolbar-height, 0px)) !important;
 }
 :root[bento-sidebar-addressbar='true'] #PersonalToolbar {
-  margin-inline-start: var(--bento-bookmarks-toolbar-offset, 0px) !important;
-  width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
-  max-width: calc(100% - var(--bento-bookmarks-toolbar-offset, 0px)) !important;
+  margin-inline-start: calc(
+    var(--bento-bookmarks-toolbar-offset, 0px) + var(--bento-bookmarks-toolbar-edge-start)
+  ) !important;
+  width: calc(
+    100% - var(--bento-bookmarks-toolbar-offset, 0px) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
+  max-width: calc(
+    100% - var(--bento-bookmarks-toolbar-offset, 0px) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
-  transition: none !important;
   animation: none !important;
 }
-:root[bento-sidebar-addressbar='true'] #PersonalToolbar[collapsed] {
+/* Firefox's own toolbar (the Bento one is off, below): its vertical slide is pinned off. The
+   counter-offset of the sidebar is measured from the toolbar by the script, and intermediate
+   heights would move the sidebar before that measurement settled. */
+:root[bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar {
+  transition: none !important;
+}
+:root[bento-sidebar-addressbar='true']:not([bento-bookmarks-toolbar]) #PersonalToolbar[collapsed] {
   visibility: collapse !important;
   transition: none !important;
 }
@@ -278,11 +295,41 @@
    creates #bento-bookmarks-toolbar-host (the shell's toolbar document in a <browser>) as the
    last child of #PersonalToolbar when the toolbar first shows. Firefox's bookmark items and its
    empty-toolbar hint give way to it; the toolbar keeps its place, its visibility pref and
-   Cmd+Shift+B. The host is the toolbar's one row, so the height attachBookmarksToolbarAlignment
-   reads for the sidebar compensation is the host's. The attribute off (manager off in Settings)
-   restores Firefox's toolbar. */
+   Cmd+Shift+B. The attribute off (manager off in Settings) restores Firefox's toolbar.
+
+   Layout. With the attribute on, #PersonalToolbar is a rounded strip that floats over the top of
+   the panel column instead of a row of the toolbox: it is out of flow, under the top bar, and
+   #bento-strip-container reserves its room with a top margin. The sidebar's row never contains
+   it, so the sidebar does not move when the toolbar shows or hides (the script's counter-offset
+   reads 0, attachBookmarksToolbarAlignment), and only the strip and the panels below it change.
+     - Top: the sidebar's first row (the workspace switcher) starts --bento-sidebar-top-inset
+       below the top bar, and the strip does too.
+     - Left and right: the strip lines up with the panels. The offset the script writes is the
+       strip container's edge; the edge variables add the panels' own gutters in it: with side
+       panels the tabpanels padding (--space-3xs at the start, --space-2xs at the end), with none
+       the main frame's margin (--space-2xs rounded, both sides, as the frame rounds them).
+     - Below: the gap to the panels is --bento-panel-gap, the gap between panels. The panels start
+       their own top gutter (--space-3xs, rounded with no side panels) below the reserved room, so
+       the room ends that gutter short of the gap.
+     - Corners: the panels' radius, so the strip reads as one more panel.
+   Windows in (OS) fullscreen reserve nothing: the toolbox is pulled off screen with its toolbar,
+   and the content takes the window. */
 :root {
   --bento-bookmarks-toolbar-row-height: 30px;
+}
+:root[bento-bookmarks-toolbar] {
+  --bento-bookmarks-toolbar-edge-start: var(--space-3xs);
+  --bento-bookmarks-toolbar-edge-end: var(--space-2xs);
+  --bento-bookmarks-toolbar-gap: calc(var(--bento-panel-gap) - var(--space-3xs));
+  --bento-bookmarks-toolbar-reserve: calc(
+    var(--bento-sidebar-top-inset) + var(--bento-bookmarks-toolbar-row-height) +
+      var(--bento-bookmarks-toolbar-gap)
+  );
+}
+:root[bento-bookmarks-toolbar][bento-no-side-panels='true'] {
+  --bento-bookmarks-toolbar-edge-start: round(var(--space-2xs), 1px);
+  --bento-bookmarks-toolbar-edge-end: round(var(--space-2xs), 1px);
+  --bento-bookmarks-toolbar-gap: calc(var(--bento-panel-gap) - round(var(--space-3xs), 1px));
 }
 #bento-bookmarks-toolbar-host {
   display: none;
@@ -292,6 +339,103 @@
   flex: 1;
   min-width: 0;
   height: var(--bento-bookmarks-toolbar-row-height);
+}
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+  position: absolute !important;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  height: var(--bento-bookmarks-toolbar-row-height) !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin-block: var(--bento-sidebar-top-inset) 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--bento-panel-corner-radius) !important;
+  overflow: clip !important;
+  transition: none !important;
+}
+/* The strip hangs below the toolbox over #browser, which is positioned and paints after the
+   toolbox at the toolbox's own level (0), so it would paint over the strip. One level up keeps
+   the strip above #browser's background and below every overlay host. Not in fullscreen, where
+   Firefox raises the toolbox itself for its reveal. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([inFullscreen]) #navigator-toolbox {
+  z-index: 1;
+}
+/* Hidden: no height, no margin, and out of the tab order once the motion below has run. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar[collapsed] {
+  height: 0 !important;
+  margin-block-start: 0 !important;
+  visibility: collapse !important;
+}
+/* The room the strip takes from the panel column, shown only while the toolbar is. The
+   :has() is on the root so the strip container and the toolbar both change in the style flush
+   that follows the toolbar's one attribute write, and their motions start together. */
+:root[bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([inFullscreen]):has(
+    #PersonalToolbar:not([collapsed], [hidden])
+  )
+  #bento-strip-container {
+  margin-block-start: var(--bento-bookmarks-toolbar-reserve);
+}
+/* Motion. Showing or hiding the toolbar moves two boxes by the same amount over the same
+   curve: the strip's height and top margin, and the strip container's top margin (the panels
+   shrink or grow with it, and the sidebar does not move). All three are on the reveal role's
+   spring pair, the one the sidebar push uses for its layout change, so they cannot drift. The
+   toolbar's visibility flip (out of the tab order) rides the same pair, which holds it visible
+   until the hide has run. Not before the session is restored (Firefox's own gate for this
+   animation), so the toolbar that is already open at startup, and the swap from Firefox's toolbar
+   when the manager turns on, land at once. */
+:root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+  transition:
+    height var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing),
+    visibility var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing) !important;
+}
+/* The strip container's opacity fade (workspace switches) keeps its entry. Not under the
+   Bookmarks view, whose own rule gives the container a visibility transition on the modal role
+   (the view cross-fades over it) that this list would replace; the room it reserves does not
+   change there. */
+:root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+  #bento-strip-container {
+  transition:
+    opacity var(--muxui-semantic-motion-state-transition),
+    margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+      var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
+/* The contents. Coming in they slide down out of the top edge (the strip clips them) and fade in
+   on the reveal role; going out they slide up and fade on the dismiss role, so they are gone well
+   before the strip has closed. The return is on the resting rule, so removing 'collapsed' is what
+   animates it. Pointer events stop at the first frame of the way out. */
+:root[bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host {
+  transition:
+    translate var(--muxui-semantic-motion-reveal-transition),
+    opacity var(--muxui-semantic-motion-reveal-transition);
+}
+:root[bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+  translate: 0 -100%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate var(--muxui-semantic-motion-dismiss-transition),
+    opacity var(--muxui-semantic-motion-dismiss-transition);
+}
+/* Reduced motion: no slide, no fade, no resize motion. The chrome has no Mux reduced token set,
+   so this follows the other chrome rules and uses the media query. */
+@media (prefers-reduced-motion: reduce) {
+  :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar] #PersonalToolbar {
+    transition: none !important;
+  }
+  :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+    #bento-strip-container {
+    transition: none;
+  }
+  :root[bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host,
+  :root[bento-bookmarks-toolbar] #PersonalToolbar[collapsed] > #bento-bookmarks-toolbar-host {
+    translate: none;
+    transition: none;
+  }
 }
 /* Firefox places its 'Import bookmarks' button on this toolbar until Places has bookmarks. */
 :root[bento-bookmarks-toolbar] #PersonalToolbar > :is(#personal-bookmarks, #personal-toolbar-empty, #import-button) {
@@ -1063,9 +1207,17 @@
   animation: bento-sidebar-push-progress
     var(--muxui-semantic-motion-reveal-transition-spring-duration)
     var(--muxui-semantic-motion-reveal-transition-spring-easing) both !important;
-  margin-inline-start: var(--bento-sidebar-push-bookmarks-inset) !important;
-  width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
-  max-width: calc(100% - var(--bento-sidebar-push-bookmarks-inset)) !important;
+  margin-inline-start: calc(
+    var(--bento-sidebar-push-bookmarks-inset) + var(--bento-bookmarks-toolbar-edge-start)
+  ) !important;
+  width: calc(
+    100% - var(--bento-sidebar-push-bookmarks-inset) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
+  max-width: calc(
+    100% - var(--bento-sidebar-push-bookmarks-inset) - var(--bento-bookmarks-toolbar-edge-start) -
+      var(--bento-bookmarks-toolbar-edge-end)
+  ) !important;
 }
 @keyframes bento-sidebar-push-progress {
   from {

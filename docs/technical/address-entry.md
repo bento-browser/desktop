@@ -340,24 +340,22 @@ the sidebar. It also measures `#PersonalToolbar` height and writes
 counter-offset that height; otherwise Firefox pushes the entire `#browser` row
 down and leaves a blank gap above Bento's sidebar address field or Firefox's
 native Bookmarks sidebar search field whenever the bookmarks toolbar is
-visible. Observe `#PersonalToolbar` `collapsed`/`hidden` mutations and update
+visible. That counter-offset is for Firefox's own toolbar, a row of the toolbox:
+for the Bento strip (below) the script writes 0. Observe `#PersonalToolbar`
+`collapsed`/`hidden` mutations and update
 the height synchronously before the next paint; relying only on ResizeObserver
 lets Cmd+Shift+B show/hide animation shift the sidebar first and correct it
-after the animation settles. Also override Firefox's native
-`#PersonalToolbar` vertical slide transition in Bento mode and collapse
+after the animation settles. Also, while Firefox's own toolbar is the one in use
+(the manager off in Settings, or a private window), override its native
+`#PersonalToolbar` vertical slide transition and collapse
 visibility immediately when `[collapsed]`; otherwise Firefox presents
-intermediate toolbar heights that move sidebars before the compensation can
+intermediate toolbar heights that move sidebars before the measured compensation can
 settle. During manual sidebar resize, cache the strip-to-sidebar inset before
 the live resize loop and update the bookmark offset from the drag width; do not
 read strip geometry every drag frame. With the Bookmarks manager on in a regular
-window the toolbar's contents are Bento's own: `#personal-bookmarks` and
-`#personal-toolbar-empty` are hidden under the root attribute
-`bento-bookmarks-toolbar`, and `#bento-bookmarks-toolbar-host` (a `<browser>`
-with the shell's toolbar document, `--bento-bookmarks-toolbar-row-height` high) is
-the toolbar's one row. Nothing in the alignment code changes: it still measures
-`#PersonalToolbar` itself, whose height is now the host's, and the host is a flex
-child of the toolbar whose margin and width the offset already sets, so it follows
-the strip edge through a drag, a collapse and a push. A fluid sidebar push
+window the toolbar is Bento's own rounded strip, described in
+[Bookmarks toolbar strip](#bookmarks-toolbar-strip). It follows the strip edge
+through a drag, a collapse and a push through the same offset. A fluid sidebar push
 (`bento-sidebar-push-fluid`) animates the toolbar's width, so the toolbar frame
 resizes each frame there. That has not been checked in a running build; if it
 janks, give the host a fixed width for the length of the push instead of hiding it. `attachNativeSidebarSplitterFeedback()`
@@ -662,6 +660,69 @@ defaults, URL-like detection, row text, and one-shot engine payload selection
 lives in `components/AddressBar/addressRows.ts`. Both the sidebar row and
 floating fallback use those helpers so autocomplete behavior does not drift.
 
+### Bookmarks toolbar strip
+
+With the Bookmarks manager on in a regular window the root carries `bento-bookmarks-toolbar`,
+`#personal-bookmarks`, `#personal-toolbar-empty` and `#import-button` are hidden, and
+`#bento-bookmarks-toolbar-host` (a `<browser>` with the shell's toolbar document,
+`--bento-bookmarks-toolbar-row-height` high) is the toolbar's one row. `#PersonalToolbar` itself
+keeps its place in the toolbox as the state carrier (Cmd+Shift+B and the visibility pref set
+`collapsed` on it) but is a rounded strip over the panel column, not a row of the toolbox. All of it
+is `bento-shell-mount.css`, "The Bento bookmarks toolbar"; the script's only part is that the
+counter-offset reads 0 (`readHeight` in `attachBookmarksToolbarAlignment`, which also watches the
+root attribute, so a manager toggle re-measures).
+
+- **Out of flow, room reserved on the strip.** The toolbar is `position: absolute` at
+  `inset-block-start: 100%` of `#navigator-toolbox`, and `#bento-strip-container` takes
+  `margin-block-start: --bento-bookmarks-toolbar-reserve` while the toolbar shows
+  (`:root:has(#PersonalToolbar:not([collapsed], [hidden]))`, not in fullscreen). The sidebar's row
+  is the `#browser` row and no longer contains the toolbar, so the sidebar, the splitters and the
+  native sidebars do not move at all while it shows or hides: only the strip and the panels below
+  it change. There is no measurement in the motion path.
+- **Alignment** (one formula, no magic numbers):
+  - Top: `--bento-sidebar-top-inset` below the top bar, the length the workspace switcher's
+    padding is (`bento-tokens.css`, the shell's `--space-3xs` at the shell's rem). Chrome's rem is
+    not the shell's (11px against 16px), so the token is shell-sized: the generator pins it in px
+    like `--bento-tab-strip-width-collapsed` (docs/chrome-tokens.md, Shell-sized lengths). Unpinned,
+    chrome would read its own rem and the strip would sit about 2px higher than the switcher.
+  - Left and right: the panels' own gutters, added to the strip edge the script already writes
+    (`--bento-bookmarks-toolbar-offset`, the strip container's left edge, 0 while the sidebar is
+    hidden). With side panels that is the tabpanels padding (`--space-3xs` at the start,
+    `--space-2xs` at the end); with none (`:root[bento-no-side-panels]`) it is the main frame's
+    margin, `round(--space-2xs, 1px)` on both sides. The vars are
+    `--bento-bookmarks-toolbar-edge-start` and `-edge-end`, 0 for Firefox's own toolbar, and are
+    read by the one margin and width formula for the toolbar (the plain rule and the fluid push
+    rule). The expanded, collapsed (rail) and hidden sidebar all follow, because the offset is the
+    strip's edge in each; a multi-panel layout aligns to the visible strip, not the scrolled panels.
+  - Below: the gap to the panels is `--bento-panel-gap`, the gap between panels. The panels start
+    their own top gutter below the reserved room (`--space-3xs`, rounded with no side panels), so
+    `--bento-bookmarks-toolbar-gap` is `--bento-panel-gap` minus that gutter. The reserve is
+    top inset + row height + that gap.
+  - Corners: `--bento-panel-corner-radius`, the token the panels use, with `overflow: clip`.
+    Firefox's own inline padding on the toolbar is zeroed, so the shell row's padding is the
+    buttons' whole inset (about the 12px default radius to the first dot, past the corner arc).
+- **Motion.** One pair for every moving box: the reveal role's spring pair (400 ms, no overshoot,
+  the sidebar push's pair). The toolbar's `height` and `margin-block-start`, and the strip
+  container's `margin-block-start`, transition on it from the one attribute write that changes the
+  toolbar's `[collapsed]`; with `:has()` on the root, both are restyled in the same style flush, so
+  the three motions start together and the room taken is always the room the strip has (they are
+  linear in the same progress). The toolbar's `visibility` rides the same pair, so it stays visible
+  until a hide has run and then leaves the tab order. The contents (`#bento-bookmarks-toolbar-host`)
+  slide down out of the top edge as they fade in on the reveal pair, and slide up and fade out on
+  the dismiss pair (like the Bookmarks view's top-bar controls), so a hide has emptied the strip
+  before it has closed. Reduced motion: none of it. Not before `:root[sessionrestored]`, so a
+  toolbar that is open at startup, and the swap from Firefox's toolbar when the manager turns on,
+  land at once.
+- **Z-order.** The strip hangs below the toolbox over `#browser`, which paints after the toolbox at
+  level 0, so `#navigator-toolbox` is raised to `z-index: 1` while the strip is Bento's (not in
+  fullscreen, where Firefox raises it for the reveal). Without it `#browser`'s background hides the
+  strip.
+- **Cost.** Each frame of the motion the panel column changes height, so every panel's remote
+  frame resizes and `refreshFlatPanelLayoutFromLiveState` runs from the `tabpanels` resize
+  observer, as in a window height drag. The toolbar's own frame does not resize (the host keeps
+  its row height; the strip clips it). If it janks with many panels, cut the per-frame work in that
+  observer path rather than the motion.
+
 ## Address Entry Pitfalls
 
 - Isolated shell packages must include `dist/assets/background.js`, as declared
@@ -695,6 +756,24 @@ floating fallback use those helpers so autocomplete behavior does not drift.
 - Do not copy a sidebar URL unless the command's tab id, URL, bridge token, and
   snapshot token still match the selected main tab immediately before the
   clipboard write.
+- Do not bring back the measure-and-compensate path for the Bento bookmarks toolbar, or its
+  `transition: none`. That rule existed because Firefox's own slide (`max-height`, 170 ms) shows
+  intermediate heights that the script measured late, so the sidebar moved first and was corrected
+  after. The Bento strip has no row in the sidebar's flow, so there is nothing to compensate and
+  nothing to measure; its motion is CSS on the three boxes above, started by one attribute write.
+  Firefox's own toolbar (manager off, private window) still has the old rules, gated on
+  `:not([bento-bookmarks-toolbar])`.
+- Do not put a `transition` on the sidebar's boxes (`#bento-shell-host`, the splitters,
+  `#sidebar-box`) to animate a toolbar counter-offset. Their own transitions (the hidden host's
+  slide-over, the push's colour fade) are whole-property lists that a second `transition` would
+  replace or lose to, and the offset has to equal a toolbar height that is itself in motion.
+- Do not animate a registered `:root` custom property to share one progress between the strip and
+  the toolbar: an inherited property changing every frame restyles the whole chrome document.
+- Do not put the toolbar's inline-axis geometry (`margin-inline-start`, `width`) in the motion's
+  `transition` list: the fluid sidebar push animates a custom property those read, and a
+  transition on them would restart every frame of the push.
+- Do not move the strip's toolbar into `#bento-strip-container` to get the alignment for free:
+  the workspace-switch fade (`opacity` on that container) would blink the toolbar on every switch.
 - Keep the security popup native. React may show the security label/icon, but
   certificate, permission, and identity details must remain Firefox's
   `identity-popup` content.

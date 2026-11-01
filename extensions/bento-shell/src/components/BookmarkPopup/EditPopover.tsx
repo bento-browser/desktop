@@ -25,6 +25,11 @@ import { createSaveFlow, type SaveFlow } from './saveFlow';
 
 type EditRequest = Extract<BookmarkPopupRequest, { kind: 'edit' }>;
 
+/** Gap below the anchor (the sidebar star): the 4px sidebar menus keep from their trigger, below
+ * the address row (the star sits 4px inside the row's bottom edge), plus the 1px Mux's Popover
+ * takes back from a bottom placement. */
+const POPOVER_OFFSET = 4 + 4 + 1;
+
 export interface EditPopoverProps {
   request: EditRequest;
   snapshot: BookmarksSnapshot | null;
@@ -103,12 +108,12 @@ function LoadFailed({
       }}
       aria-label="Bookmarks couldn't load"
       placement="bottom-end"
-      offset={6}
+      offset={POPOVER_OFFSET}
       className="bento-bookmark-popup__edit"
       trigger={<PopoverAnchor anchor={request.anchor} />}
     >
       <Column gap="xs">
-        <Text variant="body" size="sm" role="alert">
+        <Text variant="body" size="xs" role="alert">
           Bookmarks couldn&apos;t load, so this page was not saved.
         </Text>
         <Row gap="xs" justify="between">
@@ -203,7 +208,7 @@ function EditForm({ request, link, snapshot, send, close }: EditFormProps) {
       }}
       aria-label="Edit bookmark"
       placement="bottom-end"
-      offset={6}
+      offset={POPOVER_OFFSET}
       className="bento-bookmark-popup__edit"
       trigger={<PopoverAnchor anchor={request.anchor} />}
     >

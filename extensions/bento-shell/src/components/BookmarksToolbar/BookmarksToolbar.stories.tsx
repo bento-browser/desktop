@@ -24,7 +24,7 @@ import {
 import { BookmarkPopup } from '../BookmarkPopup/BookmarkPopup';
 import { BookmarksToolbar } from './BookmarksToolbar';
 
-/** The bookmarks toolbar row, 30px high (Firefox's own), in a window `width` px wide. */
+/** The bookmarks toolbar row, 30px high, in a rounded strip `width` px wide (chrome draws the strip). */
 function Row({ width, children }: { width: number; children: ReactNode }) {
   return (
     <div
@@ -32,8 +32,9 @@ function Row({ width, children }: { width: number; children: ReactNode }) {
         width,
         height: 30,
         display: 'flex',
-        background: 'var(--bento-brand-bg)',
-        borderBottom: '1px solid var(--muxui-semantic-border-default)',
+        overflow: 'clip',
+        borderRadius: 'var(--radius-l)',
+        background: 'var(--neutral-18)',
       }}
     >
       {children}

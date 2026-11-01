@@ -16,6 +16,10 @@
     background: transparent;
     opacity: 0;
     pointer-events: none;
+    /* Mux's Button keeps a control-size minimum height (36px). The anchor is a Button, so
+       without this its box would be taller than the rect it stands for and the popover would
+       open that much below the asking button. */
+    min-block-size: 0;
   }
 
   /* Mux's popover is a strong (inverted) surface; the save popover is a plain raised one. */
@@ -27,6 +31,15 @@
     border: var(--bento-border-hairline) solid var(--muxui-semantic-border-default);
     background-color: var(--muxui-semantic-surface-raised);
     color: var(--muxui-semantic-content-default);
+    /* The form's text is the sidebar's (tab rows and the address field are text-xs). Mux has no
+       control size below sm, and at sm it still sets field values in body size, so the values
+       take Mux's field token and the labels and buttons the rule below. */
+    --muxui-field-font-size: var(--muxui-semantic-typography-text-xs-font-size);
+  }
+
+  .muxui-popover.bento-bookmark-popup__edit
+    :is(.muxui-field-label, .muxui-select-native__label, .muxui-button) {
+    font-size: var(--muxui-semantic-typography-label-xs-font-size);
   }
 
   .bento-bookmark-dot {

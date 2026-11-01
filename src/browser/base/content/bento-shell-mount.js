@@ -7086,6 +7086,10 @@
       return hostRect.right;
     };
     const readHeight = () => {
+      // The Bento strip floats over the panel column (bento-shell-mount.css, 'Bookmarks toolbar'):
+      // it takes no row from the sidebar, so there is nothing to counter-offset, and its height
+      // moves through the show and hide motion, which the stylesheet keeps in step with the panels.
+      if (root.hasAttribute(BOOKMARKS_TOOLBAR_ATTR)) return 0;
       const rect = toolbar.getBoundingClientRect?.();
       const styles = getComputedStyle(toolbar);
       const measured = Math.max(
@@ -7155,6 +7159,11 @@
         attributeFilter: ['collapsed', 'hidden', 'style', 'class'],
       });
       toolbar._bentoBookmarksToolbarMutationObserver = observer;
+      // The manager turning on or off swaps Firefox's in-flow toolbar for the floating strip.
+      new MutationObserver(updateNowAndSchedule).observe(root, {
+        attributes: true,
+        attributeFilter: [BOOKMARKS_TOOLBAR_ATTR],
+      });
     }
     if (window.ResizeObserver) {
       const ro = new ResizeObserver(scheduleUpdate);

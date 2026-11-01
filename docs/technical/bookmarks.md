@@ -441,6 +441,14 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
 - **Toolbar visibility.** The root attribute `bento-bookmarks-toolbar` swaps Firefox's toolbar
   contents for the Bento frame; `Cmd/Ctrl+Shift+B` and the visibility pref (Bento default
   `never`) are Firefox's own and unchanged. The frame is created the first time the toolbar shows.
+- **Toolbar look and motion.** The toolbar is a rounded strip over the panel column, not a row
+  under the top bar: its top lines up with the sidebar's workspace switcher, its left and right
+  edges with the panels (the panel strip's gutters, in every sidebar mode), its corners use the
+  panels' radius and it is one panel gap above them. Showing it grows the strip and shrinks the
+  panels' height in one motion (the reveal spring pair) while the sidebar stays still; its buttons
+  slide and fade in, and out faster on the dismiss pair on a hide. Reduced motion shows and
+  hides at once. The geometry, alignment source, motion and pitfalls are in
+  [address-entry.md](address-entry.md#bookmarks-toolbar-strip).
 - **Not built.** Dropping links or tabs on the toolbar; address-bar results from the Bento store
   (`AddressSearch.ts` still searches Places).
 
@@ -502,7 +510,15 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
     popover at that star.
 22. Press `Cmd+Shift+B`: the Bento toolbar shows the current space's groups. Open a group menu, open a
     link, use Open all in panels, switch space from the right menu (the view follows), narrow the
-    window until the overflow button appears, and open an empty space for the hint.
+    window until the overflow button appears, and open an empty space for the hint. Watch the
+    toggle itself (`Cmd+Shift+B` on and off, with the toolbar set to show in Firefox's bookmarks
+    toolbar menu): the strip grows under the top bar while the panels shrink in one motion, the
+    buttons slide and fade in, and the sidebar does not move at any frame (watch the workspace
+    switcher and the splitter); off is the reverse. At rest the strip's top is level with the
+    workspace switcher's, its left and right with the main panel's (with two side panels, with
+    none, with the sidebar collapsed to the rail, and hidden), the gap below equals the gap
+    between two panels, and its corners follow the panel corner radius setting. With Reduce
+    motion on in the system settings, both toggles are instant.
 23. Repeat 19 and 22 in a private window and with the manager off: Firefox's star, `Cmd+D` and native
     toolbar work as before.
 24. Check that the macOS window buttons stay visible and the window still drags from the top strip
@@ -567,3 +583,6 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
   follows `bento-host-presentation` from startup (`observeHostPresentation`) and `useHostHidden`
   closes at once when the host was hidden after the latest open's show; subscribing only after the
   mount left the star pressed with the popup invisible.
+- The edit popover's invisible anchor is a Mux `Button`, which keeps the md control's minimum
+  height (36px) even when sized to the 24px star rect, so the popover opened 12px low; the anchor
+  overrides `min-block-size`.

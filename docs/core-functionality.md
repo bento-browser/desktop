@@ -766,7 +766,9 @@ Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, un
   other internal pages) leaves the star disabled, and Cmd/Ctrl+D does nothing there. The panel header
   star follows the same rules.
 - **Bookmarks toolbar.** In place of Firefox's toolbar (it still shows and hides with
-  Cmd/Ctrl+Shift+B) the row lists the groups of the space the Bookmarks view last showed, each a
+  Cmd/Ctrl+Shift+B) a rounded strip, lined up with the top of the workspace switcher and the edges
+  of the panels, slides in while the panels shrink to make room (and out again; the sidebar stays
+  still). The row lists the groups of the space the Bookmarks view last showed, each a
   button with its colour dot, name and a chevron. A group's menu lists its links (favicon and
   title; choosing one opens it as a new panel), then "Open all in panels" and "Open in
   Bookmarks". The space button at the right shows the current space; its menu lists every space
