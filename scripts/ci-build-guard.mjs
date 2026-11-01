@@ -10,7 +10,8 @@ import path from 'node:path';
 // `download` is deliberately absent: the source-import job runs it.
 const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-addons)';
 
-// Direct native entry points: scripts, subcommands, mach, and release creation.
+// Direct native entry points: scripts, subcommands, mach (including macOS signing
+// and repackaging), notarization, and release creation.
 const nativeCommands = [
   {
     description: 'a Bento native build command',
@@ -22,8 +23,13 @@ const nativeCommands = [
   },
   {
     description: 'a mach command',
-    pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
+    pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run|macos-sign|repackage)\b/m,
   },
+  {
+    description: 'the macOS signing script',
+    pattern: /\bmacos-sign-release\.mjs\b/,
+  },
+  { description: 'a notarization command', pattern: /\b(?:notarytool|stapler)\b/ },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },
 ];
 

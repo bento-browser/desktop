@@ -55,6 +55,12 @@ test('rejects every native build entry point', () => {
     'mach package',
     'bash scripts/build-release.sh',
     'gh release create v0.0.1',
+    'node scripts/macos-sign-release.mjs --obj-dist engine/obj-bento/dist',
+    './mach macos-sign -a Bento.app -c release',
+    'cd engine && ./mach repackage dmg -i Bento.tar.gz -o Bento.dmg',
+    'bash scripts/mach-raw.sh repackage dmg -i a -o b',
+    'xcrun notarytool submit Bento.zip --keychain-profile bento-notary --wait',
+    'xcrun stapler staple Bento.app',
   ];
   for (const command of commands) {
     assert.ok(hits(`run: ${command}\n`).length > 0, `${command} should be rejected`);
@@ -166,6 +172,7 @@ test('accepts the extension builds and source commands CI runs', () => {
     "import { loadConfig } from './scripts/bento-build.mjs';",
     'node scripts/snapshot-import-output.mjs > import-first.sha256',
     'node scripts/check-import-output.mjs',
+    'node --test scripts/macos-sign-release.test.mjs scripts/check-macos-signing.test.mjs',
   ];
   for (const command of commands) {
     assert.deepEqual(hits(`run: ${command}\n`), [], `${command} should be accepted`);
