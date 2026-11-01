@@ -2332,17 +2332,21 @@
 :root[bento-bookmarks-view] #PersonalToolbar {
   display: none !important;
 }
-/* One surface: the strip loses the sidebar-coloured left half of its gradient, fading with the
+/* One surface: both stops of the strip's gradient take the brand background (neutral-5), the
+   colour the view page paints, whether or not the window has side panels; they fade with the
    host. (The gradient stops are the toolbar custom properties above; the inline gradient the
    mount script writes reads them, so only they can be overridden.) */
 :root[bento-bookmarks-view] :is(#navigator-toolbox, #TabsToolbar, #nav-bar) {
-  --bento-toolbar-left-bg: var(--bento-toolbar-main-bg) !important;
+  --bento-toolbar-left-bg: var(--bento-brand-bg) !important;
+  --bento-toolbar-right-bg: var(--bento-brand-bg) !important;
 }
 /* Not on a toolbox whose fullscreen reveal is animating: its own transition would be replaced
    (the same rule as the sidebar push colour transition above). */
 :root[bento-bookmarks-view]
   :is(#navigator-toolbox:not([fullscreenShouldAnimate]), #TabsToolbar, #nav-bar) {
-  transition: --bento-toolbar-left-bg var(--muxui-semantic-motion-modal-transition);
+  transition:
+    --bento-toolbar-left-bg var(--muxui-semantic-motion-modal-transition),
+    --bento-toolbar-right-bg var(--muxui-semantic-motion-modal-transition);
 }
 /* Injected per-panel header — sits above the browser, takes its
    natural height, doesn't flex. */

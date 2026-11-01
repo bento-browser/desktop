@@ -108,7 +108,7 @@ visibility subscription is in place. It listens for `bento-bookmarks-show` and
 `bento-bookmarks-hide` (`src/bookmarks/visibility.ts`, below) and closes the view by sending
 `BENTO_CLOSE_BOOKMARKS_<ts>` through `sendChromeTitle` (`src/bookmarks/titles.ts`; a test keeps
 the open and close prefixes equal to the mount script's). The document background is opaque,
-`var(--bento-toolbar-main-bg)`, set by a rule keyed on `html[data-bento-document='bookmarks']`
+`var(--bento-brand-bg)` (neutral-5), set by a rule keyed on `html[data-bento-document='bookmarks']`
 so it wins over the shared document rule: the view is one surface with the toolbar strip that
 stays visible above it.
 

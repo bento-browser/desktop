@@ -306,10 +306,10 @@ here; the document's data is `bento-tools`' bookmarks store, which chrome never 
   layout extent and panel navigator, and every child of `#nav-bar` but
   `.titlebar-buttonbox-container`, with `visibility: hidden` (the `*` half covers children
   with their own visibility). `#PersonalToolbar` is `display: none`. The toolbar strip is one
-  surface: the left stop of the toolbar gradient takes `--bento-toolbar-main-bg`, which the
-  document should paint too. The hidden chrome flips on a `visibility` transition of the
+  surface: both stops of the toolbar gradient take `--bento-brand-bg` (neutral-5), the colour the
+  document paints, in every window (with or without side panels). The hidden chrome flips on a `visibility` transition of the
   `modal` role, so it hides when the host's fade-in ends and the view cross-fades over the
-  browser. Entering the view fades the strip's left half with it; leaving it does not (the
+  browser. Entering the view fades both strip stops with it; leaving it does not (the
   attribute and the transition go together). Dragging the window in the strip is Firefox's
   own nav-bar drag, because only the top-level chrome document computes drag regions.
 - **Host motion.** The host has no inline transition (`ensureOverlayHost` with

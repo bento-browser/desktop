@@ -7,16 +7,16 @@
  *
  * Mux controls (Button, IconButton, Input, Checkbox) paint through rules that are not all in a
  * layer, so the overrides for them sit unlayered below, scoped by a Bento class and the Mux class.
- * Layout, surfaces and motion are in bento.components. The page paints --bento-toolbar-main-bg
+ * Layout, surfaces and motion are in bento.components. The page paints --bento-brand-bg (neutral-5)
  * itself (bookmarks.html marks the document), so the view reads as one surface with the toolbar
  * strip above it. Hover states use the state role, the drawer its reveal and dismiss roles, and the
  * reorder settle the reveal role (data-bm-flipping, set by flip.ts). */
 
-/* The shared document rule paints --bento-brand-bg; this document is the toolbar surface. */
+/* The view surface is the brand background (neutral-5); chrome paints the strip above it the same. */
 html[data-bento-document='bookmarks'],
 html[data-bento-document='bookmarks'] body,
 html[data-bento-document='bookmarks'] #root {
-  background-color: var(--bento-toolbar-main-bg);
+  background-color: var(--bento-brand-bg);
 }
 
 @layer bento.components {
@@ -27,7 +27,7 @@ html[data-bento-document='bookmarks'] #root {
     height: 100%;
     width: 100%;
     overflow: hidden;
-    background-color: var(--bento-toolbar-main-bg);
+    background-color: var(--bento-brand-bg);
     color: var(--muxui-semantic-content-default);
     font-family: var(--bento-font-system);
   }
