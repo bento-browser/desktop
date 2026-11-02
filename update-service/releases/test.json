@@ -1,0 +1,7 @@
+{
+  "serving": false,
+  "product": "Bento",
+  "target": "Darwin_aarch64-gcc3",
+  "channel": "bento",
+  "release": null
+}

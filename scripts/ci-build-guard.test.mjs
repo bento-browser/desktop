@@ -55,31 +55,80 @@ test('rejects every native build entry point', () => {
     'mach package',
     'bash scripts/build-release.sh',
     'gh release create v0.0.1',
+    'node scripts/ota-publish.mjs --env test --assets',
+    'node ./scripts/ota-publish.mjs --env production --withdraw',
+    'pnpm dlx wrangler@4.156.0 deploy --env test',
+    'npx wrangler deploy',
+    'cd update-service && wrangler r2 object put bento-updates/x.mar',
+    'node scripts/macos-sign-release.mjs --obj-dist engine/obj-bento/dist',
+    './mach macos-sign -a Bento.app -c release',
+    'cd engine && ./mach repackage dmg -i Bento.tar.gz -o Bento.dmg',
+    'bash scripts/mach-raw.sh repackage dmg -i a -o b',
+    'xcrun notarytool submit Bento.zip --keychain-profile bento-notary --wait',
+    'xcrun stapler staple Bento.app',
+    'codesign --sign - Bento.app',
+    'codesign --force --deep --sign "Developer ID Application: Bento" Bento.app',
+    'codesign --sign=- Bento.app',
+    'codesign -s - Bento.app',
+    'codesign -fs - Bento.app',
+    '/usr/bin/codesign --timestamp -s ID Bento.dmg',
+    'xcrun codesign --force --sign - Bento.app',
+    'cd dist && codesign -s - Bento.app',
+    'codesign --force \\\n    --sign - Bento.app',
+    'hdiutil create -srcfolder stage -volname Bento Bento.dmg',
+    'hdiutil makehybrid -hfs -o Bento.dmg stage',
+    'hdiutil convert in.dmg -format UDZO -o out.dmg',
+    'sudo hdiutil create -size 1g x.dmg',
   ];
   for (const command of commands) {
     assert.ok(hits(`run: ${command}\n`).length > 0, `${command} should be rejected`);
   }
 });
 
+test('accepts read-only codesign and hdiutil use', () => {
+  const commands = [
+    'codesign --verify --deep --strict --verbose=2 Bento.app',
+    'codesign --verify --strict Bento.dmg',
+    'codesign -d Bento.app',
+    'codesign -dvv Bento.app',
+    'codesign -d --entitlements - Bento.app',
+    'codesign --display --verbose=4 Bento.app',
+    'hdiutil attach -readonly -nobrowse Bento.dmg',
+    'hdiutil detach /Volumes/Bento',
+    'hdiutil imageinfo Bento.dmg',
+    'node scripts/check-macos-signing.mjs Bento.dmg signing.json',
+  ];
+  for (const command of commands) {
+    assert.deepEqual(hits(`run: ${command}\n`), [], `${command} should be accepted`);
+  }
+});
+
 test('derives native aliases from normalized script bodies', () => {
   const scripts = {
+    publish: 'node scripts/ota-publish.mjs --env test --assets',
     build: 'bash scripts/bento-env.sh build',
     filtered: 'pnpm --filter bento-browser run build',
     continued: 'pnpm run \\\n    build',
     quoted: 'node scripts/bento-build.mjs "package"',
     chained: 'pnpm run filtered',
     extension: 'pnpm --filter @bento/shell build',
+    sign: 'codesign --force --sign - dist/Bento.app',
+    image: 'hdiutil create -srcfolder dist Bento.dmg',
+    signed: 'pnpm run sign',
+    inspect: 'codesign -dvv dist/Bento.app && hdiutil imageinfo Bento.dmg',
   };
   const names = nativeScriptNames(scripts, repoPackage.name);
   assert.deepEqual(
     [...names].sort(),
-    ['build', 'chained', 'continued', 'filtered', 'quoted'],
+    ['build', 'chained', 'continued', 'filtered', 'image', 'publish', 'quoted', 'sign', 'signed'],
   );
-  for (const alias of ['filtered', 'continued', 'quoted', 'chained']) {
+  for (const alias of ['filtered', 'continued', 'quoted', 'chained', 'publish', 'sign', 'image', 'signed']) {
     const found = nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name);
     assert.ok(found.length > 0, `pnpm run ${alias} should be rejected`);
   }
-  assert.deepEqual(nativeBuildMatches('run: pnpm run extension\n', names, repoPackage.name), []);
+  for (const alias of ['extension', 'inspect']) {
+    assert.deepEqual(nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name), []);
+  }
 });
 
 test('treats a filter that selects the root package as an unfiltered run', () => {
@@ -135,7 +184,7 @@ test('sees through quoted script names and backslash continuations', () => {
   }
 });
 
-test('rejects manual triggers, artifact uploads, and release steps', () => {
+test('rejects manual triggers, artifact uploads, release and deploy steps', () => {
   for (const text of [
     'on:\n  workflow_dispatch:\n',
     'on:\n  workflow_run:\n    workflows: [CI]\n',
@@ -143,6 +192,7 @@ test('rejects manual triggers, artifact uploads, and release steps', () => {
     '- uses: actions/upload-artifact@v7\n',
     '- uses: softprops/action-gh-release@v3\n',
     '- uses: actions/attest@v4\n',
+    '- uses: cloudflare/wrangler-action@v3\n',
   ]) {
     assert.ok(hits(text).length > 0, `${text.trim()} should be rejected`);
   }
@@ -166,6 +216,8 @@ test('accepts the extension builds and source commands CI runs', () => {
     "import { loadConfig } from './scripts/bento-build.mjs';",
     'node scripts/snapshot-import-output.mjs > import-first.sha256',
     'node scripts/check-import-output.mjs',
+    'node --test scripts/ota-publish.test.mjs update-service/worker.test.mjs',
+    'node --test scripts/macos-sign-release.test.mjs scripts/check-macos-signing.test.mjs',
   ];
   for (const command of commands) {
     assert.deepEqual(hits(`run: ${command}\n`), [], `${command} should be accepted`);

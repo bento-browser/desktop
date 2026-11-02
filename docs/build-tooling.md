@@ -120,8 +120,10 @@ stale Bento-owned overlays and refuse to overwrite user changes.
   equals the staged application's.
 - `pnpm run build:full`: download, bootstrap, build, and package.
 - `pnpm run build:release`: run the release gate, create a host-platform
-  release-mode package, and write its SBOM, manifest, and checksums (see
-  [Release security and provenance](#release-security-and-provenance)).
+  release-mode package, sign and repackage it on macOS, and write its SBOM,
+  manifest, and checksums (see
+  [Release security and provenance](#release-security-and-provenance) and
+  [macOS signing](#macos-signing)).
 - `pnpm run test:panels -- --app <Bento.app>`: launch a built app headless on a
   temporary profile and run the panel renderer scenario through Marionette (add two
   panels, switch the main tab, close both, with pixel checks), after checking that
@@ -456,6 +458,9 @@ reconfigured (switching modes in one tree makes mach reconfigure and rebuild clo
 everything). `build-release.sh` refuses a non-empty `release-out/`, so move each
 build's `release-out/` to a dated directory outside the repository before the next
 one; the round trip needs build N preserved while N+1 is built.
+
+The update metadata service (a Cloudflare Worker) and the script that publishes a
+release behind it are documented in [OTA updates](ota-updates.md).
 
 ## Object directory
 
@@ -890,13 +895,17 @@ It runs, in order:
    A failure stops the script before anything is built.
 3. `pnpm run ext:build` and `pnpm run import` with `BENTO_RELEASE=1`.
 4. `pnpm run release:security-check:shell`, then the native release build.
-5. The package step, then collection of the package into `release-out/`
+5. The package step.
+6. On macOS, `scripts/macos-sign-release.mjs` signs a copy of the packaged app
+   and builds the DMG (see [macOS signing](#macos-signing)).
+7. Collection of the DMG (the signed one on macOS) into `release-out/`
    (and the MAR and update XML only when the updater is enabled, see
    [Updater](#updater)), followed by `scripts/validate-bento-artifacts.mjs`
-   (`pnpm run artifacts:check`) and `scripts/check-product-identity.mjs`.
-6. `scripts/generate-release-sbom.mjs` and `scripts/generate-release-metadata.mjs`,
-   which write the CycloneDX SBOM, `release-manifest.json`, and `SHA256SUMS` into
-   `release-out/`.
+   (`pnpm run artifacts:check`), `scripts/check-macos-signing.mjs` on macOS, and
+   `scripts/check-product-identity.mjs`.
+8. `scripts/generate-release-sbom.mjs` and `scripts/generate-release-metadata.mjs`,
+   which write the CycloneDX SBOM, `release-manifest.json` (with the `signing`
+   record), and `SHA256SUMS` into `release-out/`.
 
 `BENTO_RELEASE_PREPARED=1` skips steps 1 and 3 only; the gate always runs. The
 manifest and checksums cover every file in `release-out/`, so the script
@@ -913,6 +922,87 @@ each platform in `brands.bento.release.platforms` (macOS Developer ID today) is
 recorded in `config/release-security.json`, and the isolated update round trip is
 recorded (see [Publishing](#publishing)). Signing private keys never belong in the
 repository.
+
+### macOS signing
+
+`scripts/macos-sign-release.mjs` runs on macOS between packaging and collection.
+It never signs the app in the object directory. It copies the staged app
+(`<objdir>/dist/bento/Bento.app`, the one the package step builds the MAR from;
+the unbundled `<objdir>/dist/Bento.app` links into the object directory and is
+refused) to `dist/macos-signing/`, signs the copy with
+`mach macos-sign -c release` (`-c` is required: mach maps only Mozilla's bundle
+ids to a channel), freezes it read-only, and builds the DMG that is collected.
+The directory is rebuilt on every run and ends up holding the frozen `Bento.app`,
+`bento-<version>.signed.dmg`, and `signing.json`, the
+`{ mode, teamId, notarized }` record that `release-manifest.json` carries as
+`signing`.
+
+The MAR is not built from the frozen signed app yet; that is pending the MAR
+signing phase (PR 3). Today `mach package` creates `dist/output.mar` from the
+unsigned staged app before this script runs, and collection copies that file
+unchanged, and only when `updates.enabled` is true (it is `false`, so no MAR is
+collected). The MAR signing phase builds the MAR from `dist/macos-signing/Bento.app`
+between signing and collection.
+
+| Mode           | Selected by                                            | Entitlements                    | Result                                         |
+| -------------- | ------------------------------------------------------ | ------------------------------- | ---------------------------------------------- |
+| `ad-hoc`       | `BENTO_MACOS_SIGN_IDENTITY` unset (the default)        | `developer`                     | Runs on the Mac that built it and no other     |
+| `developer-id` | `BENTO_MACOS_SIGN_IDENTITY` set to a Developer ID name | `production-without-restricted` | Timestamped, notarized and stapled app and DMG |
+
+`BENTO_NOTARY_PROFILE` names the `xcrun notarytool store-credentials` keychain
+profile (default `bento-notary`). A set but blank identity, or `-`, is refused
+rather than treated as ad-hoc. In `developer-id` mode the script also:
+
+1. checks that every nested Mach-O file carries a secure timestamp
+   (`codesign -dvv` shows `Timestamp=`), and re-signs through a `codesign`
+   wrapper that adds `--timestamp` if any does not (codesign only timestamps
+   some signatures by default);
+2. requires a `Developer ID Application` authority and a Team ID before
+   submitting anything to Apple;
+3. notarizes a zip of the app with `notarytool submit --wait` (an answer other
+   than `Accepted` fails with Apple's log), staples it, and runs
+   `spctl -a -vv -t exec`;
+4. signs the DMG, notarizes it, and staples it.
+
+Both modes run `codesign --verify --deep --strict --verbose=2` on the signed copy.
+
+`scripts/check-macos-signing.mjs` runs on the collected DMG. It mounts the image
+read-only on a private mount point (always detached afterwards), runs the same
+strict verification on the app inside, and confirms the signature matches
+`signing.json`. For a `developer-id` record it also runs
+`codesign --verify --strict` on the DMG itself and requires a
+`Developer ID Application` authority and the recorded Team ID (and the
+`platformSigning.macosDeveloperIdTeam` team when set), so a stapled ticket cannot
+vouch for an image signed by someone else. An `ad-hoc` DMG is unsigned by design:
+the check skips its signature and says so in its output. When `config/release-security.json`
+`platformSigning.macosDeveloperIdTeam` is not empty it also requires a
+`developer-id` build for exactly that team, `notarized: true`, and a passing
+`xcrun stapler validate` on the app and the DMG.
+
+An ad-hoc build cannot be distributed: another Mac's Gatekeeper rejects it, and
+it carries no notarization ticket. `release:security-check:public` already
+requires the Team ID to be recorded, and once it is the signing check fails every
+build that is not a notarized Developer ID build for that team. The Developer ID
+path, the timestamp wrapper and the notarization calls have not run against a
+real certificate yet.
+
+Pitfalls:
+
+- `mach repackage dmg` is not used: it resolves the DMG toolchains, which exist
+  only for Linux hosts, before it looks at its input, so on a Mac it always fails
+  with `DMG tool not found`.
+- `hdiutil makehybrid`, which `mach package` uses for its throwaway DMG, stamps
+  `com.apple.FinderInfo` on every file in the image, so strict `codesign`
+  verification of the mounted app fails with "resource fork, Finder information,
+  or similar detritus not allowed". The script builds the image with
+  `hdiutil create -srcfolder` instead, which leaves the files clean. The DMG
+  keeps the brand's window layout (`dsstore` and `background.png` from
+  `branding/bento/`) but not the custom volume icon, whose flag `create` does
+  not carry over.
+- `mach macos-sign` reads its entitlement files by repository-relative path, so it
+  runs through `scripts/mach-raw.sh`, which changes into `engine/`.
+- `hdiutil` prints deprecation warnings pointing at `diskutil image`; the commands
+  still work.
 
 `pnpm run security:check` protects repository-owned navigation, preference,
 profile-import, icon-fetching, bundled-add-on, signing, and release invariants.

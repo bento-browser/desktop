@@ -99,4 +99,5 @@ Build, packaging, and release helper scripts.
   `check-legacy-aliases.mjs` with `legacy-aliases.mjs`,
   `check-product-identity.mjs`, `check-rust-toolchain.mjs`.
 - Release: `build-release.sh`, `generate-release-sbom.mjs`,
-  `generate-release-metadata.mjs`.
+  `generate-release-metadata.mjs`, `macos-sign-release.mjs`,
+  `check-macos-signing.mjs`.
