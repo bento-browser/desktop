@@ -18,7 +18,15 @@
 #      not just the app bundle. MAR and update metadata are produced and
 #      collected only when bento.json updates.enabled is true; the updater is
 #      compiled out until Bento owns a signed update path.
-#   4. Writes the SBOM, release manifest, and SHA256SUMS next to the artifacts.
+#   4. On macOS, signs a copy of the packaged app and repackages it into the DMG
+#      that is collected (scripts/macos-sign-release.mjs). The signature is
+#      ad-hoc, which only runs on this Mac, unless BENTO_MACOS_SIGN_IDENTITY
+#      names a Developer ID Application identity: then the app and the DMG are
+#      notarized and stapled with the BENTO_NOTARY_PROFILE keychain profile
+#      (default bento-notary). The collected DMG is checked against the signing
+#      record (scripts/check-macos-signing.mjs).
+#   5. Writes the SBOM, release manifest (with the signing record), and
+#      SHA256SUMS next to the artifacts.
 #
 # CI no longer builds or publishes releases, so nothing GitHub-only runs here:
 # no provenance attestation, no artifact upload, no draft GitHub Release.
@@ -83,16 +91,16 @@ if [ -n "$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
 fi
 
 if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
-  step "1/5 Skipping install (BENTO_RELEASE_PREPARED is set)"
+  step "1/6 Skipping install (BENTO_RELEASE_PREPARED is set)"
 else
-  step "1/5 Installing dependencies (frozen lockfile)"
+  step "1/6 Installing dependencies (frozen lockfile)"
   pnpm install --frozen-lockfile
 fi
 
 # The checks the release workflow ran before any native build. The release
 # security test parses the lockfile and imports from node_modules, so this
 # follows the install.
-step "2/5 Release gate (security invariants, release gate, audit, Rust toolchain)"
+step "2/6 Release gate (security invariants, release gate, audit, Rust toolchain)"
 pnpm run security:check
 pnpm run release:security-check
 node --test scripts/release-security.test.mjs
@@ -100,9 +108,9 @@ pnpm audit --audit-level high
 node scripts/check-rust-toolchain.mjs
 
 if [ -n "${BENTO_RELEASE_PREPARED:-}" ]; then
-  step "3/5 Skipping extension build and import (BENTO_RELEASE_PREPARED is set)"
+  step "3/6 Skipping extension build and import (BENTO_RELEASE_PREPARED is set)"
 else
-  step "3/5 Building Bento extensions and chrome (BENTO_RELEASE=1)"
+  step "3/6 Building Bento extensions and chrome (BENTO_RELEASE=1)"
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run ext:build
   BENTO_RELEASE=1 BENTO_BUILD_MODE=release pnpm run import
 fi
@@ -128,7 +136,7 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 OBJ_DIST="$OBJ_DIR/dist"
 
-step "4/5 Packaging artifact"
+step "4/6 Packaging artifact"
 case "$PLATFORM" in
   macos)
     # Remove stale macOS packages before packaging so the collected artifact
@@ -156,26 +164,36 @@ esac
 # add-on still has the dev-only reload command (docs/build-tooling.md).
 BENTO_RELEASE=1 BENTO_BUILD_MODE=release bash scripts/bento-env.sh package
 
-step "5/5 Collecting artifacts into $OUT_DIR"
+# Signs a copy of the staged app and builds the DMG that step 6 collects.
+SIGNING_DIR="$REPO_ROOT/dist/macos-signing"
+case "$PLATFORM" in
+  macos)
+    step "5/6 Signing and repackaging (ad-hoc unless BENTO_MACOS_SIGN_IDENTITY is set)"
+    node scripts/macos-sign-release.mjs --obj-dist "$OBJ_DIST"
+    ;;
+  *)
+    step "5/6 Skipping signing ($PLATFORM build)"
+    ;;
+esac
+# Insertion point for the MAR signing phase (PR 3): build the update MAR here,
+# between signing and collection, from the frozen signed app in
+# $SIGNING_DIR/Bento.app. Not done yet: the package step above creates
+# dist/output.mar from the unsigned staged app, and step 6 copies it unchanged
+# (only when bento.json updates.enabled is true; it is false, so no MAR ships).
+
+step "6/6 Collecting artifacts into $OUT_DIR"
 # Mach drops platform-specific artifacts under $OBJ_DIST/.
 # Hunt for them by extension and copy with a versioned name. The exact
 # subpath varies per platform — find handles that without hard-coding.
 case "$PLATFORM" in
   macos)
-    # Apple Silicon (aarch64) and Intel (x86_64) both end up under the object directory's dist.
-    # mach package on macOS produces a .dmg directly.
-    DMG_LIST="$(find "$OBJ_DIST" -maxdepth 2 -name "bento-$VERSION.*.dmg" | sort)"
-    DMG_COUNT="$(printf '%s\n' "$DMG_LIST" | sed '/^$/d' | wc -l | tr -d ' ')"
-    if [ "$DMG_COUNT" = "0" ]; then
-      echo "build-release: no bento-$VERSION .dmg found under $OBJ_DIST" >&2
+    # The repackaged signed DMG from step 5 replaces mach's throwaway one, which
+    # artifacts:check still validates under the object directory.
+    DMG="$SIGNING_DIR/bento-$VERSION.signed.dmg"
+    if [ ! -f "$DMG" ]; then
+      echo "build-release: signing did not produce $DMG" >&2
       exit 1
     fi
-    if [ "$DMG_COUNT" != "1" ]; then
-      echo "build-release: expected one bento-$VERSION .dmg, found $DMG_COUNT:" >&2
-      printf '%s\n' "$DMG_LIST" >&2
-      exit 1
-    fi
-    DMG="$DMG_LIST"
     OUT="$OUT_DIR/Bento-$VERSION-macos.dmg"
     cp "$DMG" "$OUT"
     echo "build-release: produced $OUT"
@@ -290,11 +308,20 @@ fi
 
 node scripts/validate-bento-artifacts.mjs "$REPO_ROOT"
 
+# Mounts the collected DMG and checks its signature against the signing record.
+if [ "$PLATFORM" = "macos" ]; then
+  node scripts/check-macos-signing.mjs "$OUT" "$SIGNING_DIR/signing.json"
+fi
+
 node scripts/check-product-identity.mjs "$OUT_DIR"
 
 # Last, so the manifest and checksums cover everything collected above.
 step "Release metadata (SBOM, manifest, SHA256SUMS)"
 node scripts/generate-release-sbom.mjs "$OUT_DIR"
-node scripts/generate-release-metadata.mjs "$OUT_DIR"
+if [ "$PLATFORM" = "macos" ]; then
+  node scripts/generate-release-metadata.mjs "$OUT_DIR" "$SIGNING_DIR/signing.json"
+else
+  node scripts/generate-release-metadata.mjs "$OUT_DIR"
+fi
 
 step "Done. Release artifact: $OUT (metadata in $OUT_DIR)"

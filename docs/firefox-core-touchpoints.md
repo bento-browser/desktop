@@ -2894,6 +2894,31 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   check, and import. Keep the Rust pin and release verification aligned with the
   Firefox release's official toolchain.
 
+### macOS Release Signing
+
+- Status: Active
+- Last updated: 2026-11-02
+- Bento code: `scripts/macos-sign-release.mjs` (the signing step of
+  `scripts/build-release.sh`) and `scripts/check-macos-signing.mjs`.
+- Firefox surfaces: `mach macos-sign` (`tools/signing/macos/mach_commands.py`),
+  its `mac-signing` entitlement map in `taskcluster/config.yml`, and the
+  entitlement files under `security/mac/hardenedruntime/`.
+- Facts (Firefox 158.0, 2026-11-02): the channel auto-detection accepts only
+  Mozilla bundle ids, so Bento passes `-c release`; the command rejects the
+  symlinked objdir app, so Bento signs a `ditto` copy of `dist/bento/Bento.app`;
+  without `-s` it signs ad-hoc and then accepts only `-e developer`; it does not
+  pass `--timestamp`. `mach repackage dmg` cannot run on macOS because its DMG
+  tools are Linux toolchains, so Bento builds the DMG with `hdiutil create -fs
+  HFS+ -format UDBZ`. Images from `hdiutil makehybrid`, which `mach package`
+  uses, give every file `com.apple.FinderInfo`, and `codesign --verify --strict`
+  rejects the app inside them.
+- Regression checks for each Firefox upgrade: re-read `mach_commands.py` for
+  changed arguments, channel detection or timestamp handling; run an ad-hoc
+  `mach macos-sign -a <copy> -c release -e developer` on a copy of the packaged
+  app and confirm `codesign --verify --deep --strict` passes; confirm the
+  entitlement map still covers every nested executable Bento ships, including
+  `updater.app` once the updater is on.
+
 ### Build Configure Flags And Updater
 
 - Status: Active
