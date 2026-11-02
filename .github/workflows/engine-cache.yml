@@ -1,0 +1,57 @@
+name: Engine cache
+
+# GitHub removes a cache entry that no run has restored for seven days, and a
+# miss costs the next source-import run about six minutes. This workflow
+# restores the main-scoped Firefox source entry on a schedule, which refreshes
+# its last-accessed time. After an eviction or a Firefox bump it downloads,
+# verifies, packs, and saves the source, so pull requests hit the cache again.
+#
+# It downloads and verifies only: it never bootstraps, builds, or packages
+# (scripts/ci-build-guard.mjs).
+#
+# GitHub disables scheduled workflows in a public repository after 60 days
+# without repository activity. That is fine: an idle repository has no pull
+# requests to speed up, and the next push to main re-seeds the cache. It does
+# not re-enable this schedule, though: do that from the Actions tab.
+
+on:
+  schedule:
+    # Monday and Thursday at 03:23 UTC: at most four days between restores,
+    # under the seven-day limit.
+    - cron: '23 3 * * 1,4'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-cache
+  cancel-in-progress: false
+
+jobs:
+  keep-alive:
+    name: Restore or seed the Firefox source cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # Pristine source keyed by Firefox version and source digest, the same
+      # entry the source-import job in ci.yml restores.
+      - name: Firefox source (engine/)
+        id: engine-source
+        uses: ./.github/actions/engine-source
+
+      - name: Cache summary
+        if: always()
+        shell: bash
+        env:
+          SOURCE_HIT: ${{ steps.engine-source.outputs.cache-hit }}
+        run: |
+          {
+            echo '### Source cache'
+            echo
+            echo "- Firefox source: $([ "$SOURCE_HIT" = true ] && echo hit || echo miss)"
+          } >> "$GITHUB_STEP_SUMMARY"
