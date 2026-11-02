@@ -1,0 +1,27 @@
+# Bento update metadata service. Deployed only by scripts/ota-publish.mjs (never by
+# CI), which runs wrangler with CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID from
+# the environment; no account id or token belongs in this file. See docs/ota-updates.md.
+#
+# There is no top-level `main`: a deploy must name an environment. Each environment
+# bundles its own entry module, which imports that environment's committed descriptor.
+# (Wrangler reads `alias` only from the top level, so a per-environment alias table
+# would be ignored.)
+name = "bento-update-service"
+compatibility_date = "2026-10-01"
+
+# Each environment becomes its own Worker (bento-update-service-test and
+# bento-update-service-production) on its own Custom Domain, with nothing on
+# workers.dev and no per-request log retention.
+workers_dev = false
+preview_urls = false
+
+[observability]
+enabled = false
+
+[env.test]
+main = "entry-test.mjs"
+routes = [{ pattern = "updates-test.bentobrowser.app", custom_domain = true }]
+
+[env.production]
+main = "entry-production.mjs"
+routes = [{ pattern = "updates.bentobrowser.app", custom_domain = true }]

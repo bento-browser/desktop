@@ -364,6 +364,9 @@ certificate. Do that work, log every Firefox core surface it touches in
 trip, record the inputs, and only then set `updates.enabled` to `true`. The next
 build reconfigures with the updater compiled in.
 
+The update metadata service (a Cloudflare Worker) and the script that publishes a
+release behind it are documented in [OTA updates](ota-updates.md).
+
 ## Object directory
 
 The generated mozconfig sets `mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/obj-bento` in

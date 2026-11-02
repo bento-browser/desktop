@@ -55,6 +55,11 @@ test('rejects every native build entry point', () => {
     'mach package',
     'bash scripts/build-release.sh',
     'gh release create v0.0.1',
+    'node scripts/ota-publish.mjs --env test --assets',
+    'node ./scripts/ota-publish.mjs --env production --withdraw',
+    'pnpm dlx wrangler@4.156.0 deploy --env test',
+    'npx wrangler deploy',
+    'cd update-service && wrangler r2 object put bento-updates/x.mar',
     'node scripts/macos-sign-release.mjs --obj-dist engine/obj-bento/dist',
     './mach macos-sign -a Bento.app -c release',
     'cd engine && ./mach repackage dmg -i Bento.tar.gz -o Bento.dmg',
@@ -100,6 +105,7 @@ test('accepts read-only codesign and hdiutil use', () => {
 
 test('derives native aliases from normalized script bodies', () => {
   const scripts = {
+    publish: 'node scripts/ota-publish.mjs --env test --assets',
     build: 'bash scripts/bento-env.sh build',
     filtered: 'pnpm --filter bento-browser run build',
     continued: 'pnpm run \\\n    build',
@@ -114,9 +120,9 @@ test('derives native aliases from normalized script bodies', () => {
   const names = nativeScriptNames(scripts, repoPackage.name);
   assert.deepEqual(
     [...names].sort(),
-    ['build', 'chained', 'continued', 'filtered', 'image', 'quoted', 'sign', 'signed'],
+    ['build', 'chained', 'continued', 'filtered', 'image', 'publish', 'quoted', 'sign', 'signed'],
   );
-  for (const alias of ['filtered', 'continued', 'quoted', 'chained', 'sign', 'image', 'signed']) {
+  for (const alias of ['filtered', 'continued', 'quoted', 'chained', 'publish', 'sign', 'image', 'signed']) {
     const found = nativeBuildMatches(`run: pnpm run ${alias}\n`, names, repoPackage.name);
     assert.ok(found.length > 0, `pnpm run ${alias} should be rejected`);
   }
@@ -178,7 +184,7 @@ test('sees through quoted script names and backslash continuations', () => {
   }
 });
 
-test('rejects manual triggers, artifact uploads, and release steps', () => {
+test('rejects manual triggers, artifact uploads, release and deploy steps', () => {
   for (const text of [
     'on:\n  workflow_dispatch:\n',
     'on:\n  workflow_run:\n    workflows: [CI]\n',
@@ -186,6 +192,7 @@ test('rejects manual triggers, artifact uploads, and release steps', () => {
     '- uses: actions/upload-artifact@v7\n',
     '- uses: softprops/action-gh-release@v3\n',
     '- uses: actions/attest@v4\n',
+    '- uses: cloudflare/wrangler-action@v3\n',
   ]) {
     assert.ok(hits(text).length > 0, `${text.trim()} should be rejected`);
   }
@@ -209,6 +216,7 @@ test('accepts the extension builds and source commands CI runs', () => {
     "import { loadConfig } from './scripts/bento-build.mjs';",
     'node scripts/snapshot-import-output.mjs > import-first.sha256',
     'node scripts/check-import-output.mjs',
+    'node --test scripts/ota-publish.test.mjs update-service/worker.test.mjs',
     'node --test scripts/macos-sign-release.test.mjs scripts/check-macos-signing.test.mjs',
   ];
   for (const command of commands) {

@@ -1,7 +1,8 @@
 // Pattern guard behind `pnpm run security:check`: CI must never build the
-// application. Bento targets macOS only for now, and application builds run
-// locally on the maintainer's Mac. This is a text scan of workflow and composite
-// action files, not a YAML policy engine.
+// application or deploy and publish update infrastructure. Bento targets macOS
+// only for now, and application builds and update publishing run locally on the
+// maintainer's Mac. This is a text scan of workflow and composite action files,
+// not a YAML policy engine.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,9 +12,10 @@ import path from 'node:path';
 const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-addons)';
 
 // Direct native entry points: scripts, subcommands, mach (including macOS signing
-// and repackaging), direct codesign signing and DMG creation, notarization, and
-// release creation. Read-only `codesign --verify` / `-d` / `-dvv` and
-// `hdiutil attach` / `detach` / `imageinfo` stay allowed.
+// and repackaging), direct codesign signing and DMG creation, notarization,
+// release creation, and the update publish and Cloudflare deploy tools.
+// Read-only `codesign --verify` / `-d` / `-dvv` and `hdiutil attach` / `detach` /
+// `imageinfo` stay allowed.
 const nativeCommands = [
   {
     description: 'a Bento native build command',
@@ -42,6 +44,9 @@ const nativeCommands = [
   },
   { description: 'a notarization command', pattern: /\b(?:notarytool|stapler)\b/ },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },
+  // `ota-publish.test.mjs` on the node --test line is not the script (`.mjs` follows the name directly).
+  { description: 'the OTA publish script', pattern: /\bota-publish\.mjs\b/ },
+  { description: 'a wrangler (Cloudflare deploy) command', pattern: /\bwrangler\b/ },
 ];
 
 // Triggers, artifact uploads, and release steps that have no place in CI.
