@@ -14,6 +14,8 @@ The tree is selected by `--with-branding=browser/branding/bento` and includes:
 - `configure.sh` for brand identifiers
 - `pref/firefox-branding.js` for branding-specific default prefs
 - `locales/en-US/brand.{ftl,properties}` for Bento Browser name strings
+- `update-certificates/` for the public MAR trust anchors the updater compiles in
+  for the `bento` channel (see its README)
 
 Build tooling does not generate branding. `pnpm run import` copies this tracked
 tree into `engine/browser/branding/bento`; it never regenerates the canonical

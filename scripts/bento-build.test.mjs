@@ -32,6 +32,7 @@ import { importSourceOverlays } from './import-sources.mjs';
 import { installBuiltinAddons } from './install-builtin-addons.mjs';
 import { installBranding } from './install-branding.mjs';
 import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
+import { CERTIFICATES, shipUpdater, writeCertificates } from './updater-fixtures.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -204,9 +205,21 @@ function patchBentoJson(root, edit) {
   fs.writeFileSync(file, JSON.stringify(config));
 }
 
-/** Records every readiness input, then turns the updater on. */
+const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+const UPDATER_PATCHES = [
+  'patches/experiments/03-appupdate-host-configure.patch',
+  'patches/experiments/04-updater-bento-certificates.patch',
+];
+
+/**
+ * Commits the certificates, series entries and fingerprints the structural readiness
+ * checks read (the round trip is not one of them), then turns the updater on in
+ * bento.json. Only a release build compiles it in.
+ */
 function enableUpdater(root) {
-  const fingerprint = 'a'.repeat(64);
+  writeCertificates(root);
+  fs.mkdirSync(path.join(root, 'patches'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'patches', 'series.json'), JSON.stringify({ series: UPDATER_PATCHES.map((patch) => ({ path: patch })) }));
   fs.mkdirSync(path.join(root, 'config'), { recursive: true });
   fs.writeFileSync(
     path.join(root, 'config', 'release-security.json'),
@@ -214,10 +227,11 @@ function enableUpdater(root) {
       schemaVersion: 1,
       updateService: {
         hostname: 'updates.example.invalid',
-        marSigningKeyFingerprint: fingerprint,
-        updaterCertificateFingerprint: fingerprint,
-        hostCompiledIn: true,
-        isolatedRoundTripVerified: true,
+        marSigningKeyFingerprint: sha256(CERTIFICATES.primary),
+        updaterCertificateFingerprint: sha256(CERTIFICATES.primary),
+        backupCertificateFingerprint: sha256(CERTIFICATES.secondary),
+        signingNickname: 'bento-mar-a',
+        isolatedRoundTripVerified: false,
       },
     }),
   );
@@ -275,49 +289,53 @@ test('developer builds pin the macOS deployment target only on macOS', async () 
   }
 });
 
-test('the updater is compiled out in every mode unless bento.json enables it', async () => {
+test('the updater is compiled out of dev and debug builds, and of release builds unless bento.json enables it', async () => {
   const root = await fixture();
   try {
+    const textFor = (mode) => fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8');
     for (const mode of MODES) {
-      const text = fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8');
-      const options = configureOptions(text);
-      assert.ok(options.includes('--disable-updater'), mode);
-      // The channel stays set so enabling the updater later needs no other change.
-      assert.ok(options.includes('--enable-update-channel=bento'), mode);
+      const text = textFor(mode);
+      assert.ok(configureOptions(text).includes('--disable-updater'), mode);
+      // The channel and host are exported in every mode, so enabling the updater later needs no other change.
+      assert.ok(configureOptions(text).includes('--enable-update-channel=bento'), mode);
+      assert.match(text, /^export MOZ_APPUPDATE_HOST=updates\.example\.invalid$/m, mode);
     }
-    patchBentoJson(root, (config) => {
-      config.updates.enabled = false;
-    });
-    assert.ok(configureOptions(fs.readFileSync(writeMozconfig(root, 'dev').destination, 'utf8')).includes('--disable-updater'));
 
+    // Enabled in bento.json, the updater is still out of dev and debug and in only for release.
     enableUpdater(root);
-    for (const mode of MODES) {
-      const text = fs.readFileSync(writeMozconfig(root, mode).destination, 'utf8');
-      assert.equal(configureOptions(text).includes('--disable-updater'), false, mode);
-      assert.match(text, /^# Updater: compiled in/m);
+    for (const mode of ['dev', 'debug']) {
+      const text = textFor(mode);
+      assert.ok(configureOptions(text).includes('--disable-updater'), mode);
+      assert.match(text, /^# Updater: compiled out of dev and debug builds/m, mode);
     }
+    const release = textFor('release');
+    assert.equal(configureOptions(release).includes('--disable-updater'), false);
+    assert.match(release, /^# Updater: compiled in \(release build/m);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
 
-test('enabling the updater is refused until every readiness input is recorded', async () => {
+test('enabling the updater is refused for a release build until the structural inputs hold', async () => {
   const root = await fixture();
   try {
     patchBentoJson(root, (config) => {
       config.updates.enabled = true;
     });
-    assert.throws(() => writeMozconfig(root, 'dev'), /config\/release-security\.json is missing/);
+    // Dev and debug never compile the updater, so they need none of it.
+    assert.doesNotThrow(() => writeMozconfig(root, 'dev'));
+    fs.rmSync(engineFile(root, 'mozconfig'));
+    assert.throws(() => writeMozconfig(root, 'release'), /config\/release-security\.json is missing/);
     assert.equal(fs.existsSync(engineFile(root, 'mozconfig')), false);
 
     enableUpdater(root);
     const security = path.join(root, 'config', 'release-security.json');
     const ready = JSON.parse(fs.readFileSync(security, 'utf8'));
     const cases = [
-      [(service) => { service.marSigningKeyFingerprint = ''; }, /marSigningKeyFingerprint must be the SHA-256/],
-      [(service) => { service.updaterCertificateFingerprint = 'b'.repeat(64); }, /updaterCertificateFingerprint must equal marSigningKeyFingerprint/],
-      [(service) => { service.hostCompiledIn = false; }, /hostCompiledIn must be true/],
-      [(service) => { service.isolatedRoundTripVerified = false; }, /isolatedRoundTripVerified must be true/],
+      [(service) => { service.marSigningKeyFingerprint = ''; }, /marSigningKeyFingerprint must be the lowercase SHA-256 of branding\/bento\/update-certificates\/primary\.der/],
+      [(service) => { service.updaterCertificateFingerprint = 'b'.repeat(64); }, /updaterCertificateFingerprint must be the lowercase SHA-256/],
+      [(service) => { service.backupCertificateFingerprint = sha256(CERTIFICATES.primary); }, /backupCertificateFingerprint must be the lowercase SHA-256 of branding\/bento\/update-certificates\/secondary\.der/],
+      [(service) => { service.marSigningKeyFingerprint = sha256(CERTIFICATES.primary).toUpperCase(); }, /marSigningKeyFingerprint must be the lowercase SHA-256/],
     ];
     for (const [unready, message] of cases) {
       const candidate = structuredClone(ready);
@@ -326,24 +344,31 @@ test('enabling the updater is refused until every readiness input is recorded', 
       assert.throws(() => writeMozconfig(root, 'release'), message);
       assert.equal(fs.existsSync(engineFile(root, 'mozconfig')), false);
     }
-
-    // Mozilla's channel names select Mozilla's update certificates.
     fs.writeFileSync(security, JSON.stringify(ready));
-    // configure lowercases the channel before choosing certificates, so spelling does not escape this.
-    for (const channel of ['release', 'Release', 'NIGHTLY', ' nightly ', 'Nightly-Try']) {
+
+    // The certificates and the patches that use them must be committed.
+    const certificate = path.join(root, 'branding', 'bento', 'update-certificates', 'secondary.der');
+    fs.renameSync(certificate, `${certificate}.moved`);
+    assert.throws(() => writeMozconfig(root, 'release'), /secondary\.der is missing/);
+    fs.renameSync(`${certificate}.moved`, certificate);
+    const series = path.join(root, 'patches', 'series.json');
+    fs.writeFileSync(series, JSON.stringify({ series: [{ path: UPDATER_PATCHES[0] }] }));
+    assert.throws(() => writeMozconfig(root, 'release'), /patches\/experiments\/04-updater-bento-certificates\.patch must be listed in patches\/series\.json/);
+    fs.writeFileSync(series, JSON.stringify({ series: UPDATER_PATCHES.map((patch) => ({ path: patch })) }));
+
+    // Only the channel the certificate patch maps is allowed; configure lowercases the name, and every other one selects Mozilla's certificates.
+    for (const channel of ['release', 'Release', 'NIGHTLY', ' nightly ', 'Nightly-Try', 'Bento', 'bento-beta']) {
       patchBentoJson(root, (config) => {
         config.updates.channel = channel;
       });
-      assert.throws(() => writeMozconfig(root, 'release'), /must be a Bento-owned channel/, JSON.stringify(channel));
+      assert.throws(() => writeMozconfig(root, 'release'), /must be exactly "bento"/, JSON.stringify(channel));
     }
-    patchBentoJson(root, (config) => {
-      config.updates.channel = 'Bento';
-    });
-    assert.throws(() => writeMozconfig(root, 'release'), /must be lowercase with no surrounding whitespace/);
-
     patchBentoJson(root, (config) => {
       config.updates.channel = 'bento';
     });
+
+    // The recorded round trip is a publishing input, not a build input.
+    assert.equal(ready.updateService.isolatedRoundTripVerified, false);
     writeMozconfig(root, 'release');
     assert.ok(fs.existsSync(engineFile(root, 'mozconfig')));
 
@@ -356,17 +381,44 @@ test('enabling the updater is refused until every readiness input is recorded', 
   }
 });
 
-test('update metadata commands refuse to run while the updater is disabled', async () => {
+test('the update host must be a bare lowercase hostname in every mode', async () => {
+  const root = await fixture();
+  try {
+    for (const hostname of ['https://updates.example.invalid', 'updates.example.invalid:443', 'updates.example.invalid/update', 'Updates.Example.Invalid', 'updates example.invalid', 'updates.example.invalid\nexport X=1', '-updates.example.invalid', 'updates..example.invalid', '', undefined]) {
+      patchBentoJson(root, (config) => {
+        config.updates.hostname = hostname;
+      });
+      for (const mode of MODES) {
+        assert.throws(() => writeMozconfig(root, mode), /updates\.hostname .* must be a bare lowercase hostname/, `${JSON.stringify(hostname)} ${mode}`);
+      }
+    }
+    assert.equal(fs.existsSync(engineFile(root, 'mozconfig')), false);
+    patchBentoJson(root, (config) => {
+      config.updates.hostname = 'updates.bentobrowser.app';
+    });
+    assert.match(fs.readFileSync(writeMozconfig(root, 'dev').destination, 'utf8'), /^export MOZ_APPUPDATE_HOST=updates\.bentobrowser\.app$/m);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('update metadata commands refuse to run for a build without the updater', async () => {
   const root = await fixture();
   try {
     for (const command of ['updates-browser', 'updates-addons']) {
-      await assert.rejects(() => main([command], root), new RegExp(`${command}: the updater is disabled`));
+      await assert.rejects(() => main([command], root), new RegExp(`${command}: the updater is disabled for this dev build`));
     }
     assert.equal(fs.existsSync(path.join(root, 'dist')), false);
 
-    // Enabled but not ready is refused as well; no metadata for an updater that cannot be trusted.
+    // Enabled in bento.json, a dev build still has no updater, so it still gets no update metadata.
     patchBentoJson(root, (config) => {
       config.updates.enabled = true;
+    });
+    await assert.rejects(() => main(['updates-addons'], root), /updates-addons: the updater is disabled for this dev build/);
+
+    // A release build with the updater enabled but not ready is refused as well.
+    patchBentoJson(root, (config) => {
+      config.build.mode = 'release';
     });
     await assert.rejects(() => main(['updates-addons'], root), /config\/release-security\.json is missing/);
     enableUpdater(root);
@@ -411,13 +463,23 @@ async function packagingFixture() {
   return { root };
 }
 
-/** Stands in for configure's record of the updater and update channel in the object directory. */
+/** Stands in for configure's record of the updater, update channel and host in the object directory. */
 function configured(root, updater, channel = 'bento') {
-  const substs = { MOZ_UPDATE_CHANNEL: channel, ...(updater ? { MOZ_UPDATER: '1' } : {}) };
+  const substs = {
+    MOZ_UPDATE_CHANNEL: channel,
+    ...(updater ? { MOZ_UPDATER: '1', MOZ_APPUPDATE_HOST: 'updates.example.invalid', ACCEPTED_MAR_CHANNEL_IDS: channel } : {}),
+  };
   fs.writeFileSync(engineFile(root, 'obj-bento', 'config.status.json'), JSON.stringify({ substs }));
 }
 
-test('package writes a MAR and update metadata only while the updater is enabled', async (t) => {
+/** What a release build with the updater ships into the packaging fixture's application. */
+function shipUpdaterInto(root) {
+  const dist = engineFile(root, 'obj-bento', 'dist');
+  const application = process.platform === 'darwin' ? path.join(dist, 'bento', 'Bento.app') : path.join(dist, 'bento');
+  shipUpdater({ application, objDist: dist });
+}
+
+test('package writes a MAR and update metadata only for a release build with the updater enabled', async (t) => {
   if (process.platform === 'win32') {
     t.skip('packaging shells out through bash and cygpath on Windows');
     return;
@@ -427,28 +489,39 @@ test('package writes a MAR and update metadata only while the updater is enabled
     await withObjdirEnv(undefined, async () => {
       const dist = path.join(root, 'dist');
       const manifest = () => JSON.parse(fs.readFileSync(path.join(dist, 'bento-artifacts.json'), 'utf8'));
+      const packageDevBuild = async () => {
+        writeMozconfig(root, 'dev');
+        configured(root, false);
+        fs.mkdirSync(path.join(dist, 'update', 'browser', 'Darwin_aarch64-gcc3', 'bento'), { recursive: true });
+        fs.writeFileSync(path.join(dist, 'output.mar'), 'stale');
+        await main(['package'], root);
+        const off = manifest();
+        assert.deepEqual(off.updates, { enabled: false, mode: 'dev' });
+        assert.equal(off.buildId, '20260912000000');
+        for (const field of ['mar', 'marTool', 'updateTargets']) assert.equal(field in off, false, field);
+        // A MAR and update XML from an earlier package are removed, none are written.
+        assert.equal(fs.existsSync(path.join(dist, 'output.mar')), false);
+        assert.equal(fs.existsSync(path.join(dist, 'update')), false);
+        assert.equal(validateArtifacts(root).updates, false);
+      };
 
-      // Disabled (the default): a MAR and update XML from an earlier package are removed, none are written.
-      writeMozconfig(root, 'dev');
-      configured(root, false);
-      fs.mkdirSync(path.join(dist, 'update', 'browser', 'Darwin_aarch64-gcc3', 'bento'), { recursive: true });
-      fs.writeFileSync(path.join(dist, 'output.mar'), 'stale');
-      await main(['package'], root);
-      const off = manifest();
-      assert.deepEqual(off.updates, { enabled: false });
-      assert.equal(off.buildId, '20260912000000');
-      for (const field of ['mar', 'marTool', 'updateTargets']) assert.equal(field in off, false, field);
-      assert.equal(fs.existsSync(path.join(dist, 'output.mar')), false);
-      assert.equal(fs.existsSync(path.join(dist, 'update')), false);
-      assert.equal(validateArtifacts(root).updates, false);
+      // A dev build, updater not enabled in bento.json.
+      await packageDevBuild();
 
-      // Enabled: the same package also gets a MAR and update XML, and validates against them.
+      // Enabled in bento.json, a dev build still has no updater.
       enableUpdater(root);
-      writeMozconfig(root, 'dev');
+      await packageDevBuild();
+
+      // A release build also gets a MAR and update XML, and validates against them, shipped files included.
+      patchBentoJson(root, (config) => {
+        config.build.mode = 'release';
+      });
+      writeMozconfig(root, 'release');
       configured(root, true);
+      shipUpdaterInto(root);
       await main(['package'], root);
       const on = manifest();
-      assert.deepEqual(on.updates, { enabled: true });
+      assert.deepEqual(on.updates, { enabled: true, mode: 'release' });
       assert.equal(on.mar.path, 'dist/output.mar');
       assert.ok(on.updateTargets.length > 0);
       for (const target of on.updateTargets) {
@@ -462,21 +535,32 @@ test('package writes a MAR and update metadata only while the updater is enabled
   }
 });
 
-test('package refuses a build whose updater setting differs from bento.json', async () => {
+test('package refuses a build whose updater setting differs from what its mode requires', async () => {
   const { root } = await packagingFixture();
   try {
     await withObjdirEnv(undefined, async () => {
-      // Configured with the updater compiled out, then bento.json turned it on.
-      writeMozconfig(root, 'dev');
+      // A release build configured with the updater compiled out, then bento.json turned it on.
+      patchBentoJson(root, (config) => {
+        config.build.mode = 'release';
+      });
+      writeMozconfig(root, 'release');
       enableUpdater(root);
-      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater out, but bento\.json updates\.enabled is true; run pnpm run build first/);
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater out, but a release build with bento\.json updates\.enabled true has it in; run pnpm run build first/);
 
       // Configured with it compiled in, then bento.json turned it off.
-      writeMozconfig(root, 'dev');
+      writeMozconfig(root, 'release');
       patchBentoJson(root, (config) => {
         config.updates.enabled = false;
       });
-      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but bento\.json updates\.enabled is false; run pnpm run build first/);
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but a release build with bento\.json updates\.enabled false has it out; run pnpm run build first/);
+
+      // Enabled in bento.json, a dev build still must not have been configured with the updater.
+      patchBentoJson(root, (config) => {
+        config.build.mode = 'dev';
+        config.updates.enabled = true;
+      });
+      writeMozconfig(root, 'release');
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but a dev build with bento\.json updates\.enabled true has it out; run pnpm run build first/);
     });
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
@@ -488,32 +572,35 @@ test('package takes the updater state from the last flag in engine/mozconfig and
   try {
     await withObjdirEnv(undefined, async () => {
       const mozconfig = engineFile(root, 'mozconfig');
-      // Updater off in bento.json, but a later flag compiles it in: the first line must not decide.
+      // Updater off for a dev build, but a later flag compiles it in: the first line must not decide.
       writeMozconfig(root, 'dev');
       fs.appendFileSync(mozconfig, 'ac_add_options --enable-updater\n');
-      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but bento\.json updates\.enabled is false/);
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater in, but a dev build with bento\.json updates\.enabled false has it out/);
 
-      // Updater on in bento.json, but a later flag compiles it out.
+      // Updater on for a release build, but a later flag compiles it out.
       enableUpdater(root);
-      writeMozconfig(root, 'dev');
+      patchBentoJson(root, (config) => {
+        config.build.mode = 'release';
+      });
+      writeMozconfig(root, 'release');
       fs.appendFileSync(mozconfig, 'ac_add_options --disable-updater\n');
-      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater out, but bento\.json updates\.enabled is true/);
+      await assert.rejects(() => main(['package'], root), /engine\/mozconfig compiled the updater out, but a release build with bento\.json updates\.enabled true has it in/);
 
       // A mozconfig that reads right still loses to what configure built.
-      writeMozconfig(root, 'dev');
+      writeMozconfig(root, 'release');
       configured(root, false);
-      await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the updater out, but bento\.json updates\.enabled is true/);
+      await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the updater out, but a release build with bento\.json updates\.enabled true has it in/);
       patchBentoJson(root, (config) => {
         config.updates.enabled = false;
       });
-      writeMozconfig(root, 'dev');
+      writeMozconfig(root, 'release');
       configured(root, true);
-      await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the updater in, but bento\.json updates\.enabled is false/);
+      await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the updater in, but a release build with bento\.json updates\.enabled false has it out/);
 
       // The channel configure recorded must be bento.json's: Mozilla's names select Mozilla's certificates.
       for (const updater of [false, true]) {
         if (updater) enableUpdater(root);
-        writeMozconfig(root, 'dev');
+        writeMozconfig(root, 'release');
         configured(root, updater, 'release');
         await assert.rejects(() => main(['package'], root), /engine\/obj-bento\/config\.status\.json configured the update channel "release", but bento\.json updates\.channel is "bento"/);
       }
@@ -564,7 +651,7 @@ test('mozconfig lines lose full-line and trailing shell comments, but not a quot
   ]);
 });
 
-test('a mozconfig fragment that sets the updater, unverified updates or the update channel is rejected, in any spelling', async () => {
+test('a mozconfig fragment that sets the updater, unverified updates, the update channel or the update host is rejected, in any spelling', async () => {
   const root = await fixture();
   try {
     await withObjdirEnv(undefined, async () => {
@@ -602,9 +689,12 @@ test('a mozconfig fragment that sets the updater, unverified updates or the upda
           'export MAR_CHANNEL_ID=release',
           'export ACCEPTED_MAR_CHANNEL_IDS=release',
           'mk_add_options ACCEPTED_MAR_CHANNEL_IDS=release',
+          'export MOZ_APPUPDATE_HOST=aus5.mozilla.org',
+          'mk_add_options MOZ_APPUPDATE_HOST=aus5.mozilla.org',
+          'export moz_appupdate_host=aus5.mozilla.org # note',
         ]) {
           fs.writeFileSync(fragment, `${original ?? ''}\n${line}\n`);
-          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater, its update channel or MAR signature verification; bento\.json updates\.enabled and updates\.channel are the only switches/, `${path.relative(root, fragment)}: ${line}`);
+          assert.throws(() => writeMozconfig(root, 'dev'), /sets the updater, its update channel, its update host or MAR signature verification; bento\.json updates\.enabled, updates\.channel and updates\.hostname are the only switches/, `${path.relative(root, fragment)}: ${line}`);
         }
         if (original === undefined) fs.rmSync(fragment);
         else fs.writeFileSync(fragment, original);
@@ -1194,8 +1284,11 @@ test('a mozconfig fragment or MOZCONFIG that would redirect mach is rejected', a
 test('package and updates-browser use only the directory mach builds into', async () => {
   const root = await fixture();
   try {
-    // updates-browser exists only while the updater is on.
+    // updates-browser exists only for a build with the updater on: a release build with it enabled.
     enableUpdater(root);
+    patchBentoJson(root, (config) => {
+      config.build.mode = 'release';
+    });
     await withObjdirEnv(undefined, async () => {
       fs.writeFileSync(engineFile(root, 'mach'), '');
       fs.mkdirSync(path.join(root, 'dist'));
@@ -1206,7 +1299,7 @@ test('package and updates-browser use only the directory mach builds into', asyn
       await assert.rejects(() => main(['updates-browser'], root), /updates-browser: engine\/obj-bento does not exist; run pnpm run build first/);
 
       // Neither may BENTO_OBJDIR point them elsewhere than engine/mozconfig does.
-      writeMozconfig(root, 'dev');
+      writeMozconfig(root, 'release');
       await withObjdirEnv('obj-aarch64-apple-darwin25.5.0', async () => {
         await assert.rejects(() => main(['package'], root), /BENTO_OBJDIR=obj-aarch64-apple-darwin25\.5\.0 differs from engine\/obj-bento/);
         await assert.rejects(() => main(['updates-browser'], root), /differs from engine\/obj-bento/);

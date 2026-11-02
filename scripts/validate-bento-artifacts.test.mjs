@@ -7,10 +7,18 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { readApplicationBuildId } from './bento-build.mjs';
+import { shipUpdater, writeCertificates } from './updater-fixtures.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
 
-/** `updates` is bento.json updates.enabled; a build with the updater compiled out has no MAR. */
-async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete', updates = true } = {}) {
+/** What configure records for a build with the updater compiled in. */
+const updaterSubsts = { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento', MOZ_APPUPDATE_HOST: 'updates.example.invalid', ACCEPTED_MAR_CHANNEL_IDS: 'bento' };
+
+/**
+ * `updates` says whether the build has the updater compiled in (it then has a MAR and
+ * ships the host and certificates); `mode` is the build mode the manifest records and
+ * `configEnabled` is bento.json updates.enabled, which only a release build obeys.
+ */
+async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precomplete', updates = true, mode = 'release', configEnabled = updates } = {}) {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'bento-artifact-test-'));
   const objDist = path.join(root, 'engine', 'obj-test', 'dist');
   const applicationName = appBundle ? 'Bento.app' : 'bento';
@@ -31,16 +39,17 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   await fsp.writeFile(path.join(root, 'bento.json'), JSON.stringify({
     schemaVersion: 1,
     brand: 'bento',
-    build: { mode: 'release' },
+    binaryName: 'bento',
+    build: { mode },
     firefox: { product: 'firefox', version: '154.0' },
     brands: { bento: { release: { displayVersion: '0.0.1' } } },
-    updates: { enabled: updates, hostname: 'updates.example.invalid', channel: 'bento' },
+    updates: { enabled: configEnabled, hostname: 'updates.example.invalid', channel: 'bento' },
   }));
   const manifest = {
     schemaVersion: 1,
     displayVersion: '0.0.1',
     firefoxVersion: '154.0',
-    updates: { enabled: updates },
+    updates: { enabled: updates, mode },
     application: `engine/obj-test/dist/${applicationName}`,
     applicationIni: appBundle
       ? 'engine/obj-test/dist/Bento.app/Contents/Resources/application.ini'
@@ -49,6 +58,9 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
     objDist: 'engine/obj-test/dist',
   };
   if (updates) {
+    writeCertificates(root);
+    shipUpdater({ application, objDist });
+    await fsp.writeFile(path.join(root, 'engine', 'obj-test', 'config.status.json'), JSON.stringify({ substs: updaterSubsts }));
     await fsp.writeFile(marTool, `#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\t${marEntry}\\n"\n`);
     await fsp.chmod(marTool, 0o755);
     await fsp.writeFile(mar, 'update');
@@ -227,26 +239,38 @@ test('with the updater disabled, artifact validation expects the packages and no
   }
 });
 
-test('artifact validation rejects metadata whose updater state differs from bento.json', async () => {
+test('artifact validation takes the expected updater state from the recorded build mode and bento.json', async () => {
   const disabled = await fixture({ updates: false });
   const enabled = await fixture();
+  const devBuild = await fixture({ updates: false, mode: 'dev', configEnabled: true });
   try {
+    // A dev build has no updater even though bento.json enables it for release builds.
+    assert.equal(validateArtifacts(devBuild.root).updates, false);
+
     // Artifacts packaged with the updater on, validated against a config that turned it off.
     const config = JSON.parse(await fsp.readFile(path.join(enabled.root, 'bento.json'), 'utf8'));
     config.updates.enabled = false;
     await fsp.writeFile(path.join(enabled.root, 'bento.json'), JSON.stringify(config));
-    assert.throws(() => validateArtifacts(enabled.root), /produced with the updater enabled, but bento.json updates.enabled is false/);
+    assert.throws(() => validateArtifacts(enabled.root), /records the updater as enabled for a release build, but bento\.json updates\.enabled is false/);
 
+    // A release build that bento.json now enables, whose metadata says it has no updater.
     config.updates.enabled = true;
     await fsp.writeFile(path.join(disabled.root, 'bento.json'), JSON.stringify(config));
-    assert.throws(() => validateArtifacts(disabled.root), /produced with the updater disabled, but bento.json updates.enabled is true/);
+    assert.throws(() => validateArtifacts(disabled.root), /records the updater as disabled for a release build, but bento\.json updates\.enabled is true/);
 
-    // Metadata from before the switch existed does not say, so it is regenerated.
-    const metadata = JSON.parse(await fsp.readFile(enabled.manifest, 'utf8'));
-    delete metadata.updates;
-    await fsp.writeFile(enabled.manifest, JSON.stringify(metadata));
-    assert.throws(() => validateArtifacts(enabled.root), /does not record the updater state/);
+    // A dev build recorded with the updater on is wrong whatever bento.json says.
+    const metadata = JSON.parse(await fsp.readFile(devBuild.manifest, 'utf8'));
+    await fsp.writeFile(devBuild.manifest, JSON.stringify({ ...metadata, updates: { enabled: true, mode: 'dev' } }));
+    assert.throws(() => validateArtifacts(devBuild.root), /records the updater as enabled for a dev build, but bento\.json updates\.enabled is true, so such a build has it disabled/);
+
+    // Metadata from before the mode was recorded does not say, so it is regenerated.
+    for (const updates of [undefined, { enabled: true }, { enabled: true, mode: 'fast' }]) {
+      const old = JSON.parse(await fsp.readFile(disabled.manifest, 'utf8'));
+      await fsp.writeFile(disabled.manifest, JSON.stringify({ ...old, updates }));
+      assert.throws(() => validateArtifacts(disabled.root), /does not record the updater state and build mode/);
+    }
   } finally {
+    await fsp.rm(devBuild.root, { recursive: true, force: true });
     await fsp.rm(disabled.root, { recursive: true, force: true });
     await fsp.rm(enabled.root, { recursive: true, force: true });
   }
@@ -272,28 +296,99 @@ test('artifact validation checks the updater state and channel configure recorde
   const enabled = await fixture();
   const configureRecorded = (root, substs) => fsp.writeFile(path.join(root, 'engine', 'obj-test', 'config.status.json'), JSON.stringify({ substs }));
   try {
-    // Agreeing with bento.json, or no configure output yet, passes.
+    // Agreeing with the state the mode requires, or no configure output yet, passes.
     await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
     validateArtifacts(disabled.root);
-    await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
+    await configureRecorded(enabled.root, updaterSubsts);
     validateArtifacts(enabled.root);
 
     // Metadata and bento.json both say off, but configure built the updater in.
     await configureRecorded(disabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento' });
-    assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the updater in, but bento\.json updates\.enabled is false/);
+    assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the updater in, but a release build with bento\.json updates\.enabled false has it out/);
     await configureRecorded(enabled.root, { MOZ_UPDATE_CHANNEL: 'bento' });
-    assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the updater out, but bento\.json updates\.enabled is true/);
+    assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the updater out, but a release build with bento\.json updates\.enabled true has it in/);
 
     // The updater state agrees, but configure used another channel (Mozilla's names select Mozilla's certificates).
     for (const channel of ['release', undefined]) {
       await configureRecorded(disabled.root, { MOZ_UPDATE_CHANNEL: channel });
       assert.throws(() => validateArtifacts(disabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
-      await configureRecorded(enabled.root, { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: channel });
+      await configureRecorded(enabled.root, { ...updaterSubsts, MOZ_UPDATE_CHANNEL: channel });
       assert.throws(() => validateArtifacts(enabled.root), /engine\/obj-test was configured with the update channel .*, but bento\.json updates\.channel is "bento"/);
     }
   } finally {
     await fsp.rm(disabled.root, { recursive: true, force: true });
     await fsp.rm(enabled.root, { recursive: true, force: true });
+  }
+});
+
+/** Replaces `file` with `edit` applied to its bytes, runs `fn`, and restores it. */
+async function withFileEdited(file, edit, fn) {
+  const original = await fsp.readFile(file);
+  await fsp.writeFile(file, edit(original));
+  try {
+    await fn();
+  } finally {
+    await fsp.writeFile(file, original);
+  }
+}
+
+test('with the updater on, artifact validation finds the update host and both certificates in the shipped files', async () => {
+  const cases = [{ appBundle: true }, { appBundle: false }];
+  for (const options of cases) {
+    const built = await fixture(options);
+    const { root, objDist } = built;
+    const application = path.join(objDist, options.appBundle ? 'Bento.app' : 'bento');
+    const resources = options.appBundle ? path.join(application, 'Contents', 'Resources') : application;
+    const executables = options.appBundle ? path.join(application, 'Contents', 'MacOS') : application;
+    const updater = options.appBundle
+      ? path.join(executables, 'updater.app', 'Contents', 'MacOS', 'org.mozilla.updater')
+      : path.join(application, process.platform === 'win32' ? 'updater.exe' : 'updater');
+    const main = path.join(executables, process.platform === 'win32' && !options.appBundle ? 'bento.exe' : 'bento');
+    const wrongHost = (bytes) => Buffer.from(bytes.toString('utf8').replaceAll('updates.example.invalid', 'aus5.mozilla.org'));
+    const without = (certificate) => (bytes) => Buffer.from(bytes.toString('latin1').replace(certificate.toString('latin1'), 'x'.repeat(certificate.length)), 'latin1');
+    const configStatus = path.join(root, 'engine', 'obj-test', 'config.status.json');
+    const substs = (change) => (bytes) => Buffer.from(JSON.stringify({ substs: { ...JSON.parse(bytes.toString()).substs, ...change } }));
+    try {
+      validateArtifacts(root);
+      const rejects = async (file, edit, message) => withFileEdited(file, edit, () => assert.throws(() => validateArtifacts(root), message));
+
+      // What configure recorded.
+      await rejects(configStatus, substs({ MOZ_APPUPDATE_HOST: 'aus5.mozilla.org' }), /configure recorded the update host "aus5\.mozilla\.org", but bento\.json updates\.hostname is "updates\.example\.invalid"/);
+      await rejects(configStatus, substs({ MOZ_APPUPDATE_HOST: undefined }), /configure recorded the update host undefined/);
+      await rejects(configStatus, substs({ ACCEPTED_MAR_CHANNEL_IDS: 'release' }), /configure recorded the accepted MAR channels "release", but bento\.json updates\.channel is "bento"/);
+
+      // The update URL in the generated and the packaged application.ini, and in the main binary.
+      await rejects(path.join(objDist, 'bin', 'application.ini'), wrongHost, /the generated application\.ini has \[AppUpdate\] URL "https:\/\/aus5\.mozilla\.org\/update\/6\/.*", not one starting with https:\/\/updates\.example\.invalid\/update\/6\//);
+      await rejects(path.join(resources, 'application.ini'), wrongHost, /the packaged application\.ini has \[AppUpdate\] URL "https:\/\/aus5\.mozilla\.org/);
+      await rejects(path.join(resources, 'application.ini'), (bytes) => Buffer.from(bytes.toString().replace('[AppUpdate]', '[Other]')), /the packaged application\.ini has \[AppUpdate\] URL undefined/);
+      await rejects(main, wrongHost, /the main binary does not contain the update URL https:\/\/updates\.example\.invalid\/update\/6\//);
+
+      // Both committed certificates, byte for byte, inside the updater.
+      await rejects(updater, without(Buffer.from('test primary certificate')), /the updater binary does not contain the committed primary\.der update certificate/);
+      await rejects(updater, without(Buffer.from('test secondary certificate')), /does not contain the committed secondary\.der update certificate/);
+      await withFileEdited(path.join(root, 'branding', 'bento', 'update-certificates', 'primary.der'), () => Buffer.from('another certificate'), () => {
+        assert.throws(() => validateArtifacts(root), /the updater binary does not contain the committed primary\.der/);
+      });
+
+      // The files themselves.
+      for (const [file, label] of [[main, 'the main binary'], [updater, 'the updater binary']]) {
+        await fsp.rename(file, `${file}.moved`);
+        assert.throws(() => validateArtifacts(root), new RegExp(`${label} is missing`));
+        await fsp.rename(`${file}.moved`, file);
+      }
+      if (options.appBundle) {
+        const framework = path.join(executables, 'updater.app', 'Contents', 'Frameworks', 'UpdateSettings.framework');
+        const executable = path.join(framework, 'UpdateSettings');
+        // The directory alone is not enough: the updater cannot launch without the framework executable.
+        await fsp.rename(executable, `${executable}.moved`);
+        assert.throws(() => validateArtifacts(root), /the updater has no UpdateSettings\.framework executable/);
+        await fsp.rename(`${executable}.moved`, executable);
+      }
+      await fsp.rm(configStatus);
+      assert.throws(() => validateArtifacts(root), /no config\.status\.json to prove the update host/);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   }
 });
 
