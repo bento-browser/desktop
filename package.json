@@ -33,7 +33,7 @@
     "chrome:resize-check": "node scripts/check-chrome-resize-guard.mjs",
     "import:branding": "node scripts/install-branding.mjs",
     "import:addons": "node scripts/install-builtin-addons.mjs",
-    "lint:repo": "eslint scripts src/browser .agents",
+    "lint:repo": "eslint scripts src/browser .agents update-service",
     "lint:aliases": "node scripts/check-legacy-aliases.mjs",
     "lint:tokens": "node scripts/check-undefined-tokens.mjs",
     "lint:motion": "node scripts/check-motion-values.mjs",

@@ -19,4 +19,5 @@ contributor-facing guides.
 - [Implementing Firefox patches](firefox-patches.md)
 - [Firefox core touchpoints](firefox-core-touchpoints.md)
 - [Firefox build tooling](build-tooling.md)
+- [Over-the-air updates](ota-updates.md)
 - [Privacy defaults](privacy.md)
