@@ -3,10 +3,11 @@ description: >-
   Restore the pristine Firefox source for the version and digest pinned in
   bento.json, download it on a miss, and save the miss for later runs.
 
-# The cache holds the source exactly as `pnpm run download` leaves it, before
-# any Bento import. `import` resets the patched files and re-copies every
-# overlay, so UI, patch, and script edits never invalidate it. It is keyed only
-# by the Firefox version and source digest.
+# The cache holds the source as `pnpm run download` leaves it, before any Bento
+# import, with the git objects packed into one pack on a miss. `import` resets
+# the patched files and re-copies every overlay, so UI, patch, and script edits
+# never invalidate it. It is keyed only by the Firefox version and source
+# digest.
 
 outputs:
   cache-hit:
@@ -46,14 +47,24 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.identity.outputs.path }}
-        # v3: v2 Windows caches of Firefox 157.0.1 lack testing/mozbase/mozfile/tests/files/which/baz.exe.
-        key: bento-engine-source-v3-${{ runner.os }}-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.sha256 }}
+        # v4: v3 caches hold about 500K loose git objects, which makes every
+        # restore extract ~500K small files. v4 caches are packed before the save.
+        key: bento-engine-source-v4-${{ runner.os }}-${{ steps.identity.outputs.version }}-${{ steps.identity.outputs.sha256 }}
 
     # A restored tree is verified against bento.json and reused; otherwise this
     # downloads and verifies the archive and creates the protected checkout.
     - name: Bento download (Firefox source)
       shell: bash
       run: pnpm run download
+
+    # The download's commit leaves one loose object per file. Pack them once so
+    # the saved tarball holds one pack instead of ~500K small files, which
+    # halves extraction time on every hit. `repack -d` also prunes the loose
+    # duplicates.
+    - name: Pack Firefox source objects
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: git -C engine repack -a -d -q
 
     - name: Save Firefox source (engine/)
       if: steps.restore.outputs.cache-hit != 'true'
