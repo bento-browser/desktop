@@ -1,5 +1,5 @@
 name: Set up Bento
-description: Install pnpm and Node (from .nvmrc), then the frozen dependency graph unless install is false.
+description: Install pnpm and Node (from the package.json engines range), then the frozen dependency graph unless install is false.
 
 inputs:
   install:
@@ -14,7 +14,10 @@ runs:
         version: 10.33.0
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version-file: .nvmrc
+        # The engines range (>=24.19.0 <25) matches the Node 24.x already in the
+        # runner tool cache. The exact .nvmrc pin is never cached, so reading it
+        # would download Node in every job.
+        node-version-file: package.json
         # Restore the pnpm store only when this job installs from it.
         cache: ${{ inputs.install == 'true' && 'pnpm' || '' }}
     - name: Install dependencies

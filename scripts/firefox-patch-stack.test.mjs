@@ -7,6 +7,9 @@ import { spawnSync } from 'node:child_process';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  FIREFOX_PATCH_GIT_CONFIG,
+  SCRATCH_GIT_CONFIG,
+  applySeriesCached,
   createContext,
   canonicalPath,
   refContentTree,
@@ -16,8 +19,13 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptPath = path.join(repoRoot, 'scripts', 'firefox-patch-stack.mjs');
 
-function git(cwd, args) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+function git(cwd, args, env) {
+  const result = spawnSync('git', args, {
+    cwd,
+    env: env && { ...process.env, ...env },
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
   assert.equal(
     result.status,
     0,
@@ -674,4 +682,111 @@ test('check refuses patches that touch symlinks when the engine cannot check the
     entries: [{ path: 'patches/area/02.patch', id: 'plain', subject: 'Plain file' }],
   });
   assert.equal(runFixture(root, ['check', '--for-import']).status, 0);
+});
+
+const FIXTURE_BASE = 'refs/bento/firefox-base/1.0';
+
+/** A scratch index on the fixture's base ref, plus `apply(entries)` over the helper under test. */
+async function scratchSeries({ root, engine }) {
+  const scratch = await tempRoot('bento-apply-series-');
+  const env = { GIT_INDEX_FILE: path.join(scratch, 'index') };
+  git(engine, ['read-tree', FIXTURE_BASE], env);
+  const config = [...FIREFOX_PATCH_GIT_CONFIG, ...SCRATCH_GIT_CONFIG].flatMap((setting) => [
+    '-c',
+    setting,
+  ]);
+  return {
+    apply: (entries) =>
+      applySeriesCached({ entries, env, config, engineDir: engine, repoRoot: root, ref: FIXTURE_BASE }),
+    /** Content of a path in the scratch index, or undefined when it is not there. */
+    read: (file) => {
+      const tree = git(engine, ['write-tree'], env);
+      const result = spawnSync('git', ['show', `${tree}:${file}`], { cwd: engine, encoding: 'utf8' });
+      return result.status === 0 ? result.stdout : undefined;
+    },
+  };
+}
+
+/** A patch that creates new.txt and one that appends to it, captured from real edits. */
+function createThenModifyPatches({ root, engine }) {
+  fs.writeFileSync(path.join(engine, 'new.txt'), 'one\n');
+  git(engine, ['add', '-N', 'new.txt']);
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--full-index']));
+  git(engine, ['add', 'new.txt']);
+  git(engine, ['commit', '-m', 'Create']);
+  fs.writeFileSync(path.join(engine, 'new.txt'), 'one\ntwo\n');
+  fs.writeFileSync(path.join(root, 'patches/area/02.patch'), gitRaw(engine, ['diff', '--full-index']));
+  git(engine, ['reset', '--hard', FIXTURE_BASE]);
+  return [
+    { path: 'patches/area/01.patch', id: 'create', subject: 'Create' },
+    { path: 'patches/area/02.patch', id: 'modify', subject: 'Modify' },
+  ];
+}
+
+test('applySeriesCached returns at once for an empty series', async () => {
+  const series = await scratchSeries(await fixture());
+  assert.equal(series.apply([]), undefined);
+  assert.equal(series.read('file.txt'), 'alpha\n');
+});
+
+test('applySeriesCached applies a patch that modifies a file an earlier patch created', async () => {
+  const setup = await fixture();
+  const entries = createThenModifyPatches(setup);
+  const series = await scratchSeries(setup);
+
+  series.apply(entries);
+
+  assert.equal(series.read('new.txt'), 'one\ntwo\n');
+});
+
+test('applySeriesCached names the first entry that fails on its own, after the earlier ones apply', async () => {
+  const setup = await fixture();
+  const { root, engine } = setup;
+  // 03 to 05 each rewrite the base line of file.txt, so 04 cannot apply after 03, nor can 05.
+  writeLegacyPatch(root, engine, 'patches/area/03.patch', 'beta\n');
+  writeLegacyPatch(root, engine, 'patches/area/04.patch', 'gamma\n');
+  writeLegacyPatch(root, engine, 'patches/area/05.patch', 'delta\n');
+  const entries = [
+    ...createThenModifyPatches(setup),
+    ...['three', 'four', 'five'].map((id, index) => ({
+      path: `patches/area/0${index + 3}.patch`,
+      id,
+      subject: id,
+    })),
+  ];
+  const series = await scratchSeries(setup);
+
+  assert.throws(
+    () => series.apply(entries),
+    /^UserError: failed to apply patches\/area\/04\.patch \(four\) onto refs\/bento\/firefox-base\/1\.0\n[\s\S]*patch does not apply/,
+  );
+});
+
+test('applySeriesCached accepts a series that git rejects as one batch but accepts patch by patch', async (t) => {
+  if (process.platform === 'win32') {
+    t.skip('symlink creation requires elevated Windows privileges');
+    return;
+  }
+  const { root, engine } = await fixture();
+  // 01 adds a symlink; 02 replaces it with a directory. In one git process the second
+  // patch is rejected as "beyond a symbolic link"; applied on its own it is fine.
+  fs.symlinkSync('file.txt', path.join(engine, 'link'));
+  git(engine, ['add', 'link']);
+  fs.writeFileSync(path.join(root, 'patches/area/01.patch'), gitRaw(engine, ['diff', '--cached', '--full-index']));
+  git(engine, ['commit', '-m', 'Add the link']);
+  git(engine, ['rm', '-q', 'link']);
+  fs.mkdirSync(path.join(engine, 'link'));
+  fs.writeFileSync(path.join(engine, 'link', 'x.txt'), 'x\n');
+  git(engine, ['add', 'link']);
+  fs.writeFileSync(path.join(root, 'patches/area/02.patch'), gitRaw(engine, ['diff', '--cached', '--full-index', 'HEAD']));
+  git(engine, ['reset', '--hard', FIXTURE_BASE]);
+  const entries = [
+    { path: 'patches/area/01.patch', id: 'link', subject: 'Link' },
+    { path: 'patches/area/02.patch', id: 'dir', subject: 'Directory' },
+  ];
+  const series = await scratchSeries({ root, engine });
+
+  series.apply(entries);
+
+  assert.equal(series.read('link/x.txt'), 'x\n');
 });

@@ -12,9 +12,10 @@ for the implementation map.
 
 ## Status
 
-Pre-v0.1.0 development. Pull requests receive automatic source-import and
-static checks. CI builds no application packages: Bento currently targets macOS
-only, and application builds run locally on the maintainer's Mac. Stable public
+Pre-v0.1.0 development. Pull requests receive automatic static and extension
+checks, plus a source-import check when they change files the import reads. CI
+builds no application packages: Bento currently targets macOS only, and
+application builds run locally on the maintainer's Mac. Stable public
 distribution is not enabled yet.
 
 ## Prerequisites
