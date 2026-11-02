@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { replaySeriesChanges } from './series-replay.mjs';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -278,5 +279,17 @@ test('import output check accepts a directory where the series deletes a file', 
   assert.match(
     stale.stderr,
     /engine\/browser\/base\/dirlike\.js exists but the patch series deletes it/,
+  );
+});
+
+test('series replay names the manifest entry that does not apply', async () => {
+  const { root } = await importedFixture();
+  const patch = path.join(root, 'patches/core/03-delete.patch');
+  fs.writeFileSync(patch, fs.readFileSync(patch, 'utf8').replace('-gone', '-other'));
+
+  // The two entries before it apply, so the failure is the third.
+  assert.throws(
+    () => replaySeriesChanges(root),
+    /failed to apply patches\/core\/03-delete\.patch \(03-delete\) onto refs\/bento\/firefox-base\/1\.0\n[\s\S]*patch does not apply/,
   );
 });
