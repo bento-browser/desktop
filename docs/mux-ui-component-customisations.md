@@ -972,7 +972,7 @@ compatibility transition.
 
 ### Legacy alias cap
 
-`pnpm run lint:aliases` (CI, extensions job) counts the legacy alias uses in the
+`pnpm run lint:aliases` (CI, extensions-checks job) counts the legacy alias uses in the
 shell's hand-written CSS (`var(--neutral-*)`, `--color-*`, `--space-*`,
 `--radius-*`, `--shadow-*` in `extensions/bento-shell/src/**/*.css`; the generated
 `theme/presets/` define the aliases and are skipped) and fails when a file, or the
@@ -1013,7 +1013,7 @@ the same element in every theme and color scheme. Checked on 2026-10-12:
 
 `var(--x)` with no fallback is invalid at computed-value time when nothing declares
 `--x`, so the property silently falls back to its initial value (a transparent
-background, a square corner). `pnpm run lint:tokens` (CI, extensions job) fails when
+background, a square corner). `pnpm run lint:tokens` (CI, extensions-checks job) fails when
 shell CSS reads such a name. Declared means any `--x:` in the shell CSS (generated
 presets and `bento-tokens.css` included) or in the public `@muxui/react`
 `styles.css` and `themes.css`; a `var(--x, fallback)` read is allowed, which covers
@@ -1069,7 +1069,7 @@ Bento defines no motion tokens. Every transition and animation Bento writes, in
 shell CSS, chrome CSS (`src/browser/base/content`), inline style strings in the
 mount script and React `style` objects, reads the Mux `--muxui-semantic-motion-*`
 tokens, so the durations and curves live in one place and a Mux theme can change
-them. `pnpm run lint:motion` (CI, extensions job) fails on a raw time, an easing
+them. `pnpm run lint:motion` (CI, extensions-checks job) fails on a raw time, an easing
 keyword or function, or a retired `--bento-duration-*` / `--bento-easing-*` read in
 those files (scope and limits are in the header of `scripts/check-motion-values.mjs`).
 The one `var()` that is not a Mux token is `var(--bento-mode-fade-delay)`, the registered

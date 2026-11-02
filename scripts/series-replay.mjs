@@ -4,9 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  FIREFOX_PATCH_APPLY_ARGS,
   FIREFOX_PATCH_GIT_CONFIG,
   SCRATCH_GIT_CONFIG,
+  applySeriesCached,
 } from './firefox-patch-stack.mjs';
 
 export function git(cwd, args, { env, input } = {}) {
@@ -58,10 +58,14 @@ export function replaySeriesChanges(root) {
   ]);
   try {
     git(engine, [...config, 'read-tree', baseRef], { env });
-    for (const entry of manifest.series) {
-      const patch = path.join(root, entry.path);
-      git(engine, [...config, 'apply', '--cached', ...FIREFOX_PATCH_APPLY_ARGS, patch], { env });
-    }
+    applySeriesCached({
+      entries: manifest.series,
+      env,
+      config,
+      engineDir: engine,
+      repoRoot: root,
+      ref: baseRef,
+    });
     const tree = git(engine, [...config, 'write-tree'], { env }).trim();
     // -z raw records: ":<old mode> <new mode> <old oid> <new oid> <status>", then the path.
     const records = git(

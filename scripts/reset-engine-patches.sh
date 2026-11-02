@@ -26,7 +26,8 @@ fi
 # new patch automatically updates this list. Using a tmp file instead of
 # bash 4's mapfile so this runs on macOS's stock bash 3.2.
 patch_files_list="$(mktemp)"
-trap 'rm -f "$patch_files_list"' EXIT
+work_dir="$(mktemp -d)"
+trap 'rm -rf "$patch_files_list" "$work_dir"' EXIT
 
 find "$REPO_ROOT/patches" -name '*.patch' -print0 \
   | xargs -0 grep -h '^diff --git' 2>/dev/null \
@@ -56,31 +57,61 @@ if [ ! -s "$patch_files_list" ]; then
 fi
 
 cd "$ENGINE_DIR"
+# Patch paths are literal file names, never globs or pathspec magic.
+export GIT_LITERAL_PATHSPECS=1
 
 # Tracked + changed (edited, retyped, a symlink retargeted, or deleted by a
 # patch) → git checkout. Untracked (created by new-file patches, including
 # symlinks, even dangling ones) → rm. Both classes block re-applying patches:
 # modified content rejects context, existing files reject "new file mode", and a
 # deleted file rejects a patch that edits it.
-revert_count=0
-remove_count=0
-to_revert_list="$(mktemp)"
-to_remove_list="$(mktemp)"
-trap 'rm -f "$patch_files_list" "$to_revert_list" "$to_remove_list"' EXIT
+#
+# One git call per question rather than one per path: every git call loads the
+# engine index (tens of MB), so a hundred calls cost seconds. Git reports file
+# names, so the answers are mapped back to patch paths with their parent
+# directories included: a directory holding a listed file counts as listed, like a
+# directory pathspec does. xargs gets -r everywhere because git diff with no paths
+# would compare the whole tree.
+to_revert_list="$work_dir/to-revert"
+to_remove_list="$work_dir/to-remove"
+: > "$to_remove_list"
 
+# Prints each line and every parent directory of it.
+with_parents() {
+  awk '{ print; path = $0; while (sub(/\/[^\/]*$/, "", path)) print path }' "$1"
+}
+
+# Prints the lines of $2 that are (keep) or are not (drop) lines of $1.
+keep_listed() {
+  awk 'FILENAME == ARGV[1] { listed[$0] = 1; next } $0 in listed' "$1" "$2"
+}
+drop_listed() {
+  awk 'FILENAME == ARGV[1] { listed[$0] = 1; next } !($0 in listed)' "$1" "$2"
+}
+
+sed '/^$/d' "$patch_files_list" > "$work_dir/patch-paths"
+tr '\n' '\0' < "$work_dir/patch-paths" > "$work_dir/patch-paths.z"
+
+xargs -0 -r git ls-files -z -- < "$work_dir/patch-paths.z" | tr '\0' '\n' > "$work_dir/tracked-files"
+with_parents "$work_dir/tracked-files" > "$work_dir/tracked-set"
+keep_listed "$work_dir/tracked-set" "$work_dir/patch-paths" > "$work_dir/tracked-paths"
+
+# A tracked path that is gone also differs, so its deletion is restored here.
+tr '\n' '\0' < "$work_dir/tracked-paths" \
+  | xargs -0 -r git diff --name-only --no-renames -z -- \
+  | tr '\0' '\n' > "$work_dir/changed-files"
+with_parents "$work_dir/changed-files" > "$work_dir/changed-set"
+keep_listed "$work_dir/changed-set" "$work_dir/tracked-paths" > "$to_revert_list"
+revert_count="$(awk 'END { print NR }' "$to_revert_list")"
+
+drop_listed "$work_dir/tracked-set" "$work_dir/patch-paths" > "$work_dir/untracked-paths"
+remove_count=0
 while IFS= read -r f; do
-  [ -z "$f" ] && continue
-  if git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
-    # A tracked path that is gone also differs, so its deletion is restored here.
-    if ! git diff --quiet -- "$f" 2>/dev/null; then
-      echo "$f" >> "$to_revert_list"
-      revert_count=$((revert_count + 1))
-    fi
-  elif [ -e "$f" ] || [ -L "$f" ]; then
+  if [ -e "$f" ] || [ -L "$f" ]; then
     echo "$f" >> "$to_remove_list"
     remove_count=$((remove_count + 1))
   fi
-done < "$patch_files_list"
+done < "$work_dir/untracked-paths"
 
 if [ "$revert_count" -eq 0 ] && [ "$remove_count" -eq 0 ]; then
   echo "reset-engine-patches: nothing to do"
@@ -89,12 +120,12 @@ fi
 
 if [ "$revert_count" -gt 0 ]; then
   echo "reset-engine-patches: reverting $revert_count tracked file(s) to pristine"
-  xargs git checkout -- < "$to_revert_list"
+  tr '\n' '\0' < "$to_revert_list" | xargs -0 git checkout --
 fi
 
 if [ "$remove_count" -gt 0 ]; then
   echo "reset-engine-patches: removing $remove_count untracked file(s) added by patches"
-  xargs rm -f < "$to_remove_list"
+  tr '\n' '\0' < "$to_remove_list" | xargs -0 rm -f
   # Prune empty parent dirs so subsequent patches that re-add the directory
   # tree don't trip over a stale empty shell. rmdir fails on non-empty,
   # which is what we want.
