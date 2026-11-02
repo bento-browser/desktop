@@ -3,9 +3,10 @@
   "publicReleaseReady": false,
   "updateService": {
     "hostname": "updates.bentobrowser.app",
-    "marSigningKeyFingerprint": "",
-    "updaterCertificateFingerprint": "",
-    "hostCompiledIn": false,
+    "marSigningKeyFingerprint": "18fa7002f1cd50738ab0255e3d5f2c8fa46c6891b8d1a3e5c4ff0f3211b61d9c",
+    "updaterCertificateFingerprint": "18fa7002f1cd50738ab0255e3d5f2c8fa46c6891b8d1a3e5c4ff0f3211b61d9c",
+    "backupCertificateFingerprint": "e7a6ac48aa9efcf2cf93e2c5752ee5844f3e40e29dce11a19eaa632a52623b35",
+    "signingNickname": "bento-mar-a",
     "isolatedRoundTripVerified": false
   },
   "platformSigning": {

@@ -2922,7 +2922,28 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 ### Build Configure Flags And Updater
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-11-02
+- Update trust anchors and host (2026-11-02): `patches/experiments/03` and `04` and
+  the certificates in `branding/bento/update-certificates/` are in place, with
+  `updates.enabled` still `false`. The series, including both patches, replays onto
+  the pristine 158.0 base (`git read-tree` plus `git apply --cached` in a scratch
+  index).
+- Updater-on release build (2026-11-02, Firefox 158.0, macOS arm64): with
+  `updates.enabled` set to `true` in a working copy only, the extension build,
+  import, `bento-env.sh build` and `package` ran in release mode into
+  `BENTO_OBJDIR=obj-bento-release`, and `artifacts:check` passed.
+  `build-release.sh` cannot run this check while the committed default is `false`,
+  because its gate runs `release-security.test.mjs`, which pins that default.
+  `config.status.json` has `MOZ_UPDATER=1`,
+  `MOZ_APPUPDATE_HOST=updates.bentobrowser.app`, `MOZ_UPDATE_CHANNEL=bento` and
+  `ACCEPTED_MAR_CHANNEL_IDS=bento`. `dist/bin/application.ini` `[AppUpdate] URL`
+  starts with `https://updates.bentobrowser.app/update/6/`, and the shipped
+  `Contents/MacOS/bento` contains that prefix and no `aus5.mozilla.org`. Both
+  Bento DER files are inside `org.mozilla.updater`, and Mozilla's `dep1.der`,
+  `dep2.der` and `release_primary.der` are not. `UpdateSettings.framework` has its
+  `UpdateSettings` executable. `dist/bin/signmar` and `dist/host/bin/mar` exist.
+  The complete MAR is 86,382,968 bytes against the 524,288,000-byte limit, with
+  product information channel `bento`, version 0.0.1 and no signature.
 - Firefox 158.0 review (2026-10-14): the dev-mode checks below pass on macOS arm64:
   `engine/mozconfig` holds `--disable-release`, `--disable-updater` and
   `--enable-macos-target=11.0`; `config.status.json` has no `MOZ_UPDATER`,
@@ -2978,22 +2999,38 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   installer build; `notification-helper.exe` compiles and is packaged; and
   `pnpm run artifacts:check` finds exactly one `bento-<version>*.installer.exe`.
 - Files or patches:
+  - `patches/experiments/03-appupdate-host-configure.patch`
+    (`build/moz.configure/update-programs.configure`: the `MOZ_APPUPDATE_HOST`
+    option and config key)
+  - `patches/experiments/04-updater-bento-certificates.patch`
+    (`toolkit/mozapps/update/updater/moz.build`: a `bento` channel branch ahead of
+    Mozilla's that selects the Bento certificates)
+  - `branding/bento/update-certificates/` (`primary.der`, `secondary.der`, and a
+    README with subjects and fingerprints), copied into
+    `engine/browser/branding/bento/` by `pnpm run import`
   - `configs/common/mozconfig` and `configs/{linux,macos,windows}/mozconfig`
   - `scripts/bento-build.mjs` (the options appended to the generated
-    `engine/mozconfig` per build mode, and the updater switch)
-  - `bento.json` (`updates.enabled`, `updates.channel`, `updates.hostname`)
-  - `config/release-security.json` (`updateService` readiness inputs)
+    `engine/mozconfig` per build mode, the update host export and its validation,
+    and the updater switch)
+  - `bento.json` (`updates.enabled`, `updates.channel`, `updates.hostname`,
+    `brands.bento.release.platforms`)
+  - `config/release-security.json` (`updateService` fingerprints, signing
+    nickname and round-trip record)
   - `scripts/update-readiness.mjs`, `scripts/check-release-security.mjs`
   - `scripts/validate-bento-artifacts.mjs`, `scripts/build-release.sh`
 - Bento functionality: `dev` and `debug` builds compile with
   `--disable-release` (plus `--enable-macos-target=11.0` on macOS) so they skip
   the final-crate Rust LTO link and can build Rust incrementally; `release`
   builds keep `--enable-release`, `--enable-optimize`, and `--enable-rust-simd`.
-  Every mode compiles with `--disable-updater` while `bento.json`
-  `updates.enabled` is `false`, because Bento does not yet have a signed update
-  path. The `bento` channel (`--enable-update-channel=bento`), the MAR channel
-  exports, and `MOZ_APPUPDATE_HOST` are still written so enabling the updater
-  later needs no other configure change.
+  Dev and debug builds always compile with `--disable-updater`, and a release
+  build does too while `bento.json` `updates.enabled` is `false` (it is, because
+  Bento does not yet sign MARs): `effectiveUpdaterState(config, mode)` in
+  `scripts/update-readiness.mjs` decides for the mozconfig writer, `package`, the
+  `updates-*` commands and `artifacts:check`. The `bento` channel
+  (`--enable-update-channel=bento`), the MAR channel exports and `MOZ_APPUPDATE_HOST`
+  are written in every mode, so enabling the updater later needs no other configure
+  change; with patch 03 configure now consumes the host, so the mozconfig writer
+  validates `updates.hostname` and refuses fragments that set it.
 - Vanilla Firefox surface touched or depended on (paths recorded from the
   2026-10-12 audit; re-verify them in the target tree):
   - `--enable-release` / `--disable-release`: `moz.configure` (`developer_options`
@@ -3033,10 +3070,28 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   - Update trust: `toolkit/mozapps/update/updater/moz.build` selects compiled-in
     certificates by `MOZ_UPDATE_CHANNEL` (Mozilla's release certificate for
     release, beta, and esr, its nightly certificates for nightly and aurora names,
-    and `dep1.der` and `dep2.der` for any other channel, including `bento`), and
-    `build/moz.build` plus `build/application.ini.in` default the update URL to
-    `aus5.mozilla.org` because no stock configure code consumes
-    `MOZ_APPUPDATE_HOST`.
+    and `dep1.der` and `dep2.der` for any other channel). Patch 04 adds a `bento`
+    branch ahead of those, so the `bento` channel compiles
+    `/browser/branding/bento/update-certificates/primary.der` and `secondary.der`
+    (a topsrcdir-relative input; moz.build requires it to exist when the file is
+    read, which happens only when `MOZ_UPDATER` is set, through
+    `toolkit/moz.build`). `gen_cert_header.py:create_header` embeds the raw bytes of
+    each input as the `primaryCertData` and `secondaryCertData` arrays. The updater
+    tries the primary and then the secondary certificate, one per attempt, and
+    libmar requires every signature on a MAR to verify (`mar_verify_signatures`
+    needs `numVerified == signatureCount` with one key), so a MAR carries exactly
+    one signature, from the active key. Any other channel name still selects
+    Mozilla's certificates, which is why the gate requires exactly `bento`. The
+    `updater-dep` and `updater-xpcshell` programs (`DEP_UPDATER`, `TEST_UPDATER`)
+    keep Mozilla's `dep1.der`, `dep2.der` and test certificate, but build into
+    `_tests` and are not packaged.
+  - Update host: `build/moz.build` substitutes `CONFIG["MOZ_APPUPDATE_HOST"]` into
+    `build/application.ini.in`, whose `[AppUpdate] URL` is compiled into the
+    application data (`build/appini_header.py`, `browser/app/ApplicationData.cpp`,
+    so into the main binary; the packaged `application.ini` is not what the
+    running app reads). Stock Firefox never defines the key, so the default is
+    `aus5.mozilla.org`; patch 03 defines it as a configure option and config key.
+    Only the host is substitutable.
 - Why this cannot stay extension-only: these are compile-time configure options
   that decide what Firefox builds and whether it contains an updater.
 - Firefox update risk: a renamed or removed configure option fails configure for
@@ -3047,6 +3102,11 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   `package` and `artifacts:check`; a moved or renamed `MOZ_UPDATER` key in
   `config.status.json`, or a changed rule for lowercasing the update channel,
   breaks the updater-state and channel checks in `scripts/update-readiness.mjs`.
+  A moved `MOZ_APPUPDATE_HOST` consumer or `[AppUpdate]` template makes an
+  updater-enabled build ask Mozilla; a reordered channel branch in the updater
+  `moz.build` makes it trust Mozilla's certificates; a changed `create_header`
+  breaks the byte check in `artifacts:check`. Patches 03 and 04 are small and
+  isolated, but each Firefox update must replay them.
 - Regression checks for future updates:
   1. Run `node --test scripts/bento-build.test.mjs scripts/release-security.test.mjs scripts/validate-bento-artifacts.test.mjs`.
   2. Run `pnpm run build` in `dev` mode, then confirm `engine/mozconfig` holds
@@ -3075,6 +3135,22 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
      `.dmg`.
   6. Re-read the update-trust paths above. If the updater is enabled in the target
      state, re-check cert selection and the update URL before trusting it.
+  7. For each Firefox upgrade, confirm the `MOZ_APPUPDATE_HOST` configure option
+     still reaches `build/moz.build` and `application.ini.in`; the `bento` branch in
+     `updater/moz.build` still precedes the Mozilla channels and
+     `gen_cert_header.py` still embeds DER bytes; MAR verification is still RSA
+     PKCS#1 v1.5 with SHA-384, the updater still accepts either embedded
+     certificate, and the 524,288,000-byte limit is unchanged;
+     `UpdateSettings.framework` is still the accepted-channel source on macOS and
+     still in the `add-if-not` list; `updateIsAtLeastAsOldAs` semantics are
+     unchanged (the update service depends on them); `mach macos-sign`'s
+     entitlement map still covers `updater.app` and both frameworks; the
+     `AppUpdateURL` policy is still honored in release builds and still loads from
+     `NSUserDefaults`. A dev build must still emit no update artifacts and hide the
+     Settings group. A release build must pass `artifacts:check` (compiled host in
+     the binary, both certificates in the updater binary, signed MAR verified
+     against the committed certificate) and, after the upgrade, repeat the isolated
+     round trip before the first publish.
 - Reused object directories: reconfiguring an `obj-bento` that was built with the
   updater keeps updater leftovers. The dev tree's `chrome.manifest` keeps a
   `nsUpdateService.manifest` line (an info-level "Could not read chrome manifest"
@@ -3084,9 +3160,9 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 - Rollback or migration notes: to restore release policy in dev builds, move
   `--enable-release` back into `configs/common/mozconfig` and drop the
   `--disable-release` branch in `modeOptions`; invalidate the native object cache.
-  To ship the updater, follow "Re-enabling the updater" in
-  [build-tooling.md](build-tooling.md) and add the new surfaces (certificate
-  patch, update-host wiring, MAR signing) to this entry.
+  To ship the updater, follow "Enabling the updater" in
+  [build-tooling.md](build-tooling.md#enabling-the-updater) and add the new
+  surfaces (MAR signing, the unwritable-install fallback patch) to this entry.
 
 ### About Pane Updates Group
 
@@ -3632,6 +3708,16 @@ below is generated; edit the registry, then run
 | `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI`, `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
 | `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID`, `src/browser/actors/BentoShellBusChild.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |
 | `WebExtensionPolicy.mozExtensionHostname` | source (engine only) | The host of the bento-shell policy is the identity check for the BentoShellBus actor: a document whose moz-extension host differs is not a shell document, and its messages are dropped. | `src/browser/actors/BentoShellBusParent.sys.mjs#mozExtensionHostname`, `src/browser/actors/BentoShellBusChild.sys.mjs#mozExtensionHostname` | `dom/chrome-webidl/WebExtensionPolicy.webidl:31` |
+| `build/moz.build MOZ_APPUPDATE_HOST consumer` | source (engine only) | build/moz.build substitutes CONFIG["MOZ_APPUPDATE_HOST"] into the application.ini [AppUpdate] URL, whose default is aus5.mozilla.org. Stock configure never defines the key; patches/experiments/03 adds the option, and the generated mozconfig exports bento.json updates.hostname. If the consumer moved, an updater-enabled build would ask Mozilla. | `patches/experiments/03-appupdate-host-configure.patch#MOZ_APPUPDATE_HOST`, `scripts/bento-build.mjs#MOZ_APPUPDATE_HOST` | `build/moz.build:97` |
+| `application.ini [AppUpdate] URL template` | source (engine only) | The URL of the update client comes from this template, compiled into the application data (build/appini_header.py) and read at runtime; only the host is substitutable. artifacts:check requires the Bento host prefix in the generated and packaged application.ini and as a literal in the main binary. | `scripts/validate-bento-artifacts.mjs#AppUpdate` | `build/application.ini.in:55` |
+| `updater/moz.build update certificate channel selection` | source (engine only) | GENERATED_FILES primaryCert.h and secondaryCert.h take their inputs from a MOZ_UPDATE_CHANNEL branch: Mozilla certificates for release, beta, esr and the nightly names, dep1.der and dep2.der for anything else. patches/experiments/04 adds a bento branch ahead of them that selects branding/bento/update-certificates. The updater verifies MARs only against these two. | `patches/experiments/04-updater-bento-certificates.patch#MOZ_UPDATE_CHANNEL`, `scripts/update-readiness.mjs#BENTO_CHANNEL` | `toolkit/mozapps/update/updater/moz.build:110` |
+| `gen_cert_header.create_header` | source (engine only) | The generated certificate headers embed the raw bytes of each input DER file as a uint8_t array; artifacts:check finds Bento's two committed DER files inside the shipped updater binary. | `patches/experiments/04-updater-bento-certificates.patch#update-certificates` | `toolkit/mozapps/update/updater/gen_cert_header.py:19` |
+| `UpdateSettings.mm accepted MAR channels` | source (engine only) | On macOS the accepted MAR channels live in updater.app/Contents/Frameworks/UpdateSettings.framework, built from ACCEPTED_MAR_CHANNEL_IDS through this format string. artifacts:check requires the framework and config.status.json ACCEPTED_MAR_CHANNEL_IDS; the wrong-channel round-trip fixture proves the runtime behavior. | `scripts/validate-bento-artifacts.mjs#UpdateSettings.framework` | `toolkit/mozapps/update/updater/macos-frameworks/UpdateSettings/UpdateSettings.mm:9` |
+| `update-packaging add-if-not list` | source (engine only) | make_full_update.sh adds UpdateSettings.framework and ChannelPrefs.framework with add-if-not, so an update keeps the installed copies and the accepted channel is never replaced by a MAR. The signing identity must therefore stay stable across releases. | `scripts/bento-build.mjs#make_full_update.sh` | `tools/update-packaging/common.sh:98` |
+| `UpdateService updateIsAtLeastAsOldAs` | source (engine only) | The update client skips an offered update whose version is lower, or equal with the same BuildID. Bento publishes only strictly higher versions and the update service orders by version alone, so this comparison must keep its semantics. | `docs/build-tooling.md#updateIsAtLeastAsOldAs` | `toolkit/mozapps/update/UpdateService.sys.mjs:1955` |
+| `UpdateService getCanApplyUpdates` | source (engine only) | Decides whether an install can take updates; on macOS a stock build assumes the privileged helper can elevate when the install is not writable. Bento defers elevated updates and plans a patch that returns false there, so this function is where a manual-update fallback hooks in. | `docs/build-tooling.md#getCanApplyUpdates` | `toolkit/mozapps/update/UpdateService.sys.mjs:702` |
+| `UpdateService AppUpdateURL policy` | source (engine only) | CheckerService.getUpdateURL replaces the compiled update URL with the AppUpdateURL enterprise policy when one is active. The isolated round trip points a release build at the test update host this way, through the macOS preferences reader, so no test hostname is compiled in. | `docs/build-tooling.md#AppUpdateURL` | `toolkit/mozapps/update/UpdateService.sys.mjs:5506` |
+| `mach macos-sign command` | source (engine only) | Release signing runs mach macos-sign for the nested signing order and entitlement map. Its channel auto-detection accepts only org.mozilla bundle ids, so Bento passes the channel explicitly, and it cannot sign the symlinked objdir app. | `docs/build-tooling.md#macos-sign` | `tools/signing/macos/mach_commands.py:24` |
 
 <!-- firefox-compat:end -->
 <!-- prettier-ignore-end -->

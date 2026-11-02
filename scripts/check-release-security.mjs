@@ -5,7 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { findDevReload } from './dev-reload.mjs';
-import { updaterReadinessProblems } from './update-readiness.mjs';
+import { publishReadinessProblems, updaterReadinessProblems } from './update-readiness.mjs';
 
 // --root points the gate at another checkout layout; the tests use it.
 const rootArg = process.argv.find((arg) => arg.startsWith('--root='));
@@ -53,11 +53,12 @@ if (config.updateService?.hostname !== bento.updates?.hostname) {
 if (bento.updates?.enabled !== undefined && typeof bento.updates.enabled !== 'boolean') {
   throw new Error('bento.json updates.enabled must be true or false.');
 }
-// The updater is compiled out until Bento owns a signed update path. Enabling it
-// is refused here, for every channel, until the readiness inputs are recorded.
+// Enabling the updater is refused here, for every channel, until its structural
+// inputs hold: the Bento channel, certificates, host and patches. Whether a release
+// may reach users is the public gate's question, below.
 const updatesEnabled = bento.updates?.enabled === true;
 if (updatesEnabled) {
-  const problems = updaterReadinessProblems(bento, config);
+  const problems = updaterReadinessProblems(bento, config, root);
   if (problems.length) {
     throw new Error(
       `bento.json updates.enabled is true, but the updater is not ready:\n- ${problems.join('\n- ')}`,
@@ -67,6 +68,36 @@ if (updatesEnabled) {
 const expectedTag = `v${bento.brands.bento.release.displayVersion}`;
 if (process.env.GITHUB_REF_NAME?.startsWith('v') && process.env.GITHUB_REF_NAME !== expectedTag) {
   throw new Error(`Release tag must be ${expectedTag}, received ${process.env.GITHUB_REF_NAME}.`);
+}
+
+// Each platform Bento ships needs its own signing identity, and only those.
+const PLATFORM_IDENTITIES = {
+  macos: {
+    field: 'macosDeveloperIdTeam',
+    valid: (value) => /^[A-Z0-9]{10}$/.test(value),
+    message: 'macOS Developer ID team must be a ten-character team identifier.',
+  },
+  linux: {
+    field: 'linuxManifestKeyFingerprint',
+    valid: (value) => /^[a-f0-9]{64}$/i.test(value),
+    message: 'Linux manifest key fingerprint must be a SHA-256 hex digest.',
+  },
+  windows: {
+    field: 'windowsCertificateThumbprint',
+    valid: (value) => /^[a-f0-9]{40}([a-f0-9]{24})?$/i.test(value),
+    message: 'Windows certificate thumbprint must be a SHA-1 or SHA-256 hex digest.',
+  },
+};
+const platforms = bento.brands.bento.release.platforms;
+if (
+  !Array.isArray(platforms) ||
+  platforms.length === 0 ||
+  new Set(platforms).size !== platforms.length ||
+  platforms.some((platform) => !Object.hasOwn(PLATFORM_IDENTITIES, platform))
+) {
+  throw new Error(
+    `bento.json brands.bento.release.platforms must list each shipped platform once, from ${Object.keys(PLATFORM_IDENTITIES).join(', ')}.`,
+  );
 }
 
 if (channel === 'preview') {
@@ -80,15 +111,10 @@ const required = [
   ['publicReleaseReady', config.publicReleaseReady === true],
   ['bento.json updates.enabled', updatesEnabled],
   ['updateService.marSigningKeyFingerprint', config.updateService?.marSigningKeyFingerprint],
-  [
-    'platformSigning.linuxManifestKeyFingerprint',
-    config.platformSigning?.linuxManifestKeyFingerprint,
-  ],
-  ['platformSigning.macosDeveloperIdTeam', config.platformSigning?.macosDeveloperIdTeam],
-  [
-    'platformSigning.windowsCertificateThumbprint',
-    config.platformSigning?.windowsCertificateThumbprint,
-  ],
+  ...platforms.map((platform) => {
+    const { field } = PLATFORM_IDENTITIES[platform];
+    return [`platformSigning.${field}`, config.platformSigning?.[field]];
+  }),
 ];
 const missing = required.filter(([, value]) => !value).map(([name]) => name);
 if (missing.length) {
@@ -96,18 +122,13 @@ if (missing.length) {
     `Public release is blocked until these externally provisioned controls are recorded: ${missing.join(', ')}`,
   );
 }
-const fingerprints = [
-  config.updateService.marSigningKeyFingerprint,
-  config.platformSigning.linuxManifestKeyFingerprint,
-];
-if (fingerprints.some((value) => !/^[a-f0-9]{64}$/i.test(value))) {
-  throw new Error('MAR and Linux manifest fingerprints must be SHA-256 hex digests.');
+for (const platform of platforms) {
+  const { field, valid, message } = PLATFORM_IDENTITIES[platform];
+  if (!valid(config.platformSigning[field])) throw new Error(message);
 }
-if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/i.test(config.platformSigning.windowsCertificateThumbprint)) {
-  throw new Error('Windows certificate thumbprint must be a SHA-1 or SHA-256 hex digest.');
-}
-if (!/^[A-Z0-9]{10}$/.test(config.platformSigning.macosDeveloperIdTeam)) {
-  throw new Error('macOS Developer ID team must be a ten-character team identifier.');
+const publishProblems = publishReadinessProblems(config);
+if (publishProblems.length) {
+  throw new Error(`Public release is blocked until the update round trip is recorded:\n- ${publishProblems.join('\n- ')}`);
 }
 
 console.log('Public release security gate passed.');
