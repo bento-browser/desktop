@@ -186,6 +186,19 @@ check.
 its step) before the cache restore and collects its status and log in a later
 step, so the extension bundle costs no wall-clock time beside the restore.
 
+Typical durations on a pull request (`ubuntu-24.04`, November 2026, measured on
+PR #126): the five phase-1 jobs take 7 s (`changes`), 11 s (`security-gate`),
+28 s (`extensions-build`), 50 s (`extensions-checks`) and 59 s (`static-checks`),
+so a run that skips `source-import` ends in about a minute. `source-import`
+starts about 15 s in and takes about 95 s on an engine cache hit: 55 s to restore
+the 2.1 GB cache and verify the checkout, 8 s for the first import, 12 s for the
+repeated import and its two snapshots, and 2 s for `check-import-output`, so a
+run that includes it ends in just under two minutes. A cache miss (a Firefox
+bump, cache eviction, or the first push to `main` after the key changes) adds
+about six minutes: downloading and committing the source takes about three
+minutes and packing its objects before the save another three. Compare new runs
+with these figures before accepting a workflow change that slows them.
+
 Each job installs its own dependencies, because each job is a separate machine.
 Node comes from the `engines.node` range in `package.json` (`>=24.19.0 <25`),
 which matches the Node 24.x already in the runner tool cache. The exact `.nvmrc`
