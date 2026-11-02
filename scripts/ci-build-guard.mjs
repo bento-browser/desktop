@@ -11,8 +11,11 @@ import path from 'node:path';
 // `download` is deliberately absent: the source-import job runs it.
 const NATIVE_SUBCOMMAND = '(?:bootstrap|build|package|updates-browser|updates-addons)';
 
-// Direct native entry points: scripts, subcommands, mach, release creation, and
-// the update publish and Cloudflare deploy tools.
+// Direct native entry points: scripts, subcommands, mach (including macOS signing
+// and repackaging), direct codesign signing and DMG creation, notarization,
+// release creation, and the update publish and Cloudflare deploy tools.
+// Read-only `codesign --verify` / `-d` / `-dvv` and `hdiutil attach` / `detach` /
+// `imageinfo` stay allowed.
 const nativeCommands = [
   {
     description: 'a Bento native build command',
@@ -24,8 +27,22 @@ const nativeCommands = [
   },
   {
     description: 'a mach command',
-    pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run)\b/m,
+    pattern: /(?:^|[\s;&|(/])mach\s+(?:bootstrap|build|package|configure|run|macos-sign|repackage)\b/m,
   },
+  {
+    description: 'the macOS signing script',
+    pattern: /\bmacos-sign-release\.mjs\b/,
+  },
+  {
+    // `--sign`, `-s`, or a short-flag cluster ending in s such as `-fs`.
+    description: 'a codesign signing command',
+    pattern: /(?:^|[\s;&|(/])codesign\b[^\n;&|]*\s(?:--sign\b|-(?!-)[A-Za-z]*s\b)/m,
+  },
+  {
+    description: 'an hdiutil command that creates a disk image',
+    pattern: /(?:^|[\s;&|(/])hdiutil\s+(?:create|makehybrid|convert)\b/m,
+  },
+  { description: 'a notarization command', pattern: /\b(?:notarytool|stapler)\b/ },
   { description: 'a GitHub release command', pattern: /\bgh\s+release\b/ },
   // `ota-publish.test.mjs` on the node --test line is not the script (`.mjs` follows the name directly).
   { description: 'the OTA publish script', pattern: /\bota-publish\.mjs\b/ },
