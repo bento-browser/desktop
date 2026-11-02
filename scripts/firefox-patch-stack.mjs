@@ -431,9 +431,7 @@ export function extractArchive(archive, dest) {
 
 function assertExpectedBase(ctx, ref, expectedTree, expectedContentTree) {
   const tree = refTree(ctx, ref);
-  if (!expectedTree || tree === expectedTree) {
-    return { tree, contentTree: expectedContentTree ? refContentTree(ctx, ref) : undefined };
-  }
+  if (!expectedTree || tree === expectedTree) return { tree };
 
   const contentTree = refContentTree(ctx, ref);
   if (expectedContentTree && contentTree === expectedContentTree) {
@@ -602,9 +600,45 @@ function applyPatchToWorktree(ctx, worktreeDir, patchPath, { index = false } = {
 }
 
 /**
+ * Applies the series entries to the index named by `env` (GIT_INDEX_FILE and
+ * friends) in manifest order, with the pinned `config` (`-c` arguments) and the
+ * same whitespace arguments as `apply`. Git applies several patch files in one
+ * process, each seeing the previous result, so the series costs one index load
+ * and write instead of one per patch. A failed multi-file apply leaves the index
+ * unchanged, so the fallback applies the entries one at a time from that same
+ * index to name the first one that fails on its own.
+ */
+export function applySeriesCached({ entries, env, config, engineDir, repoRoot, ref }) {
+  // `git apply` with no patch files is a usage error.
+  if (entries.length === 0) return;
+  const apply = [...config, 'apply', '--cached', ...FIREFOX_PATCH_APPLY_ARGS];
+  const patchFile = (entry) => path.join(repoRoot, entry.path);
+  try {
+    git([...apply, ...entries.map(patchFile)], { cwd: engineDir, env });
+    return;
+  } catch {
+    // Retry per entry below.
+  }
+  for (const entry of entries) {
+    try {
+      git([...apply, patchFile(entry)], { cwd: engineDir, env });
+    } catch (error) {
+      throw new UserError(
+        `failed to apply ${entry.path} (${entry.id}) onto ${ref}\n${error.message}`,
+        error.exitCode,
+      );
+    }
+  }
+  // Every entry applies alone, so the series is applied. Within one invocation git
+  // keeps kept/removed-symlink bookkeeping across patch files, so the batch can
+  // reject a sequence that the per-patch apply (what `apply` does to the worktree)
+  // accepts; the per-entry result is the one that counts.
+}
+
+/**
  * Validates that the series applies in manifest order without checking out a
  * worktree (Firefox has ~470k files). The base tree is read into a temporary
- * index and each patch is applied to it with `git apply --cached`, using the
+ * index and the patches are applied to it with `git apply --cached`, using the
  * same whitespace arguments as `apply`. The engine's index, working tree and
  * object store are not touched: blobs the patches create go to a scratch
  * object directory that reads the engine's objects through an alternate.
@@ -624,25 +658,14 @@ export async function replaySeries(ctx, manifest, ref) {
   try {
     const config = pinnedConfig([...FIREFOX_PATCH_GIT_CONFIG, ...SCRATCH_GIT_CONFIG]);
     git([...config, 'read-tree', ref], { cwd: ctx.engineDir, env });
-    for (const entry of manifest.series) {
-      try {
-        git(
-          [
-            ...config,
-            'apply',
-            '--cached',
-            ...FIREFOX_PATCH_APPLY_ARGS,
-            path.join(ctx.repoRoot, entry.path),
-          ],
-          { cwd: ctx.engineDir, env },
-        );
-      } catch (error) {
-        throw new UserError(
-          `failed to apply ${entry.path} (${entry.id}) onto ${ref}\n${error.message}`,
-          error.exitCode,
-        );
-      }
-    }
+    applySeriesCached({
+      entries: manifest.series,
+      env,
+      config,
+      engineDir: ctx.engineDir,
+      repoRoot: ctx.repoRoot,
+      ref,
+    });
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }

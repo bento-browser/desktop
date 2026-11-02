@@ -6,7 +6,8 @@
   "description": "Bento Browser UI shell \u2014 privileged built-in extension. Vertical tabs, workspaces, panel layouts, command palette.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b --noEmit && vite build && pnpm run build:background",
+    "build": "tsc -b --noEmit && pnpm run build:bundle",
+    "build:bundle": "vite build && pnpm run build:background",
     "build:background": "node ../../scripts/build-extension-background.mjs src/background.ts dist/assets/background.js",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
