@@ -200,12 +200,14 @@ repeated import and its two snapshots, and 2 s for `check-import-output`, so a
 run that includes it ends in just under two minutes. CodeQL
 (`.github/workflows/codeql.yml`) runs beside CI as its own workflow on every
 pull request except docs-only ones and takes about two minutes, so the wait a
-pull request author sees on a code change is CodeQL's, not CI's; a docs-only pull
-request skips both the import and the scan and is done in about a minute. A cache miss (a Firefox
-bump, cache eviction, or the first push to `main` after the key changes) adds
-about six minutes: downloading and committing the source takes about three
-minutes and packing its objects before the save another three. Compare new runs
-with these figures before accepting a workflow change that slows them.
+pull request author sees on a code change is CodeQL's, not CI's. A pull request
+that changes only `docs/` or root Markdown files skips both the import and the
+scan and is done in about a minute; Markdown elsewhere skips the scan only. A
+cache miss (a Firefox bump, cache eviction, or the first push to `main` after
+the key changes; the scheduled restore makes eviction unlikely) adds about six
+minutes: downloading and committing the source takes about three minutes and
+packing its objects before the save another three. Compare new runs with these
+figures before accepting a workflow change that slows them.
 
 Each job installs its own dependencies, because each job is a separate machine.
 Node comes from the `engines.node` range in `package.json` (`>=24.19.0 <25`),
@@ -227,15 +229,25 @@ One hosted cache remains. Its definition lives in `.github/actions/engine-source
   `engine-state.json`) is not cached. The download's commit leaves one loose git
   object per file, so a miss runs `git repack -a -d` before the save; the v3
   caches held about 500K loose objects, which every restore extracted as small
-  files. `source-import` also sets `core.checkStat minimal` in global git config
+  files. The action also sets `core.checkStat minimal` in global git config
   for the whole job: tar keeps mtime and size but not ctime and inode, so by
   default the first `git status` after a restore would re-verify every restored
   file. It sets `gc.auto 0` and `maintenance.auto false` so no detached gc runs
-  while the cache is saved.
+  while the cache is saved, and the git identity the download's commit needs, so
+  every job that uses the action gets the same checkout settings.
 - **Scope.** GitHub lets a run read caches from its own ref and the default
   branch. Pushes to `main` seed the source cache for every pull request, and a
-  push to `main` always runs `source-import`. The job summary of `source-import`
-  lists whether the cache hit.
+  push to `main` always runs `source-import`. GitHub removes a cache entry that
+  no run has restored for seven days, so `.github/workflows/engine-cache.yml`
+  restores the `main` entry on Monday and Thursday (03:23 UTC), so it is not
+  evicted as unused while that schedule runs. After an eviction or a Firefox
+  bump the same run downloads, packs, and saves the source again. It runs
+  nothing else: no import, bootstrap, or build. GitHub disables a public
+  repository's scheduled workflows after 60 days without activity; a later push
+  to `main` re-seeds the cache but does not re-enable the schedule, which is
+  done from the Actions tab. The job summary of `source-import` and of that
+  workflow lists whether the cache hit; a run that finds nothing, including the
+  re-seeding run, shows `miss`.
 
 Local builds are the only application builds. The cross-platform tooling stays
 in the repository for when other platforms return: `scripts/bento-build.mjs`,

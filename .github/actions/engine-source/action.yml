@@ -20,6 +20,25 @@ outputs:
 runs:
   using: composite
   steps:
+    # The action sets this because the download commits the tree on a miss (git
+    # needs an identity) and every consumer needs the same checkout settings.
+    # Global git config persists for the rest of the job, so a consumer's later
+    # import steps see it too.
+    - name: Configure deterministic Firefox source checkout
+      shell: bash
+      run: |
+        git config --global user.name "Bento CI"
+        git config --global user.email "ci@bentobrowser.invalid"
+        git config --global core.autocrlf false
+        git config --global core.longpaths true
+        # tar keeps mtime and size but not ctime and inode, so by default the
+        # first status after a cache restore re-verifies every restored file.
+        # Keep this in global config for the whole job.
+        git config --global core.checkStat minimal
+        # No detached gc while the cache is saved.
+        git config --global gc.auto 0
+        git config --global maintenance.auto false
+
     - name: Read pinned Firefox source identity
       id: identity
       shell: bash
