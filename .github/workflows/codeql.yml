@@ -3,7 +3,16 @@ name: CodeQL
 on:
   push:
     branches: [main]
+  # A pull request that changes only docs/ or Markdown has nothing for the scan
+  # and skips it. Push to main and the weekly schedule still scan everything, so
+  # main always has a fresh analysis. If a ruleset ever requires the "Analyze
+  # Bento JavaScript and TypeScript" check, a path-filtered workflow leaves it
+  # pending on those pull requests: remove this filter or add GitHub's
+  # documented skip-workflow pattern.
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   schedule:
     - cron: '17 4 * * 2'
 
