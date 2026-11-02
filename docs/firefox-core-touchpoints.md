@@ -2902,13 +2902,23 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   the certificates in `branding/bento/update-certificates/` are in place, with
   `updates.enabled` still `false`. The series, including both patches, replays onto
   the pristine 158.0 base (`git read-tree` plus `git apply --cached` in a scratch
-  index). No native release build with the updater on has run yet. When one has,
-  record here: `config.status.json` has `MOZ_UPDATER`, `MOZ_APPUPDATE_HOST` and
-  `MOZ_UPDATE_CHANNEL=bento`; `dist/bin/application.ini` `[AppUpdate] URL` starts
-  with `https://updates.bentobrowser.app/update/6/`; `dist/bin/signmar` and
-  `dist/host/bin/mar` exist; both DER files are inside `org.mozilla.updater`;
-  `updater.app` has `UpdateSettings.framework`; and the unsigned MAR's size against
-  the 524,288,000-byte limit.
+  index).
+- Updater-on release build (2026-11-02, Firefox 158.0, macOS arm64): with
+  `updates.enabled` set to `true` in a working copy only, the extension build,
+  import, `bento-env.sh build` and `package` ran in release mode into
+  `BENTO_OBJDIR=obj-bento-release`, and `artifacts:check` passed.
+  `build-release.sh` cannot run this check while the committed default is `false`,
+  because its gate runs `release-security.test.mjs`, which pins that default.
+  `config.status.json` has `MOZ_UPDATER=1`,
+  `MOZ_APPUPDATE_HOST=updates.bentobrowser.app`, `MOZ_UPDATE_CHANNEL=bento` and
+  `ACCEPTED_MAR_CHANNEL_IDS=bento`. `dist/bin/application.ini` `[AppUpdate] URL`
+  starts with `https://updates.bentobrowser.app/update/6/`, and the shipped
+  `Contents/MacOS/bento` contains that prefix and no `aus5.mozilla.org`. Both
+  Bento DER files are inside `org.mozilla.updater`, and Mozilla's `dep1.der`,
+  `dep2.der` and `release_primary.der` are not. `UpdateSettings.framework` has its
+  `UpdateSettings` executable. `dist/bin/signmar` and `dist/host/bin/mar` exist.
+  The complete MAR is 86,382,968 bytes against the 524,288,000-byte limit, with
+  product information channel `bento`, version 0.0.1 and no signature.
 - Firefox 158.0 review (2026-10-14): the dev-mode checks below pass on macOS arm64:
   `engine/mozconfig` holds `--disable-release`, `--disable-updater` and
   `--enable-macos-target=11.0`; `config.status.json` has no `MOZ_UPDATER`,
