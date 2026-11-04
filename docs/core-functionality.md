@@ -3,7 +3,10 @@
 Bento Browser is a workspace-first Firefox fork built around personalised
 browsing layouts. Its main difference from conventional browsers is that a
 workspace is not just a tab list: it is a reusable arrangement of the main tab
-content plus any number of side panels and panel-hosted widgets.
+content plus any number of side panels.
+
+Bento is currently built for macOS on Apple silicon; Intel Macs, Windows and
+Linux are planned.
 
 The product goal is to reduce browser-window sprawl. Instead of opening several
 windows and manually arranging them with the operating system, a user can keep a
@@ -42,7 +45,8 @@ earlier choices can be revisited. The steps are:
    a chevron, in a grid of four columns. Choosing one opens the browser-data
    importer with that browser already selected. When a Mozilla Firefox or Zen
    profile exists, a "Firefox or Zen" button (marked "Restarts Bento", with a
-   restart icon in place of a logo) takes the extra columns left in its row. The
+   restart icon in place of a logo) takes the columns left in its row, or two
+   columns of a new row when the row is full. The
    footer has Back, Skip, and Other sources, which opens the importer with its
    own first choice selected and is the way in to importing from files. While
    Bento is still looking the grid shows plain placeholders; with nothing found,
@@ -74,7 +78,8 @@ earlier choices can be revisited. The steps are:
    Settings. Start browsing closes the dialog.
 
 The onboarding dialog is not dismissed by clicking the scrim or pressing Esc.
-Only Start browsing and Open Settings end onboarding; until then it reopens on the next launch.
+Only Start browsing and Open Settings end onboarding; until then it reopens on the next launch
+at the step the user last reached.
 If Bento's settings are reset afterwards, onboarding opens again from Welcome.
 On narrow windows the tile grids collapse to fewer columns and the dialog is
 sized to the window minus a small margin.
@@ -94,8 +99,10 @@ pinned Bento tabs. Zen essential tabs become pinned Bento panels. Chrome and
 other regular browser imports in this flow use Firefox's native migration wizard
 and are separate from the additive Bento backup import flow.
 
-The sidebar footer exposes Firefox's native app menu and Firefox's native
-downloads panel; it has no Bookmarks, Settings or merge button. The app menu lists
+The expanded sidebar footer holds Collapse sidebar, Open command palette, a
+colour-mode button that cycles through Light, Dark and Auto, Firefox's native app
+menu and Firefox's native downloads panel, in that order; it has no Bookmarks,
+Settings or merge button. The app menu lists
 "Bento Settings" directly above Firefox's own Settings item, and the command
 palette has an Open Settings command; both open the Settings palette. Native footer panels are left-edge
 anchored to their trigger buttons so they grow rightward when screen space
@@ -107,29 +114,41 @@ opens from the command palette's "Merge browser session" command or from the
 "Merge browser session" row in the Backup and data category of the Settings palette
 (not shown in private windows); from Settings it opens over the same window. While a merge is running, a progress card floats over the
 bottom of the sidebar's tab list, above the footer: a progress ring (with the
-percentage inside once the tab totals are known), "Importing from" the source
-browser, the space being imported with how many tabs are done, and the site last
-opened. The card is drawn in the opposite colour scheme to the sidebar, a dark card
+percentage inside while progress is between 1% and 99%), "Importing from" the
+source browser, the space being imported with how many tabs are done, and the site
+last opened. Before the tab totals arrive the card reads "Preparing import" with the
+browser's name, and at the end of the run "Finishing import". The card is drawn in the opposite colour scheme to the sidebar, a dark card
 on a light sidebar and a light card on a dark one, and follows light, dark and Auto
 as they change. The rows, and the search results while searching, keep scrolling
 underneath it and the list leaves room so the last row or result can scroll clear.
-Clicking the card reopens the merge progress view. When the merge ends the card
-stays, as "Imported N tabs", "Import cancelled" ("N tabs added", counting only tabs
-that were actually added) or "Import failed" with a short reason, until it is
-dismissed with its close button or the next merge replaces it. In the narrow rail
+Clicking the card opens the merge picker: while a merge runs it shows the progress
+view, and after the merge has ended it shows a freshly scanned list of sessions.
+When the merge ends the card stays, as "Imported N tabs" (with a line such as
+"From Chrome, 3 spaces" beneath it), "Import cancelled" ("N tabs added", counting only tabs that
+were actually added) or "Import failed" with a short reason, until it is dismissed
+with its close button or the next merge replaces it. In the narrow rail
 the card is a round ring button above the footer; hovering or keyboard-focusing it
 shows its title and detail in a tooltip beside it, and clicking it opens the merge
-view and, once the merge has ended, also clears it. The card appears in the window
-the merge was started from. The
+picker and, once the merge has ended, also clears the card. The card appears in the
+window the merge was started from. The
 merge action is a runtime, additive, one-way merge from another browser
-profile's latest persisted session snapshot. Bento does not sync with or write
+profile's latest persisted session snapshot. It reads Firefox, Zen Browser,
+Chrome, Chromium, Brave, Microsoft Edge, Opera and Vivaldi profiles; Safari is not
+a merge source. Bento does not sync with or write
 to the external profile. It
-imports mergeable open tabs into new Bento workspaces, maps source tab groups or
+imports mergeable open tabs into new Bento workspaces (HTTP, HTTPS, file and FTP
+addresses; browser new-tab pages and unsupported internal pages are skipped),
+maps source tab groups or
 tab folders to Bento tab folders when the source format exposes them, creates
 those imported folders collapsed, preserves pinned tabs as pinned tabs, skips
-URLs already open in Bento, and creates imported tabs asleep without activating
+URLs already open in Bento and every repeat of an address after its first
+occurrence in the import, and creates imported tabs asleep without activating
 an imported workspace. Imported sites do not load until the user explicitly
 opens their space or selects their tab.
+Imported workspaces are one per source space or window, named "Browser: space
+name" (or "Browser: window title", and for a window without a title the browser,
+profile and window number), with " (imported)" added when the name is taken, then
+" (2)", " (3)" and so on when that is taken too; a workspace that ends up with no tabs is dropped.
 Imported
 workspaces use
 Bento's normal restart persistence, so their tabs remain assigned to those
@@ -138,12 +157,18 @@ import its session snapshot, the profile remains in the merge picker as an
 unavailable row instead of disappearing, including when other browser sessions
 are mergeable. The merge picker includes a refresh button so the user can
 rescan browser session snapshots without closing and reopening the picker.
+A search field filters the sources, spaces and windows by name, and matches tab titles
+and URLs within the first ten preview tabs of each space or window.
+Each source row shows its browser and profile, how long ago the session was saved, and
+an Import all button. Readable sources also show their window, tab and group counts;
+an unavailable source shows the reason instead, and its Import all button is disabled.
 Readable sources can be expanded to show importable spaces or windows. Each
 space/window starts with its tab preview collapsed; expanding it shows up to 10
-tab titles and URLs plus an "X more tabs" count, and it can be imported on its
-own instead of importing the whole browser session. If every tab from a selected
-source, space, or window is already open in Bento, the picker reports that no
-new tabs were imported instead of silently doing nothing. While an import is
+tab titles and URLs plus an "X more tabs" count, and it has its own Import button
+to import it instead of the whole browser session. If no tab can be imported
+from a selected source, space, or window, the picker says why, for example "All
+tabs from Chrome are already open in Bento.", and the sidebar card ends as Import
+failed with that reason, instead of silently doing nothing. While an import is
 running, the picker covers the command palette with an opaque in-palette
 progress view naming the source being imported. It starts with an indeterminate
 loader while Bento reads the session, then shows the actual percentage plus
@@ -155,8 +180,9 @@ the active import.
 Cancel stops the remaining import work without rolling back tabs that were
 already opened. Selecting a source does not close the picker; it stays open
 through progress, success, or error. During progress the in-palette Close and
-Cancel buttons are the visible actions. After progress completes, the user can
-dismiss the picker with the Close button, backdrop, or chrome close control.
+Cancel buttons are the visible actions. After progress completes, the picker shows
+"Created N workspaces, added N sleeping tabs, skipped N duplicates" and the user can
+dismiss it with the Close button, backdrop, or chrome close control.
 
 ## Core model
 
@@ -170,16 +196,25 @@ Each workspace owns:
 
 - its regular tabs;
 - its panel layout;
-- pinned or saved panel affordances;
+- pinned-panel references;
 - its selected visual theme;
 - persisted layout state such as panel order, widths, subdivisions, and scroll
   position.
+
+Saved panels are reusable targets shared across regular workspaces. They are
+separate from workspace-owned pinned panels and from Bento's Bookmarks collection.
 
 The main content slot width is also workspace-specific. Resizing the main
 content area in one workspace should not resize the main content area in another
 workspace. Until a workspace has its own resized main width, the main content
 slot keeps at least the configured default new-panel width while side panels are
 added.
+
+Each regular window shows a different workspace. Choosing a workspace that is
+already open in another window brings that window forward. A new window takes an
+available workspace, preferring the saved last-active one and then the oldest
+available workspace; if every workspace is already open, Bento creates a new one
+for the window.
 
 Workspaces should feel persistent. Closing Bento and reopening it should restore
 the user's active contexts without forcing them to rebuild their browser
@@ -200,12 +235,19 @@ tabs are kept as addresses and reopen when their workspace is next shown, and th
 next launch restores each window as it was.
 Deleting the workspace a window is showing moves that window to a workspace no
 other window is showing, so one window never takes over another window's
-workspace or its tabs. When every other workspace is open in another window, the
-window closes with the deleted workspace's tabs.
-A tab moved to another window, by dragging it out or choosing Move to New Window,
-takes its page with it and joins the workspace shown in the destination window; a
-panel moved that way becomes a regular tab there, and a new window opens with only
-the moved tab or tabs, not an extra blank tab.
+workspace or its tabs. When every other workspace is open in another window,
+deleting a workspace that has tabs closes its window with those tabs; deleting an
+empty one gives that window a new workspace.
+When the last regular tab of a window's workspace closes and no panel remains to
+take its place (see Panels), Bento deletes the empty workspace and switches the
+window to another available workspace. If every other workspace is already shown in
+another window, Bento closes the window and keeps the empty workspace available for
+a later window.
+The Bento sidebar has no Move to New Window item and no drag-out gesture. A tab that
+reaches another window some other way (with Firefox's native tab strip turned on, or
+through an extension) takes its page with it and joins the workspace shown in the
+destination window; a panel moved that way becomes a regular tab there, and a new
+window opens with only the moved tab or tabs, not an extra blank tab.
 Closing a tab or panel whose page asks to stay (a leave-page prompt) and choosing
 to stay keeps it in its workspace, folder, and panel slot. A sub-panel or
 subdivision comes back as a regular panel at the top level of the layout. If the
@@ -261,36 +303,38 @@ workspace", no theme picker, no "Pin this panel" or "Save panel" item, no worksp
 entries in the tab menu, and its command palette lists no workspace commands and no
 session merge.
 
-Workspace export/import and automatic backups should preserve the same browsing
-layout state as restart persistence: tabs, panels, panel order, panel widths,
-main content width, subdivisions, split-panel ratios, pinned panel references
-including their remembered widths, saved panels, settings, and the panel-strip
-scroll position.
-Stored backup restore and delete controls identify themselves on hover and ask
-for confirmation before dispatching either action.
-Replacement import should keep the browser window alive while it swaps the
-workspace set; Bento imports the replacement first, then removes the old
-workspaces and tabs.
+Workspace export and automatic backups save the workspaces' available tabs and
+panel layouts (panel order, panel and main content widths, subdivisions and
+split-panel ratios), open pinned panel references and their remembered widths,
+saved panels, settings, and the panel-strip scroll position. They are not a
+complete copy of restart state: tab folders, hidden panel headers, closed
+pinned-panel targets, tabs and panels waiting to be restored, and Bento's
+Bookmarks collection are not included.
+Import adds the file's workspaces alongside the existing ones, and also applies
+any settings and saved panels the file includes. Restoring a stored backup adds
+its workspaces but leaves the current settings and saved panels unchanged. The
+Settings palette does not offer a replacement import. Opening a stored backup
+shows Restore and Delete actions, and both ask for confirmation before they run.
 
 Backup creation never serializes private-window tabs, panels, layouts, pins, or
 derived counts. Backup actions are unavailable from private Settings windows.
-New stored backups carry a `private-filtered-v1` safety marker; older version-one
-records remain readable but are shown as `legacy-unknown` rather than being
-silently treated as verified.
+New backups exclude private-window data; older stored backups remain readable but
+show "This backup predates private-data filtering. Its privacy safety is
+unknown." rather than being silently treated as verified.
 
 The sidebar tab list supports multi-selection for workspace organization.
-The tab list exposes `New tab` and `New panel` buttons. In expanded sidebar
-mode, `New tab` opens the centered address/search overlay in new-tab mode,
-creating the tab only after the user commits. In collapsed sidebar mode, it
-opens the same centered address/search fallback. `New panel`
-opens a blank panel in the active workspace. A
+The tab list exposes a New button that opens a menu with New tab and New panel, in
+the expanded sidebar and the collapsed rail. New tab opens the centered
+address/search overlay in new-tab mode, creating the tab only after the user
+commits. New panel opens a blank panel in the active workspace. A
 search icon beside those controls widens on hover or keyboard focus to show its
 "Search tabs" label, and expands into a sidebar search field over the action row. The creation and search controls stay fixed immediately below the
 sidebar address row while tabs, pinned tabs, and folders scroll beneath them,
-so the actions remain available anywhere in a long tab list. Typing filters
-open tabs and side panels across all
+so the actions remain available anywhere in a long tab list. Typing searches
+open tabs and side panels across all regular
 workspaces by title or web address, and a pasted full address such as
-`https://github.com/andrew` finds its tab. The field has a clear
+`https://github.com/andrew` finds its tab. Results follow workspace order and then
+tab order, with at most 50 shown, and Enter opens the first result. The field has a clear
 button that empties a typed query and keeps the field open; on an empty field
 the same button closes search, like Esc. While a query is active, the sidebar shows only the
 search field and matching result rows; normal tabs, folders, pinned sections,
@@ -314,7 +358,8 @@ Each result shows the page title with the site's domain beneath it in smaller,
 muted text. Pages without a web domain, such as extension pages, show the title
 alone in a standard-height row, and built-in `about:` pages show their address.
 Results identify each result's workspace with its workspace icon or initial,
-tint the workspace marker with that workspace's theme, and selecting a result
+tint the workspace marker with that workspace's theme, and carry a Tab or Panel tag
+and a close button; selecting a result
 switches to that tab or focuses that panel. When pinned
 tabs exist, those tabs remain part of the scrolling list below the fixed controls.
 Workspace tabs can be grouped into collapsible tab folders from the sidebar
@@ -324,8 +369,7 @@ can be moved to another workspace from their context menu, and persist across
 restarts. Tabs inside folders remain normal unpinned Firefox tabs. Folder names
 are not directly editable by clicking the row; rename starts from the folder
 context menu and opens an inline field that is immediately ready for typing.
-Each folder row shows its tab count at the right, in neutral-50 text smaller
-than the folder name.
+Each folder row shows its tab count at the right in muted text.
 Deleting a folder returns its member tabs to the regular section.
 Dragging a normal tab into the pinned run pins it; dragging a pinned tab below
 that run unpins it. Dragging a tab onto a folder places it in that folder; pinned
@@ -333,22 +377,29 @@ tabs dragged onto folders are first converted back into normal tabs.
 When the active tab is inside a collapsed folder, Bento shows that active tab as
 a single peek row beneath the folder.
 Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-click
-the selected group to reload those tabs together or move them together into a
-newly created workspace.
+the selected group to reload those tabs together, move them to a new or existing
+workspace or to a folder, or close them (the menus are listed under Keyboard and
+menu reference).
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
 right-click menu exposes the same close-selected action. The selected rows leave
 the sidebar together. A tab that asks to confirm leaving (a page with unsaved
 changes) and is kept stays in its workspace while the others close.
-Right-clicking the sidebar exposes "Select all tabs", which selects every
-regular tab in the active workspace's sidebar list.
+Right-clicking the sidebar exposes "Select all tabs", which selects every tab row
+shown in the list, pinned tabs included; tabs inside a collapsed folder are not
+selected, except the current tab shown beneath its folder.
 Right-clicking the sidebar exposes "Reopen closed tab", which restores the most
 recently closed tab through Firefox's recently closed tabs flow.
 Right-clicking a single sidebar tab exposes tab actions, including creating a
 new tab immediately below the clicked tab, unloading an inactive loaded tab,
-and muting or unmuting the tab. Tabs can also be closed individually, or closed
-in groups with Close tabs above, Close tabs below, and Close other tabs. Close
-other tabs preserves pinned tabs and the clicked tab. Inactive tabs can be
-renamed or converted into side panels from the same menu.
+pinning or unpinning the tab, and muting or unmuting it. Tabs can also be closed
+individually, or closed in groups with Close tabs above, Close tabs below, and
+Close other tabs. Close tabs above and below act on the rows shown, pinned rows
+included; Close other tabs preserves pinned tabs and the clicked tab. Any tab,
+including the current one, can be renamed from its menu or by double-clicking its
+row; clearing the name restores the page's title. An inactive tab can also be
+converted into a side panel from the menu. Hovering a row shows Convert to panel
+(not on the current tab) and Close tab buttons, and middle-clicking a row closes
+it.
 The current tab is highlighted with the active workspace accent color and its
 contrast foreground so it stands apart from neutral hover and multi-selection
 states.
@@ -362,16 +413,19 @@ the list fades it out as the row highlight fades in. It is hidden while Search i
 When a regular sidebar tab is playing audio, the row shows a speaker button
 before the favicon. Clicking it mutes the tab; muted media tabs keep the button
 so the user can unmute them from the sidebar.
-When a side panel is playing audio, its panel header shows the same mute control
-after the refresh button and before the address field.
+When a side panel is playing audio, its panel header shows a mute control after the
+address, bookmark and pin controls and before Close and Panel options.
 Audible side panels also emit small music-note particles from their panel
 navigator favicon buttons; multiple panel buttons can show this at once.
-Idle-tab sleep never unloads a tab that is playing audio or sharing the camera,
-microphone, or screen, so background music and calls keep running. Once it goes
-quiet, the normal idle rules apply to it again.
-When a workspace contains pinned regular tabs, the sidebar separates that group
-from the New menu and regular tabs with a divider instead of a text
-subheading.
+Automatic tab sleep is on by default after 30 minutes of inactivity and keeps the
+three most recently used tabs per workspace awake. Active tabs, pinned tabs and
+visible panels in active workspaces stay awake. Tabs playing audio or sharing the
+camera, microphone, or screen also stay awake, so background music and calls keep
+running; once it goes quiet, the normal idle rules apply to it again. Performance
+settings can turn sleep off, set the delay from 1 to 1,440 minutes, and keep
+between 1 and 50 recent tabs per workspace awake.
+When a workspace has pinned tabs or folders, they sit on a filled band at the top
+of the list, above the regular tabs. There is no text subheading.
 After a restart, pinned tabs show as unloaded (sleeping) in the sidebar within a
 moment of the restore and stay unloaded until first opened, like other restored
 tabs. The same holds for a window restored later, such as a reopened closed window
@@ -384,11 +438,13 @@ in one of these states, its row shows a state icon instead and, for the failures
 faint status background: Default (the page has no favicon), Sleeping (unloaded), Unavailable
 (a site that cannot be reached, including an HTTPS-Only error page), Certificate
 warning, Blocked (a site blocked by Safe Browsing, parental controls or an organization's
-policy), Crashed (the tab's content has crashed, until it is reloaded or restored) and
+policy), Crashed (the tab has crashed or Firefox requires a browser restart, until it
+is reloaded or restored) and
 Internal settings (`about:config` and `about:preferences`,
 whatever the section). Unavailable, Certificate warning, Blocked, Crashed and Internal
 settings tint the row; Default and Sleeping do not, and the current and selected
-tab fills cover a tint. A loading tab keeps the progress circle and has no tint. These
+tab fills cover a tint. A loading tab normally keeps the progress circle and has no
+tint; Crashed takes precedence even if the tab still reports loading. These
 states describe the page Firefox is actually showing, so a website that happens to use a
 Firefox warning icon as its favicon still shows its own favicon, and a crashed tab keeps
 its Crashed state when it is moved to another window.
@@ -408,10 +464,14 @@ the sidebar, immediately above the URL address field. Floating music
 notes beside a workspace avatar identify a workspace with audible, unmuted
 audio; the animation appears on the current-workspace trigger and on every
 matching row in the switcher menu.
+The switcher menu lists the workspaces with a check on the current one, then New
+workspace, Edit all workspaces, Edit this workspace and, when more than one
+workspace exists, Delete followed by the current workspace's name.
 Editing a single workspace lets the user rename it, set or clear its icon with
 the same searchable full emoji picker used by the all-workspaces manager, and
-choose a theme with the same compact searchable theme picker used there.
-It also exposes "Edit all workspaces", which opens an "Edit workspaces" dialog
+choose a theme with the same compact searchable theme picker used there; the
+editor has Cancel and Save.
+"Edit all workspaces" opens an "Edit workspaces" dialog
 where every workspace can be renamed, re-iconed from the first column with a
 searchable full emoji picker with icon category tabs and subgroup sections,
 cleared with the icon control's overlaid close button, re-themed, activated,
@@ -421,8 +481,9 @@ also closes from the footer Close button. Workspace name edits stay in the row
 while typing and apply after the name field loses focus. Workspace rows use
 unframed controls with visible gaps between rows and do not duplicate the icon
 beside the workspace name. Workspace re-theming uses a compact searchable theme
-picker. Workspace avatars that display emoji icons keep a white avatar
-background in both light and dark modes. Deleting a non-empty workspace uses
+picker. In the workspace switcher, an avatar that shows an emoji icon uses the
+neutral surface colour instead of the workspace colour, near white in light mode and
+near black in dark mode. Deleting a non-empty workspace uses
 Bento's confirmation dialog before closing its tabs.
 
 Chrome-level menus and modals should preserve visual context. A command palette,
@@ -432,10 +493,13 @@ surface. Bento modal scrims cover the full chrome window, including the toolbar
 and address bar. Stacked modals add matching stacked toolbar scrim layers, so a
 confirmation opened over the workspace editor dims the native address bar by the
 same amount as the content behind it. The floating address/search bar is not a
-modal scrim; it leaves the native toolbar visible while blurring only the content
-behind its palette surface.
+modal scrim; it leaves the native toolbar visible and does not dim or blur the
+content behind it.
 
-The command palette separates normal tabs from side panels. Choosing a tab opens
+Open the command palette from the footer or with `Cmd/Ctrl+Alt+P`. It separates
+normal tabs from side panels and lists the tabs and panels held by the current
+window; sidebar search finds them across regular workspaces, including those held by
+other windows. Choosing a tab opens
 that tab in the main content slot, switching to its workspace first when needed.
 Choosing a panel switches to the panel's workspace, scrolls the panel strip to
 that panel, and focuses the panel without moving it into the main content slot.
@@ -448,11 +512,12 @@ include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
 Command-palette search fields use a visible "Clear" button instead of an
 icon-only clear affordance. While you type, a Settings group lists the settings
-that match by name (not in the empty palette, and without their values);
-choosing one opens the Settings palette at that setting: on its own list for a
-number, choice, search engine, privacy or shortcuts setting, and on the
-category with its name typed in for a switch. A private window's results leave
-out the backup settings.
+that match by name, category or search words (not in the empty palette, and without
+their values); choosing one opens the Settings palette at that setting: on its own
+list for a number, choice, search engine, privacy, panel size, backup or shortcuts
+setting, and on the category with its name typed in for a switch or Manage search
+engines. A private window's results also leave out the backup settings and the
+Bookmarks manager setting.
 
 In expanded sidebar mode, the main address/search entry is a persistent row
 at the top of the sidebar above the tab list. It mirrors the active main
@@ -471,10 +536,10 @@ sidebar over the panel strip and main content slot (with reduced motion on, it
 opens at full size). The row's outline fades out as the field's outline fades in, and
 back when it closes, so only one outline shows. The current address is selected, so typing
 replaces it.
-`Cmd/Ctrl+T`, `New tab`, a collapsed or hidden sidebar, and any fallback path
-that reaches Firefox's hidden native top address field open the centered
+`Cmd/Ctrl+T`, the New menu's `New tab`, a collapsed or hidden sidebar, and any
+other path that would focus the browser's own address field open the centered
 address/search overlay instead of showing Firefox's native suggestion dropdown.
-The field uses the sidebar tab row text size on a neutral-5 surface and keeps
+The sidebar address row uses the tab row text size on a neutral surface and keeps
 its neutral border when clicked or focused. The fixed creation/search row sits
 directly below the address field with the same resting gap used above the
 address field below the workspace switcher. Only the tab and folder rows scroll;
@@ -484,10 +549,11 @@ button, and stock toolbar Account menu are hidden in normal Bento windows while
 the remaining toolbar buttons and native window controls remain visible without
 a bottom separator line. On macOS, that native control row has a small top inset
 from the window edge. With no side panels visible, the main background and
-toolbar are neutral-5 and the sidebar's right divider is hidden. When side
+toolbar share the sidebar's neutral background and the sidebar's right divider is
+hidden. When side
 panels are visible, the toolbar segment over the sidebar keeps the sidebar's
-neutral-5 background while the toolbar segment over the main content and panel
-strip uses the same neutral-14 backdrop as the panel strip, with the sidebar's
+neutral background while the toolbar segment over the main content and panel
+strip uses the same backdrop as the panel strip, with the sidebar's
 right divider extending through the native top toolbar to the top of the
 window. The native Back, Forward, and Reload/Stop controls sit on the sidebar
 side of that divider when it is visible and track the sidebar edge as the
@@ -519,7 +585,9 @@ Opening the address entry with an empty field refreshes Recently Closed, Recent
 History, and Top Sites, in that order, with up to two rows each. Recently Closed
 contains tabs closed in the current window and reopens the selected native
 session, including its back/forward history. History and top-site rows navigate
-to their addresses. Reopening an ordinary closed tab or pinned panel preserves
+to their addresses. Recently Closed and Recent History rows show how long ago they
+happened (now, Nm, Nh or Nd), and a Recently Closed row shows Reopen while it is
+hovered or focused. Reopening an ordinary closed tab or pinned panel preserves
 its workspace, folder and custom title while they still exist. If its workspace
 was deleted, it joins the current window's workspace; deleted or moved folders
 are dropped. Closed panels return as panels when their workspace still exists.
@@ -528,10 +596,13 @@ is no longer available reports that status and refreshes the suggestions.
 In new-tab mode, if the clipboard contains a web URL, a result below these groups
 offers to open that URL from the clipboard. This follows Firefox's "Clipboard" address bar
 suggestion setting (`browser.urlbar.suggest.clipboard`): when that setting is
-off, Bento does not read the clipboard when the address entry opens. Saved panels follow the clipboard suggestion and open as side panels. Typing hides these default clipboard and saved-panel rows. After
-the user types, results include capped matches for open normal tabs and panels
-from the active workspace by title or URL, plus history, bookmarks, and a final
-search/open row. The address entry includes a one-shot search-engine picker
+off, Bento does not read the clipboard when the address entry opens. In new-tab mode
+the list also has one row per saved panel, whatever the clipboard setting, and each
+opens as a side panel. Typing hides these default clipboard and saved-panel rows. After
+the user types, results include up to eight matching open tabs and panels from the
+active workspace by title or URL, plus capped history and Firefox bookmark matches
+and a final search/open row. Bento's separate Bookmarks collection is searched inside
+the Bookmarks view, not by the address entry. The address entry includes a one-shot search-engine picker
 initialized from Firefox's current default engine each time editing starts.
 The closed picker shows the provider icon; opening it shows the full provider
 names. Choosing another engine affects only the submitted non-URL search and
@@ -540,7 +611,8 @@ URL-like value ignores the one-shot picker and continues through Firefox URL
 fixup, including internal browser pages such as `about:preferences`.
 Successful address or search submissions reveal the main content slot if the
 panel strip was scrolled over side panels, because the submitted load targets
-the main tab surface.
+the main tab surface. Pasting text that starts with `javascript:` removes that
+prefix, and a `javascript:` address is never opened.
 Submitting in new-tab mode creates the tab only after the user commits, so Esc
 does not leave an empty tab behind. Sidebar suggestions render in a
 sidebar-anchored neutral popover that can overhang the sidebar; the collapsed
@@ -551,8 +623,9 @@ The address palette matches the command palette's hover, keyboard-focus and pres
 row states, with one moving highlight. Its Clear button is reachable with Tab.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
-History and bookmark rows use generic icons when no favicon source is
-available.
+History, Recent History and bookmark rows show a generic clock or bookmark icon;
+open tab, panel, Recently Closed, Top Sites and saved panel rows show the page's
+favicon when it has one.
 
 ### Main content
 
@@ -589,8 +662,7 @@ Panels support the core Bento workflow:
 - save a useful panel target for reuse later;
 - pin important panels so they are reachable across workspace changes; their
   backing Firefox tabs are also pinned while the panel pin exists, so idle-tab
-  sleep keeps them loaded. Visible panels in active workspaces are also kept
-  awake so the sleep sweep does not reload the page under the user.
+  sleep keeps them loaded.
 - resize panels without disturbing the entire layout;
 - close or remove a panel without losing the rest of the workspace; closing
   panels fade out without resizing neighboring panels during the exit animation,
@@ -599,23 +671,30 @@ Panels support the core Bento workflow:
   the leftmost panel into the main content slot instead of leaving the workspace
   blank.
 - restore a recently closed panel with `Cmd+Shift+T` as a panel, not as a
-  regular tab, using the configured default new-panel width.
-- manage labelled custom panel width presets in Settings, reorder them by drag
-  or keyboard, and remove individual sizes with a native destructive action;
+  regular tab, at the top level in the slot it closed from, at the configured
+  default new-panel width.
+- choose the default width of a new panel in Settings (200 to 2,400 px, initially
+  640 px);
+- manage custom panel width presets in Settings, which appear in each panel's
+  options menu: they start as 320, 480, 768 and 1,280 px and can hold up to 64
+  sizes of 120 to 2,400 px each; open a size to edit it, move it up or down, or
+  remove it;
+- turn panel shadows on or off (on by default);
 - adjust Bento corner roundedness with a labelled slider in Settings (0 to 36 px,
   default 12 px); it rounds the main content, with or without side panels, and
   every panel the same amount;
-- adjust Bento splitter size with a labelled slider in Settings, which also
-  changes the visual gap between panels.
+- adjust Panel gap and splitter size from 6 to 36 px, with a default of 14 px; this
+  controls both the visible gap between panels and the draggable splitter.
 
-Side-panel and sub-panel headers sit on a neutral-5 surface and can be hidden
+Side-panel and sub-panel headers sit on a neutral surface and can be hidden
 per panel from the header's `...` menu. Hidden headers are restored from a small
 grey handle at the panel's top center. This state persists across workspace
 switches and restarts. The main content slot does not expose this header action.
 
 Right-clicking page content in the main slot or in a side panel exposes
-`Inspect in Panel` and, when Firefox exposes the matching stock item,
-`Inspect Accessibility Properties in Panel`. These commands open Firefox
+`Inspect in Panel` when Firefox shows its stock Inspect item and
+`Inspect Accessibility Properties in Panel` when it shows the matching accessibility
+item; neither appears inside a DevTools panel. These commands open Firefox
 DevTools in a new Bento panel immediately adjacent to the inspected surface. The
 DevTools panel stays paired with its caller: moving the caller moves the
 DevTools panel back beside it, the splitter between them is always highlighted,
@@ -631,6 +710,21 @@ panel persistence or the pinned panels rail.
 Panels are part of the workspace rather than detached windows. This lets users
 keep chat, docs, dashboards, references, issue trackers, media, or internal tools
 visible beside the page they are actively using.
+
+### Saved and pinned panels
+
+Save panel in a panel's options menu adds its address to the shared saved-panel
+collection; it is not offered in private windows. Saving the same address again does
+not add a duplicate. Saved panels can be renamed, reordered or deleted in Firefox's
+Library under Other Bookmarks, Saved panels; only links directly in that folder
+appear. The add-panel control at the end of the panel strip shows the first eight
+saved panels and puts the rest in More saved panels, and a subdivision chooser shows
+up to the first twelve. In new-tab mode the address entry also lists them.
+
+Pinned-panel buttons can be dragged to reorder the rail. Their right-click menu
+distinguishes Remove pinned panel, which removes the shortcut but leaves the page
+open, from Close pinned panel, which closes the page and keeps the shortcut for
+reopening it. Middle-clicking a pinned-panel button closes its page in the same way.
 
 ### Bento layouts
 
@@ -655,6 +749,11 @@ promotes that one panel into the top-level strip, and dragging a top-level panel
 onto a one-panel subdivision row adds it beside that panel. A panel can also be
 dragged into an unconfigured subdivision area to fill that area as a full panel.
 Rows that already contain two panels do not accept another dragged panel.
+A subdivision has two rows of one or two panels, so a column holds at most four
+panels. A panel inside a subdivision cannot be subdivided again, and the main
+content slot cannot be subdivided. When the single top panel of a subdivision is
+closed or dragged out, the panels below become top-level panels and an unused
+chooser disappears. A DevTools panel can only be dragged to a top-level slot.
 When the browser window is resized or the bookmarks toolbar is toggled, panels
 resize to the visible workspace height instead of retaining stale dimensions
 from the previous chrome size.
@@ -674,8 +773,9 @@ horizontal space.
 ### Widgets
 
 Widgets use the same mental model as panels: compact, persistent surfaces that
-belong to a workspace. A widget may be a saved web panel, a pinned utility, or a
-future built-in tool.
+live in a workspace. No separate widget type has shipped. Saved panels and pinned
+panels are the current forms: they open as ordinary panels and follow the same
+layout, traversal and theming rules. Built-in tools are not part of the product yet.
 
 The important product rule is that widgets should not become a separate mode of
 window management. They should inherit the same workspace, layout, traversal,
@@ -686,18 +786,21 @@ and theming behavior as panels.
 Bento keeps its own collection of links, separate from Firefox's bookmarks, in a
 full-window Bookmarks view. It opens from the command palette's "Open Bookmarks"
 command or Cmd/Ctrl+Shift+O, and replaces the
-browser content while the toolbar strip stays in place. Back, Forward, Reload and the
+browser content while the toolbar strip stays in place. Back, Forward, Reload, the panel navigator and the
 extension buttons slide up out of the toolbar and fade as the view opens, and slide back when it
 closes; with reduced motion they change at once. The top-left button reads "Back to browser" and shrinks to an arrow in a narrow
 window. Right-clicking in the view opens Bento's own menu for whatever is under the pointer: a link
-(open in a panel or new tab, copy the link, edit, move, delete), a note or to-do (edit, mark done,
-move, delete), a group column (open all in panels, rename, colour, reorder, delete), a space
+(open in a panel or new tab, copy the link, edit, move, delete), a note (edit, move, delete) or a
+to-do (edit, mark done or not done, move, delete), a group column (open all in panels, rename, colour, reorder, delete), a space
 (rename, colour, delete), an open tab in the drawer (save to a group), or the board background (new
 group, save all open tabs). Text fields keep the normal cut, copy and paste menu, and Firefox's page
 menu no longer appears. The Menu key or Shift+F10 opens the same menu for the focused item. It is not available in private
 windows: the command is hidden there and the shortcut opens Firefox's Library instead.
-Esc, the Back button, or the shortcut again returns to the browser, with focus back
-where it was.
+The view does not open over a page prompt or dialog, and closes when one appears; its
+search field has focus when it opens. The Back button or the shortcut again returns to the
+browser, with focus back where it was, and so does Esc, after any active menu, dialog or
+inline edit has handled it. From a nonempty search field the first Esc clears the search,
+and in a narrow window Esc closes an overlaid Open tabs drawer before closing the view.
 
 The Bookmarks manager can be turned off in Settings (Workspaces, "Bookmarks manager", On by
 default, saved for the whole profile and included in backups). Off hides the "Open Bookmarks"
@@ -714,20 +817,29 @@ The view has three parts:
   the colour dots.
 - **Groups and rows.** The selected space's groups are columns that scroll sideways. Each
   column holds links (favicon, title, host), notes and to-dos (with a checkbox). Clicking a
-  link opens it in a new panel. Hovering a row shows a "More actions" button with Open in new
-  tab (links), Edit, Move and Delete; it leaves the row's text readable.
-  Rows edit in place; Enter saves and Esc cancels, and the focus goes back to the row (or to
-  the button that began the edit). A full-width "+" under a column's
+  link opens it in a new panel. Hovering or focusing a row shows a "More actions" button with
+  the same menu as right-click, which leaves the row's text readable: links have Open in
+  panel, Open in new tab, Copy link, Edit, Move and Delete; notes have Edit, Move and
+  Delete; to-dos also have Mark done or Mark not done. Clicking a link, or choosing Open in
+  panel, Open in new tab or Open all in panels, opens it (a panel opens at the end of the strip)
+  and returns to the browser.
+  Rows edit in place; Enter or moving focus away saves and Esc cancels, Shift+Enter adds a
+  line break when editing a note (a to-do edits on a single line), and after Enter or Esc the focus goes back to the
+  row (or to the button that began the edit). A full-width "+" under a column's
   last row, shown while the pointer is over the column or the focus is inside it, adds a link,
   note or to-do by typing: a web address or bare domain becomes a link, text
-  starting with `[]` becomes a to-do, anything else a note. A group's menu renames it,
+  starting with `[]` and a space becomes a to-do, anything else a note. A group's menu renames it,
   sets its colour, moves it left or right, opens all its links in panels, or deletes it.
   "+ Group" adds a column; a space with no groups has the same "Group" button in its
-  first-steps box. Names, titles and notes stop at the length Bento stores.
-- **Open tabs.** The header's "Open tabs" toggle opens a drawer on the right with the
-  tabs and panels of the active workspace. A tab dragged into a column is saved at the
+  first-steps box. Space and group names allow 1,024 characters, link titles 4,096, and note
+  or to-do text 32,768; some characters, such as many emoji, count as two toward these limits.
+- **Open tabs.** The header's "Open tabs" toggle opens a drawer on the right with this
+  window's tabs and panels in the active workspace, except Firefox's own pages. A tab
+  dragged into a column is saved at the
   spot where it is dropped, a tab's menu has "Save to group" (a list of the space's
-  groups and "New group"), and "Save all to new group" saves every tab at once. In a
+  groups and "New group"), and "Save all to new group" saves the drawer's eligible tabs
+  together: it skips internal browser pages, privileged pages, and private or already
+  closed tabs, and creates no empty group if nothing can be saved. In a
   narrow window the drawer floats over the board.
 
 The header shows the space's name and "N groups, M links", with a search field that finds
@@ -740,8 +852,12 @@ Move right, and an open tab's Save to group; each is reached by Tab and keeps th
 moved. Deleting an
 item removes it at once and offers Undo for a few seconds (the countdown waits while the
 pointer is over the toast or the focus is on it); deleting a group or space asks first. A space with no groups says
-"Drop tabs here" and offers a new group or saving the open tabs; until it has been used or
-declined once, it also offers to import the Firefox bookmarks into a space of their own.
+"Drop tabs here" and offers a new group or saving the open tabs; until the import offer
+has been used or declined once, it also offers a one-time copy of up to 2,000 HTTP and HTTPS
+links from Firefox bookmarks into a new space named "Firefox bookmarks", which is then
+selected. Folders with imported links become groups, and nested folders carry their parent's
+name in the group label.
+The Firefox originals remain unchanged, and later changes are not synchronized.
 If the stored bookmarks cannot be read, the view says "Bookmarks couldn't load" with a
 Retry button instead of showing a board that could not save; nothing is changed meanwhile.
 
@@ -755,21 +871,23 @@ Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, un
   the menu bar, the app menu and the page's context menu all save the page at once and open a small
   popover under the star (or, when the sidebar row is not on screen, at the top right of the active
   panel) with Name, Space and Group, Remove and Done. A page goes into the group of the most
-  recently saved link in the current space (the one the toolbar shows); in a space with no group,
-  into a group called "Unsorted".
+  recently saved link in the current space (the one the toolbar shows); in a space whose groups
+  hold no links yet, into its first group; in a space with no group, into a group called
+  "Unsorted".
   Name saves on Enter or when the field loses focus. Choosing another Space moves the link to that
   space's first group (making "Unsorted" if it has none), and choosing a Group moves it there.
   Done, a click outside and Esc close the popover and keep the save; Esc also drops a name that
   was typed but not saved. The popover also closes, keeping a typed name, when the window is
-  resized, the tab changes or another overlay opens. Remove deletes the link. If the stored
+  resized, the tab changes, the sidebar collapses, hides or slides, or a page prompt or
+  another overlay opens. Remove deletes the link. If the stored
   bookmarks could not be read, the popover says the page was not saved and offers Retry.
 - **The star.** It is filled for any page that is saved in any group. Pressing it, or Cmd/Ctrl+D,
   on a saved page opens the popover on the most recent copy rather than saving again, and the star
   shows as pressed while the popover is open. A page Bento does not save (Firefox's own pages and
   other internal pages) leaves the star disabled, and Cmd/Ctrl+D does nothing there. The panel header
   star follows the same rules.
-- **Bookmarks toolbar.** In place of Firefox's toolbar (it still shows and hides with
-  Cmd/Ctrl+Shift+B) a rounded strip, lined up with the top of the workspace switcher and the edges
+- **Bookmarks toolbar.** In place of Firefox's toolbar (it starts hidden and shows and
+  hides with Cmd/Ctrl+Shift+B) a rounded strip, lined up with the top of the workspace switcher and the edges
   of the panels, slides in while the panels shrink to make room (and out again; the sidebar stays
   still). The row lists the groups of the space the Bookmarks view last showed, each a
   button with its colour dot, name and a chevron. A group's menu lists its links (favicon and
@@ -777,7 +895,8 @@ Settings, keep Firefox's own bookmark star, Cmd/Ctrl+D and bookmarks toolbar, un
   Bookmarks". The space button at the right shows the current space; its menu lists every space
   with a check on the current one (choosing one switches the toolbar, the Bookmarks view and
   every other window to it) and "Open Bookmarks". Groups that do not fit move behind an overflow
-  button at the end of the groups, each a submenu of its links. A space with no links shows "No
+  button at the end of the groups, each a submenu with that group's links, "Open all in panels"
+  and "Open in Bookmarks". A space with no links shows "No
   bookmarks in" and its name, and the row shows nothing until the stored bookmarks have loaded (or
   if they could not be read). The button whose menu is open shows as pressed. Esc, a click
   outside or choosing an item closes a menu.
@@ -820,7 +939,8 @@ targets, and pinned panels without relying only on precise pointer movement.
 
 The intended behavior is:
 
-- visible panel controls are keyboard reachable;
+- visible panel controls are keyboard reachable, except that dragging panels by
+  their handles and resizing them with splitters need a pointer;
 - focused panels have clear visual state through a persistent ring and active
   header colour;
 - the sidebar's New menu remains reachable when the sidebar is collapsed;
@@ -833,8 +953,9 @@ The intended behavior is:
   divider after the native reload button and track that divider during live
   sidebar resize when panels are visible, match the native toolbar buttons'
   control size, the toolbar and panel-strip backdrops
-  switch to neutral-14 on the main-content side of that divider in panel view
-  and neutral-5 with no divider in no-panel view, while browser extension
+  match the panel strip on the main-content side of the divider when panels are
+  open and match the sidebar without a divider when no panels are open, while
+  browser extension
   buttons align to the right side of the top bar without Firefox's native
   post-tabs spacer gap, the native bookmarks
   toolbar starts at the panel-strip edge instead of spanning or pushing down
@@ -845,7 +966,8 @@ The intended behavior is:
   drag-reorderable from that top toolbar while unused top-bar space remains
   available for moving the browser window, and rapid clicks on previous/next
   cycle panels without changing the window state;
-- sidebar footer icon buttons show Bento tooltips on hover;
+- footer icon buttons show Bento tooltips while the sidebar is expanded; these
+  footer tooltips are disabled in the collapsed rail;
 - the divider between the fixed main content slot button and draggable
   side-panel buttons is centered in their shared gap;
 - panel navigator buttons show Bento tooltips with their panel names; the
@@ -854,7 +976,20 @@ The intended behavior is:
   panels inside a vertical or 2x2 group;
 - sleeping inactive-workspace panels appear dimmed in the panel strip and their
   panel navigator buttons are dimmed until the backing tab wakes;
-- panel cycling with `Cmd/Ctrl+Shift+Left` and `Cmd/Ctrl+Shift+Right` is predictable;
+- panel cycling with `Cmd/Ctrl+Shift+Left` and `Cmd/Ctrl+Shift+Right` works
+  while ordinary page content has focus, and editable fields keep those keys for
+  editing; cycling stops at either end by default, and "Wrap panel shortcuts at
+  the ends" in Settings turns wrapping on for keyboard and navigator cycling;
+- with the panel container focused, Up and Down scroll its page, Space scrolls
+  down a page and Shift+Space scrolls up, and Esc from a panel-header control
+  returns focus to the container when no overlay handles it;
+- Shift+wheel over the panel strip or navigator cycles panels and stops at either
+  end even when wraparound is on; horizontal scrolling over browser chrome scrolls
+  the panel strip, while scrolling inside a web page stays the page's own;
+- on macOS, `Cmd+R` and `Cmd+Shift+R` reload or force-reload a panel when focus is
+  on its container or header (with focus inside the page content they are not
+  retargeted to the panel), and Firefox's native two-finger swipe back and
+  forward gestures are off by default;
 - saved panels and pinned-panel rail buttons are reachable from compact controls;
 - workspace switching preserves enough layout state that returning to a
   workspace feels immediate;
@@ -868,17 +1003,20 @@ Bento's theming engine gives each workspace an identity while staying accessible
 The theme system should support:
 
 - curated accessible presets;
-- a grouped selector containing Bento's Default palette plus the standard and
-  monochromatic palettes shipped by `@muxui/react/themes`;
+- a grouped selector containing Bento's Default palette, eight standard palettes
+  and seven monochromatic palettes;
 - per-workspace theme selection;
 - light, dark, and Auto UI modes; switching presents the sidebar, toolbar,
   Settings, menus and palettes together on the theme's state motion. A rapid
-  reversal continues from the current progress. Reduced motion switches after
-  the same readiness barrier without playing a fade. Web pages keep live
+  reversal continues from the current progress. Reduced motion switches the
+  surfaces together without playing a fade. Web pages keep live
   visuals, execution and input; native OS menus and window controls remain
   system-owned;
-- independent content color-scheme preference where possible;
-- user customization through token-based theme presets.
+- UI colour mode is separate from website colour preference. Fresh profiles
+  request light website colours; Bento Settings currently has no separate
+  website-colour control;
+- workspace customization by choosing a curated preset; creating or importing a
+  custom theme is not currently available.
 
 The goal is not decorative skinning alone. Themes should help users recognize
 the active workspace quickly and make long-lived browsing contexts comfortable
@@ -891,8 +1029,9 @@ behind `about:config`. The selectable protection levels are:
 
 - Standard: balanced Bento defaults with strict Firefox tracking
   protection, tracker-cookie partitioning, Global Privacy Control, query
-  stripping, remote search suggestions off, speculative networking off, local
-  Safe Browsing checks on, HTTPS-only mode, and DuckDuckGo as the
+  stripping, remote search suggestions off, speculative networking off, DNS over
+  HTTPS off, Firefox AI features off, sponsored new tab content and Bento
+  Suggest off, local Safe Browsing checks on, HTTPS-only mode, and DuckDuckGo as the
   fresh-profile search default (a profile that already finished onboarding
   keeps its current engine).
 - Enhanced: Standard plus resist fingerprinting and tighter WebRTC IP handling
@@ -903,26 +1042,40 @@ behind `about:config`. The selectable protection levels are:
   cookies, site data and cache cleared when Bento quits (history, downloads and
   form data are kept).
 
-A fresh profile starts on Standard: Bento applies it at the first launch only,
-before onboarding finishes, so Settings marks Standard as the current level and the
-onboarding privacy step can change it. Later launches, and profiles that already
-existed, are left as they are. A profile that turned "Clear cookies and cache on
+A fresh profile starts on Standard: Bento applies it at the first launch, before
+onboarding finishes, so Settings marks Standard as the current level and the
+onboarding privacy step can change it. A saved Enhanced or Hardened choice is
+applied again at each launch, so changes made separately to the privacy controls
+covered by that preset can be reset. When no preset choice is saved, later
+launches, and profiles that already existed, leave the browser's current privacy
+settings in place. A profile that turned "Clear cookies and cache on
 shutdown" on before the clearing was narrowed to cookies, site data and cache keeps
 Firefox's broader clearing (history, downloads and form data too) until the switch
 is turned off and on once.
 
 Custom is a detected state, not a selectable preset. Bento shows Custom when
-the live browser settings no longer exactly match Standard, Enhanced, or
-Hardened.
+any setting a level controls differs from all three levels, including settings
+with no Advanced privacy row such as DNS over HTTPS, address-bar search
+suggestions, Firefox AI features and the cross-site Referer policy. Remote
+download reputation never affects it.
 
-Remote Safe Browsing download reputation is a separate advanced toggle rather
-than a preset value. It remains off by default and, when enabled, clearly states
-that Firefox may send eligible-download and redirect URLs, the original referrer
-when available, file name, size, SHA-256, locale, and signing or certificate
-metadata to Google Safe Browsing for an online verdict. Switching presets does
+Remote download reputation is a separate advanced toggle rather than a preset
+value, and it is off by default. Its Settings description says that Google Safe
+Browsing is asked about downloads it cannot judge locally, and that this sends the
+download's address, file name, size and checksum to Google. Firefox's request
+itself also includes redirect URLs, the original referrer when available, the
+locale and signing or certificate metadata. Switching presets does
 not reset the toggle or make an otherwise matching preset appear as Custom.
 Firefox's HTTPS exception UI remains available for HTTP-only sites and local
 devices.
+
+Bento's shipped defaults turn off telemetry submission, automatic crash-report
+submission, studies, Pocket, sponsored new tab content and Bento Suggest. Firefox
+account and Sync support stays on, and the stock toolbar Account button is hidden.
+DNS over HTTPS is off. Built-in AI chat, Smart Window AI tabs and mini windows are
+off. Bento's user agent advertises Firefox compatibility. These are browser preference
+defaults, not a guarantee that the browser makes no network requests, and they can
+be changed in Firefox's preferences.
 
 Bento Settings is a quick-pick palette over the window, not a page. The app menu's
 "Bento Settings" item, the command palette's Open Settings command, and the
@@ -940,7 +1093,7 @@ once and returns to the old one if the change cannot be saved) or opens a short
 list of choices, which opens on the current choice. A number with a wide range
 (Sleep tabs after, Backup interval, Default new panel width, a custom size) opens a value
 field with preset rows (Min, Default and Max sit beside the number); the value applies live
-while typing (panel corners move as you type) and while arrowing over the presets, Enter
+while typing and while arrowing over the presets, Enter
 keeps it, clicking a preset keeps it and returns to the list, and Back or Esc puts the
 previous value back. A number with a small range (Keep alive per workspace, Panel corner
 radius, Panel gap and splitter size, Backups to retain; at most 50 steps wide) opens a
@@ -1003,47 +1156,151 @@ before switching; Custom is shown as detected state only. The default search
 engine list offers Firefox's currently visible search engines (DuckDuckGo is
 Bento's default for a fresh profile; a profile that already finished onboarding
 keeps its current engine) and a "Manage search engines" row that opens Firefox's
-own search settings to add more. Advanced privacy lists the main browser-level
-levers as switches and choices; the shutdown switch clears cookies, site data
-and cache when Bento quits and keeps history, downloads and form data, and
-HTTPS-only mode's Off and Always apply to normal and private windows. When a
+own search settings to add more. Advanced privacy offers Local Safe Browsing,
+Remote download reputation, Resist fingerprinting, Letterboxing, Network
+prediction, WebRTC peer connections, WebRTC IP handling, HTTPS-only mode, DRM
+protected content, Disk cache, WebGL, WebGPU, Password saving, Form history, and
+Clear cookies and cache on shutdown. WebRTC IP handling and HTTPS-only mode open
+lists of choices; the other controls are switches. The shutdown switch clears
+cookies, site data and cache when Bento quits and keeps history, downloads and
+form data, and HTTPS-only mode's Off and Always apply to normal and private
+windows. When a
 privacy change is saved but Firefox could
 not apply it, the palette says so. The first-run onboarding privacy step lists
 each level with a one-line summary and marks Standard as recommended, and its
 search step shows each visible engine's icon and tags privacy-oriented ones as
 Private when Firefox exposes them. The Keyboard shortcuts list is searchable
-and shows each command's title and key tokens, and the Sidebar collapse type
+and shows each command's title and key tokens (a shorter list than the Keyboard
+and menu reference below), and the Sidebar collapse type
 setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
-left-edge hover access. Bento bundles uBlock Origin enabled by default and
-leaves it removable/disableable by the user.
+left-edge hover access. Bento bundles uBlock Origin, enabled by default. It is not
+listed in `about:addons` and cannot be removed: Remove Extension is disabled on its
+toolbar button's menu. Manage Extension on that menu opens its page, where it can be
+switched off.
 
-Backup and data contains the automatic backup controls, an Export, import and stored
+Backup and data contains automatic backups, enabled by default every 30 minutes with
+the latest five retained; the interval can be set from 5 to 1,440 minutes and
+retention from 1 to 20 backups. The category also contains an Export, import and stored
 backups list, and Merge browser session. The backups list offers Export (a file download),
-Import (choose a file, review what it holds, then confirm), stored backups (restore and delete, each with a
+Import (choose a file, review what it holds, then confirm; the file's workspaces are added
+alongside the existing ones, and any settings and saved panels it includes apply), stored
+backups (restore and delete, each with a
 confirmation) and Merge browser session, which opens the merge palette. The Reset Bento
 category contains Reset Bento settings, which asks for confirmation, restores Bento settings, the protection
-level and the search engine to their defaults, and closes the palette so the
+level and the search engine to their defaults, keeps workspaces, tabs and backups, leaves
+Remote download reputation as it is, and closes the palette so the
 onboarding dialog can open again. Operations that take time keep running if the
 palette is closed, and reopening Settings reports how an operation ended if it
 finished (or was cut short by Bento restarting) while the palette was closed or
-reloading. Import accepts backup files up to 10 MiB. A number being edited is put
-back if the palette is hidden before the edit is kept. A private window's Settings palette has no backup, merge or
-reset rows; its Bento color mode is that window's own and is not saved, and any
+reloading. Backup files, exported or imported, are limited to 10 MiB. Import rejects
+files that are too large or are not Bento backups. If its file check expires, it asks the
+user to choose the file again. Settings also reports when the window is not ready, Bento
+is busy, or a request cannot be completed in time, with a prompt to retry. If an
+operation is interrupted or its result is uncertain, the message asks the user to check
+what changed before retrying. A number being edited is put
+back if the palette is hidden before the edit is kept. A private window's Settings palette has no backup, merge,
+reset or Bookmarks manager rows; its Bento color mode is that window's own and is not saved, and any
 other setting changed there is saved for the whole profile as usual.
 
 Firefox's own Settings page (`about:preferences`) has no Bento category; the
 Settings palette is the only place Bento's settings live.
 
 Bento has no automatic updater yet, so the About page shows no Updates section
-(no heading, description, or status message); it keeps the support links.
+(no heading, description, or status message); it keeps the support links. Native
+surfaces use Bento branding (Bento Home, Bento View, Bento Labs), and `about:logo`
+shows the Bento logo.
+
+## Keyboard and menu reference
+
+Keys use Cmd on macOS and Ctrl elsewhere unless noted. The Settings Keyboard shortcuts
+list is a separate, shorter list.
+
+### Keyboard shortcuts
+
+| Keys | What they do |
+| --- | --- |
+| `Cmd/Ctrl+Alt+P` | Open the command palette. |
+| `Cmd/Ctrl+L`, `Cmd/Ctrl+E` | Open address entry for the current tab. |
+| `Cmd/Ctrl+T` | Open address entry in new-tab mode. |
+| `Cmd/Ctrl+S` | Minimize the sidebar: collapse it or hide it, per Settings. |
+| `Cmd/Ctrl+W` | Close the selected sidebar tabs when several are selected; otherwise the focused side panel; otherwise the current tab. |
+| `Cmd/Ctrl+Shift+T` | Reopen the last closed tab or panel. |
+| `Cmd/Ctrl+1` to `9` | Select that regular tab in the current workspace, side panels excluded. `9` means the ninth tab, not the last. Pinned tabs and tabs inside folders count, in the browser's tab order, which can differ from the sidebar's order when folders are used. An index past the last tab does nothing. |
+| `Cmd/Ctrl+Shift+Left`, `Cmd/Ctrl+Shift+Right` | Previous or next panel, except while an editable field has focus. |
+| `Cmd/Ctrl+Left`, `Cmd/Ctrl+Right` | Back or forward in the focused panel's history, except while an editable field has focus. |
+| `Cmd/Ctrl+Shift+Alt+N` | Open a new window. |
+| `Cmd/Ctrl+D` | Save the page. |
+| `Cmd/Ctrl+Shift+O` | Open the Bookmarks view. |
+| `Cmd/Ctrl+Shift+B` | Show or hide the bookmarks toolbar. |
+| `Cmd+R`, `Cmd+Shift+R` (macOS) | Reload or force-reload a panel when focus is on its container or header. |
+| Up, Down, Space, Shift+Space | With a panel container focused, scroll its page. |
+| Esc | From a panel header control, return focus to the panel container. |
+
+Pointer gestures:
+
+- Shift+wheel over the panel strip or navigator cycles panels and stops at either end.
+- Horizontal scrolling over browser chrome scrolls the panel strip.
+- Middle-click closes a sidebar tab or a pinned panel.
+- Double-click renames a tab.
+- Cmd/Ctrl-click and Shift-click select tabs.
+- Two-finger swipe back and forward is off.
+
+### Command palette
+
+The palette lists these commands by group:
+
+- Navigation: Open Settings, Open Bookmarks (while the Bookmarks manager is on, in a
+  regular window) and Open Bento Privacy Settings.
+- Settings: the settings that match the query, only while typing.
+- Workspaces (regular windows only): Switch to the name of each other workspace, shown
+  as Current workspace for the current one, and New workspace.
+- Tabs and Panels: the current window's tabs and side panels.
+- Actions: New tab, Close current tab, Reload current tab, Pin or Unpin current tab,
+  Add current tab to side panels, Merge browser session (regular windows only) and
+  Close all side panels.
+
+New tab opens a blank tab at once, unlike the New menu's New tab, which opens address
+entry. Close all side panels removes every side panel from the active workspace:
+ordinary panels return to the tab list, while child panels removed with their parent
+and DevTools panels are closed.
+
+### Menus
+
+- Sidebar background: New tab, Reopen closed tab, Select all tabs. These three also head
+  the tab and folder menus.
+- Tab: New tab below, Rename tab, Reload tab, Unload tab (disabled for the current or an
+  unloaded tab), Mute tab or Unmute tab, Pin tab or Unpin tab, Convert to panel (not
+  the current tab), Move to workspace, Move to folder (the existing folders, New
+  folder, and Remove from folder when it applies; left out when the tab is pinned),
+  Close multiple tabs (Close tabs above, Close tabs below, Close other tabs) and Close
+  tab. A private window's menu has no Move to workspace or Move to folder.
+- Selected tabs: Reload N tabs, Move N tabs to new workspace, Move selected tabs to
+  workspace, Move selected tabs to folder (left out when all are pinned) and Close N
+  selected tabs.
+- Folder: Rename folder, Move folder to workspace, Delete folder.
+- Pinned panel button: Remove pinned panel, Close pinned panel.
+- Panel header, left to right: drag handle, Back, Forward, Reload, address field,
+  bookmark star, pin, mute (shown when the panel is audible or muted), Close, Panel
+  options. DevTools panels and private windows have no pin button.
+- Panel options: Custom panel widths (the sizes set in Settings, or "No panel sizes set
+  in Bento Settings" when there are none), Subdivide panel (top-level panels), Split
+  this panel (the single panel of a subdivision row), Break out this panel (the bottom
+  panel, or either panel of a split row), Hide header, then Save panel (not in private
+  windows). DevTools panels have none of the layout items. The main content slot has no
+  Panel options button.
+- Panel Back and Forward buttons: right-click shows up to 15 history entries around the
+  current page.
+- Panel navigator button: Remove panel. Splitter: Insert panel here. Empty strip space
+  and the trailer: Add new panel.
+- Page links: Open in new panel. Firefox bookmarks: Open in New Panel.
 
 ## Design principles
 
 ### Workspace state is first-class
 
-Tabs, panels, layout, saved panel affordances, and theme selection belong to the
-workspace. Bento should treat that state as the user's working environment, not
-as incidental UI state.
+Tabs, panels, layout, pinned-panel references, and theme selection belong to the
+workspace. Saved panel targets are shared across regular workspaces. Bento should
+treat both as parts of the user's working environment, not as incidental UI state.
 
 ### Panels should stay browser-compatible
 
@@ -1063,27 +1320,10 @@ without forcing the user into multiple OS windows.
 ### Customisation must remain accessible
 
 Themes and layout controls should improve recognition and comfort without
-creating low-contrast or hard-to-navigate states. Curated presets are the default
-path; deeper customization builds on the same token system.
+creating low-contrast or hard-to-navigate states. Curated presets are the current
+customization path. Deeper theme customization remains a future direction.
 
 ### Window count should go down
 
 The core product test is simple: a user who previously needed several browser
 windows for one task should be able to express that task as one Bento workspace.
-
-## Implementation anchors
-
-These files define or document the current core model:
-
-- `extensions/_shared/protocol.ts` defines workspace, panel, layout, theme,
-  pinned-panel, saved-panel, settings, privacy, and backup wire contracts.
-- `extensions/bento-shell/src/state/workspaces.ts` mirrors workspace metadata
-  into the shell UI.
-- `extensions/bento-shell/src/state/panels.ts` mirrors panel membership per
-  workspace.
-- `extensions/bento-shell/src/state/pinnedPanels.ts` and
-  `extensions/bento-shell/src/state/savedPanels.ts` mirror reusable panel
-  affordances.
-- `docs/themes.md` documents the workspace theme system.
-- `plans/bento-spaces-split-view-panels.md` documents the native split-view
-  panel architecture.
