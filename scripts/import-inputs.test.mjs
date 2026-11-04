@@ -38,7 +38,6 @@ const safePaths = [
   '.size-limit.json',
   '.legacy-alias-cap.json',
   '.github/workflows/codeql.yml',
-  '.github/dependabot.yml',
 ];
 
 const unsafePaths = [

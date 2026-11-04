@@ -9,14 +9,12 @@
 // Default deny: a path is skippable only when it matches an allowlist rule below.
 // Anything else, including an empty change list, runs the job.
 
-// Exact files with no effect on the import: size and alias ratchets, and the
-// CodeQL and Dependabot configs.
+// Exact files with no effect on the import: size and alias ratchets, and the CodeQL config.
 const SAFE_FILES = new Set([
   '.size-baseline.json',
   '.size-limit.json',
   '.legacy-alias-cap.json',
   '.github/workflows/codeql.yml',
-  '.github/dependabot.yml',
 ]);
 
 // Extension source is built, linted, and tested on every PR by other jobs, and
