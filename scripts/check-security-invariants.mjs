@@ -62,7 +62,7 @@ for (const marker of [
 ]) {
   requireText(
     zenPatch,
-    new RegExp(marker.replace(/[?.]/g, '\\$&')),
+    new RegExp(marker.replace(/[?.\\]/g, '\\$&')),
     `private-session filter ${marker}`,
   );
 }
