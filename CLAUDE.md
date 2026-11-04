@@ -377,7 +377,7 @@ What `pnpm run import` costs depends on what changed:
 
 ## Repo crosswalk
 
-- `extensions/` — `bento-shell`, `bento-tools`, and bundled `ublock-origin`. [scripts/install-builtin-addons.mjs](scripts/install-builtin-addons.mjs) performs Bento's runtime-filtered `builtin-addons/` installation.
+- `extensions/` — `bento-shell` and `bento-tools` (built-in add-ons), and `ublock-origin` (the signed uBlock Origin XPI, a removable distribution add-on). [scripts/install-builtin-addons.mjs](scripts/install-builtin-addons.mjs) performs Bento's runtime-filtered `builtin-addons/` installation and copies the XPI to `distribution/extensions/`.
 - `patches/` — git format-patch files applied to Firefox source. Keep small; bigger overlays = harder Firefox bumps.
 - `prefs/bento.js` — privacy defaults appended to the engine's branding prefs.
 - `bento.json` — canonical Firefox version and source digest, build identity,

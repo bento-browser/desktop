@@ -146,6 +146,11 @@
       "path": "patches/core-ui/20-native-mode-presenter-resource.patch",
       "id": "native-mode-presenter-resource",
       "subject": "Package the shared native mode presenter actor resource"
+    },
+    {
+      "path": "patches/core-ui/21-package-distribution-extensions.patch",
+      "id": "package-distribution-extensions",
+      "subject": "Package distribution add-ons in a build not made by Mozilla"
     }
   ],
   "format": "git-format-patch"

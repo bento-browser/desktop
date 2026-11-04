@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { distributionAddonMozBuild } from './distribution-addons.mjs';
 import { replaySeriesChanges } from './series-replay.mjs';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -156,10 +157,19 @@ async function importedFixture() {
     'browser/extensions/moz.build',
     '# BEGIN BENTO BUILTIN ADDONS\n# END BENTO BUILTIN ADDONS\n',
   );
-  for (const name of ['bento-shell', 'bento-tools', 'ublock-origin']) {
+  for (const name of ['bento-shell', 'bento-tools']) {
     write(engine, `browser/extensions/${name}/manifest.json`, '{}\n');
     write(engine, `browser/extensions/${name}/jar.mn`, `builtin-addons/${name}/\n`);
   }
+  // uBlock Origin is a distribution add-on: the same XPI bytes in the repo and the engine.
+  const xpi = 'uBlock0@raymondhill.net.xpi';
+  write(root, `extensions/ublock-origin/${xpi}`, 'signed xpi bytes');
+  write(engine, `browser/extensions/ublock-origin/${xpi}`, 'signed xpi bytes');
+  write(
+    engine,
+    'browser/extensions/ublock-origin/moz.build',
+    distributionAddonMozBuild('ublock-origin', xpi),
+  );
   return { root, engine, write };
 }
 
@@ -280,6 +290,25 @@ test('import output check accepts a directory where the series deletes a file', 
     stale.stderr,
     /engine\/browser\/base\/dirlike\.js exists but the patch series deletes it/,
   );
+});
+
+test('import output check requires the distribution add-on to be the repository XPI, not built in', async () => {
+  const { root, engine } = await importedFixture();
+  const check = () => run(root, 'check-import-output.mjs');
+  const addon = path.join(engine, 'browser/extensions/ublock-origin');
+  const xpi = path.join(addon, 'uBlock0@raymondhill.net.xpi');
+  assert.equal(check().status, 0, 'a faithful copy passes');
+
+  fs.writeFileSync(xpi, 'repacked xpi bytes');
+  assert.match(check().stderr, /ublock-origin\/uBlock0@raymondhill\.net\.xpi differs from extensions/);
+  fs.writeFileSync(xpi, 'signed xpi bytes');
+
+  fs.writeFileSync(path.join(addon, 'jar.mn'), 'builtin-addons/ublock-origin/\n');
+  assert.match(check().stderr, /must not have jar\.mn/);
+  fs.rmSync(path.join(addon, 'jar.mn'));
+
+  fs.writeFileSync(path.join(addon, 'moz.build'), 'FINAL_TARGET_FILES += []\n');
+  assert.match(check().stderr, /does not install uBlock0@raymondhill\.net\.xpi under distribution\/extensions/);
 });
 
 test('series replay names the manifest entry that does not apply', async () => {

@@ -320,6 +320,8 @@
       'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs': 'SessionSaver',
       'resource://gre/modules/Extension.sys.mjs': 'Management',
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
+      'resource://gre/modules/AddonManager.sys.mjs': 'AddonManager',
+      'resource://gre/modules/ExtensionPermissions.sys.mjs': 'ExtensionPermissions',
       'resource://gre/modules/Timer.sys.mjs': 'setTimeout',
       'chrome://devtools-startup/content/DevToolsShim.sys.mjs': 'DevToolsShim',
     },

@@ -24,7 +24,7 @@
 #      names a Developer ID Application identity: then the app and the DMG are
 #      notarized and stapled with the BENTO_NOTARY_PROFILE keychain profile
 #      (default bento-notary). The collected DMG is checked against the signing
-#      record (scripts/check-macos-signing.mjs).
+#      record and for the recorded uBlock Origin XPI (scripts/check-macos-signing.mjs).
 #   5. Writes the SBOM, release manifest (with the signing record), and
 #      SHA256SUMS next to the artifacts.
 #
@@ -306,9 +306,12 @@ else
   echo "build-release: collected $UPDATE_COUNT update metadata files"
 fi
 
+# Also requires the staged app (and a TAR package) to ship the uBlock Origin XPI
+# at distribution/extensions/ with the SHA-256 extensions/ublock-origin/README.md records.
 node scripts/validate-bento-artifacts.mjs "$REPO_ROOT"
 
-# Mounts the collected DMG and checks its signature against the signing record.
+# Mounts the collected DMG and checks its signature against the signing record,
+# and that the app inside ships the same recorded uBlock Origin XPI.
 if [ "$PLATFORM" = "macos" ]; then
   node scripts/check-macos-signing.mjs "$OUT" "$SIGNING_DIR/signing.json"
 fi

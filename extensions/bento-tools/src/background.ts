@@ -247,6 +247,17 @@ async function applyUiScale(scale: BentoSettings['uiScale']): Promise<void> {
   }
 }
 
+// uBlock Origin is installed by Firefox from the app's distribution folder, so the user can remove
+// it. The experiment allows it in private windows once per profile, on the first start; every later
+// start returns at once, which keeps a switch-off or a removal in about:addons.
+async function allowUBlockInPrivateWindows(): Promise<void> {
+  try {
+    await browser.bentoPrivacy.grantUBlockPrivateAccess();
+  } catch (err) {
+    console.warn('[bento-tools] uBlock Origin private window access failed:', err);
+  }
+}
+
 // Set of currently-connected shell document ports. Tools can broadcast
 // events to all of them — needed for tools-initiated UI events like
 // ui/openCommandPalette (fired by the global Cmd+K shortcut). Per-port
@@ -965,6 +976,7 @@ const bootReady = storesReady.then(async () => {
   // Bento owns the scale pref: the stored scale is applied at every start, and 1.00x clears it, so
   // a value set by hand in about:config does not outlive a restart.
   void applyUiScale(settings.snapshot().uiScale);
+  void allowUBlockInPrivateWindows();
   // A stored choice is applied at boot. A profile with none gets Standard on its first launch only
   // (`seedBootPrivacyLevel`); on later launches Firefox's prefs, and any switch changed since, stand.
   if (settings.hasOverride('privacyProtectionLevel')) {

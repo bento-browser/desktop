@@ -7,8 +7,13 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { readApplicationBuildId } from './bento-build.mjs';
+import { sha256Of, UBLOCK_XPI } from './shipped-ublock.mjs';
 import { shipUpdater, writeCertificates } from './updater-fixtures.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
+
+/** The XPI a staged app ships, and the README line that records its hash (what `root` would hold). */
+const XPI_BYTES = 'signed uBlock Origin xpi';
+const xpiIn = (resources) => path.join(resources, 'distribution', 'extensions', UBLOCK_XPI);
 
 /** What configure records for a build with the updater compiled in. */
 const updaterSubsts = { MOZ_UPDATER: '1', MOZ_UPDATE_CHANNEL: 'bento', MOZ_APPUPDATE_HOST: 'updates.example.invalid', ACCEPTED_MAR_CHANNEL_IDS: 'bento' };
@@ -29,6 +34,10 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   await fsp.mkdir(path.dirname(marTool), { recursive: true });
   // Firefox's packager writes precomplete whether or not the updater is built.
   await fsp.writeFile(path.join(app, 'precomplete'), '');
+  await fsp.mkdir(path.dirname(xpiIn(app)), { recursive: true });
+  await fsp.writeFile(xpiIn(app), XPI_BYTES);
+  await fsp.mkdir(path.join(root, 'extensions', 'ublock-origin'), { recursive: true });
+  await fsp.writeFile(path.join(root, 'extensions', 'ublock-origin', 'README.md'), `- SHA-256: \`${sha256Of(XPI_BYTES)}\`\n`);
   await fsp.writeFile(path.join(app, 'platform.ini'), '[Build]\nMilestone=154.0\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(app, 'application.ini'), '[App]\nBuildID=20260912000000\n[Build]\nBuildID=20260912000001\n');
   await fsp.writeFile(path.join(objDist, 'bento-0.0.1.en-US.mac.dmg'), 'application');
@@ -78,6 +87,7 @@ async function fixture({ appBundle = true, marEntry = 'Contents/Resources/precom
   return {
     root,
     objDist,
+    app,
     manifest: path.join(root, 'dist', 'bento-artifacts.json'),
     update: path.join(root, 'dist', 'update', 'browser', 'Darwin_x86_64-gcc3', 'bento', 'update.xml'),
   };
@@ -130,12 +140,13 @@ async function useMacTar({ root, objDist }, files) {
 }
 
 const bundleIni = 'bento/Bento.app/Contents/Resources/application.ini';
+const bundleXpi = `bento/Bento.app/Contents/Resources/distribution/extensions/${UBLOCK_XPI}`;
 const stagedBuild = '[App]\nBuildID=20260912000000\n';
 
 test('artifact validation accepts the TAR package that Firefox 158 builds for macOS dev builds', async () => {
   const built = await fixture({ updates: false });
   try {
-    await useMacTar(built, { [bundleIni]: stagedBuild });
+    await useMacTar(built, { [bundleIni]: stagedBuild, [bundleXpi]: XPI_BYTES });
     await fsp.writeFile(path.join(built.objDist, 'bento-0.0.1.en-US.mac.update_framework_artifacts.zip'), 'auxiliary');
     assert.deepEqual(validateArtifacts(built.root).packages, ['bento-0.0.1.en-US.mac.tar']);
   } finally {
@@ -146,7 +157,7 @@ test('artifact validation accepts the TAR package that Firefox 158 builds for ma
 test('artifact validation rejects a macOS TAR package that is not the staged application', async () => {
   const built = await fixture({ updates: false });
   try {
-    const archive = await useMacTar(built, { [bundleIni]: stagedBuild });
+    const archive = await useMacTar(built, { [bundleIni]: stagedBuild, [bundleXpi]: XPI_BYTES });
     const whole = await fsp.readFile(archive);
 
     // A name alone is not a package: plain text and an archive cut inside application.ini are not readable.
@@ -165,10 +176,54 @@ test('artifact validation rejects a macOS TAR package that is not the staged app
     await useMacTar(built, { [bundleIni]: '[Build]\nBuildID=20260912000000\n' });
     assert.throws(() => validateArtifacts(built.root), /has no \[App\] BuildID/);
 
-    await useMacTar(built, { [bundleIni]: stagedBuild });
+    await useMacTar(built, { [bundleIni]: stagedBuild, [bundleXpi]: XPI_BYTES });
     validateArtifacts(built.root);
   } finally {
     await fsp.rm(built.root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation requires the recorded uBlock Origin XPI at its exact path in the TAR package', async () => {
+  const built = await fixture({ updates: false });
+  try {
+    const files = { [bundleIni]: stagedBuild };
+    // No XPI, another file the packaging wildcard would also match, other bytes, and a second copy.
+    await useMacTar(built, files);
+    assert.throws(() => validateArtifacts(built.root), new RegExp(`must hold exactly one Bento\\.app/Contents/Resources/distribution/extensions/${UBLOCK_XPI.replaceAll('.', '\\.')}, found 0`));
+    await useMacTar(built, { ...files, 'bento/Bento.app/Contents/Resources/distribution/extensions/other@test.xpi': XPI_BYTES });
+    assert.throws(() => validateArtifacts(built.root), /found 0/);
+    await useMacTar(built, { ...files, [bundleXpi]: 'an older or repacked xpi' });
+    assert.throws(() => validateArtifacts(built.root), /has SHA-256 [0-9a-f]{64}, but the recorded uBlock Origin XPI is /);
+    await useMacTar(built, { ...files, [bundleXpi]: XPI_BYTES });
+    validateArtifacts(built.root);
+  } finally {
+    await fsp.rm(built.root, { recursive: true, force: true });
+  }
+});
+
+test('artifact validation requires the recorded uBlock Origin XPI at its exact path in the staged app', async () => {
+  for (const appBundle of [true, false]) {
+    const { root, app } = await fixture({ appBundle });
+    try {
+      validateArtifacts(root);
+      const xpi = xpiIn(app);
+      await fsp.writeFile(xpi, 'an older or repacked xpi');
+      assert.throws(() => validateArtifacts(root), /has SHA-256 [0-9a-f]{64}, but the recorded uBlock Origin XPI is /);
+      await fsp.writeFile(xpi, '');
+      assert.throws(() => validateArtifacts(root), /but the recorded uBlock Origin XPI is /, 'an empty file');
+      // A file the wildcard matches, but not at the named path.
+      await fsp.rename(xpi, path.join(path.dirname(xpi), 'other@test.xpi'));
+      assert.throws(() => validateArtifacts(root), /is missing: the app must ship the uBlock Origin XPI at exactly this path/);
+      await fsp.rm(path.dirname(path.dirname(xpi)), { recursive: true });
+      assert.throws(() => validateArtifacts(root), /is missing: the app must ship/);
+      await fsp.mkdir(xpi, { recursive: true });
+      assert.throws(() => validateArtifacts(root), /is missing: the app must ship/, 'a directory is not the file');
+      await fsp.rm(xpi, { recursive: true });
+      await fsp.writeFile(xpi, XPI_BYTES);
+      validateArtifacts(root);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   }
 });
 

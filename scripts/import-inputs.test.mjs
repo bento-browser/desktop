@@ -76,7 +76,7 @@ const unsafePaths = [
   'extensions/bento-shell/src/experiments',
   'extensions/bento-shell/src',
   'extensions/bento-shell/src-extra/a.ts',
-  'extensions/ublock-origin/background.js',
+  'extensions/ublock-origin/uBlock0@raymondhill.net.xpi',
   // Workflows and actions.
   '.github/workflows/ci.yml',
   '.github/workflows/codeql.yml.bak',

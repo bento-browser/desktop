@@ -24,6 +24,7 @@ function loadApi({
   timers = { setTimeout, clearTimeout },
   windows = [],
   services = {},
+  modules = {},
 } = {}) {
   const requested = [];
   const context = {
@@ -51,6 +52,9 @@ function loadApi({
   };
   context.ChromeUtils = {
     importESModule(specifier) {
+      for (const [name, exports] of Object.entries(modules)) {
+        if (specifier.endsWith(`/${name}`)) return exports;
+      }
       if (specifier.includes('Timer.sys.mjs')) return timers;
       if (specifier.includes('SearchService')) return { SearchService: {} };
       if (specifier.includes('SearchUtils')) {
@@ -67,7 +71,7 @@ function loadApi({
   };
   vm.createContext(context);
   vm.runInContext(
-    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, getEngineIconUrl, mapWithConcurrency, consumeAddPanelGrant, bentoPrivacy: globalThis.bentoPrivacy };`,
+    `${apiSource}\n;globalThis.__securityTest = { iconUrlToDataUrl, getEngineIconUrl, mapWithConcurrency, consumeAddPanelGrant, grantUBlockPrivateAccess, bentoPrivacy: globalThis.bentoPrivacy };`,
     context,
     { filename: apiPath },
   );
@@ -412,6 +416,168 @@ test('add-panel grant survives a throwing acknowledgement', () => {
     },
   });
   assert.equal(api.consumeAddPanelGrant(extension, 41, GRANT_TOKEN).windowId, 7);
+});
+
+// ---- uBlock Origin in private windows ----
+
+const UBLOCK_ID = 'uBlock0@raymondhill.net';
+const PRIVATE_PERMISSION = 'internal:privateBrowsingAllowed';
+const ACCESS_PREF = 'bento.ublock.privateAccessHandled';
+
+/**
+ * A profile with a fake add-on manager, permission store and pref store. `addon` is what
+ * getAddonByID returns (null for none); `granted` is the permissions the store already holds.
+ * `state.failing` names the steps that throw: 'lookup' (getAddonByID), 'get' and 'add'
+ * (ExtensionPermissions); a test clears it to model the store recovering.
+ */
+function ublockHarness({ addon = {}, granted = [], failing = [] } = {}) {
+  const calls = [];
+  const prefs = new Map();
+  const state = {
+    addon: addon && {
+      installTelemetryInfo: { source: 'distribution' },
+      isActive: true,
+      reload: async () => calls.push(['reload']),
+      ...addon,
+    },
+    granted: [...granted],
+    failing: new Set(failing),
+  };
+  const attempt = (step) => {
+    if (state.failing.has(step)) throw new Error(`${step} unavailable`);
+  };
+  const api = loadApi({
+    services: {
+      prefs: {
+        getBoolPref: (name, fallback) => prefs.get(name) ?? fallback,
+        setBoolPref: (name, value) => {
+          prefs.set(name, value);
+          calls.push(['setBoolPref', name, value]);
+        },
+      },
+    },
+    modules: {
+      'AddonManager.sys.mjs': {
+        AddonManager: {
+          getAddonByID: async (id) => {
+            calls.push(['getAddonByID', id]);
+            attempt('lookup');
+            return state.addon;
+          },
+        },
+      },
+      'ExtensionPermissions.sys.mjs': {
+        ExtensionPermissions: {
+          get: async (id) => {
+            attempt('get');
+            return { permissions: [...state.granted], origins: [], id };
+          },
+          add: async (id, perms, ...rest) => {
+            attempt('add');
+            calls.push(['add', id, JSON.parse(JSON.stringify(perms)), rest.length]);
+            state.granted.push(...perms.permissions);
+          },
+        },
+      },
+    },
+  });
+  return { api, calls, prefs, state };
+}
+
+test('uBlock Origin is allowed in private windows once, on the install Firefox made from the distribution folder', async () => {
+  const { api, calls, prefs } = ublockHarness();
+  await api.grantUBlockPrivateAccess();
+  assert.deepEqual(calls, [
+    ['setBoolPref', ACCESS_PREF, true],
+    ['getAddonByID', UBLOCK_ID],
+    ['add', UBLOCK_ID, { permissions: [PRIVATE_PERMISSION], origins: [] }, 0],
+    ['reload'],
+  ]);
+  assert.equal(prefs.get(ACCESS_PREF), true);
+});
+
+test('after the one grant nothing runs again, so turning access off or removing the add-on sticks', async () => {
+  const { api, calls, state } = ublockHarness();
+  await api.grantUBlockPrivateAccess();
+  calls.length = 0;
+  state.granted.length = 0; // the user turned private window access off in about:addons
+  await api.grantUBlockPrivateAccess();
+  state.addon = null; // the user removed the add-on
+  await api.grantUBlockPrivateAccess();
+  assert.deepEqual(calls, [], 'no lookup, no grant, no reload');
+});
+
+test('an existing permission is left alone and only spends the chance', async () => {
+  const { api, calls, prefs } = ublockHarness({ granted: [PRIVATE_PERMISSION] });
+  await api.grantUBlockPrivateAccess();
+  assert.deepEqual(
+    calls.map((call) => call[0]),
+    ['setBoolPref', 'getAddonByID'],
+  );
+  assert.equal(prefs.get(ACCESS_PREF), true);
+});
+
+test('a start without the add-on spends the chance too, so a later install is never granted', async () => {
+  const { api, calls, prefs, state } = ublockHarness({ addon: null });
+  await api.grantUBlockPrivateAccess();
+  assert.equal(prefs.get(ACCESS_PREF), true);
+  calls.length = 0;
+  state.addon = { installTelemetryInfo: { source: 'distribution' }, isActive: true, reload: async () => {} };
+  await api.grantUBlockPrivateAccess();
+  assert.deepEqual(calls, []);
+  assert.deepEqual(state.granted, []);
+});
+
+test('a copy the user installed themselves is never granted private access', async () => {
+  for (const installTelemetryInfo of [{ source: 'amo' }, { source: 'app-profile', method: 'sideload' }, null, undefined]) {
+    const { api, calls, prefs, state } = ublockHarness({ addon: { installTelemetryInfo } });
+    await api.grantUBlockPrivateAccess();
+    assert.deepEqual(state.granted, [], JSON.stringify(installTelemetryInfo));
+    assert.equal(calls.some((call) => call[0] === 'add' || call[0] === 'reload'), false);
+    assert.equal(prefs.get(ACCESS_PREF), true, 'the chance is spent either way');
+  }
+});
+
+test('a disabled add-on is granted but not reloaded', async () => {
+  const disabled = ublockHarness({ addon: { isActive: false } });
+  await disabled.api.grantUBlockPrivateAccess();
+  assert.deepEqual(disabled.state.granted, [PRIVATE_PERMISSION]);
+  assert.equal(disabled.calls.some((call) => call[0] === 'reload'), false);
+});
+
+test('a failed first attempt is not retried, so a later revocation survives the next start', async () => {
+  // An existing grant (kept by id from the old built-in copy), then one step fails on the first
+  // start, the user turns access off, the store recovers, and the app restarts.
+  for (const step of ['lookup', 'get']) {
+    const { api, calls, prefs, state } = ublockHarness({ granted: [PRIVATE_PERMISSION], failing: [step] });
+    await assert.rejects(() => api.grantUBlockPrivateAccess(), new RegExp(`${step} unavailable`));
+    assert.equal(prefs.get(ACCESS_PREF), true, `${step}: the chance is spent before the failure`);
+    state.granted.length = 0; // revoked in about:addons
+    state.failing.clear(); // the store works again
+    calls.length = 0;
+    await api.grantUBlockPrivateAccess(); // the next start
+    assert.deepEqual(calls, [], `${step}: nothing runs`);
+    assert.deepEqual(state.granted, [], `${step}: still revoked`);
+  }
+  // A failed grant is lost, not retried.
+  const lost = ublockHarness({ failing: ['add'] });
+  await assert.rejects(() => lost.api.grantUBlockPrivateAccess(), /add unavailable/);
+  lost.state.failing.clear();
+  lost.calls.length = 0;
+  await lost.api.grantUBlockPrivateAccess();
+  assert.deepEqual(lost.calls, []);
+  assert.deepEqual(lost.state.granted, []);
+});
+
+test('the experiment method takes no arguments, so a caller cannot choose the add-on', () => {
+  const { api } = ublockHarness();
+  const method = new api.bentoPrivacy().getAPI({}).bentoPrivacy.grantUBlockPrivateAccess;
+  assert.equal(method.length, 0);
+  const schema = JSON.parse(
+    fs.readFileSync(path.resolve(import.meta.dirname, path.dirname(apiPath), 'schema.json'), 'utf8'),
+  );
+  const entry = schema[0].functions.find((fn) => fn.name === 'grantUBlockPrivateAccess');
+  assert.deepEqual(entry.parameters, []);
 });
 
 const MOUNT_SOURCE = '../src/browser/base/content/bento-shell-mount.js';

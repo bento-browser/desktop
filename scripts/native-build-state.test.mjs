@@ -194,17 +194,26 @@ test('stale current native imports block compilation even if engine state was re
   await assert.rejects(withNativeBuildReceipt(f.root, f.output), /native import.*one.cpp/, 'removed patches must be reset to the base before building');
 });
 
+/** Where a build leaves a distribution add-on's XPI, and a build step that deploys `bytes` there. */
+const deployedDirectories = process.platform === 'darwin' ? ['dist/bin', 'dist/Bento.app/Contents/Resources'] : ['dist/bin'];
+function deployXpi(f, name, bytes) {
+  for (const directory of deployedDirectories) put(f.settings.objdir, `${directory}/distribution/extensions/${name}`, bytes);
+}
+
 test('supported built-in addon registration is current native import output, and its membership is build intent', async (t) => {
   const f = fixture(t);
-  for (const name of ['bento-tools', 'bento-shell', 'ublock-origin']) {
+  const output = () => { f.output(); deployXpi(f, 'ublock@test.xpi', 'signed xpi'); };
+  for (const name of ['bento-tools', 'bento-shell']) {
     put(f.root, `extensions/${name}/manifest.json`, JSON.stringify({ applications: { gecko: { id: `${name}@test` } } }));
   }
+  // A distribution add-on is registered like a built-in one, from its XPI instead of a manifest.
+  put(f.root, 'extensions/ublock-origin/ublock@test.xpi', 'signed xpi');
   installBuiltinAddons({ repoRoot: f.root, release: false });
   const imported = fs.readFileSync(path.join(f.root, 'engine/browser/extensions/moz.build'));
   assertNativeBuildInputsCurrent(f.root);
   assert.equal(fs.existsSync(f.receipt), false, 'read-only import verification cannot issue a receipt');
   assert.deepEqual(fs.readFileSync(path.join(f.root, 'engine/browser/extensions/moz.build')), imported);
-  await withNativeBuildReceipt(f.root, f.output);
+  await withNativeBuildReceipt(f.root, output);
   assert.equal(await assertNativeBuildFresh(f.root), f.executable);
   put(f.root, 'extensions/new-addon/manifest.json', JSON.stringify({ applications: { gecko: { id: 'new@test' } } }));
   await assert.rejects(assertNativeBuildFresh(f.root), /built-in add-on directories/);
@@ -212,8 +221,51 @@ test('supported built-in addon registration is current native import output, and
   await assert.rejects(withNativeBuildReceipt(f.root, () => { compiled = true; }), /native import.*extensions\/moz.build/);
   assert.equal(compiled, false, 'a stale owner block cannot compile after membership changes');
   installBuiltinAddons({ repoRoot: f.root, release: false });
-  await withNativeBuildReceipt(f.root, f.output);
+  await withNativeBuildReceipt(f.root, output);
   assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+});
+
+test('an XPI-only change is build intent: it must be imported and deployed before the build is fresh', async (t) => {
+  const f = fixture(t);
+  const xpi = 'ublock@test.xpi';
+  const output = (bytes) => () => { f.output(); deployXpi(f, xpi, bytes); };
+  put(f.root, `extensions/ublock-origin/${xpi}`, 'xpi v1');
+  installBuiltinAddons({ repoRoot: f.root, release: false });
+  await withNativeBuildReceipt(f.root, output('xpi v1'));
+  assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+  const receipt = JSON.parse(fs.readFileSync(f.receipt, 'utf8'));
+  assert.deepEqual(receipt.distribution.map((entry) => entry.path).sort(), deployedDirectories.map((d) => `${d}/distribution/extensions/${xpi}`).sort());
+
+  // Only the repository XPI changes; no name, manifest or moz.build does.
+  put(f.root, `extensions/ublock-origin/${xpi}`, 'xpi v2');
+  await assert.rejects(assertNativeBuildFresh(f.root), /native input changed: distribution add-ons/);
+  // Not imported yet: a build is refused before it compiles anything.
+  let compiled = false;
+  await assert.rejects(withNativeBuildReceipt(f.root, () => { compiled = true; }), /native import engine\/browser\/extensions\/ublock-origin\/ublock@test\.xpi differs.*run pnpm run import/);
+  assert.equal(compiled, false);
+  installBuiltinAddons({ repoRoot: f.root, release: false });
+  assert.equal(fs.readFileSync(path.join(f.root, 'engine/browser/extensions/ublock-origin', xpi), 'utf8'), 'xpi v2');
+  // Imported, but the build left the old XPI deployed: no receipt.
+  await assert.rejects(withNativeBuildReceipt(f.root, output('xpi v1')), /deployed .*distribution\/extensions\/ublock@test\.xpi differs from extensions\/ublock-origin/);
+  assert.equal(fs.existsSync(f.receipt), false);
+  await withNativeBuildReceipt(f.root, output('xpi v2'));
+  assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+
+  // The engine copy or the deployed copy drifting afterwards makes the build stale again.
+  const imported = path.join(f.root, 'engine/browser/extensions/ublock-origin', xpi);
+  fs.writeFileSync(imported, 'edited');
+  await assert.rejects(assertNativeBuildFresh(f.root), /native engine changed: browser\/extensions\/ublock-origin\/ublock@test\.xpi/);
+  installBuiltinAddons({ repoRoot: f.root, release: false });
+  assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+  for (const directory of deployedDirectories) {
+    const deployed = path.join(f.settings.objdir, directory, 'distribution/extensions', xpi);
+    fs.writeFileSync(deployed, 'older');
+    await assert.rejects(assertNativeBuildFresh(f.root), /deployed .*differs from extensions\/ublock-origin/);
+    fs.rmSync(deployed);
+    await assert.rejects(assertNativeBuildFresh(f.root), /missing deployed /);
+    fs.writeFileSync(deployed, 'xpi v2');
+    assert.equal(await assertNativeBuildFresh(f.root), f.executable);
+  }
 });
 
 test('addon-owned import comparison rejects changed build directives inside or outside its exact current block', async (t) => {

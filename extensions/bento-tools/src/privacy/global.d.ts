@@ -18,6 +18,12 @@ declare global {
        */
       consumeAddPanelGrant(tabId: number, token: string): Promise<unknown>;
       /**
+       * Allows uBlock Origin in private windows, once per profile: on the first start, for the copy
+       * Firefox installed from the distribution folder. Every later start does nothing, even after
+       * a failure, so turning access off or removing the add-on sticks.
+       */
+      grantUBlockPrivateAccess(): Promise<void>;
+      /**
        * Scales every browser window (chrome, shell UI and web content) by `scale` times the
        * display's own size, live; 1 clears Firefox's `layout.css.devPixelsPerPx` override. The
        * experiment keeps the value current as windows move between displays. Pass

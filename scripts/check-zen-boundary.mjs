@@ -73,9 +73,8 @@ export function checkZenBoundary() {
   const errors = [];
 
   for (const relative of trackedFiles()) {
-    // The allowlist is control data, and uBlock's maintained filter data may
-    // independently contain unrelated products or domains containing "zen".
-    if (relative === CONFIG_PATH || relative.startsWith('extensions/ublock-origin/')) continue;
+    // The allowlist is control data.
+    if (relative === CONFIG_PATH) continue;
 
     const absolute = path.join(REPO_ROOT, relative);
     let buffer;

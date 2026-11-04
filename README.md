@@ -179,7 +179,7 @@ pnpm run dev
 | [configs/](configs/)                                                             | Per-platform `mozconfig` fragments                                            |
 | [config/](config/)                                                               | Tracked upstream versions, release security inputs, reference allowlist       |
 | [branding/bento/](branding/bento/)                                               | Canonical Mozilla-derived Bento branding                                      |
-| [extensions/](extensions/)                                                       | Bundled privileged extensions (`bento-shell`, `bento-tools`, uBlock Origin)   |
+| [extensions/](extensions/)                                                       | Extensions (`bento-shell`, `bento-tools`) and the uBlock Origin XPI           |
 | [src/](src/)                                                                     | Source overlays copied into the Firefox tree at import                        |
 | [patches/](patches/)                                                             | Surgical Firefox source patches                                               |
 | [prefs/](prefs/)                                                                 | Default pref overrides                                                        |

@@ -399,6 +399,42 @@ function consumeAddPanelGrant(extension, tabId, token) {
   return validSource ? { windowId, source } : null;
 }
 
+// ---- uBlock Origin in private windows ----
+//
+// uBlock Origin is not built in: Firefox installs the signed XPI from the app's distribution folder
+// into the profile, so the user can remove it. An add-on from addons.mozilla.org is not privileged,
+// so Firefox does not allow it in private windows by itself. This allows it once, the way the
+// toggle in about:addons does (ExtensionPermissions.add, then a reload). The pref spends that one
+// chance before anything else runs, on the first start that gets here, so no later start can grant
+// again: not after the user turns access off or removes the add-on, and not after this attempt
+// failed. A grant lost to a failure is accepted; a grant after a revocation is not. The id is fixed
+// and nothing here takes one from the caller.
+const UBLOCK_ID = 'uBlock0@raymondhill.net';
+const PRIVATE_BROWSING_PERMISSION = 'internal:privateBrowsingAllowed';
+const UBLOCK_PRIVATE_ACCESS_PREF = 'bento.ublock.privateAccessHandled';
+
+async function grantUBlockPrivateAccess() {
+  if (Services.prefs.getBoolPref(UBLOCK_PRIVATE_ACCESS_PREF, false)) return;
+  Services.prefs.setBoolPref(UBLOCK_PRIVATE_ACCESS_PREF, true);
+
+  const { AddonManager } = ChromeUtils.importESModule('resource://gre/modules/AddonManager.sys.mjs');
+  const { ExtensionPermissions } = ChromeUtils.importESModule(
+    'resource://gre/modules/ExtensionPermissions.sys.mjs',
+  );
+  const addon = await AddonManager.getAddonByID(UBLOCK_ID);
+  // Only the copy the distribution folder installed. One the user added themselves is theirs, and
+  // an existing profile that already allowed the old built-in copy keeps that permission by id.
+  if (addon?.installTelemetryInfo?.source !== 'distribution') return;
+  const { permissions } = await ExtensionPermissions.get(UBLOCK_ID);
+  if (permissions.includes(PRIVATE_BROWSING_PERMISSION)) return;
+  await ExtensionPermissions.add(UBLOCK_ID, {
+    permissions: [PRIVATE_BROWSING_PERMISSION],
+    origins: [],
+  });
+  // The extension reads this permission when it starts.
+  if (addon.isActive) await addon.reload();
+}
+
 // ---- Interface scale ----
 //
 // layout.css.devPixelsPerPx is Firefox's only whole-UI scale: the device pixels per CSS pixel as an
@@ -529,6 +565,13 @@ this.bentoPrivacy = class extends ExtensionAPI {
       bentoPrivacy: {
         async consumeAddPanelGrant(tabId, token) {
           return consumeAddPanelGrant(context.extension, tabId, token);
+        },
+
+        // Allows uBlock Origin in private windows once per profile (see the section above). Tools
+        // calls it at every start; after the first call it returns at once, whether or not it
+        // succeeded.
+        async grantUBlockPrivateAccess() {
+          return grantUBlockPrivateAccess();
         },
 
         // Tells each browser window's mount script the new UI colour mode pref the moment it

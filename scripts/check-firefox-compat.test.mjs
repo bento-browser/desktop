@@ -139,8 +139,9 @@ test('the mount probe ids equal the registry entries marked R', () => {
 });
 
 test('the shipped probe section stays compact', () => {
+  // 10000 until the AddonManager and ExtensionPermissions module probes (uBlock Origin's grant) took it to 10145.
   assert.ok(
-    extractSection(readMount()).length < 10000,
+    extractSection(readMount()).length < 10200,
     'keep use and locator text in the registry',
   );
 });

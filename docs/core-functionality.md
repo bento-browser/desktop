@@ -1189,10 +1189,11 @@ Private when Firefox exposes them. The Keyboard shortcuts list is searchable
 and shows each command's title and key tokens (a shorter list than the Keyboard
 and menu reference below), and the Sidebar collapse type
 setting chooses whether `Cmd/Ctrl+S` collapses the sidebar to the rail or hides it with
-left-edge hover access. Bento bundles uBlock Origin, enabled by default. It is not
-listed in `about:addons` and cannot be removed: Remove Extension is disabled on its
-toolbar button's menu. Manage Extension on that menu opens its page, where it can be
-switched off.
+left-edge hover access. Bento installs uBlock Origin automatically, enabled, and it
+keeps running in private windows. It is an ordinary add-on: it is listed in
+`about:addons`, where it can be switched off, turned off in private windows, or removed,
+and it updates itself from addons.mozilla.org. A removed uBlock Origin stays removed
+across restarts and updates; it can be added back from addons.mozilla.org.
 
 Backup and data contains automatic backups, enabled by default every 30 minutes with
 the latest five retained; the interval can be set from 5 to 1,440 minutes and

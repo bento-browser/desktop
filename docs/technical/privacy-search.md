@@ -500,11 +500,67 @@ Private, each with its engine icon before its name, and preselects Firefox's
 live default (DuckDuckGo on a fresh profile because of the boot seed above).
 Both leave `welcomeSeen=false` until the final Start browsing action.
 
-uBlock Origin is bundled as a third built-in extension under
-`extensions/ublock-origin/`. Its provenance and update notes are recorded in
-that folder's README. `.bento-runtime-entries.json` lists the extra top-level
-uBO runtime folders/files that Bento's add-on installer must copy; the default Bento extension copy
-filter is still used for extensions without that file.
+### uBlock Origin
+
+uBlock Origin is installed automatically and the user can remove it. It is not a
+built-in add-on (Firefox gives those no uninstall permission) but a distribution
+add-on:
+
+- **Source of truth.** `extensions/ublock-origin/uBlock0@raymondhill.net.xpi`, the
+  original AMO-signed file, unmodified. The folder has no `manifest.json`; the
+  installer treats a folder with one XPI and no manifest as a distribution add-on.
+  `pnpm run security:check` checks the XPI's SHA-256, id and version against the
+  README, and fails if a `manifest.json` appears. Provenance and update steps are
+  in the folder's README.
+- **Packaging.** `pnpm run import` copies the XPI to
+  `engine/browser/extensions/ublock-origin/` with a generated `moz.build`
+  (`DIST_SUBDIR = ""`, `FINAL_TARGET_FILES.distribution.extensions`), and the
+  folder stays in the marker block's `DIRS`. The build then places it in
+  `Bento.app/Contents/Resources/distribution/extensions/`. Patch
+  `core-ui/21-package-distribution-extensions` adds that folder to the package
+  manifest, because upstream packages `distribution/` only for a Mozilla build.
+- **Install.** On every startup Firefox installs each `<id>.xpi` found there into
+  `<profile>/extensions/<id>.xpi` (location `app-profile`, no prompt) unless
+  `extensions.installedDistroAddon.<id>` is set or a newer copy is present. It sets
+  that pref on the install, so a removed uBlock Origin is not installed again, after
+  a restart or an app update. A user who wants it back installs it from
+  addons.mozilla.org. Signing is required (`MOZ_REQUIRE_SIGNING`), so the file must
+  stay the signed one.
+- **Release checks.** The packaging wildcard matches any file under
+  `distribution/extensions/`, so the checks name the exact path and the recorded
+  SHA-256 (`scripts/shipped-ublock.mjs`): `validate-bento-artifacts.mjs` for the staged
+  app and a TAR package, `check-macos-signing.mjs` for the app inside the collected DMG.
+  An old, repacked or missing XPI fails them. The native build receipt covers the XPI
+  too (`build-tooling.md`, "Distribution add-ons").
+- **Downgrades.** An older Bento that bundled uBlock Origin as a built-in add-on
+  registers its built-in copy again, whatever the profile did here, so a downgrade can
+  bring back a copy the user removed. Nothing in this build prevents that.
+- **Updates.** It updates itself from addons.mozilla.org like any add-on; Bento
+  leaves `extensions.update.*` alone. A newer app bundle copy does not downgrade it.
+- **Private windows.** An AMO-signed add-on is not privileged, so Firefox does not
+  allow it in private windows by itself. `bento-tools` calls
+  `browser.bentoPrivacy.grantUBlockPrivateAccess()` at every start. The experiment
+  (`api.js`, fixed add-on id, no arguments) first sets the pref
+  `bento.ublock.privateAccessHandled`, then looks at the add-on: when its
+  `installTelemetryInfo.source` is `distribution` and the stored permissions lack
+  `internal:privateBrowsingAllowed`, it stores the permission
+  (`ExtensionPermissions.add`) and reloads the add-on, the same two steps as the
+  about:addons toggle. Every later start returns at once, so turning access off or
+  removing the add-on sticks. The pref is set before anything that can fail, so a
+  failed first attempt (or an add-on that was not there yet) is not retried: a grant
+  lost to a failure is accepted, a grant after a revocation is not.
+- **Existing profiles.** A profile that ran uBlock Origin as a built-in add-on gets
+  the distribution copy on the next start. The add-on id keeps its storage UUID and
+  stored permission, so uBlock's settings and its private window access carry over, and
+  the grant above finds the permission and only marks itself done. The built-in copy
+  could be neither disabled (`Cannot disable system add-on`) nor stripped of private
+  window access (Firefox re-adds it to a built-in add-on at every start), so the move
+  overrides no choice the user could have made.
+
+Manual checks: on a fresh profile, `about:addons` lists uBlock Origin enabled with a
+Remove button, and Private Browsing shows it allowed. Remove it, quit, relaunch twice:
+it stays removed. Dev builds on a Marionette profile need `remote.prefs.recommended`
+set to `false`, or the recommended prefs turn off distribution installs.
 
 ### Checking engine icons at runtime
 
@@ -733,8 +789,26 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 - Do not reintroduce a Bento search engine allowlist unless Bento intentionally
   returns to a curated-provider model. Settings and onboarding should follow
   Firefox's visible search engine list.
-- Do not lock uBlock Origin with enterprise policy. Bento ships it enabled but
+- Do not lock uBlock Origin with enterprise policy. Bento installs it enabled but
   user-disableable/removable.
+- Do not add a `manifest.json` or unpacked files to `extensions/ublock-origin/`: that
+  makes it a built-in add-on again, which cannot be removed. Replace the XPI with the
+  next signed file, byte for byte.
+- Do not set, clear or reset `extensions.installedDistroAddon.uBlock0@raymondhill.net`
+  or `extensions.installDistroAddons` anywhere: the first is what keeps a removed
+  uBlock Origin removed, the second is the switch for the whole mechanism.
+- Marionette's recommended prefs (`remote.prefs.recommended`, on by default) set
+  `extensions.installDistroAddons`, `extensions.update.enabled` and
+  `extensions.autoDisableScopes`, and turn Safe Browsing off. A Marionette-driven
+  profile therefore does not show the real distribution install until
+  `remote.prefs.recommended` is `false` in its `user.js`; confirm the pref took effect.
+- The private window grant must stay a one-time action keyed by the pref
+  `bento.ublock.privateAccessHandled`, and the pref must be set before the lookup or
+  the grant, never after. Setting it after success lets a failed first start grant
+  access later, over a revocation the user made in between. Re-granting at every start
+  would override a user who turned access off. The tools manifest version is bumped
+  (0.1.16) because the experiment schema gained a function and built-in add-on schemas
+  are cached by version.
 - Do not move experiment files under `src/`; the add-on installer copies only top-level
   `experiments/` into the built-in extension.
 - An experiment's scope is not a window: it has no `fetch`, `AbortController`,
