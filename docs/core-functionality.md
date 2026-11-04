@@ -506,7 +506,10 @@ that panel, and focuses the panel without moving it into the main content slot.
 The command palette search field and command rows show clear hover, focus, and
 active states so mouse and keyboard navigation both have visible feedback: one
 highlight slides between rows, and the pointer and the arrow keys move that same
-highlight, so there is never a second one. The command palette, address bar and Settings
+highlight, so there is never a second one. Enter in the command palette runs the
+row you moved the highlight to, with an arrow, Home, End or Page key or by moving the pointer
+over the list; until then, and again after the search text changes, it runs the first row, so
+a row that lands under a resting pointer is never run by accident. The command palette, address bar and Settings
 palette use a darker row highlight in both colour modes. Rows
 include command titles, supporting descriptions, icons, and contextual metadata
 such as current/active markers or workspace shortcut hints where applicable.
@@ -621,6 +624,10 @@ does not dim the browser content behind it.
 The floating fallback address/search field uses a visible "Clear" button.
 The address palette matches the command palette's hover, keyboard-focus and pressed
 row states, with one moving highlight. Its Clear button is reachable with Tab.
+Enter with typed text submits that text, even though the first result is highlighted
+as you type and even if the pointer rests on a row; once an arrow, Home, End or Page key
+has moved the highlight, Enter opens the highlighted row instead, until the text changes
+again (the pointer does not count). With an empty field, Enter opens the highlighted row.
 If an empty workspace created from the workspace manager triggers the new-tab
 address/search bar, the workspace manager remains above it and keeps focus.
 History, Recent History and bookmark rows show a generic clock or bookmark icon;

@@ -737,7 +737,11 @@ root attribute, so a manager toggle re-measures).
   and compare the complete tested and staged file trees; extra files in a test
   app can otherwise hide a missing entry point.
 - Empty Enter must fall through to Mux's focused option. Only typed input uses
-  the synthetic search/open submission override. Keep modifiers and IME unchanged.
+  the synthetic search/open submission override, and only until a navigation key
+  (arrows, Home, End, Page keys) has moved the highlight: then Enter must fall
+  through to Mux's focused option too ([Enter and the highlighted
+  row](palettes-and-address-bar.md#enter-and-the-highlighted-row)). Keep
+  modifiers and IME unchanged.
 - Keep `requestId` in both query and result payloads: query text alone cannot
   distinguish repeated empty opens or equal queries from other documents.
 - Keep `openVersion` in the debounced query effect. The address component survives

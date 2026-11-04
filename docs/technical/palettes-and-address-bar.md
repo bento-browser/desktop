@@ -170,6 +170,75 @@ Clear, and React Aria's own Esc handling on the modal would close the dialog fro
 them. It calls `stopPropagation` so neither that nor the SearchField's Esc (which clears
 its value) runs.
 
+### Enter and the highlighted row
+
+Mux wraps the search field in a React Aria Autocomplete, which keeps virtual focus on one
+row and publishes it as the input's `aria-activedescendant`. `CommandPaletteInput` calls
+our `onKeyDown` first and skips its own handling when the event is default-prevented; its
+handling is what activates the highlighted row on Enter. Both palettes therefore answer
+Enter through `enterActivatesHighlight` (`components/primitives/enterOnHighlight.ts`):
+when it is true the handler returns without preventing default and Mux opens the row.
+
+`aria-activedescendant` alone cannot tell a row the user chose from one the list chose:
+the Autocomplete highlights the first result while the user types, and hover moves the
+highlight, including a row that lands under a resting pointer. Each palette therefore
+records whether the user moved the highlight on purpose since the query last changed and
+passes it as `moved`; a row is Mux's only when `moved` is set and the row is still in the
+document. `movesHighlight` is the key test: ArrowUp, ArrowDown, Home, End, PageUp and
+PageDown (the keys React Aria's list navigation moves focus with), with no Alt, Ctrl, Meta
+or Shift held (Cmd+ArrowDown is not navigation) and outside IME composition.
+
+- Command palette: `moved` is set by one of those keys or by a real pointer move over the
+  list (a trusted `pointermove` whose target is inside the list, from a capturing
+  document listener), and cleared by `changeQuery` (typing and Clear) and by `close()`.
+  Window focus does not clear it: arrowing to a row, switching apps and returning keeps
+  the choice. Chrome hides the palette without calling `close()` for the toggle shortcut
+  and an outside click, so the flag then survives a reshow, which is fine: the highlight
+  survives too, so Enter runs the row the user can see, and typing clears the flag
+  (the text is selected on reshow). Without `moved`, Bento runs `filteredCommands[0]`
+  itself, as before.
+- Address bar: `moved` is set by those keys only (the pointer is ignored) and cleared by
+  `changeQuery` and on each open. Without `moved`, typed text submits.
+
+Pitfalls:
+
+- Do not run `palette.filteredCommands[0]` (or the synthetic row) from `onKeyDown` and
+  call `preventDefault` unconditionally: Mux then never sees Enter, and the first row
+  wins over an arrowed-to later row. This was the bug in both components.
+- Do not let the highlight alone choose the row in the command palette. Opening it with
+  the keyboard while the pointer is parked over the list, then typing and pressing Enter,
+  would run whatever row the filtered list put under the cursor (Close all side panels,
+  say), because hover moves the highlight. Gecko reports the element under a stationary
+  pointer after a layout change through a synthesized move
+  (`PresShell::ProcessSynthMouseOrPointerMoveEvent`, a `ePointerMove` with
+  `WidgetMouseEvent::eSynthesized`). `WidgetEvent::IsAllowedToDispatchDOMEvent` returns
+  `IsReal()` for mouse and pointer events, so that move produces `pointerover` and
+  `pointerout` (and the mouse equivalents) through `EventStateManager::GenerateMouseEnterExit`
+  but no DOM `pointermove` or `mousemove`. That is why a `pointermove` listener is a safe
+  test of real pointer movement and `pointerover` is not. Checked against the Firefox 158
+  tree in `engine/`; recheck `IsAllowedToDispatchDOMEvent` when upgrading Firefox.
+- The other half of why a resting pointer is safe after a key press: React Aria's
+  `useOption` moves focus on hover only while `isFocusVisible()` is false, and that is false
+  only once its last input modality is the pointer (`pointerdown`, `pointermove` or
+  `pointerup`, or their mouse equivalents). A key press sets the modality to keyboard, and the
+  synthesized move produces none of those events, so a synthesized hover cannot move the
+  highlight after a key press. Caveat: `useRowHighlight` sends its own `pointermove` to the
+  document (`tellPointer`) from a `pointerover` or `pointerout` that touches the list once
+  the list's hover gate has opened, which restores the pointer modality, so after the pointer
+  has really moved once in this document that protection no longer holds. The `moved` flag
+  (cleared when the query changes) is what covers the command palette then.
+- The id in `aria-activedescendant` can outlive its row: after typing, the Autocomplete
+  keeps naming the old highlight until it highlights the new first row (it delays that
+  by 500 ms), and Mux activates nothing for an id that is not in the document. The
+  helper checks that the row exists, so a fast type-then-Enter still runs the first row.
+- Manual check: in each palette, press ArrowDown twice then Enter (the third row opens or
+  runs); with a typed query in the address bar, press Enter with no arrow key (the typed
+  text submits, also with the pointer resting on another row), then ArrowDown and Enter
+  (the highlighted row opens), then type a character and Enter (the typed text submits).
+  In the command palette, park the pointer over the list, open it with the keyboard, type
+  a query that puts a different row under the cursor and press Enter (the first row runs),
+  then move the pointer onto a row and press Enter (that row runs).
+
 ## Sidebar Tab And Panel Search
 
 `extensions/bento-shell/src/components/TabList/TabList.tsx` owns the inline
@@ -553,7 +622,9 @@ All rows use public Mux `CommandPalette` parts and the shared highlight. Recent
 rows show domains and compact elapsed timestamps, with Reopen on the focused
 closed row. Top Sites use one line so six primary rows fit the 512-by-378 anchored
 popup; the list scrolls in shorter windows or for optional suggestions. Empty
-Enter honors Mux's focused option. Typed Enter retains synthetic submission.
+Enter honors Mux's focused option. Typed Enter submits the synthetic search/open row
+until a navigation key (arrows, Home, End, Page keys) moves the highlight (see [Enter and
+the highlighted row](#enter-and-the-highlighted-row)).
 
 Navigation stays chrome-owned. For current-tab mode, the addrbar frame writes
 one `BENTO_ADDRBAR_NAVIGATE_*` title sentinel with a UTF-8-safe base64 payload.
