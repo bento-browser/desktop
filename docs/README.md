@@ -1,7 +1,6 @@
 # docs/
 
-Documentation source for [bentobrowser.app](https://bentobrowser.app) and
-contributor-facing guides.
+Product, technical, and contributor documentation for Bento Browser.
 
 ## Product docs
 
