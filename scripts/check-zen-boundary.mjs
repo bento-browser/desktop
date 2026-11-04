@@ -96,7 +96,6 @@ export function checkZenBoundary() {
       if (
         relative === 'NOTICE' ||
         relative === 'README.md' ||
-        relative.startsWith('bentobrowser-site/') ||
         ALWAYS_FORBIDDEN.test(line) ||
         ANCESTRY.test(line)
       ) {
