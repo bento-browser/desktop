@@ -123,7 +123,12 @@ selection, and workspace switches clear selection. The sidebar mirrors selected
 tab ids through `BENTO_SELECTED_TABS` title IPC because Firefox's reserved
 Cmd/Ctrl+W close command is handled by chrome before the sidebar iframe can
 reliably intercept it; chrome closes the mirrored multi-selection before falling
-back to single active-tab close behavior. The mirror must only emit when a
+back to single active-tab close behavior. Every multi-selection close (Cmd/Ctrl+W,
+the context menu, Close tabs above/below/other) dispatches one `tabs/close`, which
+tools runs as a single batch so all rows fade together; see the batched close
+note under
+[Chrome rendering pitfalls](chrome-panel-rendering.md#chrome-rendering-pitfalls).
+The mirror must only emit when a
 selection exists, or once to clear a previously mirrored selection; repeated
 empty-selection title writes can stomp `BENTO_PANELS` before chrome reads it and
 hide the panel strip. `TabRow` only receives a `selected` visual prop; tab
@@ -1759,7 +1764,9 @@ workspaces.
   logged. The window stays marked in `WindowHandoffGuard` until the removals have
   settled (cleared in `finally`); the decision itself is `afterTabRemoved` in
   `workspaces/EmptiedWorkspace.ts`, which returns no action for a window that is
-  handing off.
+  handing off, nor while another tab of a batched multi-selection close is still
+  pending in the window (see
+  [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls)).
 - Exactly one activation may run for a workspace a delete hands to a window.
   `WorkspaceStore.delete` also announces its global fallback workspace (no window),
   and when that is the window's replacement (the first workspace in creation order
