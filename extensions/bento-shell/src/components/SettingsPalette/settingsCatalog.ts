@@ -295,7 +295,6 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
   { label: 'Close tab', keys: 'Cmd/Ctrl + W' },
   { label: 'Reopen closed tab', keys: 'Cmd/Ctrl + Shift + T' },
   { label: 'Switch tab by index', keys: 'Cmd/Ctrl + 1–9' },
-  { label: 'Reload Bento shell', keys: 'Alt + Shift + R' },
 ];
 
 export function formatNumber(spec: Pick<NumberSpec, 'unit'>, value: number): string {
