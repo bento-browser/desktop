@@ -8,6 +8,16 @@ import path from 'node:path';
  * user can remove it. Firefox requires the file name to be the add-on id plus `.xpi`.
  */
 
+/** A regular file's bytes, or undefined when there is none at `file`. A symlink is followed. */
+export function readFileIfPresent(file) {
+  try {
+    return fs.readFileSync(file);
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR', 'EISDIR'].includes(error.code)) return undefined;
+    throw error;
+  }
+}
+
 // Ids are `name@domain` or `{GUID}`. The name goes into generated moz.build text, so keep it plain.
 const XPI_NAME = /^[A-Za-z0-9._@{}-]+\.xpi$/;
 

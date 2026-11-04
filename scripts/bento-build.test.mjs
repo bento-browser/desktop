@@ -26,6 +26,7 @@ import {
   writeBrowserUpdateFiles,
   writeMozconfig,
 } from './bento-build.mjs';
+import { readFileIfPresent } from './distribution-addons.mjs';
 import { isReleaseBuild } from './build-mode.mjs';
 import { extractArchive as extractBaselineArchive } from './firefox-patch-stack.mjs';
 import { importSourceOverlays } from './import-sources.mjs';
@@ -1190,7 +1191,7 @@ test('an engine imported with uBlock Origin built in verifies, imports and recor
       [addonFile(root, 'ublock-origin', 'moz.build'), 'FINAL_TARGET_FILES += []\n'],
       [addonFile(root, 'ublock-origin', 'jar.mn'), 'browser.jar:\n'],
     ]) {
-      const before = fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+      const before = readFileIfPresent(file);
       fs.writeFileSync(file, content);
       assert.equal(verifyRecordedEngineState(root), false, path.basename(file));
       if (before === undefined) fs.rmSync(file);

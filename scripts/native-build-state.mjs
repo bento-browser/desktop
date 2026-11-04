@@ -5,7 +5,7 @@ import path from 'node:path';
 import { assertLocalBuildPaths, loadConfig, nativeBuildSettings } from './bento-build.mjs';
 import { readEntry } from './read-entry.mjs';
 import { git, replaySeriesChanges } from './series-replay.mjs';
-import { distributionAddonMozBuild } from './distribution-addons.mjs';
+import { distributionAddonMozBuild, readFileIfPresent } from './distribution-addons.mjs';
 import { addonSources, builtinAddonBuildBlock } from './install-builtin-addons.mjs';
 
 export const NATIVE_BUILD_RECEIPT = '.bento-native-build.json';
@@ -152,8 +152,9 @@ function deployedDistribution(ctx) {
     const expected = hash(fs.readFileSync(path.join(source, xpi)));
     for (const relative of deployedXpiPaths(ctx, xpi)) {
       const file = path.join(ctx.settings.objdir, relative);
-      if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) stale(`missing deployed ${relative}`);
-      const digest = hash(fs.readFileSync(file));
+      const bytes = readFileIfPresent(file);
+      if (bytes === undefined) stale(`missing deployed ${relative}`);
+      const digest = hash(bytes);
       if (digest !== expected) stale(`deployed ${relative} differs from extensions/${name}/${xpi}`);
       deployed.push({ path: relative, digest });
     }

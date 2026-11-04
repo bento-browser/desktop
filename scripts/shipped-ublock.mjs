@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import path from 'node:path';
+
+import { readFileIfPresent } from './distribution-addons.mjs';
 
 /**
  * The uBlock Origin XPI inside a staged or collected application. The packaging wildcard
@@ -43,7 +44,6 @@ export function shippedUblockProblem(file, recordedSha256, bytes) {
 /** shippedUblockProblem for the XPI inside an application folder or mounted bundle. */
 export function shippedUblockProblemIn(application, recordedSha256) {
   const file = shippedUblockPath(application);
-  // statSync follows a symlink: the packager copies what it points at.
-  const bytes = fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? fs.readFileSync(file) : undefined;
-  return shippedUblockProblem(file, recordedSha256, bytes);
+  // A symlink is followed: the packager copies what it points at.
+  return shippedUblockProblem(file, recordedSha256, readFileIfPresent(file));
 }
