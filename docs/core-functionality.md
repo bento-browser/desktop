@@ -1060,11 +1060,14 @@ suggestions, Firefox AI features and the cross-site Referer policy. Remote
 download reputation never affects it.
 
 Remote download reputation is a separate advanced toggle rather than a preset
-value, and it is off by default. Its Settings description says that Google Safe
-Browsing is asked about downloads it cannot judge locally, and that this sends the
-download's address, file name, size and checksum to Google. Firefox's request
-itself also includes redirect URLs, the original referrer when available, the
-locale and signing or certificate metadata. Switching presets does
+value, and it is off by default. When it is on, Google Safe Browsing is asked about
+a finished download that Bento cannot judge from its local lists, and only for file
+types that can carry malware, such as programs, installers, archives and
+documents. The request carries the download's address, any redirects, the page it
+came from (the original referrer, before referrer policy is applied, when there is
+one), the file name and type, size, SHA-256 checksum, any signing certificates and the
+language Bento is set to. Addresses are sent without query strings. The Settings
+description names these fields. Switching presets does
 not reset the toggle or make an otherwise matching preset appear as Custom.
 Firefox's HTTPS exception UI remains available for HTTP-only sites and local
 devices.

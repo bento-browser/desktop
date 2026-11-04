@@ -67,6 +67,41 @@ resets the remote choice nor changes a matching preset to Custom.
 Local Safe Browsing phishing, malware, and download-list checks remain enabled
 in all three presets; Hardened no longer trades away that protection.
 
+What the remote request carries and when it is sent is the basis of
+`ADVANCED_DESCRIPTIONS.remoteSafeBrowsingEnabled` in `settingsCopy.ts`. It is Firefox's
+own code, unmodified by Bento, in `toolkit/components/reputationservice/ApplicationReputation.cpp`
+(line numbers are Firefox 158.0; `PendingLookup` is the class):
+
+- Fields. `DoLookupInternal` adds the source URL as a `DOWNLOAD_URL` resource (1433), that
+  resource's referrer from `referrerInfo->GetOriginalReferrer()` (1437-1453; the full
+  referrer before referrer policy, so the `network.http.referer.*` prefs, including Hardened's
+  `XOriginPolicy`, do not trim it), and each redirect as a `DOWNLOAD_REDIRECT` resource
+  (`AddRedirects`, 1264; the resource is added at 1303). Each of these goes through
+  `GetStrippedSpec` (1351), which keeps scheme, host, port and path and drops the
+  query, fragment and credentials (a `data:` URI becomes its prefix plus a SHA-256, a `blob:`
+  URI is kept whole). `ParseCertificates` (1564-1583) copies each signing certificate chain
+  in full. `SendRemoteQueryInternal` sets the URL again (1636), the length (1641), the
+  app locale as BCP-47 (1646-1649, `LocaleService::GetAppLocaleAsBCP47`), the SHA-256 (1653),
+  the file name (1655) and a download type derived from the file name (1656), plus a constant
+  `user_initiated` true (1644). The file name is that of the saved file
+  (`PathUtils.filename(aDownload.target.path)`) and the size is `download.currentBytes`, both
+  from `DownloadIntegration.shouldBlockForReputationCheck`. The POST goes to
+  `browser.safebrowsing.downloads.remote.url`.
+- Signing certificates exist only on Windows: `BackgroundFileSaver::ExtractSignatureInfo`
+  (`netwerk/base/BackgroundFileSaver.cpp`) reads them under `XP_WIN`, so a macOS request
+  carries none. The copy says "any signing certificates" for that reason.
+- When. `shouldBlockForReputationCheck` runs once a download has finished saving, so the
+  SHA-256 exists. `QueryReputationInternal` (1981) returns early unless
+  `browser.safebrowsing.malware.enabled` and `browser.safebrowsing.downloads.enabled` are
+  both true, so the remote switch does nothing while Local Safe Browsing is off. The local
+  lookups run first (`LookupNext`, 1024): a block-list hit on the source, referrer or a redirect
+  gives a dangerous verdict with no request, and an allow-list hit on the source or a signing
+  pair gives a safe verdict with none. Only a file whose extension `IsBinary` accepts
+  (`kBinaryFileExtensions` or an executable extension not in `kNonBinaryExecutables`;
+  programs, installers, disk images, archives, Office files and PDFs, but never plain images,
+  audio, video or text) goes on to `SendRemoteQueryInternal` (1600), which bails unless
+  `browser.safebrowsing.downloads.remote.enabled` is true and the service URL is set.
+
 `extensions/bento-tools/experiments/bento-privacy/` exposes the minimal
 privileged surface that normal WebExtension APIs cannot provide:
 
@@ -579,6 +614,13 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 
 ## Privacy Pitfalls
 
+- The Remote download reputation line once named only the address, file name, size and
+  checksum. Firefox's request also carries the redirects, the original referrer, the app
+  locale and any signing certificates, and a disclosure that lists fewer fields than the
+  request sends is wrong even when each listed field is true. The field list is read from
+  `ApplicationReputation.cpp` (see "what the remote request carries" above). On a Firefox
+  bump, re-read `DoLookupInternal` and `SendRemoteQueryInternal` for a new
+  `mRequest.set_*`/`add_*` call and change the copy in the same change.
 - `SettingsStore` stores only deltas from its defaults (`#persistAndPublish`
   drops a value equal to its default), so a default never reaches Firefox unless
   something applies it explicitly, and "no override" never means "the user has not
