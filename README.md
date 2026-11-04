@@ -186,7 +186,6 @@ pnpm run dev
 | [locales/](locales/)                                                             | Shipped locale list                                                           |
 | [scripts/](scripts/)                                                             | Build, import, check, and release scripts                                     |
 | [docs/](docs/)                                                                   | Product, technical, and contributor documentation                             |
-| [bentobrowser-site/](bentobrowser-site/)                                         | Static landing page                                                           |
 | [.github/workflows/](.github/workflows/)                                         | CI checks (no application builds), CodeQL, and the scheduled engine cache     |
 
 ## License
