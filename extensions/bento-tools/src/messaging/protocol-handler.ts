@@ -220,57 +220,71 @@ async function promoteLeftmostPanelBeforeMainClose(
   return true;
 }
 
-async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number): Promise<void> {
-  const sourceWindowId = ctx.sourceWindowId;
+/**
+ * The workspace a main-slot close concerns: the tab's own, else the one its window shows.
+ * Read before the tab is marked closing, which drops the tab's workspace.
+ */
+function mainTabWorkspaceId(ctx: HandlerContext, tabId: number): string | null {
   const tab = ctx.tabs.snapshot().find((candidate) => candidate.id === tabId);
-  const workspaceId =
+  return (
     tab?.workspaceId ??
-    (typeof sourceWindowId === 'number' ? ctx.workspaces.getActiveId(sourceWindowId) : null);
+    (typeof ctx.sourceWindowId === 'number' ? ctx.workspaces.getActiveId(ctx.sourceWindowId) : null)
+  );
+}
 
-  const isDevtools = await isDevtoolsTab(ctx, tabId);
-  const undo = isDevtools ? undefined : captureCloseUndo(ctx, tabId);
-  const closeOptions = {
-    undo,
-    preserveSessionMembership: !isDevtools,
-    restoreIfKept: !isDevtools,
-    clearPanelMarker: isDevtools,
-  };
-  if (isDevtools) ctx.pinnedPanels.removeForTab(tabId);
-  await ctx.tabs.markClosing(tabId, { preserveSessionMembership: !isDevtools });
+/**
+ * The panel that takes over when the main tab `tabId` of `workspaceId` closes: the leftmost
+ * panel still open, when no normal tab of the workspace would remain. Callers mark `tabId`
+ * (and any tabs closing with it) closing first: marking drops a tab's workspace, so those
+ * tabs no longer count.
+ */
+function panelToPromoteOnMainClose(
+  ctx: HandlerContext,
+  tabId: number,
+  workspaceId: string,
+): number | undefined {
+  const sourceWindowId = ctx.sourceWindowId;
+  const panelTabIds = ctx.panels.getPanels(workspaceId);
+  const panelTabIdSet = new Set(panelTabIds);
+  const snapshot = ctx.tabs.snapshot();
+  const hasRemainingNormalTab = snapshot.some((candidate) => {
+    if (candidate.id === tabId) return false;
+    if (candidate.workspaceId !== workspaceId) return false;
+    if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
+    return !panelTabIdSet.has(candidate.id);
+  });
+  if (hasRemainingNormalTab) return undefined;
+  // A panel whose own close is in flight cannot become the main tab.
+  return livePanelIds(panelTabIds, snapshot, (id) => ctx.tabs.isClosing(id))[0];
+}
 
-  if (workspaceId) {
-    const panelTabIds = ctx.panels.getPanels(workspaceId);
-    const panelTabIdSet = new Set(panelTabIds);
-    const remainingNormalTabs = ctx.tabs.snapshot().filter((candidate) => {
-      if (candidate.id === tabId) return false;
-      if (candidate.workspaceId !== workspaceId) return false;
-      if (typeof sourceWindowId === 'number' && candidate.windowId !== sourceWindowId) return false;
-      return !panelTabIdSet.has(candidate.id);
-    });
-    // A panel whose own close is in flight cannot become the main tab.
-    const promotablePanelIds = livePanelIds(panelTabIds, ctx.tabs.snapshot(), (id) =>
-      ctx.tabs.isClosing(id),
-    );
-
-    if (remainingNormalTabs.length === 0 && promotablePanelIds.length > 0) {
-      const promoted = await promoteLeftmostPanelBeforeMainClose(
-        ctx,
-        workspaceId,
-        promotablePanelIds[0]!,
-      );
-      await closeTabAsRemoved(ctx, tabId, {
-        delayMs: promoted ? 80 : 0,
-        label: 'tab/closeMain',
-        ...closeOptions,
-      });
-      return;
-    }
-  }
-
+/** Make `panelTabId` the main tab, then close `tabId`, which is already marked closing. */
+async function promoteThenCloseMainTab(
+  ctx: HandlerContext,
+  tabId: number,
+  workspaceId: string,
+  panelTabId: number,
+  closeOptions: SidebarCloseOptions,
+): Promise<void> {
+  const promoted = await promoteLeftmostPanelBeforeMainClose(ctx, workspaceId, panelTabId);
   await closeTabAsRemoved(ctx, tabId, {
+    delayMs: promoted ? 80 : 0,
     label: 'tab/closeMain',
     ...closeOptions,
   });
+}
+
+async function closeMainTabWithPanelPromotion(ctx: HandlerContext, tabId: number): Promise<void> {
+  const workspaceId = mainTabWorkspaceId(ctx, tabId);
+  const close = beginSidebarClose(ctx, tabId, await isDevtoolsTab(ctx, tabId));
+  await close.marked;
+
+  const panelTabId = workspaceId ? panelToPromoteOnMainClose(ctx, tabId, workspaceId) : undefined;
+  if (workspaceId && panelTabId !== undefined) {
+    await promoteThenCloseMainTab(ctx, tabId, workspaceId, panelTabId, close.options);
+    return;
+  }
+  await closeTabAsRemoved(ctx, tabId, { label: 'tab/closeMain', ...close.options });
 }
 
 function shouldCloseTabThroughMainPromotion(ctx: HandlerContext, tabId: number): boolean {
@@ -548,32 +562,35 @@ async function removeMarkedTab(tabId: number, label: string): Promise<'removed' 
   }
 }
 
+/** Settles once the tab is gone, or was kept and put back; callers that do not wait `void` it. */
 function removeMarkedTabAndRestoreIfKept(
   ctx: HandlerContext,
   tabId: number,
   label: string,
   undo: CloseUndo | null,
-): void {
-  void removeMarkedTab(tabId, label)
+): Promise<void> {
+  return removeMarkedTab(tabId, label)
     .then((outcome) => (outcome === 'kept' && undo ? restoreKeptTab(ctx, tabId, undo) : undefined))
     .catch((err) =>
       console.warn(`[bento-tools] ${label}: restoring a kept tab failed:`, tabId, err),
     );
 }
 
+interface CloseTabOptions {
+  delayMs?: number;
+  label?: string;
+  clearPanelMarker?: boolean;
+  /** Captured by callers that already stripped the tab's bindings. */
+  undo?: CloseUndo;
+  /** False for ephemeral tabs (DevTools) that should not outlive a failed close. */
+  restoreIfKept?: boolean;
+  preserveSessionMembership?: boolean;
+}
+
 async function closeTabAsRemoved(
   ctx: HandlerContext,
   tabId: number,
-  options: {
-    delayMs?: number;
-    label?: string;
-    clearPanelMarker?: boolean;
-    /** Captured by callers that already stripped the tab's bindings. */
-    undo?: CloseUndo;
-    /** False for ephemeral tabs (DevTools) that should not outlive a failed close. */
-    restoreIfKept?: boolean;
-    preserveSessionMembership?: boolean;
-  } = {},
+  options: CloseTabOptions = {},
 ): Promise<void> {
   const undo =
     options.restoreIfKept === false ? null : (options.undo ?? captureCloseUndo(ctx, tabId));
@@ -613,6 +630,72 @@ async function isDevtoolsTab(ctx: HandlerContext, tabId: number): Promise<boolea
   );
 }
 
+/** How long a panel's own removal waits when closing it promotes a child, so the layout settles first. */
+const PROMOTED_CHILD_REMOVE_DELAY_MS = 500;
+
+type SidebarCloseOptions = Pick<
+  CloseTabOptions,
+  'undo' | 'preserveSessionMembership' | 'restoreIfKept' | 'clearPanelMarker'
+>;
+
+interface SidebarClose {
+  /** Settles once the tab's closing mark is persisted. */
+  marked: Promise<void>;
+  /** What `closeTabAsRemoved` needs to finish this close. */
+  options: SidebarCloseOptions;
+}
+
+/**
+ * Start closing a sidebar tab: capture what a kept tab gets back, drop a DevTools tab's pinned
+ * binding, and mark the tab closing. Everything but the mark's session writes happens
+ * synchronously, and the shell's row delta is queued before the first await, so a batch can
+ * start many of these in one pass and have all their rows leave in one frame.
+ */
+function beginSidebarClose(ctx: HandlerContext, tabId: number, isDevtools: boolean): SidebarClose {
+  // Captured first: marking drops the bindings a kept tab must get back.
+  const undo = isDevtools ? undefined : captureCloseUndo(ctx, tabId);
+  if (isDevtools) ctx.pinnedPanels.removeForTab(tabId);
+  return {
+    marked: ctx.tabs.markClosing(tabId, { preserveSessionMembership: !isDevtools }),
+    options: {
+      undo,
+      preserveSessionMembership: !isDevtools,
+      restoreIfKept: !isDevtools,
+      clearPanelMarker: isDevtools,
+    },
+  };
+}
+
+/**
+ * Take a closing tab out of every panel layout that holds it; the workspaces whose panels changed
+ * are added to `touched` for `syncPanelLayouts`. True when a child was promoted into the layout, so
+ * the tab's own removal should wait for the layout to settle.
+ *
+ * The tab's bento.isPanel session marker stays in place: Firefox carries it through the
+ * closed-tab entry, and Cmd+Shift+T uses it to restore the tab as a panel instead of a normal tab.
+ */
+function removeFromPanelLayouts(ctx: HandlerContext, tabId: number, touched: Set<string>): boolean {
+  let promotesChild = false;
+  for (const workspaceId of ctx.panels.findWorkspacesContainingTab(tabId)) {
+    const status = ctx.panels.getPanelLayoutStatus(workspaceId, tabId);
+    const promoted =
+      status === 'subdivision-top' ||
+      status === 'chooser-owner' ||
+      status === 'subdivision-bottom' ||
+      status === 'split-child';
+    if (ctx.panels.remove(workspaceId, tabId) && promoted) promotesChild = true;
+    touched.add(workspaceId);
+  }
+  return promotesChild;
+}
+
+function syncPanelLayouts(ctx: HandlerContext, workspaceIds: Iterable<string>): void {
+  for (const workspaceId of workspaceIds) {
+    ctx.syncPanelMarkers(workspaceId);
+    ctx.emitPanelsSync(workspaceId);
+  }
+}
+
 async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<void> {
   if (shouldCloseTabThroughMainPromotion(ctx, tabId)) {
     await closeMainTabWithPanelPromotion(ctx, tabId);
@@ -620,39 +703,143 @@ async function closeTabFromSidebar(ctx: HandlerContext, tabId: number): Promise<
   }
   // Removing the panel also drops its DevTools link. Capture classification first,
   // including the marker fallback for a toolbox no longer present in a layout.
-  const isDevtools = await isDevtoolsTab(ctx, tabId);
-  const undo = isDevtools ? undefined : captureCloseUndo(ctx, tabId);
-  if (isDevtools) ctx.pinnedPanels.removeForTab(tabId);
-  await ctx.tabs.markClosing(tabId, { preserveSessionMembership: !isDevtools });
-  const affected = ctx.panels.findWorkspacesContainingTab(tabId);
-  let delayActualTabRemove = false;
-  if (affected.length > 0) {
-    for (const wsId of affected) {
-      const status = ctx.panels.getPanelLayoutStatus(wsId, tabId);
-      const promoted =
-        status === 'subdivision-top' ||
-        status === 'chooser-owner' ||
-        status === 'subdivision-bottom' ||
-        status === 'split-child';
-      if (ctx.panels.remove(wsId, tabId) && promoted) {
-        delayActualTabRemove = true;
-      }
-      ctx.syncPanelMarkers(wsId);
-      ctx.emitPanelsSync(wsId);
-    }
-    // Keep the closing tab's bento.isPanel session marker in place.
-    // Firefox carries it through the closed-tab entry, and Cmd+Shift+T uses it
-    // to restore the tab back as a panel instead of reopening it as a normal tab.
-  }
-  const delayMs = delayActualTabRemove ? 500 : 0;
+  const close = beginSidebarClose(ctx, tabId, await isDevtoolsTab(ctx, tabId));
+  await close.marked;
+  const touched = new Set<string>();
+  const promotesChild = removeFromPanelLayouts(ctx, tabId, touched);
+  syncPanelLayouts(ctx, touched);
   await closeTabAsRemoved(ctx, tabId, {
-    delayMs,
+    delayMs: promotesChild ? PROMOTED_CHILD_REMOVE_DELAY_MS : 0,
     label: 'tab/close',
-    undo,
-    preserveSessionMembership: !isDevtools,
-    restoreIfKept: !isDevtools,
-    clearPanelMarker: isDevtools,
+    ...close.options,
   });
+}
+
+/**
+ * Close several sidebar tabs as one motion. Every tab is marked closing in one synchronous pass, so
+ * the shell's delta flush drops all their rows together, and Firefox removes them with one
+ * `tabs.remove`. A single tab takes the single-tab path.
+ *
+ * Where the batch differs from closing the tabs one by one:
+ * - A tab whose panel removal promotes a child keeps its delayed single removal, and counts as
+ *   pending for the last-tab policy until that settles.
+ * - The active main tab goes through panel promotion when none of the workspace's normal tabs
+ *   would remain (judged after every tab is marked), else it joins the batch, where Firefox closes
+ *   it last and selects a successor outside the batch.
+ * - `tabs.remove` resolves after every beforeunload prompt is answered, so a batch tab that still
+ *   exists afterwards was kept ("Stay") and gets its bindings back.
+ */
+async function closeTabsFromSidebar(
+  ctx: HandlerContext,
+  requestedIds: readonly unknown[] | undefined,
+): Promise<void> {
+  const liveOf = (ids: readonly number[]) => {
+    const live = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
+    return ids.filter((id) => live.has(id));
+  };
+  const requested = liveOf(uniqueTabIds(requestedIds));
+  if (requested.length < 2) {
+    if (requested[0] !== undefined) await closeTabFromSidebar(ctx, requested[0]);
+    return;
+  }
+
+  // Classify first, without changing anything: the reads are async, and the marking pass below
+  // must not wait between tabs.
+  const devtoolsById = new Map(
+    await Promise.all(requested.map(async (id) => [id, await isDevtoolsTab(ctx, id)] as const)),
+  );
+  const ids = liveOf(requested);
+  // Read before the pass: marking drops the main tab's workspace.
+  const mainTabId = ids.find((id) => shouldCloseTabThroughMainPromotion(ctx, id));
+  const mainWorkspaceId = mainTabId === undefined ? null : mainTabWorkspaceId(ctx, mainTabId);
+
+  const touched = new Set<string>();
+  const closes = ids.map((id) => {
+    const close = beginSidebarClose(ctx, id, devtoolsById.get(id) === true);
+    return { id, close, delayRemove: removeFromPanelLayouts(ctx, id, touched) };
+  });
+  syncPanelLayouts(ctx, touched);
+
+  const mainPanelTabId =
+    mainTabId !== undefined && mainWorkspaceId
+      ? panelToPromoteOnMainClose(ctx, mainTabId, mainWorkspaceId)
+      : undefined;
+  const batch: typeof closes = [];
+  const delayed: typeof closes = [];
+  for (const entry of closes) {
+    if (entry.delayRemove) {
+      delayed.push(entry);
+    } else if (entry.id === mainTabId && mainWorkspaceId && mainPanelTabId !== undefined) {
+      void promoteThenCloseMainTab(
+        ctx,
+        entry.id,
+        mainWorkspaceId,
+        mainPanelTabId,
+        entry.close.options,
+      );
+    } else {
+      batch.push(entry);
+    }
+  }
+  const pending = [...batch, ...delayed];
+  if (pending.length === 0) return;
+
+  const endBatch = ctx.tabs.beginBatchRemoval(pending.map(({ id }) => id));
+  try {
+    await Promise.all(pending.map(({ close }) => close.marked));
+    for (const { id, close } of pending) {
+      if (!close.options.clearPanelMarker) continue;
+      void clearPanelMarker(id);
+      void clearDevtoolsPanelMarker(id);
+    }
+    await Promise.all([
+      batch.length > 0
+        ? removeMarkedTabs(
+            ctx,
+            batch.map(({ id, close }) => ({ id, undo: close.options.undo })),
+          )
+        : undefined,
+      ...delayed.map(async ({ id, close }) => {
+        await sleepMs(PROMOTED_CHILD_REMOVE_DELAY_MS);
+        await removeMarkedTabAndRestoreIfKept(ctx, id, 'tabs/close', close.options.undo ?? null);
+      }),
+    ]);
+  } finally {
+    endBatch();
+  }
+}
+
+/**
+ * Remove tabs already marked closing with one `tabs.remove`, then restore the ones Firefox kept.
+ * `tabs.remove(ids)` checks every id before closing anything, so one tab that is already gone
+ * rejects the whole call; each tab is then closed on its own, which tolerates that.
+ */
+async function removeMarkedTabs(
+  ctx: HandlerContext,
+  tabs: ReadonlyArray<{ id: number; undo: CloseUndo | undefined }>,
+): Promise<void> {
+  try {
+    await browser.tabs.remove(tabs.map(({ id }) => id));
+  } catch (err) {
+    if (!String(err).includes('Invalid tab ID')) {
+      console.warn('[bento-tools] tabs/close: tabs.remove failed, closing one by one:', err);
+    }
+    await Promise.all(
+      tabs.map(({ id, undo }) =>
+        removeMarkedTabAndRestoreIfKept(ctx, id, 'tabs/close', undo ?? null),
+      ),
+    );
+    return;
+  }
+  // The call returns after Firefox settled every beforeunload prompt: a tab still here was kept.
+  await Promise.all(
+    tabs.map(async ({ id, undo }) => {
+      if (!undo || !(await tabStillExists(id))) return;
+      await restoreKeptTab(ctx, id, undo).catch((err) =>
+        console.warn('[bento-tools] tabs/close: restoring a kept tab failed:', id, err),
+      );
+    }),
+  );
 }
 
 /** Reveal only the restored tab, in the window that owns its hydrated workspace. */
@@ -1212,13 +1399,7 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       }
       return;
     case 'tabs/close':
-      void (async () => {
-        const liveIds = new Set(ctx.tabs.snapshot().map((tab) => tab.id));
-        for (const id of uniqueTabIds(action.ids)) {
-          if (!liveIds.has(id)) continue;
-          await closeTabFromSidebar(ctx, id);
-        }
-      })();
+      void closeTabsFromSidebar(ctx, action.ids);
       return;
     case 'tab/closeMain':
       void closeMainTabWithPanelPromotion(ctx, action.id);

@@ -74,7 +74,15 @@ When changing core functionality, manually verify at least the affected subset:
 - subdivision create, fill, resize, break out, and remove;
 - closing main tabs while panels exist;
 - closing a sidebar multi-selection with Cmd/Ctrl+W and with the multi-select
-  context-menu item;
+  context-menu item: all selected rows fade together (not one after another),
+  including a selection taller than the sidebar viewport and one of a few hundred
+  tabs, which closes without a long tail; choosing "Stay" on a beforeunload prompt
+  of one tab in the selection puts that tab back in its workspace (and panel slot)
+  while the rest close, and the window stays on the workspace; closing every
+  normal tab of a workspace with panels (a panel becomes the main tab), without
+  panels, and with an empty free workspace available (the window moves to it once,
+  and that workspace is not deleted); Cmd+Shift+T afterwards reopens the closed
+  tabs into their workspaces;
 - closing side panels with descendant sub-panels;
 - closing a workspace's last sidebar tab and a panel in the same action (close the
   panel then immediately the tab, and the reverse; a multi-tab close): the window

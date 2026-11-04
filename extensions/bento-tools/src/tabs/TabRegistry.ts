@@ -144,6 +144,8 @@ export class TabRegistry {
   #urlByTabId = new Map<number, string>();
   #closingTabIds = new Set<number>();
   #unmarkedClosingTabIds = new Set<number>();
+  // Tabs of a batched close that Firefox has not removed yet; see `beginBatchRemoval`.
+  #batchRemovalIds = new Set<number>();
   // Eager pre-assignments stashed by `assignWorkspaceEagerly` when the
   // tab hasn't yet been seen by #onCreated. Firefox is free to resolve
   // tabs.create's promise BEFORE dispatching the onCreated event, so a
@@ -518,6 +520,25 @@ export class TabRegistry {
     return true;
   }
 
+  /**
+   * Announce a batched close. Every tab of the batch is marked closing before Firefox removes
+   * any, so until its own `tabs.onRemoved` arrives a tab already looks gone to the last-tab
+   * policy (`afterTabRemoved`), which then reads the first removal as the workspace emptying.
+   * `isPendingBatchRemoval` lets it wait for the last one. Call the returned function once the
+   * removal and the handling of kept tabs have settled: it drops the ids that never got an
+   * event (a tab the user kept).
+   */
+  beginBatchRemoval(ids: readonly number[]): () => void {
+    for (const id of ids) this.#batchRemovalIds.add(id);
+    return () => {
+      for (const id of ids) this.#batchRemovalIds.delete(id);
+    };
+  }
+
+  isPendingBatchRemoval(id: number): boolean {
+    return this.#batchRemovalIds.has(id);
+  }
+
   async unmarkClosing(id: number): Promise<void> {
     this.#unmarkedClosingTabIds.add(id);
     this.#closingTabIds.delete(id);
@@ -848,6 +869,7 @@ export class TabRegistry {
     this.#pendingPageErrors.delete(id);
     this.#closingTabIds.delete(id);
     this.#unmarkedClosingTabIds.delete(id);
+    this.#batchRemovalIds.delete(id);
     this.#urlByTabId.delete(id);
     this.#privateTabIds.delete(id);
     this.#releasedTabIds.delete(id);

@@ -439,6 +439,66 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   tabs are removed directly after their workspace is gone, so a tab kept by a
   prompt there has no workspace to return to and stays marked closing until the
   next launch.
+- A multi-selection close (`tabs/close` with two or more live ids) is one batch,
+  `closeTabsFromSidebar`, not one `tab/close` per id. Closing the tabs in turn
+  awaited a session read and two session writes per tab, so the rows left the shell
+  in separate delta flushes, faded one after another, and a few hundred tabs took
+  long. The batch first classifies DevTools tabs (reads only, nothing changes), then
+  runs one synchronous pass with no `await` between tabs: `beginSidebarClose`
+  (capture `CloseUndo`, drop a DevTools tab's pinned-panel binding, start
+  `markClosing`) and `removeFromPanelLayouts` per tab, then one
+  marker sync and `panels/sync` per affected workspace. `markClosing` queues its
+  `workspaceId: undefined` delta before its first await and `TabRegistry` flushes
+  per frame, so every row leaves in one flush and the shell's `useDelayedRemovals`
+  starts all fades in one commit. Do not add an `await` inside the pass. After it,
+  a panel whose removal promotes a child keeps its delayed (500 ms) single removal;
+  the active main tab goes through `promoteThenCloseMainTab` only when
+  `panelToPromoteOnMainClose` finds no normal tab left and a live panel (judged
+  after the pass: marking drops a tab's workspace, so batch tabs no longer count);
+  every other tab, including an active tab that needs no promotion, is removed by
+  one `browser.tabs.remove(ids)` after the marks settle, without a second
+  `markClosing`. Firefox makes one `removeTabs` call per window, which closes the
+  selected tab last and picks its successor outside the batch.
+  - One stale id rejects the whole call: `tabs.remove(ids)` resolves every id
+    through `getNativeTabsFromIDArray` before closing anything, so a tab that
+    closed during the marking window fails the batch. The fallback is the per-tab
+    `removeMarkedTabAndRestoreIfKept` for every batch tab, which retries and
+    tolerates an invalid id.
+  - The kept check is valid for the batch because `removeTabs` blocks: it spins the
+    event loop for beforeunload and removes prompting tabs in turn, so when the
+    `tabs.remove` promise resolves every prompt has been answered and a batch tab
+    that `tabs.get` still finds was kept ("Stay"). It goes through `restoreKeptTab`
+    like a single close; DevTools tabs never roll back.
+  - Last-tab guard. Because every tab is marked before any is removed, the
+    tabs behind a removal already look gone to `afterTabRemoved`
+    (`workspaces/EmptiedWorkspace.ts`): its decision would fire on the first
+    `tabs.onRemoved`, and the next event could judge the empty replacement
+    workspace (or window) empty too and delete or close it. `TabRegistry`
+    tracks the batch's ids, including delayed panel removals (`beginBatchRemoval`,
+    ended in a `finally` once the removals and the kept-tab handling settled;
+    `onRemoved` drops each id on its own), and `afterTabRemoved` returns no action
+    while another tab of the same window is still pending, so only the batch's last
+    removal decides. A delayed panel counts because a "Stay" on it must find its
+    workspace still there. It must not ask `isClosing` instead: a tab stays marked
+    closing for good after a "Stay" on `workspace/delete`, which would switch the
+    policy off for its window. The decision does not depend on listener order (the
+    registry's `onRemoved` listener registers first): the removed tab is excluded
+    from the other tabs explicitly, and earlier batch tabs have left the registry and
+    the pending set. A kept tab stays pending until the batch ends, so staying on a
+    prompt leaves the window alone.
+  - Cmd+Shift+T after a batch (checked headless through Marionette with five tabs; the
+    single-removal reset below is read from source): the tabs removed by one
+    `removeTabs` call are saved as one closed group (`closedInGroup`), `SessionStore.getLastClosedTabCount` returns the group
+    size, and the native key (`SessionWindowUI.undoCloseTab`) restores the whole group
+    in one press, up to `browser.sessionstore.max_tabs_undo` (25). A tab that leaves
+    the batch (a promoted active main tab or a delayed panel) closes through a single
+    removal, which resets that count where it falls in the close sequence, so a press
+    restores only that tab when it closed last, and the tabs closed after it otherwise.
+    Closing them one by one restored one tab per press. The sidebar "Reopen
+    closed tab" item calls `browser.sessions.restore()` and still restores one tab.
+    Each restored tab arrives through `onCreated` and gets its workspace, folder
+    and panel marker back as for a single restore, because the marks were written
+    before the removal and `preserveSessionMembership` keeps the session values.
 - The reconciler must not pick a main tab from another workspace. When the
   selected tab is a panel that is still in a stale payload (a promoted panel is
   activated before its `panels/sync` arrives), `reconcilePanelsSplitView` looks for
