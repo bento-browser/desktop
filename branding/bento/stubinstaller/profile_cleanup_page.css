@@ -3,7 +3,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 body {
-  color: white;
+  color: #2c2825;
+}
+
+/* High contrast themes can be dark, and they hide the light background art. */
+body.high-contrast {
+  color: WindowText;
 }
 
 #header,
@@ -16,9 +21,18 @@ body {
 }
 
 #header {
-  font-size: 35px;
+  font-family: "Segoe UI Light", "Segoe UI", sans-serif;
+  font-size: 32px;
   font-weight: normal;
-  margin-top: 45px;
+  margin-top: 56px;
+  /* Narrow enough to break after "Let's" in either fallback width. */
+  margin-left: 86px;
+  margin-right: 86px;
+  margin-bottom: 24px;
+}
+
+#refreshCheckboxContainer {
+  margin-bottom: 20px;
 }
 
 #refreshCheckbox {
@@ -30,6 +44,21 @@ body {
 }
 
 #refreshButton {
-  padding: 8px 40px;
-  font-size: 15px;
+  padding: 9px 44px;
+  font-family: "Segoe UI Semibold", "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: white;
+  background-color: #025768;
+  border: 0;
+}
+
+#refreshButton:hover {
+  background-color: #013c48;
+}
+
+body.high-contrast #refreshButton,
+body.high-contrast #refreshButton:hover {
+  color: ButtonText;
+  background-color: ButtonFace;
+  border: 1px solid ButtonText;
 }
