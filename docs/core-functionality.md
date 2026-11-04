@@ -1045,10 +1045,16 @@ behind `about:config`. The selectable protection levels are:
 A fresh profile starts on Standard: Bento applies it at the first launch, before
 onboarding finishes, so Settings marks Standard as the current level and the
 onboarding privacy step can change it. A saved Enhanced or Hardened choice is
-applied again at each launch, so changes made separately to the privacy controls
-covered by that preset can be reset. When no preset choice is saved, later
-launches, and profiles that already existed, leave the browser's current privacy
-settings in place. A profile that turned "Clear cookies and cache on
+applied again at each launch. Changing a setting that level controls under
+Advanced privacy leaves the level: Settings shows Custom (or the level the result
+matches), the change stays after a restart, and the level is no longer applied at
+launch. If the settings later match a level exactly again, Settings shows that
+level, but it is applied at launch only after it is chosen again. Changing remote
+download reputation does not leave the level, because no level controls it. Changes made outside Settings, for example in
+`about:config`, to settings a saved level controls are still reset at the next
+launch, until the level is left through Advanced privacy. When no preset choice is
+saved, later launches, and profiles that already existed, leave the browser's
+current privacy settings in place. A profile that turned "Clear cookies and cache on
 shutdown" on before the clearing was narrowed to cookies, site data and cache keeps
 Firefox's broader clearing (history, downloads and form data too) until the switch
 is turned off and on once.

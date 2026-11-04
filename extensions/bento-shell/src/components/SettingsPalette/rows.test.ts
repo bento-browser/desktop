@@ -400,7 +400,7 @@ describe('advanced privacy and shortcuts', () => {
 
   it('lists the shortcuts read-only with the corrected command palette keys', () => {
     const rows = rowsForStage({ kind: 'shortcuts' }, REGULAR_MODEL);
-    expect(rows).toHaveLength(12);
+    expect(rows).toHaveLength(11);
     expect(rows.every((row) => row.info)).toBe(true);
     expect(rows.find((row) => row.label === 'Open command palette')?.value).toBe(
       'Cmd/Ctrl + Alt + P',

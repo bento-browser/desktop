@@ -279,6 +279,20 @@ export function prefNameForAdvancedKey(key: PrivacyAdvancedKey): string | undefi
   return ADVANCED_KEY_TO_PREF[key];
 }
 
+/**
+ * Whether a level's preset writes what `key` changes. Remote download reputation is the one key
+ * outside every preset (see `ALLOWED_PRIVACY_PREFS`), so changing it never leaves a level.
+ */
+export function isLevelControlledAdvancedKey(key: PrivacyAdvancedKey): boolean {
+  const pref = prefNameForAdvancedKey(key);
+  const path = browserPrivacyPathForAdvancedKey(key);
+  return Object.values(PRIVACY_PRESETS).some(
+    (preset) =>
+      (pref !== undefined && Object.hasOwn(preset.prefs, pref)) ||
+      (path !== undefined && Object.hasOwn(preset.browserPrivacy, path)),
+  );
+}
+
 export function privacyLevelLabel(level: PrivacyProtectionLevel): string {
   return PRIVACY_LEVELS.find((entry) => entry.id === level)?.label ?? 'Custom';
 }

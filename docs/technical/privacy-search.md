@@ -17,6 +17,22 @@ compares it with the preset maps, and reports `custom` when any preset value
 differs. Advanced settings dispatch the same path and then emit a fresh
 `privacy/snapshot`.
 
+The stored choice and the shown level are separate. The level Settings shows is always
+detected from the live prefs (`detectPrivacyLevelFromSnapshot`); the stored
+`privacyProtectionLevel` override only says which preset the boot apply re-applies.
+`PrivacyMutationService.setAdvanced` removes that override (it stores the default, which
+`SettingsStore` keeps as no override) after a successful change to a key a level
+controls (`isLevelControlledAdvancedKey` in `privacy-levels.ts`: the key's pref or
+`browser.privacy` path is in a preset). It does not when the change fails, when the value
+is unchanged, or for `remoteSafeBrowsingEnabled`, which no preset writes. Changing
+settings back to values that match a level shows that level again but does not store it, so
+it is not re-applied at launch until `setProtectionLevel` stores it again. Reset and an
+import that carries a level both go through `setProtectionLevel` (Standard stores the
+default, which is no override), so neither is affected. Only the boot apply, the
+first-launch seed and `WelcomeApp` read the snapshot's `privacyProtectionLevel` as a
+choice: onboarding runs before any Advanced change, and an export omits a level equal to
+the default.
+
 Standard sets both `network.httpsOnlyMode='always'` and Firefox's underlying
 HTTPS-only prefs; Firefox continues to own the HTTP exception interstitial and
 per-site exception UI. The `network.httpsOnlyMode` write is a no-op (the setting
@@ -45,7 +61,9 @@ They keep Firefox's broader clearing (history, downloads and form data as well a
 cookies, site data and cache) until the switch is turned off and on once, which
 writes the whole bundle. A profile on Hardened is fixed by the boot apply: with a
 stored `privacyProtectionLevel` override, `background.ts` re-applies that preset
-at every boot, and Hardened's preset includes `SHUTDOWN_CLEAR_PREFS`. A one-time
+at every boot, and Hardened's preset includes `SHUTDOWN_CLEAR_PREFS`. That holds only
+while the level is stored: after a change under Advanced privacy the override is gone and
+the profile keeps what it has. A one-time
 startup repair was tried and removed: it could not tell the old switch's leftovers
 from a custom setup without reading the legacy `privacy.clearOnShutdown.*` prefs
 too, and a locked migration flag made a failed repair look complete.
@@ -126,7 +144,10 @@ Migrated v1 profiles receive those default fields in the settings snapshot but
 do not have an explicit stored override. On tools boot, `background.ts` applies
 the stored privacy preset only when `hasOverride('privacyProtectionLevel')`
 says the user explicitly stored it, so fresh-profile privacy defaults come from
-`prefs/bento.js` rather than an unconditional startup rewrite.
+`prefs/bento.js` rather than an unconditional startup rewrite. The boot apply is
+unchanged by Advanced privacy changes: it still resets anything a stored level controls,
+including a change made outside Settings (for example in `about:config`), until the
+override is removed by a successful Advanced change or by choosing Standard.
 
 The default search engine does not work that way. Neither `prefs/bento.js` nor
 the search config dumps choose it: Firefox's `search-config-v2.json`
@@ -633,6 +654,16 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   default `true` was gone after a write of `true` and an unlock). Bento ships no
   enterprise policies, so only a policy the user installed can lock these prefs;
   recording the hidden value would need a user-value read in the experiment.
+- A stored level is re-applied at every boot, so a change under Advanced privacy on
+  Enhanced or Hardened showed Custom and then went back to the level's value at the next
+  launch (Standard stores no override, so it never did). A successful change to a key a
+  level controls now removes the override in `setAdvanced`, inside the same `try`, so a
+  failed removal rolls the prefs back too. An unchanged value and `remoteSafeBrowsingEnabled`
+  keep the level on purpose. Do not move the removal into the boot apply or make the boot apply
+  skip a level the prefs no longer match: an unmodified stored level must still be applied,
+  and a change made outside Settings is still reset. Manual check: on Hardened, turn
+  Letterboxing off under Advanced privacy, quit and relaunch, and confirm Letterboxing is
+  still off and Protection level still reads Custom; this needs the running app.
 - A default stored as "no override" never reaches Firefox. `SettingsStore` keeps
   only deltas, so the default `privacyProtectionLevel: 'standard'` was never
   applied to a fresh profile: Firefox's own prefs are not Standard (tracking
