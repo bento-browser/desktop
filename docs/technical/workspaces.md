@@ -21,7 +21,15 @@ restore that window's SessionStore value. When more than one window is tracked,
 per-window activation does not change the global fallback. Bento currently
 enforces one workspace per window. If another window already owns a workspace,
 activation returns `conflict` and the handler focuses the owning window instead
-of rendering the same workspace in two windows.
+of rendering the same workspace in two windows. `activateWorkspaceInWindow`
+(`workspaces/activateInWindow.ts`) owns that activate-or-focus step for
+`workspace/activate` and for the `workspace-1` to `workspace-9` keyboard commands
+(`keyboard/bindings.ts`). A command resolves its window from the tab Firefox passes
+to `commands.onCommand` (126+), else `windows.getLastFocused`, then reads it with
+`windows.get`. It acts only on a `normal`, non-incognito window: a popup or private
+window, or a position past the last workspace, does nothing. The
+position is the index in `snapshot().workspaces` (creation order), the same order
+the switcher and the palette's shortcut hints use.
 
 Shell-side workspace state is mirrored in
 `extensions/bento-shell/src/state/workspaces.ts`. Use
@@ -2059,7 +2067,11 @@ workspaces.
   Covered by `scripts/mount-motion.test.mjs`.
 - Do not bypass `workspace/activate`. Per-window active state, conflict policy,
   single-window restart fallback, and SessionStore persistence live in
-  `WorkspaceStore`.
+  `WorkspaceStore`. A caller that knows a window must pass its id (through
+  `activateWorkspaceInWindow`): `activate(id)` without one moves only the global
+  fallback, so the `workspace-N` commands once left the sidebar on the old
+  workspace while the selected native tab followed the new one, and did not focus
+  the window that owned the target.
 - Do not mutate `useWorkspacesStore` directly from React components. Dispatch a
   protocol action and let tools broadcast deltas.
 - Do not persist sidebar selection in tools or shell stores. It is transient UI

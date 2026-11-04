@@ -1226,6 +1226,7 @@ list is a separate, shorter list.
 | `Cmd/Ctrl+W` | Close the selected sidebar tabs when several are selected; otherwise the focused side panel; otherwise the current tab. |
 | `Cmd/Ctrl+Shift+T` | Reopen the last closed tab or panel. |
 | `Cmd/Ctrl+1` to `9` | Select that regular tab in the current workspace, side panels excluded. `9` means the ninth tab, not the last. Pinned tabs and tabs inside folders count, in the browser's tab order, which can differ from the sidebar's order when folders are used. An index past the last tab does nothing. |
+| `Cmd/Ctrl+Alt+1` to `9` | Switch this window to the workspace at that position, in the workspace switcher's order. If another window already shows that workspace, that window is focused and this one stays as it is. An index past the last workspace does nothing, and private windows have no workspaces to switch to. |
 | `Cmd/Ctrl+Shift+Left`, `Cmd/Ctrl+Shift+Right` | Previous or next panel, except while an editable field has focus. |
 | `Cmd/Ctrl+Left`, `Cmd/Ctrl+Right` | Back or forward in the focused panel's history, except while an editable field has focus. |
 | `Cmd/Ctrl+Shift+Alt+N` | Open a new window. |
