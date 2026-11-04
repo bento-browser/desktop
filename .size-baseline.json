@@ -2,7 +2,7 @@
   "build": "BENTO_RELEASE=1 pnpm run ext:build",
   "gzipBytes": {
     "extensions/bento-shell/dist/assets/shell.js": 308845,
-    "extensions/bento-shell/dist/assets/palette.js": 254563,
+    "extensions/bento-shell/dist/assets/palette.js": 257174,
     "extensions/bento-shell/dist/assets/address-bar.js": 263224,
     "extensions/bento-shell/dist/assets/confirm.js": 245567,
     "extensions/bento-shell/dist/assets/edit-workspace.js": 288556,

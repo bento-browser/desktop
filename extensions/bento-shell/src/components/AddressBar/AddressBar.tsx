@@ -9,6 +9,7 @@ import {
   useEffect,
   useMemo,
   useLayoutEffect,
+  useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -41,6 +42,7 @@ import { buildOpenRows, type OpenAddressRowKind } from './openRows';
 import { replaceSelectionWithSafePaste } from './unsafeProtocol';
 import { BentoIcon, Row } from '../primitives';
 import { IN_TAB_ORDER } from '../primitives/inTabOrder';
+import { enterActivatesHighlight, movesHighlight } from '../primitives/enterOnHighlight';
 import {
   FOCUS_ON_HOVER,
   ROW_HIGHLIGHT_CLASS,
@@ -155,6 +157,10 @@ export default function AddressBar({
   placement = null,
 }: AddressBarProps) {
   const [query, setQuery] = useState(initialQuery);
+  // Whether a key (arrows, Home, End, Page keys) moved the highlight since the query last
+  // changed. Only then does Enter open the highlighted row instead of submitting the typed text.
+  // The pointer does not count here: a row under a resting pointer must not take the text.
+  const keyMoved = useRef(false);
   const highlightRef = useRowHighlight();
   const [dialog, setDialog] = useState<HTMLElement | null>(null);
   const [enginePickerHost, setEnginePickerHost] = useState<HTMLDivElement | null>(null);
@@ -282,6 +288,7 @@ export default function AddressBar({
   ]);
 
   useLayoutEffect(() => {
+    keyMoved.current = false;
     setQuery(initialQuery);
     useAddressBarStore.getState().clear();
   }, [initialQuery, openVersion]);
@@ -316,6 +323,7 @@ export default function AddressBar({
   }, [onClose, restored]);
 
   const changeQuery = useCallback((value: string) => {
+    keyMoved.current = false;
     useAddressBarStore.getState().clear();
     setQuery(value);
   }, []);
@@ -397,6 +405,10 @@ export default function AddressBar({
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
+      if (movesHighlight(event)) {
+        keyMoved.current = true;
+        return;
+      }
       if (
         !query.trim() ||
         event.key !== 'Enter' ||
@@ -408,6 +420,9 @@ export default function AddressBar({
       ) {
         return;
       }
+      // Mux opens the row the user moved to by key; otherwise Enter submits the typed text, also
+      // while the first result is auto-highlighted or the pointer rests on a row.
+      if (enterActivatesHighlight(event.currentTarget, keyMoved.current)) return;
       const submitRow =
         rows.find((row) => row.kind === 'synthetic') ?? palette.filteredCommands[0] ?? null;
       if (!submitRow) return;

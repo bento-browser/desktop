@@ -17,6 +17,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
@@ -50,6 +51,7 @@ import { usePanelsStore } from '../../state/panels';
 import { dispatch, useCurrentWindowId } from '../../bridge/useToolsPort';
 import { BentoIcon } from '../primitives';
 import { IN_TAB_ORDER } from '../primitives/inTabOrder';
+import { enterActivatesHighlight, movesHighlight } from '../primitives/enterOnHighlight';
 import {
   FOCUS_ON_HOVER,
   ROW_HIGHLIGHT_CLASS,
@@ -386,6 +388,14 @@ export function useCommands(query: string): BentoCommand[] {
 }
 
 export default function CommandPalette({ onClose, initialQuery = '' }: CommandPaletteProps) {
+  // Whether the user moved the highlight on purpose since the query last changed: a navigation
+  // key, or a real pointer move over the list. Only then does Enter run the highlighted row;
+  // otherwise it runs the first row, so a row that landed under a resting pointer never runs.
+  // close() clears it. When chrome hides the palette without calling close() (the toggle
+  // shortcut, an outside click) it stays set, which is fine: the highlight survives a reshow, so
+  // Enter runs the row the user can see, and typing clears it through changeQuery (chrome
+  // selects the text on reshow).
+  const highlightMoved = useRef(false);
   // CommandPalette.Root is permanently open inside this component — the
   // chrome host overlay's visibility is what actually shows/hides the
   // palette. Keeping open=true means: (a) no remount on each show, so
@@ -394,20 +404,29 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
   // opacity transition. close() only signals the parent (which signals
   // chrome).
   const close = () => {
+    highlightMoved.current = false;
     onClose();
   };
   const [query, setQuery] = useState(initialQuery);
+  const changeQuery = useCallback((value: string) => {
+    highlightMoved.current = false;
+    setQuery(value);
+  }, []);
   const highlightRef = useRowHighlight();
   const commands = useCommands(query);
   const palette = useCommandPalette<BentoCommand>({
     commands,
     query,
-    onQueryChange: setQuery,
+    onQueryChange: changeQuery,
     close,
   });
   const footerText = resultLabel(palette.filteredCommands.length);
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
+      if (movesHighlight(event)) {
+        highlightMoved.current = true;
+        return;
+      }
       if (
         event.key !== 'Enter' ||
         event.altKey ||
@@ -418,6 +437,8 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
       ) {
         return;
       }
+      // A row the user moved to is Mux's to activate; otherwise the first row runs.
+      if (enterActivatesHighlight(event.currentTarget, highlightMoved.current)) return;
       const command = palette.filteredCommands[0];
       if (!command) return;
       event.preventDefault();
@@ -445,6 +466,24 @@ export default function CommandPalette({ onClose, initialQuery = '' }: CommandPa
     focusSearch();
     window.addEventListener('focus', focusSearch);
     return () => window.removeEventListener('focus', focusSearch);
+  }, []);
+
+  // A real pointer move over the list counts as choosing a row (hover moves the highlight).
+  // Firefox's synthesized move, sent when content shifts under a stationary cursor, reaches
+  // content only as boundary events (pointerover and out), never as a pointermove, so it does
+  // not count; see docs/technical/palettes-and-address-bar.md.
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      if (
+        event.isTrusted &&
+        event.target instanceof Element &&
+        event.target.closest('.bento-command-palette__listbox')
+      ) {
+        highlightMoved.current = true;
+      }
+    };
+    document.addEventListener('pointermove', onPointerMove, true);
+    return () => document.removeEventListener('pointermove', onPointerMove, true);
   }, []);
 
   return (
