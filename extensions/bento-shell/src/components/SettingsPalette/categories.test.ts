@@ -54,7 +54,7 @@ describe('Settings categories', () => {
       );
       const controls = controlRows(model).filter((row) => row.id !== 'shortcuts:open');
       expect(children.filter((row) => !row.id.startsWith('shortcut:'))).toEqual(controls);
-      expect(children.filter((row) => row.id.startsWith('shortcut:'))).toHaveLength(12);
+      expect(children.filter((row) => row.id.startsWith('shortcut:'))).toHaveLength(11);
       expect(new Set(children.map((row) => row.id)).size).toBe(children.length);
       const sizes = new Map(
         rootRows(model).map((row) => [
@@ -87,7 +87,7 @@ describe('Settings categories', () => {
     ).toHaveLength(15);
     expect(
       searchableRows(REGULAR_MODEL).filter((row) => row.id.startsWith('shortcut:')),
-    ).toHaveLength(12);
+    ).toHaveLength(11);
     expect(pageDescription(panels)).toBeNull();
     expect(showsFieldRow({ kind: 'category', id: 'performance' }, 3)).toBe(false);
     expect(showsFieldRow({ kind: 'category', id: 'performance' }, 3, 'Sleep')).toBe(true);

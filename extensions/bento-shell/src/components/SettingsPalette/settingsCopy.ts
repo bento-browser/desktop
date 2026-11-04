@@ -88,7 +88,7 @@ export const ADVANCED_DESCRIPTIONS: Record<
   safeBrowsingEnabled:
     'Warns about known malware and phishing sites, and dangerous downloads, using lists stored on your computer.',
   remoteSafeBrowsingEnabled:
-    "Asks Google Safe Browsing about downloads it cannot judge locally. This sends the download's address, file name, size, and checksum to Google.",
+    "Asks Google Safe Browsing about downloads it cannot judge locally, such as programs, installers, archives and documents. This sends Google the download's address, any redirects and the page it came from (without query strings), its file name and type, size, checksum and any signing certificates, and the language Bento is set to.",
   resistFingerprinting:
     'Makes Bento report generic details, such as time zone and screen size, so sites cannot single you out. Can change dates, sizes, or appearance on some sites.',
   letterboxing:

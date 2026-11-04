@@ -13,8 +13,11 @@ export class KeyRegistry {
   }
 
   init(): void {
-    browser.commands.onCommand.addListener((command) => {
-      handleCommand(command, this.#ctx);
+    // Firefox 126+ passes the active tab of the window the command fired in.
+    browser.commands.onCommand.addListener((command, tab?: browser.tabs.Tab) => {
+      handleCommand(command, this.#ctx, tab).catch((err) =>
+        console.warn('[bento-tools] command failed:', command, err),
+      );
     });
   }
 }

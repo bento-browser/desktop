@@ -22,6 +22,7 @@ import { moveWorkspaceTabsToWindow } from '../tabs/AdoptedTab';
 import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
+import { activateWorkspaceInWindow } from '../workspaces/activateInWindow';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
@@ -1735,33 +1736,11 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     case 'workspace/delete':
       void deleteWorkspace(ctx, action.id, action.closeTabs === true);
       return;
-    case 'workspace/activate': {
-      // Scope the activation to the requesting window when available.
-      // sourceWindowId null falls back to legacy global activation so
-      // older shells / tools-internal callers keep working unchanged.
-      const result = ctx.workspaces.activate(action.id, ctx.sourceWindowId);
-      if (result === 'conflict') {
-        // Another window already owns this workspace. Bento enforces
-        // "one workspace per window" because two windows rendering the
-        // same workspace's panels currently produce broken state (the
-        // panel reconciler resolves panel tabs against gBrowser, which
-        // is per-window — Phase C twin-tabs will fix this and let
-        // synced display work). Until then, the friendlier behaviour is
-        // to focus the window already showing the workspace. The
-        // requesting shell's UI will reconcile on its next workspaces/
-        // changed delta (its activeIdByWindow entry stays unchanged
-        // since no 'activated' delta fired).
-        const owner = ctx.workspaces.findOwningWindow(action.id);
-        if (owner !== null) {
-          browser.windows
-            .update(owner, { focused: true })
-            .catch((err) =>
-              console.warn('[bento-tools] workspace/activate: focus owner failed:', err),
-            );
-        }
-      }
+    case 'workspace/activate':
+      // Scoped to the requesting window; sourceWindowId null falls back to legacy
+      // global activation so older shells / tools-internal callers keep working.
+      activateWorkspaceInWindow(ctx.workspaces, action.id, ctx.sourceWindowId);
       return;
-    }
     case 'settings/requestSnapshot':
       ctx.send({
         type: 'settings/snapshot',

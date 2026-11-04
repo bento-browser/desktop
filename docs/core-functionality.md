@@ -1052,10 +1052,16 @@ behind `about:config`. The selectable protection levels are:
 A fresh profile starts on Standard: Bento applies it at the first launch, before
 onboarding finishes, so Settings marks Standard as the current level and the
 onboarding privacy step can change it. A saved Enhanced or Hardened choice is
-applied again at each launch, so changes made separately to the privacy controls
-covered by that preset can be reset. When no preset choice is saved, later
-launches, and profiles that already existed, leave the browser's current privacy
-settings in place. A profile that turned "Clear cookies and cache on
+applied again at each launch. Changing a setting that level controls under
+Advanced privacy leaves the level: Settings shows Custom (or the level the result
+matches), the change stays after a restart, and the level is no longer applied at
+launch. If the settings later match a level exactly again, Settings shows that
+level, but it is applied at launch only after it is chosen again. Changing remote
+download reputation does not leave the level, because no level controls it. Changes made outside Settings, for example in
+`about:config`, to settings a saved level controls are still reset at the next
+launch, until the level is left through Advanced privacy. When no preset choice is
+saved, later launches, and profiles that already existed, leave the browser's
+current privacy settings in place. A profile that turned "Clear cookies and cache on
 shutdown" on before the clearing was narrowed to cookies, site data and cache keeps
 Firefox's broader clearing (history, downloads and form data too) until the switch
 is turned off and on once.
@@ -1067,11 +1073,14 @@ suggestions, Firefox AI features and the cross-site Referer policy. Remote
 download reputation never affects it.
 
 Remote download reputation is a separate advanced toggle rather than a preset
-value, and it is off by default. Its Settings description says that Google Safe
-Browsing is asked about downloads it cannot judge locally, and that this sends the
-download's address, file name, size and checksum to Google. Firefox's request
-itself also includes redirect URLs, the original referrer when available, the
-locale and signing or certificate metadata. Switching presets does
+value, and it is off by default. When it is on, Google Safe Browsing is asked about
+a finished download that Bento cannot judge from its local lists, and only for file
+types that can carry malware, such as programs, installers, archives and
+documents. The request carries the download's address, any redirects, the page it
+came from (the original referrer, before referrer policy is applied, when there is
+one), the file name and type, size, SHA-256 checksum, any signing certificates and the
+language Bento is set to. Addresses are sent without query strings. The Settings
+description names these fields. Switching presets does
 not reset the toggle or make an otherwise matching preset appear as Custom.
 Firefox's HTTPS exception UI remains available for HTTP-only sites and local
 devices.
@@ -1233,6 +1242,7 @@ list is a separate, shorter list.
 | `Cmd/Ctrl+W` | Close the selected sidebar tabs when several are selected; otherwise the focused side panel; otherwise the current tab. |
 | `Cmd/Ctrl+Shift+T` | Reopen the last closed tab or panel. |
 | `Cmd/Ctrl+1` to `9` | Select that regular tab in the current workspace, side panels excluded. `9` means the ninth tab, not the last. Pinned tabs and tabs inside folders count, in the browser's tab order, which can differ from the sidebar's order when folders are used. An index past the last tab does nothing. |
+| `Cmd/Ctrl+Alt+1` to `9` | Switch this window to the workspace at that position, in the workspace switcher's order. If another window already shows that workspace, that window is focused and this one stays as it is. An index past the last workspace does nothing, and private windows have no workspaces to switch to. |
 | `Cmd/Ctrl+Shift+Left`, `Cmd/Ctrl+Shift+Right` | Previous or next panel, except while an editable field has focus. |
 | `Cmd/Ctrl+Left`, `Cmd/Ctrl+Right` | Back or forward in the focused panel's history, except while an editable field has focus. |
 | `Cmd/Ctrl+Shift+Alt+N` | Open a new window. |

@@ -1,12 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PRIVACY_PRESETS, SHUTDOWN_CLEAR_PREFS } from '@shared/privacy-levels';
+import type { PrivacyAdvancedKey, SelectablePrivacyProtectionLevel } from '@shared/protocol';
+import {
+  PRIVACY_PRESETS,
+  SHUTDOWN_CLEAR_PREFS,
+  isLevelControlledAdvancedKey,
+} from '@shared/privacy-levels';
 import type { PrivacyPrefMap } from '@shared/privacy-levels';
-import type { SettingsStore } from '../settings/SettingsStore';
+import { SettingsStore } from '../settings/SettingsStore';
 import { PrivacyMutationService } from './PrivacyMutationService';
 import { FIREFOX_SHUTDOWN_DEFAULTS, createFakePrefs } from './testPrefs';
 
-/** Installs fake `browser.bentoPrivacy` and `browser.privacy` APIs over one pref store. */
-function setup(initial: PrivacyPrefMap, locked: readonly string[] = []) {
+const SETTINGS_KEY = 'bento.settings';
+
+/**
+ * Installs fake `browser.bentoPrivacy`, `browser.privacy` and `browser.storage` APIs over one pref
+ * store and one settings profile. `storedLevel` is the level the profile has chosen, as a restart
+ * would find it; the real `SettingsStore` keeps it as a sparse override.
+ */
+function setup(
+  initial: PrivacyPrefMap,
+  locked: readonly string[] = [],
+  storedLevel?: SelectablePrivacyProtectionLevel,
+) {
   const fake = createFakePrefs(
     { ...PRIVACY_PRESETS.standard.prefs, ...FIREFOX_SHUTDOWN_DEFAULTS, ...initial },
     locked,
@@ -28,6 +43,9 @@ function setup(initial: PrivacyPrefMap, locked: readonly string[] = []) {
       }),
     };
   }
+  const profile: Record<string, unknown> = storedLevel
+    ? { [SETTINGS_KEY]: { version: 2, overrides: { privacyProtectionLevel: storedLevel } } }
+    : {};
   vi.stubGlobal('browser', {
     bentoPrivacy: {
       ...fake.api,
@@ -35,9 +53,24 @@ function setup(initial: PrivacyPrefMap, locked: readonly string[] = []) {
       getDefaultSearchEngine: async () => 'ddg',
     },
     privacy,
+    storage: {
+      local: {
+        get: async () => ({ ...profile }),
+        set: async (payload: Record<string, unknown>) => void Object.assign(profile, payload),
+      },
+    },
   });
-  const service = new PrivacyMutationService({ update: vi.fn() } as unknown as SettingsStore);
-  return { ...fake, service };
+  const settings = new SettingsStore();
+  const service = new PrivacyMutationService(settings);
+  /** The stored level after a restart: a fresh store reading the same profile. */
+  const levelAfterRestart = async () => {
+    const restarted = new SettingsStore();
+    await restarted.init();
+    return restarted.hasOverride('privacyProtectionLevel')
+      ? restarted.snapshot().privacyProtectionLevel
+      : null;
+  };
+  return { ...fake, service, settings, levelAfterRestart };
 }
 
 function shutdownPrefs(store: Map<string, unknown>) {
@@ -128,5 +161,71 @@ describe('PrivacyMutationService.setAdvanced for HTTPS-only mode', () => {
       store.get('dom.security.https_only_mode'),
       store.get('dom.security.https_only_mode_pbm'),
     ]).toEqual([true, true]);
+  });
+});
+
+describe('PrivacyMutationService.setAdvanced and the stored protection level', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('leaves the stored level when a setting it controls changes, so a restart keeps the change', async () => {
+    const { service, settings, store, levelAfterRestart } = setup({}, [], 'enhanced');
+    await settings.init();
+    expect(await levelAfterRestart()).toBe('enhanced');
+
+    const outcome = await service.setAdvanced('letterboxing', true);
+
+    expect(outcome.state).toBe('succeeded');
+    expect(store.get('privacy.resistFingerprinting.letterboxing')).toBe(true);
+    expect(settings.hasOverride('privacyProtectionLevel')).toBe(false);
+    expect(await levelAfterRestart()).toBeNull();
+  });
+
+  it('keeps the stored level when remote download reputation changes, which no level controls', async () => {
+    const { service, settings, levelAfterRestart } = setup({}, [], 'hardened');
+    await settings.init();
+
+    const outcome = await service.setAdvanced('remoteSafeBrowsingEnabled', true);
+
+    expect(outcome.state).toBe('succeeded');
+    expect(await levelAfterRestart()).toBe('hardened');
+  });
+
+  it('keeps the stored level when the change fails and the prefs are restored', async () => {
+    const { service, settings, store, levelAfterRestart } = setup(
+      {},
+      ['privacy.resistFingerprinting.letterboxing'],
+      'enhanced',
+    );
+    await settings.init();
+
+    const outcome = await service.setAdvanced('letterboxing', true);
+
+    expect(outcome.state).toBe('partial');
+    expect(store.get('privacy.resistFingerprinting.letterboxing')).toBe(false);
+    expect(await levelAfterRestart()).toBe('enhanced');
+  });
+
+  it('names remote download reputation as the one advanced key no level controls', () => {
+    const controlled = {
+      safeBrowsingEnabled: true,
+      remoteSafeBrowsingEnabled: false,
+      drmEnabled: true,
+      sanitizeOnShutdown: true,
+      resistFingerprinting: true,
+      letterboxing: true,
+      networkPrediction: true,
+      peerConnection: true,
+      webRTCIPHandlingPolicy: true,
+      httpsOnlyMode: true,
+      searchSuggestionsEnabled: true,
+      diskCacheEnabled: true,
+      webglEnabled: true,
+      webgpuEnabled: true,
+      passwordSavingEnabled: true,
+      formHistoryEnabled: true,
+    } satisfies Record<PrivacyAdvancedKey, boolean>;
+    for (const [key, expected] of Object.entries(controlled) as [PrivacyAdvancedKey, boolean][]) {
+      expect(isLevelControlledAdvancedKey(key), key).toBe(expected);
+    }
   });
 });

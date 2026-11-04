@@ -3,7 +3,8 @@ import type {
   SearchEngineId,
   SelectablePrivacyProtectionLevel,
 } from '@shared/protocol';
-import type { SettingsStore } from '../settings/SettingsStore';
+import { isLevelControlledAdvancedKey } from '@shared/privacy-levels';
+import { DEFAULT_SETTINGS, type SettingsStore } from '../settings/SettingsStore';
 import {
   applyAdvancedSetting,
   applyPrivacyLevel,
@@ -74,6 +75,17 @@ export class PrivacyMutationService {
       const after = await readPrivacySnapshot();
       if ((after as unknown as Record<string, unknown>)[key] !== value) {
         throw new Error('live read-back mismatch');
+      }
+      // The boot apply of a stored level would reset a changed setting that level controls at the
+      // next launch, so such a change leaves the level (storing the default drops the override).
+      // Remote download reputation is outside every level and keeps it.
+      if (
+        isLevelControlledAdvancedKey(key) &&
+        (before as unknown as Record<string, unknown>)[key] !== value
+      ) {
+        await this.#settings.update({
+          privacyProtectionLevel: DEFAULT_SETTINGS.privacyProtectionLevel,
+        });
       }
       return {
         state: 'succeeded',

@@ -17,6 +17,22 @@ compares it with the preset maps, and reports `custom` when any preset value
 differs. Advanced settings dispatch the same path and then emit a fresh
 `privacy/snapshot`.
 
+The stored choice and the shown level are separate. The level Settings shows is always
+detected from the live prefs (`detectPrivacyLevelFromSnapshot`); the stored
+`privacyProtectionLevel` override only says which preset the boot apply re-applies.
+`PrivacyMutationService.setAdvanced` removes that override (it stores the default, which
+`SettingsStore` keeps as no override) after a successful change to a key a level
+controls (`isLevelControlledAdvancedKey` in `privacy-levels.ts`: the key's pref or
+`browser.privacy` path is in a preset). It does not when the change fails, when the value
+is unchanged, or for `remoteSafeBrowsingEnabled`, which no preset writes. Changing
+settings back to values that match a level shows that level again but does not store it, so
+it is not re-applied at launch until `setProtectionLevel` stores it again. Reset and an
+import that carries a level both go through `setProtectionLevel` (Standard stores the
+default, which is no override), so neither is affected. Only the boot apply, the
+first-launch seed and `WelcomeApp` read the snapshot's `privacyProtectionLevel` as a
+choice: onboarding runs before any Advanced change, and an export omits a level equal to
+the default.
+
 Standard sets both `network.httpsOnlyMode='always'` and Firefox's underlying
 HTTPS-only prefs; Firefox continues to own the HTTP exception interstitial and
 per-site exception UI. The `network.httpsOnlyMode` write is a no-op (the setting
@@ -45,7 +61,9 @@ They keep Firefox's broader clearing (history, downloads and form data as well a
 cookies, site data and cache) until the switch is turned off and on once, which
 writes the whole bundle. A profile on Hardened is fixed by the boot apply: with a
 stored `privacyProtectionLevel` override, `background.ts` re-applies that preset
-at every boot, and Hardened's preset includes `SHUTDOWN_CLEAR_PREFS`. A one-time
+at every boot, and Hardened's preset includes `SHUTDOWN_CLEAR_PREFS`. That holds only
+while the level is stored: after a change under Advanced privacy the override is gone and
+the profile keeps what it has. A one-time
 startup repair was tried and removed: it could not tell the old switch's leftovers
 from a custom setup without reading the legacy `privacy.clearOnShutdown.*` prefs
 too, and a locked migration flag made a failed repair look complete.
@@ -66,6 +84,41 @@ user-controlled: applying or detecting Standard, Enhanced, or Hardened neither
 resets the remote choice nor changes a matching preset to Custom.
 Local Safe Browsing phishing, malware, and download-list checks remain enabled
 in all three presets; Hardened no longer trades away that protection.
+
+What the remote request carries and when it is sent is the basis of
+`ADVANCED_DESCRIPTIONS.remoteSafeBrowsingEnabled` in `settingsCopy.ts`. It is Firefox's
+own code, unmodified by Bento, in `toolkit/components/reputationservice/ApplicationReputation.cpp`
+(line numbers are Firefox 158.0; `PendingLookup` is the class):
+
+- Fields. `DoLookupInternal` adds the source URL as a `DOWNLOAD_URL` resource (1433), that
+  resource's referrer from `referrerInfo->GetOriginalReferrer()` (1437-1453; the full
+  referrer before referrer policy, so the `network.http.referer.*` prefs, including Hardened's
+  `XOriginPolicy`, do not trim it), and each redirect as a `DOWNLOAD_REDIRECT` resource
+  (`AddRedirects`, 1264; the resource is added at 1303). Each of these goes through
+  `GetStrippedSpec` (1351), which keeps scheme, host, port and path and drops the
+  query, fragment and credentials (a `data:` URI becomes its prefix plus a SHA-256, a `blob:`
+  URI is kept whole). `ParseCertificates` (1564-1583) copies each signing certificate chain
+  in full. `SendRemoteQueryInternal` sets the URL again (1636), the length (1641), the
+  app locale as BCP-47 (1646-1649, `LocaleService::GetAppLocaleAsBCP47`), the SHA-256 (1653),
+  the file name (1655) and a download type derived from the file name (1656), plus a constant
+  `user_initiated` true (1644). The file name is that of the saved file
+  (`PathUtils.filename(aDownload.target.path)`) and the size is `download.currentBytes`, both
+  from `DownloadIntegration.shouldBlockForReputationCheck`. The POST goes to
+  `browser.safebrowsing.downloads.remote.url`.
+- Signing certificates exist only on Windows: `BackgroundFileSaver::ExtractSignatureInfo`
+  (`netwerk/base/BackgroundFileSaver.cpp`) reads them under `XP_WIN`, so a macOS request
+  carries none. The copy says "any signing certificates" for that reason.
+- When. `shouldBlockForReputationCheck` runs once a download has finished saving, so the
+  SHA-256 exists. `QueryReputationInternal` (1981) returns early unless
+  `browser.safebrowsing.malware.enabled` and `browser.safebrowsing.downloads.enabled` are
+  both true, so the remote switch does nothing while Local Safe Browsing is off. The local
+  lookups run first (`LookupNext`, 1024): a block-list hit on the source, referrer or a redirect
+  gives a dangerous verdict with no request, and an allow-list hit on the source or a signing
+  pair gives a safe verdict with none. Only a file whose extension `IsBinary` accepts
+  (`kBinaryFileExtensions` or an executable extension not in `kNonBinaryExecutables`;
+  programs, installers, disk images, archives, Office files and PDFs, but never plain images,
+  audio, video or text) goes on to `SendRemoteQueryInternal` (1600), which bails unless
+  `browser.safebrowsing.downloads.remote.enabled` is true and the service URL is set.
 
 `extensions/bento-tools/experiments/bento-privacy/` exposes the minimal
 privileged surface that normal WebExtension APIs cannot provide:
@@ -126,7 +179,10 @@ Migrated v1 profiles receive those default fields in the settings snapshot but
 do not have an explicit stored override. On tools boot, `background.ts` applies
 the stored privacy preset only when `hasOverride('privacyProtectionLevel')`
 says the user explicitly stored it, so fresh-profile privacy defaults come from
-`prefs/bento.js` rather than an unconditional startup rewrite.
+`prefs/bento.js` rather than an unconditional startup rewrite. The boot apply is
+unchanged by Advanced privacy changes: it still resets anything a stored level controls,
+including a change made outside Settings (for example in `about:config`), until the
+override is removed by a successful Advanced change or by choosing Standard.
 
 The default search engine does not work that way. Neither `prefs/bento.js` nor
 the search config dumps choose it: Firefox's `search-config-v2.json`
@@ -579,6 +635,13 @@ Use a dev build on a throwaway profile; the tools extension must be running.
 
 ## Privacy Pitfalls
 
+- The Remote download reputation line once named only the address, file name, size and
+  checksum. Firefox's request also carries the redirects, the original referrer, the app
+  locale and any signing certificates, and a disclosure that lists fewer fields than the
+  request sends is wrong even when each listed field is true. The field list is read from
+  `ApplicationReputation.cpp` (see "what the remote request carries" above). On a Firefox
+  bump, re-read `DoLookupInternal` and `SendRemoteQueryInternal` for a new
+  `mRequest.set_*`/`add_*` call and change the copy in the same change.
 - `SettingsStore` stores only deltas from its defaults (`#persistAndPublish`
   drops a value equal to its default), so a default never reaches Firefox unless
   something applies it explicitly, and "no override" never means "the user has not
@@ -633,6 +696,16 @@ Use a dev build on a throwaway profile; the tools extension must be running.
   default `true` was gone after a write of `true` and an unlock). Bento ships no
   enterprise policies, so only a policy the user installed can lock these prefs;
   recording the hidden value would need a user-value read in the experiment.
+- A stored level is re-applied at every boot, so a change under Advanced privacy on
+  Enhanced or Hardened showed Custom and then went back to the level's value at the next
+  launch (Standard stores no override, so it never did). A successful change to a key a
+  level controls now removes the override in `setAdvanced`, inside the same `try`, so a
+  failed removal rolls the prefs back too. An unchanged value and `remoteSafeBrowsingEnabled`
+  keep the level on purpose. Do not move the removal into the boot apply or make the boot apply
+  skip a level the prefs no longer match: an unmodified stored level must still be applied,
+  and a change made outside Settings is still reset. Manual check: on Hardened, turn
+  Letterboxing off under Advanced privacy, quit and relaunch, and confirm Letterboxing is
+  still off and Protection level still reads Custom; this needs the running app.
 - A default stored as "no override" never reaches Firefox. `SettingsStore` keeps
   only deltas, so the default `privacyProtectionLevel: 'standard'` was never
   applied to a fresh profile: Firefox's own prefs are not Standard (tracking
