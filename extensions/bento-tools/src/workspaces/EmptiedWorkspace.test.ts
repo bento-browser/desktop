@@ -1,6 +1,8 @@
 import type { TabSnapshot } from '@shared/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handle, type HandlerContext } from '../messaging/protocol-handler';
+import { PanelStore } from '../panels/PanelStore';
+import { TabRegistry } from '../tabs/TabRegistry';
 import {
   afterTabRemoved,
   createWindowHandoffGuard,
@@ -42,7 +44,7 @@ describe('createWindowHandoffGuard', () => {
 describe('afterTabRemoved', () => {
   function deps(overrides: Partial<EmptiedWorkspaceDeps> = {}): EmptiedWorkspaceDeps {
     return {
-      tabs: { snapshot: () => [], isClosing: () => false },
+      tabs: { snapshot: () => [], isClosing: () => false, isPendingBatchRemoval: () => false },
       panels: { getPanels: () => [] },
       workspaces: {
         getActiveId: () => 'ws-a',
@@ -66,7 +68,17 @@ describe('afterTabRemoved', () => {
     const tabs = [tab(6, { workspaceId: 'ws-a' })];
 
     expect(
-      afterTabRemoved(deps({ tabs: { snapshot: () => tabs, isClosing: () => false } }), 5, 1),
+      afterTabRemoved(
+        deps({
+          tabs: {
+            snapshot: () => tabs,
+            isClosing: () => false,
+            isPendingBatchRemoval: () => false,
+          },
+        }),
+        5,
+        1,
+      ),
     ).toEqual({ kind: 'none' });
   });
 
@@ -76,13 +88,41 @@ describe('afterTabRemoved', () => {
     expect(
       afterTabRemoved(
         deps({
-          tabs: { snapshot: () => tabs, isClosing: (id) => id === 20 },
+          tabs: {
+            snapshot: () => tabs,
+            isClosing: (id) => id === 20,
+            isPendingBatchRemoval: () => false,
+          },
           panels: { getPanels: () => [20, 21] },
         }),
         5,
         1,
       ),
     ).toEqual({ kind: 'promote-panel', workspaceId: 'ws-a', panelTabId: 21 });
+  });
+
+  it('waits for the last tab of a batched close, in its own window, before deciding', () => {
+    // The batch marked its tabs closing first, so none of them carries a workspace any more.
+    let tabs = [tab(5), tab(6), tab(7), tab(8, { windowId: 2 })];
+    const pending = new Set([5, 6, 7, 8]);
+    const batch = deps({
+      tabs: {
+        snapshot: () => tabs,
+        isClosing: () => true,
+        isPendingBatchRemoval: (id) => pending.has(id),
+      },
+    });
+    const removed = (id: number) => {
+      const action = afterTabRemoved(batch, id, 1);
+      tabs = tabs.filter((t) => t.id !== id);
+      pending.delete(id);
+      return action;
+    };
+
+    expect(removed(5)).toEqual({ kind: 'none' });
+    expect(removed(6)).toEqual({ kind: 'none' });
+    // Tab 8 is pending in another window, which does not hold this window's decision back.
+    expect(removed(7)).toMatchObject({ kind: 'switch-window' });
   });
 
   it('moves the window to a workspace no window shows, else closes it', () => {
@@ -157,7 +197,11 @@ describe('workspace delete against the tab-removal handler, with a real store', 
             actions.push(
               afterTabRemoved(
                 {
-                  tabs: { snapshot: () => tabs, isClosing: (tabId) => closing.has(tabId) },
+                  tabs: {
+                    snapshot: () => tabs,
+                    isClosing: (tabId) => closing.has(tabId),
+                    isPendingBatchRemoval: () => false,
+                  },
                   panels: { getPanels: () => [] },
                   workspaces,
                   handoff: options.guard ? handoff : { isActive: () => false },
@@ -338,5 +382,125 @@ describe('workspace delete against the tab-removal handler, with a real store', 
 
     // C has no tab yet, so the last-tab decision treats the window as emptied.
     expect(actions.at(-1)?.kind).not.toBe('none');
+  });
+});
+
+describe('batched tab close against the tab-removal handler, with the real registry', () => {
+  // Every tab of the batch is marked closing before Firefox removes any, so each removal event
+  // sees the tabs behind it as gone. Only the last event may decide what the window does.
+  async function closeBatch(kept: ReadonlySet<number>) {
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    const values = new Map<string, unknown>();
+    for (const id of [1, 2, 3]) values.set(`${id}:bento.workspaceId`, 'ws-a');
+    let open = [1, 2, 3];
+    let fireRemoved: (id: number, info: { windowId: number }) => void = () => undefined;
+    const registry = new TabRegistry();
+    const actions: EmptiedWorkspaceAction[] = [];
+    const panels = new PanelStore();
+    const workspaces = {
+      getActiveId: () => 'ws-a',
+      hasForWindow: () => true,
+      getActiveIdByWindow: () => ({ 1: 'ws-a' }),
+      snapshot: () => ({ workspaces: [{ id: 'ws-a' }, { id: 'ws-b' }] }),
+    };
+    const noEvent = { addListener: vi.fn() };
+    vi.stubGlobal('browser', {
+      sessions: {
+        getTabValue: vi.fn(async (id: number, key: string) => values.get(`${id}:${key}`)),
+        setTabValue: vi.fn(async (id: number, key: string, value: unknown) => {
+          values.set(`${id}:${key}`, value);
+        }),
+        removeTabValue: vi.fn(async (id: number, key: string) => {
+          values.delete(`${id}:${key}`);
+        }),
+      },
+      bentoTabState: { onPageErrorChanged: noEvent, getPageErrors: vi.fn(async () => []) },
+      tabs: {
+        onCreated: noEvent,
+        onUpdated: noEvent,
+        onActivated: noEvent,
+        onMoved: noEvent,
+        onAttached: noEvent,
+        onRemoved: {
+          addListener: (listener: typeof fireRemoved) => {
+            fireRemoved = listener;
+          },
+        },
+        query: vi.fn(async () =>
+          open.map((id) => ({
+            id,
+            windowId: 1,
+            index: id,
+            title: '',
+            active: false,
+            pinned: false,
+          })),
+        ),
+        get: vi.fn(async (id: number) => {
+          if (!open.includes(id)) throw new Error(`Invalid tab ID: ${id}`);
+          return { id, windowId: 1 };
+        }),
+        // Firefox closes the tabs in turn. The last-tab handler in background.ts is registered
+        // before the registry's listener, so it hears each removal first.
+        remove: vi.fn(async (ids: number[]) => {
+          for (const id of ids.filter((candidate) => !kept.has(candidate))) {
+            actions.push(
+              afterTabRemoved(
+                {
+                  tabs: registry,
+                  panels,
+                  workspaces,
+                  handoff: createWindowHandoffGuard(),
+                  takeRecentlyRemovedPanel: () => false,
+                },
+                id,
+                1,
+              ),
+            );
+            open = open.filter((candidate) => candidate !== id);
+            fireRemoved(id, { windowId: 1 });
+          }
+        }),
+      },
+    });
+    await registry.init();
+    const ctx = {
+      tabs: registry,
+      panels,
+      workspaces,
+      pinnedPanels: { removeForTab: vi.fn() },
+      handoff: createWindowHandoffGuard(),
+      sourceWindowId: 1,
+      emitPanelsSync: vi.fn(),
+      syncPanelMarkers: vi.fn(),
+    } as unknown as HandlerContext;
+
+    handle({ type: 'tabs/close', ids: [1, 2, 3] }, ctx);
+    await vi.waitFor(() => expect(browser.tabs.remove).toHaveBeenCalled());
+    return { actions, registry };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('lets only the last removal decide, then nothing is left pending', async () => {
+    const { actions, registry } = await closeBatch(new Set());
+
+    await vi.waitFor(() => expect(actions).toHaveLength(3));
+    expect(actions.map((action) => action.kind)).toEqual(['none', 'none', 'switch-window']);
+    expect(registry.snapshot()).toEqual([]);
+    expect([1, 2, 3].some((id) => registry.isPendingBatchRemoval(id))).toBe(false);
+  });
+
+  it('keeps the window as it is when the user stays on one of the tabs', async () => {
+    const { actions, registry } = await closeBatch(new Set([2]));
+
+    await vi.waitFor(() => expect(registry.isPendingBatchRemoval(2)).toBe(false));
+    expect(actions.map((action) => action.kind)).toEqual(['none', 'none']);
+    expect(registry.snapshot().map((tab) => [tab.id, tab.workspaceId])).toEqual([[2, 'ws-a']]);
   });
 });

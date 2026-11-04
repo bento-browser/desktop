@@ -64,8 +64,10 @@ function stubClosingBrowser(options: { keep?: ReadonlySet<number> } = {}): void 
         return { id, windowId: 1 };
       }),
       update: vi.fn().mockResolvedValue({ id: 123 }),
-      remove: vi.fn(async (id: number) => {
-        if (!options.keep?.has(id)) closed.add(id);
+      remove: vi.fn(async (ids: number | number[]) => {
+        for (const id of Array.isArray(ids) ? ids : [ids]) {
+          if (!options.keep?.has(id)) closed.add(id);
+        }
       }),
     },
   });
@@ -160,38 +162,143 @@ describe('protocol handler panel close', () => {
       [10, { preserveSessionMembership: true }],
     ]);
   });
+});
 
-  it('closes each selected tab once for a batch close action', async () => {
+describe('protocol handler batch tab close', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Normal tabs 10, 20 and 30 of ws-1, plus the given panels. Like the registry, a marked
+   * tab loses its workspace at once. `events` records the order of marks and restores.
+   */
+  function batchContext(options: { panelTabIds?: number[]; activeId?: number } = {}) {
+    const panelTabIds = options.panelTabIds ?? [];
+    let tabs = [10, 20, 30, ...panelTabIds].map((id) => ({
+      id,
+      windowId: 1,
+      workspaceId: 'ws-1' as string | undefined,
+      active: id === options.activeId,
+    }));
+    const closing = new Set<number>();
+    const events: string[] = [];
+    const endBatch = vi.fn(() => void events.push('end'));
     const ctx = createCloseContext({
       tabs: {
-        markClosing: vi.fn().mockResolvedValue(undefined),
-        snapshot: vi.fn().mockReturnValue([
-          { id: 10, windowId: 1, workspaceId: 'ws-1', active: false },
-          { id: 20, windowId: 1, workspaceId: 'ws-1', active: false },
-        ]),
-        isClosing: vi.fn().mockReturnValue(false),
+        snapshot: vi.fn(() => tabs),
+        isClosing: vi.fn((id: number) => closing.has(id)),
+        markClosing: vi.fn(async (id: number) => {
+          // A gap between marks would let this microtask run before the next tab's mark.
+          if (events.length === 0) queueMicrotask(() => events.push('async gap'));
+          events.push(`mark ${id}`);
+          closing.add(id);
+          tabs = tabs.map((tab) => (tab.id === id ? { ...tab, workspaceId: undefined } : tab));
+        }),
+        unmarkClosing: vi.fn(async (id: number) => void events.push(`unmark ${id}`)),
+        assignWorkspace: vi.fn().mockResolvedValue(undefined),
+        assignWorkspaceEagerly: vi.fn(),
+        beginBatchRemoval: vi.fn(() => endBatch),
       } as unknown as HandlerContext['tabs'],
       panels: {
-        findWorkspacesContainingTab: vi.fn().mockReturnValue([]),
+        findWorkspacesContainingTab: vi.fn((id: number) =>
+          panelTabIds.includes(id) ? ['ws-1'] : [],
+        ),
         findWorkspacesContainingPanelOrSubPanel: vi.fn().mockReturnValue([]),
+        getPanels: vi.fn().mockReturnValue(panelTabIds),
+        getPanelLayoutStatus: vi.fn().mockReturnValue('split-child'),
+        getPanelRestoreLocation: vi.fn(),
+        isDevtoolsPanel: vi.fn().mockReturnValue(false),
         getWidth: vi.fn(),
         getHeaderHidden: vi.fn().mockReturnValue(false),
+        remove: vi.fn().mockReturnValue(true),
+        insertAt: vi.fn(),
       } as unknown as HandlerContext['panels'],
     });
+    return { ctx, events, endBatch };
+  }
 
-    handle({ type: 'tabs/close', ids: [10, 20, 20, 999] }, ctx);
+  it('marks every tab in one synchronous pass, then removes them with one call', async () => {
+    stubClosingBrowser();
+    // The active tab is among them and needs no promotion, so it leaves with the batch.
+    const { ctx, events, endBatch } = batchContext({ activeId: 10 });
+
+    handle({ type: 'tabs/close', ids: [10, 20, 20, 999, 30] }, ctx);
 
     await vi.waitFor(() => {
-      expect(browser.tabs.remove).toHaveBeenCalledWith(10);
-      expect(browser.tabs.remove).toHaveBeenCalledWith(20);
+      expect(browser.tabs.remove).toHaveBeenCalledWith([10, 20, 30]);
     });
-    expect(browser.tabs.remove).toHaveBeenCalledTimes(2);
-    for (const id of [10, 20]) {
-      expect(vi.mocked(ctx.tabs.markClosing).mock.calls.filter(([tabId]) => tabId === id)).toEqual([
-        [id, { preserveSessionMembership: true }],
-        [id, { preserveSessionMembership: true }],
-      ]);
-    }
+    expect(events.slice(0, 4)).toEqual(['mark 10', 'mark 20', 'mark 30', 'async gap']);
+    expect(browser.tabs.remove).toHaveBeenCalledTimes(1);
+    // The batch path marks once; its removal does not mark again.
+    expect(vi.mocked(ctx.tabs.markClosing).mock.calls).toEqual(
+      [10, 20, 30].map((id) => [id, { preserveSessionMembership: true }]),
+    );
+    expect(ctx.tabs.beginBatchRemoval).toHaveBeenCalledWith([10, 20, 30]);
+    await vi.waitFor(() => expect(endBatch).toHaveBeenCalledTimes(1));
+  });
+
+  it('restores a batch tab that is still open once the call returns, before the batch ends', async () => {
+    stubClosingBrowser({ keep: new Set([20]) });
+    const { ctx, events } = batchContext();
+
+    handle({ type: 'tabs/close', ids: [10, 20, 30] }, ctx);
+
+    await vi.waitFor(() => expect(events).toContain('end'));
+    expect(events.filter((event) => event.startsWith('unmark'))).toEqual(['unmark 20']);
+    expect(events.indexOf('unmark 20')).toBeLessThan(events.indexOf('end'));
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledTimes(1);
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(20, 'ws-1', {});
+  });
+
+  it('closes the tabs one by one when the batch call rejects', async () => {
+    stubClosingBrowser({ keep: new Set([30]) });
+    const removeOne = vi.mocked(browser.tabs.remove).getMockImplementation()!;
+    // One id Firefox no longer knows rejects the whole call.
+    vi.mocked(browser.tabs.remove).mockImplementation(async (ids) => {
+      if (Array.isArray(ids)) throw new Error('Invalid tab ID: 20');
+      await removeOne(ids);
+    });
+    const { ctx, events } = batchContext();
+
+    handle({ type: 'tabs/close', ids: [10, 20, 30] }, ctx);
+
+    await vi.waitFor(() => expect(events).toContain('end'));
+    expect(vi.mocked(browser.tabs.remove).mock.calls).toEqual([[[10, 20, 30]], [10], [20], [30]]);
+    // The per-tab path still puts a kept tab back.
+    expect(events.filter((event) => event.startsWith('unmark'))).toEqual(['unmark 30']);
+  });
+
+  it('promotes a panel for the active tab when the batch takes every other normal tab', async () => {
+    stubClosingBrowser();
+    const { ctx, events } = batchContext({ panelTabIds: [40], activeId: 10 });
+
+    handle({ type: 'tabs/close', ids: [10, 20, 30] }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.update).toHaveBeenCalledWith(40, { active: true });
+      expect(browser.tabs.remove).toHaveBeenCalledWith(10);
+    });
+    expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 40);
+    // All three rows are marked together, the active one among them.
+    expect(events.slice(0, 4)).toEqual(['mark 10', 'mark 20', 'mark 30', 'async gap']);
+    expect(browser.tabs.remove).toHaveBeenCalledWith([20, 30]);
+    expect(ctx.tabs.beginBatchRemoval).toHaveBeenCalledWith([20, 30]);
+  });
+
+  it('keeps a delayed panel removal pending until it settles', async () => {
+    stubClosingBrowser();
+    const { ctx, endBatch } = batchContext({ panelTabIds: [40] });
+
+    handle({ type: 'tabs/close', ids: [10, 40] }, ctx);
+
+    await vi.waitFor(() => expect(browser.tabs.remove).toHaveBeenCalledWith([10]));
+    expect(ctx.tabs.beginBatchRemoval).toHaveBeenCalledWith([10, 40]);
+    expect(browser.tabs.remove).not.toHaveBeenCalledWith(40);
+    expect(endBatch).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(browser.tabs.remove).toHaveBeenCalledWith(40), { timeout: 2000 });
+    await vi.waitFor(() => expect(endBatch).toHaveBeenCalledTimes(1));
   });
 });
 

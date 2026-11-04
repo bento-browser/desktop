@@ -336,7 +336,9 @@ Users can Cmd/Ctrl-click individual tabs or Shift-click a range, then right-clic
 the selected group to reload those tabs together or move them together into a
 newly created workspace.
 When multiple tabs are selected, Cmd/Ctrl+W closes the selected tabs and the
-right-click menu exposes the same close-selected action.
+right-click menu exposes the same close-selected action. The selected rows leave
+the sidebar together. A tab that asks to confirm leaving (a page with unsaved
+changes) and is kept stays in its workspace while the others close.
 Right-clicking the sidebar exposes "Select all tabs", which selects every
 regular tab in the active workspace's sidebar list.
 Right-clicking the sidebar exposes "Reopen closed tab", which restores the most

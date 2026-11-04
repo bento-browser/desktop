@@ -40,7 +40,12 @@ export type EmptiedWorkspaceAction =
   | { kind: 'close-window' };
 
 export interface EmptiedWorkspaceDeps {
-  tabs: { snapshot(): TabSnapshot[]; isClosing(tabId: number): boolean };
+  tabs: {
+    snapshot(): TabSnapshot[];
+    isClosing(tabId: number): boolean;
+    /** True for a tab of a batched close whose removal has not been reported yet. */
+    isPendingBatchRemoval(tabId: number): boolean;
+  };
   panels: { getPanels(workspaceId: string): number[] };
   workspaces: {
     getActiveId(windowId: number): string | null;
@@ -77,6 +82,13 @@ export function afterTabRemoved(
       (t) => t.windowId === windowId && t.workspaceId === activeWsId && !panelTabIds.includes(t.id),
     )
   ) {
+    return { kind: 'none' };
+  }
+  // A batched close marks all its tabs before removing any, so the tabs still waiting in it
+  // already look gone: the first removal would read as the workspace emptying, and the next one
+  // could judge the replacement workspace that decision created empty too. Only the removal that
+  // leaves no pending tab behind decides.
+  if (others.some((t) => t.windowId === windowId && deps.tabs.isPendingBatchRemoval(t.id))) {
     return { kind: 'none' };
   }
 
