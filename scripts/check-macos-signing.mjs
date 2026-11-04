@@ -2,7 +2,8 @@
 
 // Checks the collected macOS DMG against its signing record (run by
 // build-release.sh after collection). Mounts the DMG read-only, verifies the
-// app's signature, and confirms it matches the record. A Developer ID record
+// app's signature, confirms it matches the record, and confirms the app ships
+// the recorded uBlock Origin XPI (scripts/shipped-ublock.mjs). A Developer ID record
 // also verifies the DMG's own signature (an ad-hoc DMG is unsigned by design).
 // When config/release-security.json platformSigning.macosDeveloperIdTeam is
 // set, only a notarized Developer ID build for that team passes.
@@ -19,6 +20,7 @@ import {
   readSigningRecord,
   runCommand,
 } from './macos-sign-release.mjs';
+import { recordedUblockSha256, shippedUblockProblemIn } from './shipped-ublock.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -113,8 +115,11 @@ function withMountedDmg(run, dmg, use) {
   }
 }
 
-/** Observes the app inside `dmg` and returns the list of problems (empty when it matches). */
-export function checkSigning({ dmg, record, team = '', run = runCommand }) {
+/**
+ * Observes the app inside `dmg` and returns the list of problems (empty when it matches): its
+ * signature, and the uBlock Origin XPI it ships (`ublockSha256`, the SHA-256 the README records).
+ */
+export function checkSigning({ dmg, record, team = '', run = runCommand, ublockSha256 = recordedUblockSha256(ROOT) }) {
   const needsStaple = record.notarized || Boolean(team);
   return withMountedDmg(run, dmg, (mountPoint) => {
     const apps = fs.readdirSync(mountPoint).filter((name) => name.endsWith('.app'));
@@ -123,13 +128,17 @@ export function checkSigning({ dmg, record, team = '', run = runCommand }) {
     const observed = observeSignature(run, app, ['--deep', '--strict']);
     const observedDmg = record.mode === 'developer-id' ? observeSignature(run, dmg, ['--strict']) : undefined;
     const validates = (target) => run('xcrun', ['stapler', 'validate', target], { capture: true }).status === 0;
-    return signingProblems({
-      record,
-      observed,
-      observedDmg,
-      stapled: needsStaple ? { app: validates(app), dmg: validates(dmg) } : undefined,
-      team,
-    });
+    const ublockProblem = shippedUblockProblemIn(app, ublockSha256);
+    return [
+      ...signingProblems({
+        record,
+        observed,
+        observedDmg,
+        stapled: needsStaple ? { app: validates(app), dmg: validates(dmg) } : undefined,
+        team,
+      }),
+      ...(ublockProblem ? [ublockProblem] : []),
+    ];
   });
 }
 
@@ -139,7 +148,7 @@ function main(argv) {
   const record = readSigningRecord(path.resolve(argv[1]));
   const team = requiredTeam();
   const problems = checkSigning({ dmg, record, team });
-  if (problems.length) throw new Error(`${path.basename(dmg)} does not match its signing record:\n- ${problems.join('\n- ')}`);
+  if (problems.length) throw new Error(`${path.basename(dmg)} fails the collected-artifact checks (signing record, shipped uBlock Origin XPI):\n- ${problems.join('\n- ')}`);
   const dmgNote = record.mode === 'ad-hoc' ? '; the DMG itself is unsigned by design' : '; DMG signature verified';
   process.stdout.write(
     `check-macos-signing: ${path.basename(dmg)} is ${record.mode}${record.teamId ? ` (team ${record.teamId})` : ''}, notarized ${record.notarized}${dmgNote}\n`,

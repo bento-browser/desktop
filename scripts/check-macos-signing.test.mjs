@@ -4,8 +4,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { checkSigning, requiredTeam, signingProblems } from './check-macos-signing.mjs';
+import { sha256Of, UBLOCK_XPI } from './shipped-ublock.mjs';
 
 const TEAM = 'ABCDE12345';
+const XPI_BYTES = 'signed uBlock Origin xpi';
+const XPI_SHA256 = sha256Of(XPI_BYTES);
 const adHocRecord = { mode: 'ad-hoc', teamId: null, notarized: false };
 const developerIdRecord = { mode: 'developer-id', teamId: TEAM, notarized: true };
 const adHocApp = { verified: true, adhoc: true, teamId: null, authorities: [] };
@@ -134,8 +137,9 @@ test('the required team comes from config/release-security.json', () => {
   assert.equal(requiredTeam(path.resolve(import.meta.dirname, '..')), '');
 });
 
-// A fake hdiutil that mounts a directory holding `apps`, and codesign/stapler answers.
-function mountedDmg({ apps = ['Bento.app'], verify = 0, dmgVerify = 0, dmgTeam = TEAM, stapler = 0 } = {}) {
+// A fake hdiutil that mounts a directory holding `apps` (each with the uBlock Origin XPI `xpi`
+// ships, none when null), and codesign/stapler answers.
+function mountedDmg({ apps = ['Bento.app'], verify = 0, dmgVerify = 0, dmgTeam = TEAM, stapler = 0, xpi = XPI_BYTES, xpiName = UBLOCK_XPI } = {}) {
   const calls = [];
   let mountPoint;
   const run = (command, args) => {
@@ -143,7 +147,11 @@ function mountedDmg({ apps = ['Bento.app'], verify = 0, dmgVerify = 0, dmgTeam =
     const reply = (status = 0, stderr = '') => ({ status, stdout: '', stderr });
     if (command === 'hdiutil' && args[0] === 'attach') {
       mountPoint = args[args.indexOf('-mountpoint') + 1];
-      for (const app of apps) fs.mkdirSync(path.join(mountPoint, app));
+      for (const app of apps) {
+        const extensions = path.join(mountPoint, app, 'Contents', 'Resources', 'distribution', 'extensions');
+        fs.mkdirSync(extensions, { recursive: true });
+        if (xpi !== null) fs.writeFileSync(path.join(extensions, xpiName), xpi);
+      }
     } else if (command === 'codesign' && args[0] === '--verify') {
       if (args.at(-1).endsWith('.dmg')) return reply(dmgVerify, dmgVerify ? 'invalid signature' : '');
       return reply(verify, verify ? 'a sealed resource is missing' : '');
@@ -153,7 +161,7 @@ function mountedDmg({ apps = ['Bento.app'], verify = 0, dmgVerify = 0, dmgTeam =
     } else if (command === 'xcrun') {
       return reply(stapler);
     } else if (command === 'hdiutil' && args[0] === 'detach') {
-      for (const app of apps) fs.rmdirSync(path.join(mountPoint, app));
+      for (const app of apps) fs.rmSync(path.join(mountPoint, app), { recursive: true });
     }
     return reply();
   };
@@ -162,7 +170,7 @@ function mountedDmg({ apps = ['Bento.app'], verify = 0, dmgVerify = 0, dmgTeam =
 
 test('the DMG is mounted read-only, the app checked, and the DMG always detached', () => {
   const ok = mountedDmg();
-  assert.deepEqual(checkSigning({ dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: ok.run }), []);
+  assert.deepEqual(checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: ok.run }), []);
   const app = path.join(ok.mountPoint(), 'Bento.app');
   assert.deepEqual(ok.calls, [
     ['hdiutil', 'attach', '-readonly', '-nobrowse', '-mountpoint', ok.mountPoint(), '/r/Bento.dmg'],
@@ -177,24 +185,38 @@ test('the DMG is mounted read-only, the app checked, and the DMG always detached
   assert.ok(!fs.existsSync(ok.mountPoint()), 'the mount point is removed');
 
   const broken = mountedDmg({ verify: 1, stapler: 1 });
-  const problems = checkSigning({ dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: broken.run });
+  const problems = checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: broken.run });
   assert.match(problems.join('\n'), /--strict failed: a sealed resource is missing[\s\S]*stapler validate failed on the app/);
   assert.deepEqual(broken.calls.at(-1), ['hdiutil', 'detach', broken.mountPoint()]);
 
   const badDmg = mountedDmg({ dmgVerify: 1 });
   assert.match(
-    checkSigning({ dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: badDmg.run }).join('\n'),
+    checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: badDmg.run }).join('\n'),
     /--strict failed on the DMG: invalid signature/,
   );
   const otherTeam = mountedDmg({ dmgTeam: 'ZZZZZ99999' });
   assert.match(
-    checkSigning({ dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: otherTeam.run }).join('\n'),
+    checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: developerIdRecord, team: TEAM, run: otherTeam.run }).join('\n'),
     /the DMG should be signed by team ABCDE12345 but is signed by ZZZZZ99999/,
   );
 
   const two = mountedDmg({ apps: ['Bento.app', 'Other.app'] });
-  assert.throws(() => checkSigning({ dmg: '/r/Bento.dmg', record: adHocRecord, run: two.run }), /expected one app/);
+  assert.throws(() => checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: adHocRecord, run: two.run }), /expected one app/);
   assert.deepEqual(two.calls.at(-1), ['hdiutil', 'detach', two.mountPoint()]);
+});
+
+test('the app inside the DMG must ship the recorded uBlock Origin XPI at its exact path', () => {
+  const check = (options) => checkSigning({
+    ublockSha256: XPI_SHA256,
+    dmg: '/r/Bento.dmg',
+    record: developerIdRecord,
+    team: TEAM,
+    run: mountedDmg(options).run,
+  });
+  assert.deepEqual(check({}), []);
+  assert.match(check({ xpi: 'an older or repacked xpi' }).join('\n'), /has SHA-256 [0-9a-f]{64}, but the recorded uBlock Origin XPI is /);
+  assert.match(check({ xpi: null }).join('\n'), /is missing: the app must ship the uBlock Origin XPI at exactly this path/);
+  assert.match(check({ xpiName: 'other@test.xpi' }).join('\n'), /is missing: the app must ship/);
 });
 
 test('an ad-hoc record with no team skips stapler validation', () => {
@@ -203,7 +225,7 @@ test('an ad-hoc record with no team skips stapler validation', () => {
     command === 'codesign' && args[0] === '-dvv'
       ? { status: 0, stdout: '', stderr: 'Signature=adhoc\nTeamIdentifier=not set\n' }
       : adHoc.run(command, args);
-  assert.deepEqual(checkSigning({ dmg: '/r/Bento.dmg', record: adHocRecord, run }), []);
+  assert.deepEqual(checkSigning({ ublockSha256: XPI_SHA256, dmg: '/r/Bento.dmg', record: adHocRecord, run }), []);
   assert.ok(!adHoc.calls.some(([command]) => command === 'xcrun'));
   assert.ok(!adHoc.calls.some((call) => call.at(-1) === '/r/Bento.dmg' && call[0] === 'codesign'), 'an ad-hoc DMG is not signature-checked');
 });

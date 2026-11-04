@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { findCiBuildViolations } from './ci-build-guard.mjs';
+import { readXpiManifest } from './xpi-manifest.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -82,22 +84,25 @@ for (const marker of [
   );
 }
 
-const ublockManifest = JSON.parse(read('extensions/ublock-origin/manifest.json'));
-const ublockReadme = read('extensions/ublock-origin/README.md');
+// uBlock Origin ships as the original AMO-signed XPI so users can remove it. Its README holds the
+// provenance, and the file must match the recorded version, id and SHA-256. A manifest.json next to
+// it would make the installer treat the folder as a built-in add-on, which cannot be removed.
+const ublockDir = 'extensions/ublock-origin';
+const ublockXpi = path.join(root, ublockDir, 'uBlock0@raymondhill.net.xpi');
+if (fs.existsSync(path.join(root, ublockDir, 'manifest.json'))) {
+  throw new Error('uBlock Origin must stay a distribution add-on: remove extensions/ublock-origin/manifest.json.');
+}
+const ublockManifest = readXpiManifest(ublockXpi);
+const ublockReadme = read(`${ublockDir}/README.md`);
 if (ublockManifest.browser_specific_settings?.gecko?.id !== 'uBlock0@raymondhill.net') {
   throw new Error('uBlock Origin add-on id changed unexpectedly.');
 }
 if (!ublockReadme.includes(`Version: ${ublockManifest.version}`)) {
-  throw new Error('uBlock Origin README version does not match manifest.json.');
+  throw new Error('uBlock Origin README version does not match the XPI manifest.');
 }
-if (!/SHA-256: `[a-f0-9]{64}`/.test(ublockReadme)) {
-  throw new Error('uBlock Origin provenance SHA-256 is missing.');
-}
-const runtimeEntries = JSON.parse(read('extensions/ublock-origin/.bento-runtime-entries.json'));
-for (const entry of runtimeEntries) {
-  if (!fs.existsSync(path.join(root, 'extensions/ublock-origin', entry))) {
-    throw new Error(`uBlock Origin runtime entry is missing: ${entry}`);
-  }
+const ublockSha256 = crypto.createHash('sha256').update(fs.readFileSync(ublockXpi)).digest('hex');
+if (!ublockReadme.includes(`SHA-256: \`${ublockSha256}\``)) {
+  throw new Error('uBlock Origin XPI SHA-256 does not match the README provenance.');
 }
 
 // CI never builds the application: Bento targets macOS only for now, and

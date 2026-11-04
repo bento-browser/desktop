@@ -6,14 +6,14 @@ import path from 'node:path';
 import process from 'node:process';
 import { parse } from 'yaml';
 
+import { readXpiManifest } from './xpi-manifest.mjs';
+
 const root = path.resolve(import.meta.dirname, '..');
 const outputDir = path.resolve(root, process.argv[2] || 'release-out');
 // The SBOM reads the one committed lock; the env override exists for tests.
 const lockPath = path.resolve(root, process.env.BENTO_LOCK_PATH || 'pnpm-lock.yaml');
 const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
-const ublock = JSON.parse(
-  fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
-);
+const ublock = readXpiManifest(path.join(root, 'extensions/ublock-origin/uBlock0@raymondhill.net.xpi'));
 const shellPackage = JSON.parse(
   fs.readFileSync(path.join(root, 'extensions/bento-shell/package.json'), 'utf8'),
 );

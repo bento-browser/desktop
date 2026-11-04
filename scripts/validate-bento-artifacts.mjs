@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { readApplicationBuildId, readIniValue, updateMarUrl } from './bento-build.mjs';
 import { BUILD_MODES } from './build-mode.mjs';
+import { recordedUblockSha256, shippedUblockProblem, shippedUblockProblemIn, UBLOCK_XPI } from './shipped-ublock.mjs';
 import {
   configuredUpdateState,
   effectiveUpdaterState,
@@ -96,7 +97,7 @@ function packagedApplicationBuildId(manifest, root, application) {
  * (optionally under one leading directory, as `mach package` writes it), and that
  * bundle's application.ini must carry the BuildID of the staged application.
  */
-function assertMacTarContents(file, application, packagedId) {
+function assertMacTarContents(file, application, packagedId, ublockSha256) {
   const label = path.basename(file);
   const bundle = path.basename(application);
   if (!bundle.endsWith('.app')) fail(`${label} is a macOS package, but the application is not an app bundle: ${bundle}`);
@@ -117,6 +118,18 @@ function assertMacTarContents(file, application, packagedId) {
   const buildId = readApplicationBuildId(ini.stdout);
   if (!buildId) fail(`${label} has no [App] BuildID in ${entries[0]}`);
   if (buildId !== packagedId) fail(`${label} build ID ${buildId} does not match the packaged application ${packagedId}`);
+
+  // The archive must carry the recorded uBlock Origin XPI at its exact path, not just some file there.
+  const xpiName = `${bundle}/Contents/Resources/distribution/extensions/${UBLOCK_XPI}`;
+  const xpiEntries = listing.stdout.split(/\r?\n/).filter((entry) => {
+    const parts = entry.split('/');
+    return parts.length <= 7 && parts.slice(-6).join('/') === xpiName;
+  });
+  if (xpiEntries.length !== 1) fail(`${label} must hold exactly one ${xpiName}, found ${xpiEntries.length}`);
+  const xpi = spawnSync('tar', ['-xOf', file, '--', xpiEntries[0]], { maxBuffer: 256 * 1024 * 1024 });
+  if (xpi.error || xpi.status !== 0) fail(`${label} cannot be read: ${xpi.error?.message || String(xpi.stderr).trim() || 'tar failed'}`);
+  const problem = shippedUblockProblem(`${label}:${xpiEntries[0]}`, ublockSha256, xpi.stdout);
+  if (problem) fail(problem);
 }
 
 function parseUpdateXml(file) {
@@ -284,6 +297,10 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   const application = path.resolve(root, manifest.application);
   if (!fs.existsSync(application) || !fs.statSync(application).isDirectory()) fail(`application bundle is missing: ${manifest.application}`);
   if (!walkFiles(application).some((file) => path.basename(file) === 'precomplete')) fail('application bundle is missing precomplete');
+  // The staged app must ship the recorded uBlock Origin XPI, not any file the packaging wildcard matched.
+  const ublockSha256 = recordedUblockSha256(root);
+  const ublockProblem = shippedUblockProblemIn(application, ublockSha256);
+  if (ublockProblem) fail(ublockProblem);
 
   if (!manifest.objDist) fail('artifact metadata is missing objDist');
   const objDist = path.resolve(root, manifest.objDist);
@@ -300,7 +317,7 @@ export function validateArtifacts(repoRoot = DEFAULT_ROOT) {
   if (packages.length === 0) fail(`no primary application package found under ${path.relative(root, objDist)}`);
   const packagedId = packagedApplicationBuildId(manifest, root, application);
   for (const file of packages.filter((name) => name.endsWith('.mac.tar'))) {
-    assertMacTarContents(path.join(objDist, file), application, packagedId);
+    assertMacTarContents(path.join(objDist, file), application, packagedId, ublockSha256);
   }
 
   if (!updates) {

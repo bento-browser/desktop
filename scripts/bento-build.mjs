@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { completeArchiveExtraction } from './archive-members.mjs';
 import { BUILD_MODES, isReleaseBuild, resolveBuildMode } from './build-mode.mjs';
 import { assertNoDevReloadInPackage } from './dev-reload.mjs';
+import { distributionAddonMozBuild, distributionAddonXpi } from './distribution-addons.mjs';
 import { assertShellMuxSource, stagedBrowserDir } from './muxui-source.mjs';
 import {
   activeMozconfigLines,
@@ -657,7 +658,8 @@ function extensionNames(ctx) {
   const root = path.join(ctx.root, 'extensions');
   if (!fs.existsSync(root)) return [];
   return fs.readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_') && fs.existsSync(path.join(root, entry.name, 'manifest.json')))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_')
+      && (fs.existsSync(path.join(root, entry.name, 'manifest.json')) || distributionAddonXpi(path.join(root, entry.name))))
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
 }
@@ -989,6 +991,8 @@ function addonRuntimeFiles(ctx, name) {
 }
 
 function generatedAddonFiles(ctx, name) {
+  const xpi = distributionAddonXpi(path.join(ctx.root, 'extensions', name));
+  if (xpi) return { mozBuild: distributionAddonMozBuild(name, xpi) };
   const manifest = readJson(path.join(ctx.root, 'extensions', name, 'manifest.json'));
   const id = manifest.applications?.gecko?.id || manifest.browser_specific_settings?.gecko?.id;
   const jar = ['browser.jar:', ...addonRuntimeFiles(ctx, name).map((file) => `    builtin-addons/${name}/${file} (${file})`), ''].join('\n');

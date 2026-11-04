@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { assertLocalBuildPaths } from './bento-build.mjs';
 import { isReleaseBuild } from './build-mode.mjs';
+import { distributionAddonMozBuild, distributionAddonXpi } from './distribution-addons.mjs';
 import { releaseManifest } from './dev-reload.mjs';
 import { copyFileIfChanged, pruneTree, writeFileIfChanged } from './write-if-changed.mjs';
 
@@ -98,14 +99,19 @@ function manifestId(manifest) {
   return manifest?.applications?.gecko?.id ?? manifest?.browser_specific_settings?.gecko?.id;
 }
 
-/** Read-only discovery shared with native-import verification. */
-export function builtinAddonSources(repoRoot) {
+/**
+ * Read-only discovery shared with native-import verification. A folder with a manifest.json is a
+ * built-in add-on; one holding a single signed XPI is a distribution add-on (`xpi` is set).
+ */
+export function addonSources(repoRoot) {
   const extensionsRoot = path.join(repoRoot, 'extensions');
   return fs.readdirSync(extensionsRoot, { withFileTypes: true })
     .sort((a, b) => compareNames(a.name, b.name))
     .flatMap((entry) => {
       if (!entry.isDirectory() || entry.name.startsWith('_')) return [];
       const source = path.join(extensionsRoot, entry.name);
+      const xpi = distributionAddonXpi(source);
+      if (xpi) return [{ name: entry.name, id: xpi.slice(0, -'.xpi'.length), source, xpi }];
       const manifestPath = path.join(source, 'manifest.json');
       if (!fs.existsSync(manifestPath)) return [];
       const id = manifestId(readJson(manifestPath));
@@ -163,6 +169,17 @@ function replaceMarkerBlock(file, names) {
   writeFileIfChanged(file, `${base}\n\n${builtinAddonBuildBlock(names)}\n`);
 }
 
+/** Copies the XPI unchanged, with the moz.build that places it in `distribution/extensions/`. */
+function installDistributionAddon(name, source, xpi, destination) {
+  if (!fs.lstatSync(destination, { throwIfNoEntry: false })?.isDirectory()) {
+    fs.rmSync(destination, { recursive: true, force: true });
+    fs.mkdirSync(destination, { recursive: true });
+  }
+  pruneTree(destination, new Set([xpi, 'moz.build']));
+  copyFileIfChanged(path.join(source, xpi), path.join(destination, xpi));
+  writeFileIfChanged(path.join(destination, 'moz.build'), distributionAddonMozBuild(name, xpi));
+}
+
 export function installBuiltinAddons(options = {}) {
   const repoRoot = path.resolve(
     options.repoRoot || process.env.BENTO_REPO_ROOT || DEFAULT_REPO_ROOT,
@@ -176,8 +193,13 @@ export function installBuiltinAddons(options = {}) {
   }
 
   const addons = [];
-  for (const { name, id, source } of builtinAddonSources(repoRoot)) {
+  for (const { name, id, source, xpi } of addonSources(repoRoot)) {
     const destination = path.join(engineExtensionsRoot, name);
+    if (xpi) {
+      installDistributionAddon(name, source, xpi, destination);
+      addons.push({ name, id, fileCount: 1, destination });
+      continue;
+    }
     const sources = new Map();
     for (const runtimeEntry of runtimeEntries(source)) {
       const runtimeSource = path.join(source, runtimeEntry);

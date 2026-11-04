@@ -3257,16 +3257,14 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   - `scripts/import.sh`
   - `scripts/build-bento.sh`
   - `scripts/sync-builtin-addon-symlinks.sh`
-  - `extensions/ublock-origin/.bento-runtime-entries.json`
   - `extensions/bento-tools/experiments/bento-privacy/**`
   - `extensions/bento-tools/experiments/bento-external-sessions/**`
   - `extensions/bento-shell/experiments/chrome-bridge/**`
 - Bento functionality: Bento's independent installer packages its privileged
-  built-in extensions and the bundled uBlock Origin extension into Firefox's
-  `builtin-addons/` runtime location. The copy step lets an extension declare a
-  per-extension runtime entry list so uBlock Origin keeps its required `js/`,
-  `css/`, `lib/`, `assets/`, locale, and HTML entry files without broadening the
-  copy surface of Bento's own source-based extensions. Release builds keep
+  built-in extensions into Firefox's `builtin-addons/` runtime location. The copy
+  step lets an extension declare a per-extension runtime entry list without
+  broadening the copy surface of Bento's own source-based extensions. (uBlock
+  Origin is not copied this way any more; see Distribution Add-On below.) Release builds keep
   `MOZ_REQUIRE_SIGNING=1`; Bento-owned privileged add-ons use Firefox's built-in
   location rather than weakening ordinary XPI signature enforcement. Release
   imports copy manifests without the shell's dev-only `dev-reload` command, so
@@ -3279,14 +3277,12 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   WebExtension installation cannot provide Bento's bundled default add-ons.
 - Firefox update risk: upstream changes to built-in add-on packaging, jar
   manifest handling, add-on manifest validation, or Firefox's extension
-  bootstrap rules can stop bento-tools, bento-shell, or uBlock Origin from
-  loading.
+  bootstrap rules can stop bento-tools or bento-shell from loading.
 - Regression checks for future updates: run `pnpm run ext:build` and
   `pnpm run import`, confirm `engine/browser/extensions/bento-tools/jar.mn`
   includes the tools experiments and the shell jar includes the chrome bridge, confirm
-  `engine/browser/extensions/ublock-origin/jar.mn` includes uBO's `js/`, `css/`,
-  `lib/`, and `assets/` folders, launch a fresh build, and verify `about:addons`
-  shows Bento Tools, Bento Shell, and uBlock Origin. Run
+  launch a fresh build and verify `AddonManager` lists Bento Tools and Bento Shell as
+  built-in. Run
   `BENTO_RELEASE=1 pnpm run ext:build && BENTO_RELEASE=1 pnpm run import` and
   confirm `pnpm run release:security-check:shell` passes (no `dev-reload` in the
   imported shell manifest or bundle). A release `pnpm run package` also scans the
@@ -3296,9 +3292,78 @@ build` installs built-in add-ons, confirm that scan still finds the add-on
   (it fails when it finds none). Running only the source
   overlay helper does not prove this surface is valid because it bypasses
   Bento's branding, built-in add-on installer, patch, and symlink steps.
-- Rollback or migration notes: if uBlock Origin is removed, remove
-  `extensions/ublock-origin/` and its runtime-entry file. Keep the installer in
-  Bento while Bento bundles privileged built-in extensions.
+- Rollback or migration notes: keep the installer in Bento while Bento bundles
+  privileged built-in extensions.
+
+### Distribution Add-On (uBlock Origin)
+
+- Status: Active
+- Last updated: 2026-11-04
+- Files or patches:
+  - `extensions/ublock-origin/uBlock0@raymondhill.net.xpi` (the AMO-signed file,
+    unmodified) and `extensions/ublock-origin/README.md`
+  - `scripts/distribution-addons.mjs`, `scripts/install-builtin-addons.mjs`,
+    `scripts/bento-build.mjs`, `scripts/native-build-state.mjs`,
+    `scripts/check-import-output.mjs`, `scripts/check-security-invariants.mjs`,
+    `scripts/xpi-manifest.mjs`, `scripts/shipped-ublock.mjs`,
+    `scripts/validate-bento-artifacts.mjs`, `scripts/check-macos-signing.mjs`
+  - `patches/core-ui/21-package-distribution-extensions.patch` (`browser/installer/package-manifest.in`)
+  - `extensions/bento-tools/experiments/bento-privacy/api.js` and `schema.json`
+    (`grantUBlockPrivateAccess`), `extensions/bento-tools/src/background.ts`;
+    the `bento-tools` manifest version was bumped (0.1.16) because the experiment
+    schema gained a function
+  - `scripts/firefox-compat-registry.mjs` (`extensions.installDistroAddons`,
+    `XPIProvider.installDistributionAddons scan`, `XRE_APP_DISTRIBUTION_DIR`,
+    `browser/app/distribution moz.build`, `package-manifest distribution folder`,
+    `extensions.installedDistroAddon.<id>`, `installDistributionAddon install source`,
+    `resource://gre/modules/AddonManager.sys.mjs`,
+    `resource://gre/modules/ExtensionPermissions.sys.mjs`, `AddonManager.getAddonByID`,
+    `AddonWrapper.reload`, `ExtensionPermissions.get`, `ExtensionPermissions.add`,
+    `internal:privateBrowsingAllowed`), and the two module entries' lines in the probe
+    list of `src/browser/base/content/bento-shell-mount.js` (the only mount script change)
+- Bento functionality: uBlock Origin is installed automatically and the user can
+  remove it. Firefox gives built-in add-ons no uninstall permission, so it ships as
+  a distribution add-on instead: the import copies the signed XPI into
+  `engine/browser/extensions/ublock-origin/` with a generated `moz.build` that puts
+  it in the app's `distribution/extensions/` (macOS:
+  `Bento.app/Contents/Resources/distribution/extensions/`), and Firefox installs it
+  into the profile at startup. Once removed it is not installed again. It updates
+  itself from addons.mozilla.org. `bento-tools` allows it in private windows once.
+- Vanilla Firefox surface touched or depended on: the `XREAppDist` folder and
+  `XPIProvider.installDistributionAddons` / `XPIInstall.installDistributionAddon`
+  (the `extensions.installDistroAddons` and `extensions.installedDistroAddon.<id>`
+  prefs), the `browser/app/distribution/moz.build` layout, `package-manifest.in`
+  (one `#else` branch), and `ExtensionPermissions` with the
+  `internal:privateBrowsingAllowed` permission. The build keeps
+  `MOZ_REQUIRE_SIGNING=1`, so the add-on must stay signed. No Mozilla official
+  build flag is set: `--built-by-mozilla` would install `distribution.ini`, which
+  names the build Mozilla official.
+- Why this cannot stay extension-only: only a file in the app's distribution folder
+  is installed by Firefox without a prompt and with the uninstall permission, and
+  that folder must be built and packaged. The private window access needs the
+  stored permission, which an experiment can write and an ordinary extension cannot.
+- Firefox update risk: a change to where Firefox looks for distribution add-ons, to
+  the install-once rule, to how a distribution install is recorded, to
+  `ExtensionPermissions`, or to what `package-manifest.in` packages can leave uBlock
+  Origin uninstalled, reinstalled after removal, or without private window access.
+- Regression checks for future updates: run
+  `node scripts/check-firefox-compat.mjs --engine engine` and read the entries above.
+  After `pnpm run import`, `check-import-output` compares the engine XPI with the
+  repository file. In a built app, confirm
+  `Contents/Resources/distribution/extensions/uBlock0@raymondhill.net.xpi` exists.
+  Launch a fresh profile (not Marionette, or with `remote.prefs.recommended` false):
+  `AddonManager.getAddonByID('uBlock0@raymondhill.net')` is active, not built-in,
+  not hidden, and its permissions include uninstall; it is allowed in private
+  windows. Uninstall it, relaunch twice: it stays removed. Run the packager
+  (`pnpm run package`), then `node scripts/validate-bento-artifacts.mjs`: it fails unless
+  the staged app holds `distribution/extensions/uBlock0@raymondhill.net.xpi` with the
+  README's SHA-256 (the collected DMG gets the same check in `check-macos-signing.mjs`).
+- Rollback or migration notes: to make it a built-in add-on again, restore an
+  unpacked `extensions/ublock-origin/` with a `manifest.json`, delete the XPI and
+  the patch, and remove the grant. A profile that already installed the distribution
+  copy keeps its own `<profile>/extensions/uBlock0@raymondhill.net.xpi`, so a
+  rollback needs a profile migration. Likewise a downgrade to a build that bundles it
+  registers the built-in copy again, which can bring back one the user removed.
 
 ## Private And Internal Firefox Members
 
@@ -3718,6 +3783,20 @@ below is generated; edit the registry, then run
 | `UpdateService getCanApplyUpdates` | source (engine only) | Decides whether an install can take updates; on macOS a stock build assumes the privileged helper can elevate when the install is not writable. Bento defers elevated updates and plans a patch that returns false there, so this function is where a manual-update fallback hooks in. | `docs/build-tooling.md#getCanApplyUpdates` | `toolkit/mozapps/update/UpdateService.sys.mjs:702` |
 | `UpdateService AppUpdateURL policy` | source (engine only) | CheckerService.getUpdateURL replaces the compiled update URL with the AppUpdateURL enterprise policy when one is active. The isolated round trip points a release build at the test update host this way, through the macOS preferences reader, so no test hostname is compiled in. | `docs/build-tooling.md#AppUpdateURL` | `toolkit/mozapps/update/UpdateService.sys.mjs:5506` |
 | `mach macos-sign command` | source (engine only) | Release signing runs mach macos-sign for the nested signing order and entitlement map. Its channel auto-detection accepts only org.mozilla bundle ids, so Bento passes the channel explicitly, and it cannot sign the symlinked objdir app. | `docs/build-tooling.md#macos-sign` | `tools/signing/macos/mach_commands.py:24` |
+| `extensions.installDistroAddons` | source (engine only) | Bento sets nothing: the default (true) makes Firefox look in distribution/extensions on every startup and install what it finds. uBlock Origin reaches the profile this way, so a build or profile that turns the pref off installs no uBlock Origin. | `scripts/distribution-addons.mjs#distribution` | `toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs:76` |
+| `XPIProvider.installDistributionAddons scan` | source (engine only) | Installs each <id>.xpi in XREAppDist/extensions (Contents/Resources/distribution/extensions on macOS) into the profile at startup and ignores any file that is not named after a valid add-on id, which is why the repository file is named <id>.xpi. | `scripts/distribution-addons.mjs#FINAL_TARGET_FILES.distribution.extensions` | `toolkit/mozapps/extensions/internal/XPIProvider.sys.mjs:3200` |
+| `XRE_APP_DISTRIBUTION_DIR` | source (engine only) | XREAppDist is <GreD>/distribution, the app resources folder and not browser/. The generated moz.build clears DIST_SUBDIR for that reason. A move of this folder leaves the XPI where Firefox no longer looks and uBlock Origin is not installed. | `scripts/distribution-addons.mjs#DIST_SUBDIR` | `toolkit/xre/nsXREDirProvider.cpp:480` |
+| `browser/app/distribution moz.build` | source (engine only) | The model for the generated moz.build: DIST_SUBDIR = "" and FINAL_TARGET_FILES.distribution put a file in the app-level distribution folder. Bento uses the same two lines for the uBlock Origin XPI. | `scripts/distribution-addons.mjs#DIST_SUBDIR` | `browser/app/distribution/moz.build:6` |
+| `package-manifest distribution folder` | source (engine only) | Upstream packages distribution/ only when BUILT_BY_MOZILLA is set, and Bento is not built by Mozilla (that flag also installs distribution.ini, which names the build Mozilla official). The patch adds distribution/extensions to the packaged files, so a packaged Bento carries the uBlock Origin XPI. | `patches/core-ui/21-package-distribution-extensions.patch#distribution/extensions` | `browser/installer/package-manifest.in:467` |
+| `extensions.installedDistroAddon.<id>` | source (engine only) | Firefox sets it to true when it installs a distribution add-on and does not install one again while it is true and the add-on has no state. That is what keeps a removed uBlock Origin removed, across restarts and app updates. Bento never clears or sets it. | `scripts/distribution-addons.mjs#distribution` | `toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs:4354` |
+| `installDistributionAddon install source` | source (engine only) | A distribution install records installTelemetryInfo.source as "distribution". The private window grant runs only for an add-on with that source, so a uBlock Origin the user installed from addons.mozilla.org is never granted anything. | `extensions/bento-tools/experiments/bento-privacy/api.js#installTelemetryInfo` | `toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs:4328` |
+| `resource://gre/modules/AddonManager.sys.mjs` | module (runtime) | The private window grant looks uBlock Origin up by id here. A moved module or export leaves the grant failing at every start, after it has spent its one chance. | `extensions/bento-tools/experiments/bento-privacy/api.js#AddonManager` | `toolkit/mozapps/extensions/AddonManager.sys.mjs:4067` |
+| `resource://gre/modules/ExtensionPermissions.sys.mjs` | module (runtime) | The private window grant reads and stores the add-on permission through this module. A moved module or export leaves uBlock Origin without private window access. | `extensions/bento-tools/experiments/bento-privacy/api.js#ExtensionPermissions` | `toolkit/components/extensions/ExtensionPermissions.sys.mjs:317` |
+| `AddonManager.getAddonByID` | source (engine only) | Resolves the installed uBlock Origin to an addon wrapper (installTelemetryInfo, isActive, reload). It answers null when the add-on is not installed, which the grant treats as nothing to do. | `extensions/bento-tools/experiments/bento-privacy/api.js#getAddonByID` | `toolkit/mozapps/extensions/AddonManager.sys.mjs:4395` |
+| `AddonWrapper.reload` | source (engine only) | Restarts the add-on after its private window permission is stored, because an extension reads that permission only at startup. Without the reload the grant takes effect on the next browser start. | `extensions/bento-tools/experiments/bento-privacy/api.js#addon.reload` | `toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs:1510` |
+| `ExtensionPermissions.get` | source (engine only) | Reads the permissions stored for an add-on id (module resource://gre/modules/ExtensionPermissions.sys.mjs). The private window grant skips an add-on whose stored permissions already include private browsing, such as the old built-in uBlock Origin in an existing profile. | `extensions/bento-tools/experiments/bento-privacy/api.js#ExtensionPermissions.get` | `toolkit/components/extensions/ExtensionPermissions.sys.mjs:351` |
+| `ExtensionPermissions.add` | source (engine only) | Stores a permission for an add-on id. The private window grant calls it with internal:privateBrowsingAllowed, as the about:addons toggle does, and then reloads the add-on because an extension reads the permission only at startup. | `extensions/bento-tools/experiments/bento-privacy/api.js#ExtensionPermissions.add` | `toolkit/components/extensions/ExtensionPermissions.sys.mjs:431` |
+| `internal:privateBrowsingAllowed` | source (engine only) | The stored permission that lets an add-on run in private windows. Only a privileged add-on gets it automatically, and an addons.mozilla.org add-on is not privileged, so Bento stores it once for uBlock Origin. A renamed permission makes the grant do nothing. | `extensions/bento-tools/experiments/bento-privacy/api.js#PRIVATE_BROWSING_PERMISSION` | `toolkit/components/extensions/Extension.sys.mjs:177` |
 
 <!-- firefox-compat:end -->
 <!-- prettier-ignore-end -->

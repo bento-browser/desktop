@@ -68,6 +68,12 @@
         ]
       },
       {
+        "name": "grantUBlockPrivateAccess",
+        "type": "function",
+        "async": true,
+        "parameters": []
+      },
+      {
         "name": "applyUiScale",
         "type": "function",
         "async": true,

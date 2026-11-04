@@ -31,6 +31,7 @@ import { extractArchive as extractBaselineArchive } from './firefox-patch-stack.
 import { importSourceOverlays } from './import-sources.mjs';
 import { installBuiltinAddons } from './install-builtin-addons.mjs';
 import { installBranding } from './install-branding.mjs';
+import { sha256Of, UBLOCK_XPI } from './shipped-ublock.mjs';
 import { activeMozconfigLines, mozconfigUpdaterState } from './update-readiness.mjs';
 import { CERTIFICATES, shipUpdater, writeCertificates } from './updater-fixtures.mjs';
 import { validateArtifacts } from './validate-bento-artifacts.mjs';
@@ -446,6 +447,11 @@ async function packagingFixture() {
   fs.writeFileSync(path.join(resources, 'application.ini'), '[App]\nBuildID=20260912000000\n');
   // Firefox's packager writes precomplete whether or not the updater is built.
   fs.writeFileSync(path.join(resources, 'precomplete'), '');
+  // The staged app ships the XPI the README records (validateArtifacts compares them).
+  fs.mkdirSync(path.join(resources, 'distribution', 'extensions'), { recursive: true });
+  fs.writeFileSync(path.join(resources, 'distribution', 'extensions', UBLOCK_XPI), 'signed xpi');
+  fs.mkdirSync(path.join(root, 'extensions', 'ublock-origin'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'extensions', 'ublock-origin', 'README.md'), `- SHA-256: \`${sha256Of('signed xpi')}\`\n`);
   fs.writeFileSync(path.join(dist, 'bento-0.0.7.en-US.mac.dmg'), 'application');
   fs.mkdirSync(path.join(dist, 'host', 'bin'), { recursive: true });
   fs.writeFileSync(path.join(dist, 'host', 'bin', 'mar'), '#!/bin/sh\nprintf "SIZE\\tMODE\\tNAME\\n0\\t0644\\tprecomplete\\n"\n', { mode: 0o755 });
@@ -1148,6 +1154,49 @@ test('an import after shell:sync leaves exactly the repository build in each add
     assert.deepEqual(filesUnder(engineDist), ['assets/index.js', 'assets/overlay-positioning.js']);
     assert.equal(fs.readFileSync(path.join(engineDist, 'assets', 'index.js'), 'utf8'), 'build C');
     assert.equal(verifyRecordedEngineState(root), true);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an engine imported with uBlock Origin built in verifies, imports and records as a distribution add-on', async () => {
+  const root = await addonFixture();
+  const extension = path.join(root, 'extensions', 'ublock-origin');
+  try {
+    fs.mkdirSync(path.join(extension, 'js'), { recursive: true });
+    fs.writeFileSync(
+      path.join(extension, 'manifest.json'),
+      JSON.stringify({ browser_specific_settings: { gecko: { id: 'ublock@test' } } }),
+    );
+    fs.writeFileSync(path.join(extension, '.bento-runtime-entries.json'), '["js"]');
+    fs.writeFileSync(path.join(extension, 'js', 'background.js'), 'built in');
+    installBuiltinAddons({ repoRoot: root });
+    await main(['record'], root);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // The repository switches to the signed XPI; the engine still holds the old import.
+    fs.rmSync(extension, { recursive: true });
+    fs.mkdirSync(extension);
+    fs.writeFileSync(path.join(extension, 'ublock@test.xpi'), 'signed xpi');
+    assert.equal(verifyRecordedEngineState(root), true, 'the old import is still the recorded one');
+    installBuiltinAddons({ repoRoot: root });
+    assert.deepEqual(filesUnder(addonFile(root, 'ublock-origin')), ['moz.build', 'ublock@test.xpi']);
+    await main(['record'], root);
+    assert.equal(verifyRecordedEngineState(root), true);
+
+    // The XPI and its moz.build are exact: a hand edit or a built-in leftover is refused.
+    for (const [file, content] of [
+      [addonFile(root, 'ublock-origin', 'ublock@test.xpi'), 'repacked'],
+      [addonFile(root, 'ublock-origin', 'moz.build'), 'FINAL_TARGET_FILES += []\n'],
+      [addonFile(root, 'ublock-origin', 'jar.mn'), 'browser.jar:\n'],
+    ]) {
+      const before = fs.existsSync(file) ? fs.readFileSync(file) : undefined;
+      fs.writeFileSync(file, content);
+      assert.equal(verifyRecordedEngineState(root), false, path.basename(file));
+      if (before === undefined) fs.rmSync(file);
+      else fs.writeFileSync(file, before);
+      assert.equal(verifyRecordedEngineState(root), true, `${path.basename(file)} undone`);
+    }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

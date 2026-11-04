@@ -81,9 +81,11 @@ Privacy step is left), and `privacy/setDefaultSearchEngine` when an engine is ch
 
 ## uBlock Origin
 
-Bento bundles uBlock Origin enabled by default and leaves it disableable or
-removable by the user. Provenance for the bundled version is recorded in
-`extensions/ublock-origin/README.md`.
+Bento installs uBlock Origin automatically, enabled, and allows it in private windows
+once. It is an ordinary add-on in `about:addons`: the user can switch it off, turn off its
+private window access, or remove it, and Bento never installs it again after a removal.
+It updates itself from addons.mozilla.org. Provenance for the shipped version is recorded
+in `extensions/ublock-origin/README.md`.
 
 ## Update Checklist
 
@@ -95,5 +97,6 @@ removable by the user. Provenance for the bundled version is recorded in
    default changes.
 5. Run `pnpm --filter @bento/tools test`, both extension typechecks, and
    `pnpm run ext:build`.
-6. Run `pnpm run import` and confirm generated `jar.mn` files include
-   bento-tools experiments and uBlock Origin runtime folders.
+6. Run `pnpm run import` and confirm the generated `jar.mn` for bento-tools includes its
+   experiments and that `engine/browser/extensions/ublock-origin/` holds the XPI and its
+   `moz.build`.

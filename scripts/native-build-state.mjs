@@ -5,7 +5,8 @@ import path from 'node:path';
 import { assertLocalBuildPaths, loadConfig, nativeBuildSettings } from './bento-build.mjs';
 import { readEntry } from './read-entry.mjs';
 import { git, replaySeriesChanges } from './series-replay.mjs';
-import { builtinAddonSources, builtinAddonBuildBlock } from './install-builtin-addons.mjs';
+import { distributionAddonMozBuild } from './distribution-addons.mjs';
+import { addonSources, builtinAddonBuildBlock } from './install-builtin-addons.mjs';
 
 export const NATIVE_BUILD_RECEIPT = '.bento-native-build.json';
 const SCHEMA = 1;
@@ -101,6 +102,11 @@ function nativeInputs(ctx) {
     'Firefox source/base': fingerprint({ firefox: config.firefox, base: manifest.base, baseTree }),
     'patches/series.json': hash(fs.readFileSync(path.join(root, 'patches', 'series.json'))),
     'built-in add-on directories': fingerprint(addonNames(root)),
+    // The XPI is deployed by the build, not read live like a built-in add-on's dist/, so its
+    // bytes and its generated moz.build belong to what the build was made from.
+    'distribution add-ons': fingerprint(distributionAddons(root).map(({ name, xpi, source }) => ({
+      name, xpi, sha256: hash(fs.readFileSync(path.join(source, xpi))), mozBuild: hash(distributionAddonMozBuild(name, xpi)),
+    }))),
   };
   for (const entry of manifest.series) inputs[entry.path] = hash(fs.readFileSync(path.join(root, entry.path)));
   for (const entry of overlays(root)) inputs[entry.source] = hash(fs.readFileSync(path.join(root, entry.source)));
@@ -119,7 +125,40 @@ function nativeInputs(ctx) {
 
 function addonNames(root) {
   return fs.existsSync(path.join(root, 'extensions'))
-    ? builtinAddonSources(root).map((addon) => addon.name) : [];
+    ? addonSources(root).map((addon) => addon.name) : [];
+}
+
+function distributionAddons(root) {
+  return fs.existsSync(path.join(root, 'extensions')) ? addonSources(root).filter((addon) => addon.xpi) : [];
+}
+
+/**
+ * Where a build deploys a distribution add-on's XPI: Firefox's dist/bin (the packager's input),
+ * and on macOS the app bundle's Resources, which is what default launch runs.
+ */
+function deployedXpiPaths(ctx, xpi) {
+  const directories = ['dist/bin'];
+  if (process.platform === 'darwin') directories.push(`dist/${loadConfig(ctx.root).build.macosBundleName || 'Bento'}.app/Contents/Resources`);
+  return directories.map((directory) => `${directory}/distribution/extensions/${xpi}`);
+}
+
+/**
+ * The deployed copies of every distribution add-on's XPI, each of which must hold exactly the
+ * repository file. A symlink is read through: it is the bytes the app would install.
+ */
+function deployedDistribution(ctx) {
+  const deployed = [];
+  for (const { name, xpi, source } of distributionAddons(ctx.root)) {
+    const expected = hash(fs.readFileSync(path.join(source, xpi)));
+    for (const relative of deployedXpiPaths(ctx, xpi)) {
+      const file = path.join(ctx.settings.objdir, relative);
+      if (!fs.statSync(file, { throwIfNoEntry: false })?.isFile()) stale(`missing deployed ${relative}`);
+      const digest = hash(fs.readFileSync(file));
+      if (digest !== expected) stale(`deployed ${relative} differs from extensions/${name}/${xpi}`);
+      deployed.push({ path: relative, digest });
+    }
+  }
+  return deployed;
 }
 
 function engineEntry(ctx, relative) {
@@ -178,6 +217,19 @@ function requireCurrentImports(ctx) {
       }
       const oid = content && git(ctx.engine, ['hash-object', '--no-filters', '--stdin'], { input: content }).trim();
       if (change.mode !== mode || change.oid !== oid) stale(`native import engine/${relative} differs from current patches; run pnpm run import first`);
+    }
+  }
+  // An imported distribution add-on is the repository XPI and the generated moz.build, byte for byte.
+  for (const { name, xpi, source } of distributionAddons(ctx.root)) {
+    for (const [file, expected] of [
+      [xpi, fs.readFileSync(path.join(source, xpi))],
+      ['moz.build', distributionAddonMozBuild(name, xpi)],
+    ]) {
+      const relative = `browser/extensions/${name}/${file}`;
+      if (engineEntry(ctx, relative)?.digest !== hash(expected)) {
+        stale(`native import engine/${relative} differs from extensions/${name}; run pnpm run import first`);
+      }
+      paths.add(relative);
     }
   }
   for (const entry of expectedOverlays) {
@@ -266,6 +318,7 @@ async function buildWithReceipt(root, build) {
   const engine = engineSnapshot(ctx, paths);
   await build();
   const xul = await xulDigest(ctx);
+  const distribution = deployedDistribution(ctx);
   const compiler = compilerEvidence(ctx);
   const after = context(root);
   const inputChange = changed(inputs, nativeInputs(after));
@@ -274,7 +327,7 @@ async function buildWithReceipt(root, build) {
   if (engineChange) stale(`native engine changed during build: ${engineChange}`);
   const temporary = `${ctx.receipt}.tmp-${process.pid}`;
   try {
-    fs.writeFileSync(temporary, `${JSON.stringify({ schemaVersion: SCHEMA, checkout: ctx.root, inputs, engine, compiler, xul }, null, 2)}\n`, { flag: 'wx' });
+    fs.writeFileSync(temporary, `${JSON.stringify({ schemaVersion: SCHEMA, checkout: ctx.root, inputs, engine, compiler, xul, distribution }, null, 2)}\n`, { flag: 'wx' });
     fs.renameSync(temporary, ctx.receipt);
   } finally {
     fs.rmSync(temporary, { force: true });
@@ -294,12 +347,13 @@ async function checkReceipt(root) {
   const ctx = context(root);
   let receipt;
   try { receipt = json(ctx.receipt); } catch { stale(`missing or unreadable ${NATIVE_BUILD_RECEIPT}`); }
-  if (receipt.schemaVersion !== SCHEMA || receipt.checkout !== ctx.root || !receipt.inputs || !receipt.engine || !receipt.compiler || !receipt.xul) stale('invalid native build receipt');
+  if (receipt.schemaVersion !== SCHEMA || receipt.checkout !== ctx.root || !receipt.inputs || !receipt.engine || !receipt.compiler || !receipt.xul || !receipt.distribution) stale('invalid native build receipt');
   const inputChange = changed(receipt.inputs, nativeInputs(ctx));
   if (inputChange) stale(`native input changed: ${inputChange}`);
   const engineChange = changed(receipt.engine, engineSnapshot(ctx, Object.keys(receipt.engine)));
   if (engineChange) stale(`native engine changed: ${engineChange}`);
   if (fingerprint(receipt.compiler) !== fingerprint(compilerEvidence(ctx))) stale('configured compiler/target changed');
   if (fingerprint(receipt.xul) !== fingerprint(await xulDigest(ctx))) stale('XUL changed');
+  if (fingerprint(receipt.distribution) !== fingerprint(deployedDistribution(ctx))) stale('deployed distribution add-on changed');
   return verifiedExecutable(ctx);
 }

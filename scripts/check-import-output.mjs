@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scanProductIdentity } from './check-product-identity.mjs';
+import { distributionAddonMozBuild } from './distribution-addons.mjs';
 import { readEntry } from './read-entry.mjs';
 import { git, replaySeriesChanges } from './series-replay.mjs';
 
@@ -40,12 +41,31 @@ for (const entry of fs.readdirSync(path.join(root, 'src/browser/base/content'), 
   }
 }
 
-const addonNames = ['bento-shell', 'bento-tools', 'ublock-origin'];
+const addonNames = ['bento-shell', 'bento-tools'];
 for (const name of addonNames) {
   requireFile(`engine/browser/extensions/${name}/manifest.json`);
   const jar = fs.readFileSync(requireFile(`engine/browser/extensions/${name}/jar.mn`), 'utf8');
   if (!jar.includes(`builtin-addons/${name}/`) || jar.includes('\\')) {
     throw new Error(`${name}/jar.mn has an invalid built-in add-on destination`);
+  }
+}
+
+// A distribution add-on reaches the engine as the repository's XPI, byte for byte, with the
+// moz.build that installs it under distribution/extensions/. It must not also be built in.
+const distributionAddons = [{ name: 'ublock-origin', xpi: 'uBlock0@raymondhill.net.xpi' }];
+for (const { name, xpi } of distributionAddons) {
+  const imported = fs.readFileSync(requireFile(`engine/browser/extensions/${name}/${xpi}`));
+  if (!imported.equals(fs.readFileSync(requireFile(`extensions/${name}/${xpi}`)))) {
+    throw new Error(`engine/browser/extensions/${name}/${xpi} differs from extensions/${name}/${xpi}`);
+  }
+  const addonMozBuild = fs.readFileSync(requireFile(`engine/browser/extensions/${name}/moz.build`), 'utf8');
+  if (addonMozBuild !== distributionAddonMozBuild(name, xpi)) {
+    throw new Error(`${name}/moz.build does not install ${xpi} under distribution/extensions`);
+  }
+  for (const builtIn of ['manifest.json', 'jar.mn']) {
+    if (fs.existsSync(path.join(engine, 'browser/extensions', name, builtIn))) {
+      throw new Error(`${name} is a distribution add-on and must not have ${builtIn}`);
+    }
   }
 }
 
@@ -93,12 +113,14 @@ const identityFailures = scanProductIdentity(
   [
     'branding/bento',
     'engine/browser/branding/bento',
-    ...addonNames.map((name) => `engine/browser/extensions/${name}`),
+    ...[...addonNames, ...distributionAddons.map(({ name }) => name)].map(
+      (name) => `engine/browser/extensions/${name}`,
+    ),
   ],
   { cwd: root },
 );
 if (identityFailures.length > 0) throw new Error(identityFailures.join('\n'));
 
 process.stdout.write(
-  `check-import-output: branding, ${addonNames.length} add-ons, and ${manifest.series.length} patches verified\n`,
+  `check-import-output: branding, ${addonNames.length + distributionAddons.length} add-ons, and ${manifest.series.length} patches verified\n`,
 );

@@ -1275,6 +1275,29 @@ release build (see [Dev-only reload command](#dev-only-reload-command)) the inst
 drops the `dev-reload` command from the manifest it copies, so an imported release
 manifest differs from its source.
 
+### Distribution add-ons
+
+An extension folder with no `manifest.json` that holds one `<add-on id>.xpi`
+(`extensions/ublock-origin/`) is a distribution add-on. The installer copies the XPI
+byte for byte into `engine/browser/extensions/<name>/` and generates a `moz.build`
+that sets `DIST_SUBDIR = ""` and `FINAL_TARGET_FILES.distribution.extensions`, so the
+build puts it in the app's `distribution/extensions/` folder; the folder stays in the
+marker block's `DIRS`. Firefox installs it into the profile at startup, where the user
+can remove it. The core-ui patch `21-package-distribution-extensions` adds that folder
+to `package-manifest.in`, since upstream packages `distribution/` only when
+`--built-by-mozilla` is set, which Bento must not set. `pnpm run security:check`
+requires the committed file to match the SHA-256 in its README (read with `unzip`, which
+the scripts need on `PATH`). `check-import-output.mjs` requires the engine copy to equal the
+repository file. The native build receipt (`native-build-state.mjs`) fingerprints the XPI
+bytes and the generated `moz.build`, requires the engine copy to match, and records the
+deployed copies (`dist/bin/distribution/extensions/` and, on macOS, the app bundle's
+Resources), which must equal the repository file; an XPI-only change therefore makes the
+build stale until `pnpm run import` and `pnpm run build` have run. The release checks name
+the exact path `distribution/extensions/uBlock0@raymondhill.net.xpi` and compare its SHA-256
+with the README's: `validate-bento-artifacts.mjs` on the staged app and any TAR package, and
+`check-macos-signing.mjs` on the app inside the collected DMG. See
+[Privacy and search](technical/privacy-search.md#ublock-origin).
+
 ### Build output and `shell:sync`
 
 `dist/` inside an add-on is build output. The repository ignores it, and every

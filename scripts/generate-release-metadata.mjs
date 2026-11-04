@@ -7,15 +7,14 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { readSigningRecord } from './macos-sign-release.mjs';
+import { readXpiManifest } from './xpi-manifest.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const outputDir = path.resolve(root, process.argv[2] || 'release-out');
 // The macOS signing record (build-release.sh passes it); null for a build that is not signed.
 const signing = process.argv[3] ? readSigningRecord(path.resolve(process.argv[3])) : null;
 const bento = JSON.parse(fs.readFileSync(path.join(root, 'bento.json'), 'utf8'));
-const ublock = JSON.parse(
-  fs.readFileSync(path.join(root, 'extensions/ublock-origin/manifest.json'), 'utf8'),
-);
+const ublock = readXpiManifest(path.join(root, 'extensions/ublock-origin/uBlock0@raymondhill.net.xpi'));
 const excluded = new Set(['SHA256SUMS', 'release-manifest.json']);
 
 function sha256(file) {

@@ -312,3 +312,80 @@ test('bento.json build.mode release drops the reload command without any environ
     fs.rmSync(devRoot, { recursive: true, force: true });
   }
 });
+
+function addDistributionAddon(root, name = 'ublock-origin', xpi = 'ublock@test.xpi') {
+  const extension = path.join(root, 'extensions', name);
+  fs.mkdirSync(extension, { recursive: true });
+  fs.writeFileSync(path.join(extension, xpi), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 1, 2, 3]));
+  fs.writeFileSync(path.join(extension, 'README.md'), 'provenance');
+  return extension;
+}
+
+test('a distribution add-on ships its XPI unchanged under distribution/extensions, never built in', () => {
+  const root = fixture();
+  try {
+    addExtension(root, 'bento-tools');
+    const extension = addDistributionAddon(root);
+    const addons = installBuiltinAddons({ repoRoot: root, release: true });
+    const ublock = addons.find((addon) => addon.name === 'ublock-origin');
+    assert.equal(ublock.id, 'ublock@test');
+
+    const engine = path.join(root, 'engine', 'browser', 'extensions', 'ublock-origin');
+    assert.deepEqual(listTree(engine).sort(), ['moz.build', 'ublock@test.xpi']);
+    assert.deepEqual(
+      fs.readFileSync(path.join(engine, 'ublock@test.xpi')),
+      fs.readFileSync(path.join(extension, 'ublock@test.xpi')),
+    );
+    const mozBuild = fs.readFileSync(path.join(engine, 'moz.build'), 'utf8');
+    assert.match(mozBuild, /^DIST_SUBDIR = ""$/m);
+    assert.match(
+      mozBuild,
+      /^FINAL_TARGET_FILES\.distribution\.extensions \+= \["ublock@test\.xpi"\]$/m,
+    );
+    assert.doesNotMatch(mozBuild, /JAR_MANIFESTS/);
+    assert.match(
+      fs.readFileSync(path.join(root, 'engine', 'browser', 'extensions', 'moz.build'), 'utf8'),
+      /DIRS \+= \["bento-tools", "ublock-origin"\]/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a distribution add-on replaces a leftover built-in tree and keeps mtimes when unchanged', () => {
+  const root = fixture();
+  try {
+    addDistributionAddon(root);
+    const engine = path.join(root, 'engine', 'browser', 'extensions', 'ublock-origin');
+    // An engine that was imported while uBlock Origin was still built in.
+    fs.mkdirSync(path.join(engine, 'js'), { recursive: true });
+    fs.writeFileSync(path.join(engine, 'js', 'vapi.js'), 'old');
+    fs.writeFileSync(path.join(engine, 'manifest.json'), '{}');
+    fs.writeFileSync(path.join(engine, 'jar.mn'), 'browser.jar:\n');
+    installBuiltinAddons({ repoRoot: root });
+    assert.deepEqual(listTree(engine).sort(), ['moz.build', 'ublock@test.xpi']);
+
+    const past = new Date('2020-01-01T00:00:00Z');
+    for (const file of listTree(engine)) fs.utimesSync(path.join(engine, file), past, past);
+    installBuiltinAddons({ repoRoot: root });
+    for (const file of listTree(engine)) {
+      assert.equal(fs.statSync(path.join(engine, file)).mtimeMs, past.getTime(), file);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a distribution add-on needs exactly one XPI named after a plain add-on id', () => {
+  const root = fixture();
+  try {
+    const extension = addDistributionAddon(root);
+    fs.writeFileSync(path.join(extension, 'second@test.xpi'), 'x');
+    assert.throws(() => installBuiltinAddons({ repoRoot: root }), /must hold one XPI/);
+    fs.rmSync(path.join(extension, 'second@test.xpi'));
+    fs.renameSync(path.join(extension, 'ublock@test.xpi'), path.join(extension, 'a"b.xpi'));
+    assert.throws(() => installBuiltinAddons({ repoRoot: root }), /must hold one XPI/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
