@@ -179,7 +179,7 @@ as long as its slowest job). It has a 20-minute bound.
 A pull request skips `source-import` when every changed file is under `docs/`, a
 root markdown file, `.agents/`, `scripts/*.test.mjs`, `extensions/bento-shell/src/`
 or `extensions/bento-tools/src/` (outside an experiments directory), the size and
-legacy-alias baseline JSON files, or the CodeQL and Dependabot configs.
+legacy-alias baseline JSON files, or the CodeQL config.
 `scripts/import-inputs.mjs` holds the rule and `scripts/import-inputs.test.mjs`
 pins it. Every push to `main` runs the job and seeds the engine cache. A path the
 rule does not recognise runs the job, and so does an empty `changes` output. A
@@ -756,20 +756,20 @@ pnpm install
 pnpm install --frozen-lockfile
 ```
 
-### Dependabot
+### Dependency updates
 
-`.github/dependabot.yml` has one `npm` entry for the repository root, which
-Dependabot reads as the whole pnpm workspace (the root manifest and both
-extensions) and updates in the one lock. Updates are weekly, capped at two open
-PRs, and grouped into one minor-and-patch PR for production dependencies and one
-for development dependencies. Major versions are ignored. The strategy is
-`lockfile-only`, so a PR never edits a manifest specifier: the approved shell
-runtime dependency set that the SBOM generator pins stays intact, and exact pins
-(for example `vite`, `@ladle/react`, `emojibase-data`) are left for manual
-updates. `@muxui/react`, the React Aria family, and the Tiptap family are
-ignored, because their pins and overrides move together through the Mux release
-procedure below. `lucide-react` is an exact pin, so the lockfile-only strategy
-leaves it on Mux's version.
+Updates are manual; the repo has no update bot. `pnpm audit --audit-level high`
+in the `security-gate` CI job flags high-severity advisories. GitHub Actions are
+pinned to full commit SHAs with a version comment, and nothing flags them
+automatically, so they are checked by hand.
+
+Prefer lockfile-only updates for routine bumps: changing a manifest specifier
+would change what the SBOM generator and `scripts/release-security.test.mjs`
+pin, and fails those gates unless they change too. Exact pins (for example
+`vite`, `@ladle/react`, `emojibase-data`) are updated individually.
+`@muxui/react`, the React Aria family, and the Tiptap family move together
+through the Mux release procedure below. `lucide-react` is an exact pin that
+stays on Mux's version.
 
 ## Local Mux UI
 
