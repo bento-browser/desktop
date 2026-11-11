@@ -573,13 +573,16 @@ function launchApp({ binary, headed, profileDir, logPath }) {
   const args = [
     '--new-instance',
     '--marionette',
-    '--remote-allow-system-access',
     ...(headed ? [] : ['--headless']),
     '--profile',
     profileDir,
   ];
   const output = fs.openSync(logPath, 'a');
-  const child = spawn(binary, args, { stdio: ['ignore', output, output] });
+  const child = spawn(binary, args, {
+    // Firefox 159 reads system access at startup; grant it only to this test process.
+    env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: '1' },
+    stdio: ['ignore', output, output],
+  });
   fs.closeSync(output);
   const handle = { child, exited: false, spawnError: null };
   child.once('exit', () => {

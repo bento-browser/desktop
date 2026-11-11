@@ -1,4 +1,4 @@
-From b1840a545ea993aa66eed80739bdaf1d93877e77 Mon Sep 17 00:00:00 2001
+From b59e0c6bfc25953422a53c38706d5ba479bfae99 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view
@@ -6,11 +6,11 @@ Subject: [PATCH] Disable Firefox split view
 ---
  browser/base/content/nsContextMenu.sys.mjs            |  8 +++++---
  .../components/tabbrowser/content/tab-context-menu.js | 11 ++++++-----
- browser/components/tabbrowser/content/tab.js          |  4 +++-
+ browser/components/tabbrowser/content/tab.mjs         |  4 +++-
  3 files changed, 14 insertions(+), 9 deletions(-)
 
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index 778efd5e4f90dd994987f499da61c868770cd181..8b960e37aec18518605a879752034fad78a47ef6 100644
+index 6c3aaeb0ee4b2e3836dd3f4615143cb6fab74d54..b85dba71fde0a76fce5c5ac639f9f3ce8e7993a8 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
 @@ -534,9 +534,11 @@ export class nsContextMenu {
@@ -50,21 +50,21 @@ index be3252ae5f20fdd94e266372a5ccb1eec234fb6d..00bf221f86964b52df5b4dee0fd391d3
      let contextMoveTabToNewSplitView = document.getElementById(
        "context_moveTabToSplitView"
      );
-diff --git a/browser/components/tabbrowser/content/tab.js b/browser/components/tabbrowser/content/tab.js
-index 9395bcbb798112207861c63ff2707609d9d6c83f..360e72374aaf07fb3f65da7eee5b805c7ce7f7b9 100644
---- a/browser/components/tabbrowser/content/tab.js
-+++ b/browser/components/tabbrowser/content/tab.js
-@@ -628,7 +628,9 @@
-           !event.target.classList.contains("tab-audio-button") &&
-           !this.selected &&
-           !gBrowser.selectedTab.hidden &&
--          Services.prefs.getBoolPref("browser.tabs.splitView.enabled", false) &&
-+          // Bento: alt-click-to-split disabled — bento-tools owns split
-+          // creation via PanelStore so the alt-click route stays inert.
-+          false &&
-           !this.splitview &&
-           !gBrowser.selectedTab.splitview &&
-           !this.pinned &&
+diff --git a/browser/components/tabbrowser/content/tab.mjs b/browser/components/tabbrowser/content/tab.mjs
+index 81c6e5dd4047fc7d57b5938e797a014c71d07cf9..4cc861afde472957e436178b684d44c8deadb50e 100644
+--- a/browser/components/tabbrowser/content/tab.mjs
++++ b/browser/components/tabbrowser/content/tab.mjs
+@@ -667,7 +667,9 @@ export class MozTabbrowserTab extends MozElements.MozTab {
+         !event.target.classList.contains("tab-audio-button") &&
+         !this.selected &&
+         !gBrowser.selectedTab.hidden &&
+-        Services.prefs.getBoolPref("browser.tabs.splitView.enabled", false) &&
++        // Bento: alt-click-to-split disabled — bento-tools owns split
++        // creation via PanelStore so the alt-click route stays inert.
++        false &&
+         !this.splitview &&
+         !gBrowser.selectedTab.splitview &&
+         !this.pinned &&
 -- 
 2.54.0 (Apple Git-157)
 

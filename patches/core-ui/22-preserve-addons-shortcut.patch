@@ -1,0 +1,105 @@
+From 7c60a2ef5318b296da32beb750e6c00250a13e92 Mon Sep 17 00:00:00 2001
+From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
+Date: Wed, 11 Nov 2026 01:29:51 +1100
+Subject: [PATCH] Preserve Bento Add-ons shortcut and omit native tab search
+
+---
+ browser/base/content/browser-menubar.inc.xhtml |  4 ----
+ browser/base/content/browser-sets.inc.xhtml    |  4 +---
+ browser/base/content/browser-sets.js           |  7 -------
+ browser/locales/en-US/browser/browserSets.ftl  | 10 ++--------
+ 4 files changed, 3 insertions(+), 22 deletions(-)
+
+diff --git a/browser/base/content/browser-menubar.inc.xhtml b/browser/base/content/browser-menubar.inc.xhtml
+index b36b57dc08d3443f2747fa5ed9fa79603f611301..ea461ff47202e536021909a6ba5f6374617556c5 100644
+--- a/browser/base/content/browser-menubar.inc.xhtml
++++ b/browser/base/content/browser-menubar.inc.xhtml
+@@ -231,10 +231,6 @@
+       <menuitem id="menu_searchHistory"
+                 command="History:SearchHistory"
+                 data-l10n-id="menu-history-search"/>
+-      <menuitem id="menu_searchTabs"
+-                command="Browser:SearchTabs"
+-                key="key_searchTabs"
+-                data-l10n-id="menu-history-search-tabs"/>
+       <menu id="historyUndoMenu"
+             disabled="true" data-l10n-id="menu-history-undo-menu">
+         <menupopup id="historyUndoPopup"
+diff --git a/browser/base/content/browser-sets.inc.xhtml b/browser/base/content/browser-sets.inc.xhtml
+index c74706582727173690d52285bbde7a5baa90a7da..cb0ed4b303c021d3e91095374ff88aa937833d37 100644
+--- a/browser/base/content/browser-sets.inc.xhtml
++++ b/browser/base/content/browser-sets.inc.xhtml
+@@ -116,7 +116,6 @@
+     <command id="History:UndoCloseWindow" />
+     <command id="History:RestoreLastClosedTabOrWindowOrSession" />
+     <command id="History:SearchHistory" />
+-    <command id="Browser:SearchTabs" />
+ 
+     <!-- The keys for these commands are registered dynamically by gGfxUtils
+          when gfx.webrender.debug.enable-capture is set. -->
+@@ -185,7 +184,7 @@
+          modifiers="accel"
+ #endif
+          command="Tools:Downloads"/>
+-    <key id="key_openAddons" data-l10n-id="addons-shortcut-2" command="Tools:Addons" modifiers="accel,shift"/>
++    <key id="key_openAddons" data-l10n-id="addons-shortcut" command="Tools:Addons" modifiers="accel,shift"/>
+     <key id="openFileKb" data-l10n-id="file-open-shortcut" command="Browser:OpenFile"  modifiers="accel"/>
+     <key id="key_savePage" data-l10n-id="save-page-shortcut" command="Browser:SavePage" modifiers="accel" reserved="true"/>
+     <key id="printKb" data-l10n-id="print-shortcut" command="cmd_print"  modifiers="accel"/>
+@@ -351,7 +350,6 @@
+     <key id="key_privatebrowsing" command="Tools:PrivateBrowsing" data-l10n-id="private-browsing-shortcut"
+          modifiers="accel,shift" reserved="true"/>
+     <key id="key_screenshot" data-l10n-id="screenshot-shortcut" command="Browser:Screenshot" modifiers="accel,shift"/>
+-    <key id="key_searchTabs" data-l10n-id="search-tabs-shortcut" command="Browser:SearchTabs" modifiers="accel,shift"/>
+     <key id="key_sanitize" command="Tools:Sanitize" keycode="VK_DELETE" modifiers="accel,shift"/>
+ #ifdef XP_MACOSX
+     <key id="key_sanitize_mac" command="Tools:Sanitize" keycode="VK_BACK" modifiers="accel,shift"/>
+diff --git a/browser/base/content/browser-sets.js b/browser/base/content/browser-sets.js
+index b6345b7c99a55d81f5c09dfea4f1aff2a3cfa775..93c94f658481c0f054962b948fe1412b6db10b7a 100644
+--- a/browser/base/content/browser-sets.js
++++ b/browser/base/content/browser-sets.js
+@@ -157,13 +157,6 @@ document.addEventListener(
+           case "Browser:SearchBookmarks":
+             PlacesCommandHook.searchBookmarks();
+             break;
+-          case "Browser:SearchTabs":
+-            PlacesCommandHook.searchTabs(
+-              event.sourceEvent?.target.id == "menu_searchTabs"
+-                ? "historymenu"
+-                : "shortcut"
+-            );
+-            break;
+           case "Browser:BookmarkAllTabs":
+             PlacesCommandHook.bookmarkTabs();
+             break;
+diff --git a/browser/locales/en-US/browser/browserSets.ftl b/browser/locales/en-US/browser/browserSets.ftl
+index ac4c6a1839027e056d34b153e33379be0c5e74c6..bb7357d0f978efa921f0bcc7ee0789835b3c015e 100644
+--- a/browser/locales/en-US/browser/browserSets.ftl
++++ b/browser/locales/en-US/browser/browserSets.ftl
+@@ -62,11 +62,8 @@ downloads-shortcut =
+        *[other] J
+     }
+ 
+-addons-shortcut-2 =
+-    .key = { PLATFORM() ->
+-        [macos] E
+-       *[other] F
+-    }
++addons-shortcut =
++    .key = A
+ 
+ file-open-shortcut =
+     .key = O
+@@ -209,9 +206,6 @@ bidi-switch-direction-shortcut =
+ private-browsing-shortcut =
+     .key = P
+ 
+-search-tabs-shortcut =
+-    .key = A
+-
+ ## The shortcuts below are for Mac specific
+ ## global menu.
+ 
+-- 
+2.54.0 (Apple Git-157)
+

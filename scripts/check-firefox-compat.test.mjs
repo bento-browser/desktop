@@ -854,7 +854,7 @@ test('checkEngine reports the line where a moved member now lives', (t) => {
   assert.equal(checkEngine(FIXTURE_REGISTRY, engine)[0].line, 6);
 });
 
-// Vanilla Firefox 157 text for entries added after the first audit pass, and
+// Vanilla Firefox text for entries added after the first audit pass, and
 // the rename that must make the engine check fail.
 const RENAMES = [
   [
@@ -883,16 +883,16 @@ const RENAMES = [
   ],
   [
     'SSTabRestored',
-    '    event.initCustomEvent("SSTabRestored", true, false, {\n',
+    '    event.initEvent("SSTabRestored", true, false);\n',
     '"SSTabRestored"',
     '"SSTabReady"',
   ],
   ['gBrowser._endRemoveTab', '    _endRemoveTab(aTab) {\n', '_endRemoveTab', '_finishRemoveTab'],
   [
-    'tab._endRemoveArgs',
-    '      aTab._endRemoveArgs = [closeWindow, newTab];\n',
-    '_endRemoveArgs',
-    '_removeArgs',
+    'Tabbrowser.#endRemoveArgs',
+    '      Tabbrowser.#endRemoveArgs.set(aTab, [closeWindow, newTab]);\n',
+    '#endRemoveArgs',
+    '#removeArgs',
   ],
   [
     'MigrationWizard:Close',

@@ -57,9 +57,109 @@ build (`scripts/build-release.sh` does). Linux and Windows release mozconfigs op
 `BENTO_RUST_LTO=thin` compatibility setting; it changes only the top-level Rust
 release crate's LTO mode from Firefox's default fat LTO to standard Rust
 ThinLTO, keeping embed-bitcode and release codegen-unit settings unchanged.
+Since Firefox 159, `python/mozbuild/mozbuild/rust_commands.py` consumes this
+setting through `CARGO_CONFIG_KEYS`; the patch keeps it inside Firefox's
+existing target-library LTO eligibility gate.
 macOS keeps Firefox's default fat LTO. This applies to release mode only; dev
 and debug builds skip the final-crate LTO (see
 [Build modes and configure flags](#build-modes-and-configure-flags)).
+
+### Firefox 159 macOS strip tool (Apple Silicon)
+
+Firefox 159's executable includes `LC_DYLD_ENVIRONMENT` for AuthenticationServices.
+Cached LLVM 21 `llvm-strip` rejects that load command. Mozilla's Clang 22 build
+includes `llvm-objcopy-macho-dyld-environment.patch`; use its strip binary while
+keeping the existing compiler cache and package stripping enabled.
+
+This recipe starts at the root of an already imported 159.0.1 worktree with
+Bento's normal native-build prerequisites installed. On this host it also requires
+Homebrew Python 3.14 at `/opt/homebrew/opt/python@3.14/libexec/bin/python3`
+(`brew install python@3.14` if absent), Node 24.22.2 in
+`$HOME/.vite-plus/js_runtime/node/24.22.2/bin`, pnpm on `/usr/local/bin` or
+`/opt/homebrew/bin`, and `zstd` on `/opt/homebrew/bin`. Check those locations
+before starting; adapt the Node directory to your supported Node 24 installation.
+Python 3.15 failed to build the artifact helper's `rtoml` dependency. The Python
+hint must be the directory containing the supported `python3`.
+
+Run the setup in a subshell so its clean PATH stays scoped to this worktree's
+build commands. The explicit PATH excludes this host's injected Codex package
+path containing `#`, which truncates Firefox Make assignments. It retains system
+tools, Homebrew, Node/pnpm and Rust. All downloaded and extracted toolchain files
+stay under this worktree; nothing replaces `$HOME/.mozbuild/clang`.
+
+```sh
+(
+  set -eu
+  test -x /opt/homebrew/opt/python@3.14/libexec/bin/python3
+  test -x "$HOME/.vite-plus/js_runtime/node/24.22.2/bin/node"
+  mkdir -p .bento/cache/firefox-159-llvm22 .bento/toolchains/firefox-159-llvm22
+  cat > .bento/firefox-159.env <<'ENV'
+# Source from this worktree root before each build or package session.
+export BENTO_MACH_PYTHON=/opt/homebrew/opt/python@3.14/libexec/bin
+export PATH="$HOME/.vite-plus/js_runtime/node/24.22.2/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.cargo/bin"
+export STRIP="$PWD/.bento/toolchains/firefox-159-llvm22/clang/bin/llvm-strip"
+ENV
+  . .bento/firefox-159.env
+  "$BENTO_MACH_PYTHON/python3" --version
+  node --version
+  pnpm --version
+  pnpm run mach artifact toolchain --from-build macosx64-aarch64-clang-22 \
+    --no-unpack --cache-dir "$PWD/.bento/cache/firefox-159-llvm22" \
+    --artifact-manifest "$PWD/.bento/toolchains/firefox-159-llvm22/artifact-manifest.json"
+  mv engine/clang.tar.zst .bento/cache/firefox-159-llvm22/clang.tar.zst
+  "$BENTO_MACH_PYTHON/python3" - <<'PYTHON'
+import hashlib, json, pathlib, subprocess
+root = pathlib.Path.cwd()
+archive = root / ".bento/cache/firefox-159-llvm22/clang.tar.zst"
+destination = root / ".bento/toolchains/firefox-159-llvm22"
+manifest = json.loads((destination / "artifact-manifest.json").read_text())
+assert len(manifest) == 1, manifest
+url, record = next(iter(manifest.items()))
+assert url.startswith("https://firefox-ci-tc.services.mozilla.com/")
+with archive.open("rb") as stream:
+    assert hashlib.file_digest(stream, "sha256").hexdigest() == record["sha256"]
+members = subprocess.check_output(["/usr/bin/tar", "-tf", str(archive)], text=True).splitlines()
+assert members and all(
+    pathlib.PurePosixPath(name).parts[0] == "clang"
+    and ".." not in pathlib.PurePosixPath(name).parts for name in members
+), "unexpected toolchain archive paths"
+subprocess.run(["/usr/bin/tar", "-xf", str(archive), "-C", str(destination)], check=True)
+print("Verified and extracted", len(members), "members from", url)
+PYTHON
+  "$STRIP" --version
+)
+```
+
+The official helper validates the download against Mozilla's task artifact digest
+before writing the artifact manifest. The extra SHA-256 comparison binds the
+archive extracted here to that manifest. Move the helper's archive out of
+`engine/` before importing or building; the engine-state guard correctly rejects
+that untracked archive. Keep the manifest with the extracted
+toolchain. The setup can be repeated to reacquire it; the cache is an optimization,
+not the only copy of the recipe.
+
+In **every later terminal session**, first `cd` to the same worktree root, then
+explicitly source the saved file for **both** rebuild and packaging:
+
+```sh
+(
+  set -eu
+  . .bento/firefox-159.env
+  "$STRIP" --version                 # LLVM 22.1.8 for the tested artifact
+  pnpm run build
+  pnpm run package
+  pnpm run artifacts:check
+)
+```
+
+Do not drop `STRIP` between these commands: an ordinary build can reconfigure
+and select the older cached tool again. After either command, inspect
+`engine/obj-bento/config/autoconf.mk`: `STRIP` must name this worktree's LLVM 22
+binary and `PKG_STRIP = 1` must remain set. Packaging's locale step can rebuild
+native outputs, making the native receipt stale. If
+`node scripts/bento-build.mjs native-check` reports that, run `pnpm run build`
+again under the same sourced environment, then repeat the built-app runtime
+checks. This is a dev build/package recipe, not a full release/signing build.
 
 All Bento-specific import behavior belongs in this repository. The authoritative
 wrapper, [scripts/import.sh](../scripts/import.sh), installs

@@ -12,22 +12,26 @@ const patchPath = path.join(
   '02-rust-thin-lto-hosted-build.patch',
 );
 
-test('hosted ThinLTO option propagates from Firefox configure to rust.mk', () => {
+test('hosted ThinLTO option propagates from Firefox configure to Cargo specs', () => {
   const patch = fs.readFileSync(patchPath, 'utf8');
 
   // This exported-patch invariant is the lightweight fallback for a full
-  // configure run: it catches a mozconfig-only opt-in that rust.mk cannot see.
+  // configure run: it catches a mozconfig-only opt-in that Cargo cannot see.
   assert.match(patch, /diff --git a\/browser\/moz\.configure b\/browser\/moz\.configure/);
   assert.match(patch, /\+ {4}env="BENTO_RUST_LTO",/);
   assert.match(patch, /\+ {4}choices=\("thin",\),/);
   assert.match(patch, /\+set_config\("BENTO_RUST_LTO", depends_if\("BENTO_RUST_LTO"\)/);
 
-  assert.match(patch, /diff --git a\/config\/makefiles\/rust\.mk b\/config\/makefiles\/rust\.mk/);
-  // Firefox 158 enables Rust LTO per library (RUST_LIBRARY_LTO) with a plain -Clto,
-  // which stays the fallback when the opt-in is absent.
   assert.match(
     patch,
-    /\+cargo_rustc_flags \+= \$\(if \$\(filter thin,\$\(BENTO_RUST_LTO\)\),-Clto=thin,-Clto\)/,
+    /diff --git a\/python\/mozbuild\/mozbuild\/rust_commands\.py b\/python\/mozbuild\/mozbuild\/rust_commands\.py/,
   );
-  assert.match(patch, /^-cargo_rustc_flags \+= -Clto$/m);
+  // Firefox 159 serializes only declared Cargo config keys and composes final-crate
+  // LTO flags in Python. A missing opt-in still selects Firefox's plain -Clto.
+  assert.match(patch, /\+ {4}"BENTO_RUST_LTO": _as_str,/);
+  assert.match(
+    patch,
+    /\+ {12}"-Clto=thin" if substs\.get\("BENTO_RUST_LTO"\) == "thin" else "-Clto"/,
+  );
+  assert.match(patch, /^- {8}flags\.append\("-Clto"\)$/m);
 });

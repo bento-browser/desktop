@@ -167,7 +167,7 @@ export class MarionetteClient {
     });
   }
 
-  /** Opens the session and switches to the chrome context (needs --remote-allow-system-access). */
+  /** Opens the session and switches to chrome (launch with MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1). */
   async start({ scriptTimeoutMs = 30_000 } = {}) {
     await this.command('WebDriver:NewSession', { capabilities: { alwaysMatch: {} } });
     await this.command('WebDriver:SetTimeouts', { script: scriptTimeoutMs });

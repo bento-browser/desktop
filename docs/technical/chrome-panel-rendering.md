@@ -80,7 +80,8 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   invariants, and the chrome-side collectors it runs in the window) and
   `scripts/marionette-client.mjs` (a dependency-free Marionette client, with its
   framing covered by `scripts/marionette-client.test.mjs`, which CI runs).
-- Chrome bridge: Marionette in the chrome context (`--remote-allow-system-access`),
+- Chrome bridge: Marionette in the chrome context (`MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1`
+  on the isolated child process; Firefox 159 removed the command-line flag),
   on a port Firefox picks (`marionette.port` 0; the port is read from the profile's
   `MarionetteActivePort`). The app is launched headless with `--new-instance` on a
   fresh temporary profile. Persistence: none; the profile is deleted after a pass

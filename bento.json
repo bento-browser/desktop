@@ -7,12 +7,12 @@
   "brand": "bento",
   "firefox": {
     "product": "firefox",
-    "version": "158.0",
-    "candidate": "158.0",
+    "version": "159.0.1",
+    "candidate": "159.0.1",
     "candidateBuild": 1,
     "source": {
       "archiveBaseUrl": "https://archive.mozilla.org/pub/firefox/releases",
-      "sha256": "fc77f7801d7580a600af683cc367e261eb1ec74647e84a91b4a1e3c1dd5aa2bb"
+      "sha256": "b5fe407199685f8bddf3b2c81feb8b805429e6f3d307c9430f53456f85b6e063"
     }
   },
   "build": {

@@ -39,6 +39,15 @@ the Bento condition is guarded by `!isSingleTabWindow`. If
 `bento.chrome.hideNativeTabs` is set to `false` in a profile, Firefox falls back
 to its default tabbar/titlebar behavior for that profile.
 
+Firefox 159's native tab-search shortcut targets the hidden native URL bar.
+`patches/core-ui/22-preserve-addons-shortcut.patch` preserves the 158 contract:
+Cmd/Ctrl+Shift+A opens Add-ons through `Tools:Addons`. It restores the localized
+`addons-shortcut` key in `browserSets.ftl`; Add-ons menu entries still reference
+`key_openAddons`. It omits the native tab-search command, dispatch, key and History
+menu item. No store, persistence or chrome-bridge route is added. Bento's existing
+sidebar Search tabs and address-entry routes stay unchanged. Verify the localized
+key/menu, synthesized shortcut and `about:addons` command in a fresh built profile.
+
 ## Native Tabs And Titlebar Pitfalls
 
 - Do not restore a CSS-only global `#TabsToolbar` collapse. It hides the

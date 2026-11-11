@@ -1,4 +1,4 @@
-From 5b2f2f3f45c397545f56fc620252977f23580f76 Mon Sep 17 00:00:00 2001
+From 4aa76241b277c174704106e2491796d94371f4ea Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 27 Jun 2026 16:35:00 +1000
 Subject: [PATCH] Allow DOM fullscreen from split view browsers
@@ -8,7 +8,7 @@ Subject: [PATCH] Allow DOM fullscreen from split view browsers
  1 file changed, 17 insertions(+), 5 deletions(-)
 
 diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
-index 57711112f21a5929904fce26e44a8a7a2c85ecf4..4e128f3963b3653d25b76c955e73664e86e9056d 100644
+index d9756908a7fb6ed43db4c1b528391c8f7446a2cf..fc485f9773e6d6143f7b9c18ea540a2d6629f73c 100644
 --- a/browser/base/content/browser-fullScreenAndPointerLock.js
 +++ b/browser/base/content/browser-fullScreenAndPointerLock.js
 @@ -634,13 +634,13 @@ var FullScreen = {

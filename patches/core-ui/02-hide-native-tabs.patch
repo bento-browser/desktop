@@ -1,4 +1,4 @@
-From 8e21d34691fa2d4af205fc59a3e250440327b357 Mon Sep 17 00:00:00 2001
+From 34b937a0fb0dfd836c8317c652b5bb3d58c2d068 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
@@ -10,10 +10,10 @@ Subject: [PATCH] Hide native Firefox tabs
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index 50ba8c2da36d16a1fb186441e4db0cdd68e1168a..bf0814cc2a9db57dc915853080b642a9224eddd2 100644
+index 4f4aa1a0d9a52f2d9bdc29bab71d97f359c1a680..2392d514a802fffc1b3789f1b609456d0db21382 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -566,6 +566,8 @@ SettingGroupManager.registerGroups({
+@@ -627,6 +627,8 @@ SettingGroupManager.registerGroups({
      l10nId: "browser-layout-header2",
      iconSrc: "chrome://browser/skin/sidebar-expanded.svg",
      headingLevel: 2,
@@ -40,7 +40,7 @@ index e7659a039baf965f02db7462378b16d303ef057a..f51a5be443548a71be1d56cc4e178a5a
    await BrowserTestUtils.removeTab(gBrowser.selectedTab);
  });
 diff --git a/browser/components/tabbrowser/content/tab-bar-visibility.js b/browser/components/tabbrowser/content/tab-bar-visibility.js
-index c190942f706a539feda2f27ea0110cb9e1d34a80..2f59be3d9382b75f511fe48087e9481035b02d4d 100644
+index 45f3efabc9fe2d38e3a53324dd82aa54d683bda3..ebb704549f16dd124be7c83b23c538dc7b3113dd 100644
 --- a/browser/components/tabbrowser/content/tab-bar-visibility.js
 +++ b/browser/components/tabbrowser/content/tab-bar-visibility.js
 @@ -14,6 +14,9 @@ var TabBarVisibility = {
