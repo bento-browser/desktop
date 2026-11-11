@@ -1,15 +1,15 @@
-From 0f8771355ba747ff459004ff3c6524b329f4db09 Mon Sep 17 00:00:00 2001
+From 2934e9bbe391c327591869fe3f1cff53bf21c803 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 24 Aug 2026 14:13:08 +1000
 Subject: [PATCH] Use ThinLTO for hosted release Rust linking
 
 ---
- browser/moz.configure    | 11 +++++++++++
- config/makefiles/rust.mk |  4 +++-
- 2 files changed, 14 insertions(+), 1 deletion(-)
+ browser/moz.configure                     | 11 +++++++++++
+ python/mozbuild/mozbuild/rust_commands.py |  6 +++++-
+ 2 files changed, 16 insertions(+), 1 deletion(-)
 
 diff --git a/browser/moz.configure b/browser/moz.configure
-index ef7de8397fa9e2dbdf5256e025a947eadbef779d..24c5ae544d5384311dbc52773733beea8d14b389 100644
+index 8979a2e4e8d92e9aa4478c397cf4891211608f24..9bc43f7db4bf272b2d33a879a86f3980859f801b 100644
 --- a/browser/moz.configure
 +++ b/browser/moz.configure
 @@ -17,6 +17,17 @@ imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
@@ -17,8 +17,8 @@ index ef7de8397fa9e2dbdf5256e025a947eadbef779d..24c5ae544d5384311dbc52773733beea
  imply_option("BROWSER_CHROME_URL", "chrome://browser/content/browser.xhtml")
  
 +# Keep the hosted-build ThinLTO opt-in namespaced and explicit.  It is
-+# consumed by config/makefiles/rust.mk after configure writes the value to
-+# the generated make configuration.
++# consumed by python/mozbuild/mozbuild/rust_commands.py through the
++# serialized Cargo configuration.
 +option(
 +    env="BENTO_RUST_LTO",
 +    nargs=1,
@@ -30,21 +30,30 @@ index ef7de8397fa9e2dbdf5256e025a947eadbef779d..24c5ae544d5384311dbc52773733beea
  
  with only_when(target_has_linux_kernel & compile_environment):
      option(env="MOZ_NO_PIE_COMPAT", help="Enable non-PIE wrapper")
-diff --git a/config/makefiles/rust.mk b/config/makefiles/rust.mk
-index ab3304484180de276f863c15dfdd7d13d27fb135..01350d30f730abbdb1200599531654c32482598f 100644
---- a/config/makefiles/rust.mk
-+++ b/config/makefiles/rust.mk
-@@ -56,7 +56,9 @@ cargo_build_flags += $(MOZ_CARGO_BUILD_STD_ARGS)
- cargo_rustc_flags = $(CARGO_RUSTCFLAGS)
- # Enable link-time optimization for release builds.
- ifdef RUST_LIBRARY_LTO
--cargo_rustc_flags += -Clto
-+# Keep Firefox's default fat LTO unless a Bento hosted builder opts into
-+# standard Rust ThinLTO to reduce peak linker memory.
-+cargo_rustc_flags += $(if $(filter thin,$(BENTO_RUST_LTO)),-Clto=thin,-Clto)
- endif
+diff --git a/python/mozbuild/mozbuild/rust_commands.py b/python/mozbuild/mozbuild/rust_commands.py
+index 4167286b96f9f3219ed395accdc1866deb33c4d8..8d28442aef5d66c2dd9bfff39aae7bf0239a1869 100644
+--- a/python/mozbuild/mozbuild/rust_commands.py
++++ b/python/mozbuild/mozbuild/rust_commands.py
+@@ -50,6 +50,7 @@ def _bool(v):
+ # holds once, and it rejects a read of anything absent from here.
+ CARGO_CONFIG_KEYS = {
+     "AR": _as_str,
++    "BENTO_RUST_LTO": _as_str,
+     "BINDGEN_EXTRA_CLANG_ARGS": _as_list,
+     "CARGO": _as_str,
+     "CARGOFLAGS": _as_args,
+@@ -418,7 +419,10 @@ def _rustc_flags(cmd, substs, invocation):
+         flags += substs.get("MOZ_RUST_LIBRARY_RUSTCFLAGS")
  
- ifdef CARGO_INCREMENTAL
+     if applies_library_lto(cmd.kind, cmd.lto, substs):
+-        flags.append("-Clto")
++        # Keep Firefox's default fat LTO unless a Bento hosted builder opts in.
++        flags.append(
++            "-Clto=thin" if substs.get("BENTO_RUST_LTO") == "thin" else "-Clto"
++        )
+ 
+     flags += invocation.cargo_rustcflags
+ 
 -- 
 2.54.0 (Apple Git-157)
 

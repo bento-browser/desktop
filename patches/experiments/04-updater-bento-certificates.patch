@@ -1,4 +1,4 @@
-From d50edbe6e84f078c6d8e9f32678b784c4f48303f Mon Sep 17 00:00:00 2001
+From 503e81fe7530058bd8f3c00f97e4815a43a45295 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 2 Nov 2026 03:08:39 +1100
 Subject: [PATCH] Compile Bento update certificates for the bento channel

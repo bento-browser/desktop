@@ -1,4 +1,4 @@
-From f8ddc1507749040a860cf17c79f2d24e72ce98e3 Mon Sep 17 00:00:00 2001
+From d0e685c82c4c2f9974a0777f4aa1e42bb1c9756f Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:27 +1000
 Subject: [PATCH] Add Bento side panel host

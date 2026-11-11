@@ -1,4 +1,4 @@
-From c51bab22161feb77fb9730c2946a3299d20007bf Mon Sep 17 00:00:00 2001
+From e2484c56be6c61845232a1182ca695779719bea9 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 31 Oct 2026 23:38:29 +1100
 Subject: [PATCH] Preserve input for owned native theme capture transitions
@@ -416,10 +416,10 @@ index 0000000000000000000000000000000000000000..78762e382d1ed217a6cfc1057c35c804
 +  }
 +});
 diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
-index c88f6f63f05043dd4f22761f446b5843ac0a5b40..e763491006000db888f0ce16442ab2ec19a7e2c2 100644
+index ca58605fd207e17050ead0f37bd63aa3f7edb7e7..605752a90e9d8449bff2e50ba3568ddb15e7b8d5 100644
 --- a/layout/base/PresShell.cpp
 +++ b/layout/base/PresShell.cpp
-@@ -124,6 +124,7 @@
+@@ -125,6 +125,7 @@
  #include "mozilla/dom/Touch.h"
  #include "mozilla/dom/TouchEvent.h"
  #include "mozilla/dom/UserActivation.h"
@@ -427,7 +427,7 @@ index c88f6f63f05043dd4f22761f446b5843ac0a5b40..e763491006000db888f0ce16442ab2ec
  #include "mozilla/gfx/2D.h"
  #include "mozilla/gfx/Types.h"
  #include "mozilla/glean/GfxMetrics.h"
-@@ -8085,8 +8086,11 @@ nsIFrame* PresShell::EventHandler::GetFrameToHandleNonTouchEvent(
+@@ -8091,8 +8092,11 @@ nsIFrame* PresShell::EventHandler::GetFrameToHandleNonTouchEvent(
  
    Document* doc = GetDocument();
    if (MOZ_UNLIKELY(doc && doc->RenderingSuppressedForViewTransitions())) {

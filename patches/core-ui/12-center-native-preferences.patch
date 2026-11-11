@@ -1,16 +1,16 @@
-From d408b5c2a31631861e2398f5bc72a6686c7f7489 Mon Sep 17 00:00:00 2001
+From 92b929169a431b7551729558e0b497d3d8fa7b1c Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  68 +++++
+ browser/components/preferences/preferences.js |  68 ++++++
  .../components/preferences/preferences.xhtml  |   9 +-
  .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
  3 files changed, 295 insertions(+), 11 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index b7fbb8b9dcf595cf3e3176c4535023f0884b040a..0239c4a2ad1607e33b77ac0b541b0ae09a7600df 100644
+index 8b3acf475ad7be98c51eac0ddf65affb3c35846e..48e4f98846b8d30e92ac5881bd605a5d63233cac 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
 @@ -65,6 +65,74 @@ var fxAccounts = getFxAccountsSingleton();

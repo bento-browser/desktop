@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "base": {
     "product": "firefox",
-    "version": "158.0",
-    "tree": "e2c4763119186b2541f19cf3d2e64319bd783197",
-    "contentTree": "98a7d44f41026b3eac88c4803ee6b0f6394c08409eed3f133c29aea54e1c458a"
+    "version": "159.0.1",
+    "tree": "22b0993cbd09d10b02762db22623dc9cf0b15964",
+    "contentTree": "b78ac4189fd81ed2e9584f0d0da374ed844db540578b84afab97725496439580"
   },
   "series": [
     {
@@ -151,6 +151,11 @@
       "path": "patches/core-ui/21-package-distribution-extensions.patch",
       "id": "package-distribution-extensions",
       "subject": "Package distribution add-ons in a build not made by Mozilla"
+    },
+    {
+      "path": "patches/core-ui/22-preserve-addons-shortcut.patch",
+      "subject": "Preserve Bento Add-ons shortcut and omit native tab search",
+      "id": "preserve-addons-shortcut"
     }
   ],
   "format": "git-format-patch"

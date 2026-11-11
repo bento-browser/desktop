@@ -44,6 +44,9 @@
   const BLOCKED_NET_ERRORS = new Set(['blockedByPolicy']);
 
   const { EveryWindow } = ChromeUtils.importESModule('resource:///modules/EveryWindow.sys.mjs');
+  const { Tabbrowser } = ChromeUtils.importESModule(
+    'moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs',
+  );
 
   let watcherCount = 0;
 
@@ -138,7 +141,7 @@
                   // counts.
                   const observer = new win.MutationObserver((records) => {
                     for (const nativeTab of new Set(records.map((record) => record.target))) {
-                      if (gBrowser.isTab(nativeTab)) report(nativeTab);
+                      if (Tabbrowser.isTab(nativeTab)) report(nativeTab);
                     }
                   });
                   observer.observe(gBrowser.tabContainer, {

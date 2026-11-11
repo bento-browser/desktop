@@ -1,4 +1,4 @@
-From 769939d17c6d94e2df0e2f80f571ba5de04beabb Mon Sep 17 00:00:00 2001
+From feeac391c30e3bf978b2f6b602c7e6b032191659 Mon Sep 17 00:00:00 2001
 From: BentoPatchStack <patch-stack@bento.invalid>
 Date: Sat, 31 Oct 2026 22:48:45 +1100
 Subject: [PATCH] Capture native no-scroll browser roots for view transitions

@@ -1,4 +1,4 @@
-From ff4eb705577a90afd500bb55559f872d49e7a419 Mon Sep 17 00:00:00 2001
+From 988ef9438bff36c26f991134e05d45abff8efad0 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:37 +1000
 Subject: [PATCH] Reserve Firefox save page key for Bento
@@ -8,12 +8,12 @@ Subject: [PATCH] Reserve Firefox save page key for Bento
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-sets.inc.xhtml b/browser/base/content/browser-sets.inc.xhtml
-index 223691fb0cd3755493bf3f5151ec497f27ab38af..cb0ed4b303c021d3e91095374ff88aa937833d37 100644
+index 9190c6e7f871b078c8bce86a998f81a8b27589de..c74706582727173690d52285bbde7a5baa90a7da 100644
 --- a/browser/base/content/browser-sets.inc.xhtml
 +++ b/browser/base/content/browser-sets.inc.xhtml
-@@ -186,7 +186,7 @@
+@@ -187,7 +187,7 @@
           command="Tools:Downloads"/>
-     <key id="key_openAddons" data-l10n-id="addons-shortcut" command="Tools:Addons" modifiers="accel,shift"/>
+     <key id="key_openAddons" data-l10n-id="addons-shortcut-2" command="Tools:Addons" modifiers="accel,shift"/>
      <key id="openFileKb" data-l10n-id="file-open-shortcut" command="Browser:OpenFile"  modifiers="accel"/>
 -    <key id="key_savePage" data-l10n-id="save-page-shortcut" command="Browser:SavePage" modifiers="accel"/>
 +    <key id="key_savePage" data-l10n-id="save-page-shortcut" command="Browser:SavePage" modifiers="accel" reserved="true"/>

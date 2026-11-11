@@ -1,4 +1,4 @@
-From 01f49489cf8d410de69c67e7c22038ca217e2952 Mon Sep 17 00:00:00 2001
+From 6fe7f6093d7ee79b7fc6e1e34dd1bb90a1c31d29 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:28 +1000
 Subject: [PATCH] Register Bento key actors
@@ -8,7 +8,7 @@ Subject: [PATCH] Register Bento key actors
  1 file changed, 9 insertions(+)
 
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 04f4e98640b569fdf84894275456b66f6123e3e5..fad1ccc533856c073987645292edce655742bf19 100644
+index 04f4e98640b569fdf84894275456b66f6123e3e5..7678dfa4daf1b5600779a8107c26811aaf9c3182 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
 @@ -100,6 +100,8 @@ FINAL_TARGET_FILES.actors += [

@@ -1,17 +1,17 @@
-From f7bf2c7f17ff9da451e9f62e1abd8a3c233767c7 Mon Sep 17 00:00:00 2001
+From 674c09beafda7e4a30d4d05ac8a54bf6ccd8b785 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:45 +1000
 Subject: [PATCH] Synchronize tabbrowser state with Bento
 
 ---
- .../components/tabbrowser/Tabbrowser.sys.mjs  | 40 +++++++++++++++----
- 1 file changed, 33 insertions(+), 7 deletions(-)
+ .../components/tabbrowser/Tabbrowser.sys.mjs  | 42 +++++++++++++++----
+ 1 file changed, 35 insertions(+), 7 deletions(-)
 
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b131ecebfa8 100644
+index 3bea5d9d2dbfedad6220375d41c209fb903ad58c..946b18d3342e6a417078be826373ecfde22d9c56 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -4551,6 +4551,14 @@ export class Tabbrowser {
+@@ -4690,6 +4690,14 @@ export class Tabbrowser {
      if (userContextId == null && openerTab) {
        userContextId = openerTab.userContextId;
      }
@@ -26,7 +26,7 @@ index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b13
  
      if (!noInitialLabel) {
        if (this.documentGlobal.isBlankPageURL(uriString)) {
-@@ -7150,10 +7158,16 @@ export class Tabbrowser {
+@@ -7315,10 +7323,16 @@ export class Tabbrowser {
     *   The tab in this window, which takes over the other tab's browser.
     * @param {MozTabbrowserTab} aOtherTab
     *   The tab to take the browser from, which may be in another window.
@@ -44,7 +44,7 @@ index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b13
      // Do not allow transfering a private tab to a non-private window
      // and vice versa.
      if (
-@@ -7211,7 +7225,10 @@ export class Tabbrowser {
+@@ -7376,7 +7390,10 @@ export class Tabbrowser {
      // First, start teardown of the other browser.  Make sure to not
      // fire the beforeunload event in the process.  Close the other
      // window if this was its last tab.
@@ -55,16 +55,18 @@ index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b13
        !remoteBrowser.#beginRemoveTab(aOtherTab, {
          adoptedByTab: aOurTab,
          closeWindowWithLastTab: true,
-@@ -7223,7 +7240,7 @@ export class Tabbrowser {
+@@ -7388,7 +7405,9 @@ export class Tabbrowser {
      // If this is the last tab of the window, hide the window
      // immediately without animation before the docshell swap, to avoid
      // about:blank being painted.
--    let [closeWindow] = aOtherTab._endRemoveArgs;
-+    let [closeWindow] = bentoCloseOther ? aOtherTab._endRemoveArgs : [false];
+-    let [closeWindow] = Tabbrowser.#endRemoveArgs.get(aOtherTab);
++    let [closeWindow] = bentoCloseOther
++      ? Tabbrowser.#endRemoveArgs.get(aOtherTab)
++      : [false];
      if (closeWindow) {
        let win = aOtherTab.documentGlobal;
        win.windowUtils.suppressAnimation(true);
-@@ -7358,11 +7375,14 @@ export class Tabbrowser {
+@@ -7526,11 +7545,14 @@ export class Tabbrowser {
        });
      }
  
@@ -84,7 +86,7 @@ index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b13
      }
  
      this.setTabTitle(aOurTab);
-@@ -7727,6 +7747,11 @@ export class Tabbrowser {
+@@ -7885,6 +7907,11 @@ export class Tabbrowser {
      // tell a new window to take the "dropped" tab
      let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
      args.appendElement(/** @type {nsISupports} */ (aTab.splitview ?? aTab));
@@ -96,7 +98,7 @@ index c85785fc4e4e8e5104ecbef8fce50e51cabe7eb2..908c6f2533c1a7ca7af89f42cfc69b13
      return lazy.BrowserWindowTracker.openWindow({
        private: lazy.PrivateBrowsingUtils.isWindowPrivate(this.documentGlobal),
        features: Object.entries(features)
-@@ -7734,6 +7759,7 @@ export class Tabbrowser {
+@@ -7892,6 +7919,7 @@ export class Tabbrowser {
          .join(","),
        openerWindow: this.documentGlobal,
        args,

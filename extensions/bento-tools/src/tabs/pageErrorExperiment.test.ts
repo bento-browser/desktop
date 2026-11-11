@@ -78,7 +78,15 @@ function setup() {
   const scope: Record<string, unknown> = {};
   const globals = {
     globalThis: scope,
-    ChromeUtils: { importESModule: () => ({ EveryWindow: everyWindow }) },
+    ChromeUtils: {
+      importESModule: (url: string) => {
+        if (url === 'resource:///modules/EveryWindow.sys.mjs') return { EveryWindow: everyWindow };
+        if (url === 'moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs') {
+          return { Tabbrowser: { isTab: (t: FakeTab) => t.isTab } };
+        }
+        throw new Error(`unexpected module: ${url}`);
+      },
+    },
     ExtensionAPI: class {},
     ExtensionCommon: {
       EventManager: class {
@@ -118,7 +126,6 @@ function setup() {
       gBrowser: {
         tabs,
         tabContainer: {},
-        isTab: (t: FakeTab) => t.isTab,
         getTabForBrowser: (browser: FakeTab['linkedBrowser']) =>
           tabs.find((t) => t.linkedBrowser === browser),
         addTabsProgressListener: (l: Parameters<typeof listeners.add>[0]) => listeners.add(l),

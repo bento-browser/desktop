@@ -570,7 +570,7 @@ Use a dev build on a throwaway profile; the tools extension must be running.
    then launch the dev build:
 
    ```sh
-   <Bento binary> --new-instance --marionette --remote-allow-system-access --profile <dir>
+   MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1 <Bento binary> --new-instance --marionette --profile <dir>
    ```
 
 2. Marionette client, chrome context (`Marionette:SetContext chrome`): run an

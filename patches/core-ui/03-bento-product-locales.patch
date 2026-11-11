@@ -1,4 +1,4 @@
-From 445047328aac50290ca803ac4d2392afeb095502 Mon Sep 17 00:00:00 2001
+From cfcce950643a2bcc39f17854e58e5f4cc762da11 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:31 +1000
 Subject: [PATCH] Set Bento product locale strings

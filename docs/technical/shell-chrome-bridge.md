@@ -668,7 +668,7 @@ Pitfalls:
 - A tab copies `crashed` onto its own children by attribute inheritance (`.tab-icon-stack`,
   `.tab-icon-image`, `.tab-icon-overlay`, `.tab-audio-button`, `tab.js` `inheritedAttributes`), so the
   subtree observer also sees records for those elements. The callback keeps only records whose target
-  `gBrowser.isTab()`; without that filter `getWrapper` would mint a tab id for an icon element.
+  `Tabbrowser.isTab()` (the static classifier in Firefox 159); without that filter `getWrapper` would mint a tab id for an icon element.
 - `getWrapper` returns nothing for a tab mid-adoption and for one the extension may not access; both are
   skipped, never given an id.
 - A tab in a window that has not finished its startup is not in `getPageErrors()`; that window's

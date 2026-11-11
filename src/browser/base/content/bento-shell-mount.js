@@ -313,11 +313,12 @@
       'chrome://browser/content/urlbar/UrlbarShared.mjs': 'UrlbarShared',
       'moz-src:///toolkit/components/search/SearchService.sys.mjs': 'SearchService',
       'moz-src:///toolkit/components/search/SearchUtils.sys.mjs': 'SearchUtils',
-      'resource:///modules/MigrationUtils.sys.mjs': 'MigrationUtils',
-      'resource:///modules/FirefoxProfileMigrator.sys.mjs': 'FirefoxProfileMigrator',
+      'moz-src:///browser/components/migration/MigrationUtils.sys.mjs': 'MigrationUtils',
+      'moz-src:///browser/components/migration/FirefoxProfileMigrator.sys.mjs': 'FirefoxProfileMigrator',
       'resource:///modules/ExtensionsUI.sys.mjs': 'ExtensionsUI',
       'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs': 'SessionStore',
       'moz-src:///browser/components/sessionstore/SessionSaver.sys.mjs': 'SessionSaver',
+      'moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs': 'Tabbrowser',
       'resource://gre/modules/Extension.sys.mjs': 'Management',
       'resource://gre/modules/ExtensionParent.sys.mjs': 'ExtensionParent',
       'resource://gre/modules/AddonManager.sys.mjs': 'AddonManager',
@@ -339,8 +340,7 @@
     MozBrowser: (win) => win.customElements?.get('browser'),
     MozTabbrowserTab: (win) => win.document?.querySelector('.tabbrowser-tab[selected]'),
   };
-  // Patch sites record Firefox's original member here (id -> value) before
-  // replacing it, so the probe judges Firefox's member, not Bento's wrapper.
+  // Originals recorded before Bento replaces a Firefox member (id -> value).
   const BENTO_COMPAT_NATIVE = new Map();
 
   function bentoCompatNoteNative(id, native) {
@@ -4639,7 +4639,7 @@
   // True when Mozilla Firefox or Zen has a readable profile (Bento's patch adds the Zen migrator).
   async function hasFirefoxZenProfile() {
     const { FirefoxProfileMigrator, ZenProfileMigrator } = ChromeUtils.importESModule(
-      'resource:///modules/FirefoxProfileMigrator.sys.mjs',
+      'moz-src:///browser/components/migration/FirefoxProfileMigrator.sys.mjs',
     );
     // Each registry is checked on its own: one that throws must not hide a profile in the other.
     for (const Migrator of [FirefoxProfileMigrator, ZenProfileMigrator]) {
@@ -4654,7 +4654,7 @@
 
   async function detectImportSources() {
     const { MigrationUtils } = ChromeUtils.importESModule(
-      'resource:///modules/MigrationUtils.sys.mjs',
+      'moz-src:///browser/components/migration/MigrationUtils.sys.mjs',
     );
     const [browsers, firefoxZen] = await Promise.all([
       Promise.all(IMPORT_SOURCE_BROWSER_KEYS.map((key) => detectImportBrowser(MigrationUtils, key))),
@@ -4704,7 +4704,7 @@
     }
 
     try {
-      ChromeUtils.importESModule('resource:///modules/MigrationUtils.sys.mjs');
+      ChromeUtils.importESModule('moz-src:///browser/components/migration/MigrationUtils.sys.mjs');
     } catch (err) {
       console.warn('[bento-shell-mount] MigrationUtils import failed; falling back to restart:', err);
       restartToBrowserImportFromWelcome();
@@ -4818,7 +4818,7 @@
       console.warn('[bento-shell-mount] restart to browser import failed:', err);
       try {
         const { MigrationUtils } = ChromeUtils.importESModule(
-          'resource:///modules/MigrationUtils.sys.mjs',
+          'moz-src:///browser/components/migration/MigrationUtils.sys.mjs',
         );
         MigrationUtils.showMigrationWizard(window, {
           entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.NEWTAB,
@@ -15160,7 +15160,7 @@
     // two sidebar tabs (the bug surfaced in late Phase 2 testing).
     //
     // tab.splitview is a GETTER (browser/components/tabbrowser/content/
-    // tab.js:399) that returns parentElement only when parentElement is
+    // tab.mjs) that returns parentElement only when parentElement is
     // a <tab-split-view-wrapper>; no setter, so a plain assignment is
     // silently shadowed. Use Object.defineProperty to add an own-
     // property that takes precedence over the prototype getter.
