@@ -19,10 +19,10 @@ afterEach(() => {
 
 describe('signalOverlayReady', () => {
   it('writes a title chrome recognises as the announcement of the overlay', () => {
-    signalOverlayReady('confirm');
+    signalOverlayReady('workspace-layers');
     chrome.settle();
 
-    expect(chrome.observed).toEqual([`${OVERLAY_READY_PREFIX}:confirm_1000`]);
+    expect(chrome.observed).toEqual([`${OVERLAY_READY_PREFIX}:workspace-layers_1000`]);
     expect(chrome.observed[0]?.startsWith(OVERLAY_READY_PREFIX)).toBe(true);
   });
 });

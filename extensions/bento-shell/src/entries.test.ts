@@ -21,10 +21,8 @@ const OVERLAY_ENTRIES: Record<string, string> = {
   bookmarks: 'bookmarks',
   'bookmarks-popup': 'bookmarks-popup',
   'address-bar': 'addrbar',
-  confirm: 'confirm',
-  'edit-workspace': 'edit-workspace',
+  'workspace-layers': 'workspace-layers',
   welcome: 'welcome',
-  'workspace-switcher': 'workspace-switcher',
   menu: 'menu',
   'panel-navigator-tooltip': 'panel-navigator-tooltip',
 };

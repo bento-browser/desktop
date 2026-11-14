@@ -187,7 +187,7 @@ theme via the avatar tint, so you can identify workspaces at a glance.
 ### Auto-rotated themes on new workspaces
 
 Clicking **+ New workspace** in the switcher menu auto-assigns a theme
-from a rotation list ([`THEME_ROTATION`](../extensions/bento-shell/src/workspace-switcher/main.tsx)).
+from a rotation list ([`THEME_ROTATION`](../extensions/bento-shell/src/workspace-layers/SwitcherLayer.tsx)).
 The rotation picks the first non-default theme that isn't already in
 use, then round-robins once every theme has been claimed at least
 once. The first workspace at fresh-profile boot ("Personal") keeps the
@@ -452,7 +452,7 @@ DEFAULT_THEME_ID}` explicitly** — without the fallback, undefined
    sidebar trigger
    ([WorkspaceSwitcher.tsx](../extensions/bento-shell/src/components/WorkspaceSwitcher/WorkspaceSwitcher.tsx))
    and the overlay menu
-   ([workspace-switcher/main.tsx](../extensions/bento-shell/src/workspace-switcher/main.tsx))
+   ([workspace-layers/SwitcherLayer.tsx](../extensions/bento-shell/src/workspace-layers/SwitcherLayer.tsx))
    do this — verify if you've cloned the pattern elsewhere.
 3. **The `[data-bento-theme]` re-link rule in
    [bento-tokens.css](../extensions/bento-shell/src/theme/bento-tokens.css)

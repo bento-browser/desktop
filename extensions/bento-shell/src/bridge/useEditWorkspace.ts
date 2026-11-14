@@ -1,15 +1,15 @@
 // Cross-process bridge for the edit-workspace overlay.
 //
-// Same pattern as useConfirm: the form is hosted in its own chrome-mounted
-// <browser> (edit-workspace.html) so the modal covers the whole window
-// instead of being clipped to the sidebar's bounds. Modals belong on the
-// browser, not the sidebar.
+// Same pattern as useConfirm: the form is the edit-workspace layer of the
+// chrome-mounted workspace layers document (workspace-layers.html), so the
+// modal covers the whole window instead of being clipped to the sidebar's
+// bounds. Modals belong on the browser, not the sidebar.
 //
 // Sidebar code calls requestEditWorkspace() to (a) broadcast the snapshot
 // of the workspace being edited via BroadcastChannel and (b) signal chrome
-// (via document.title sentinel) to reveal the overlay frame. The overlay
-// content listens, renders the form, dispatches workspace/update on Save,
-// and signals chrome to hide on dismiss.
+// (via document.title sentinel) to show the layer. The layers document
+// listens, renders the form, dispatches workspace/update on Save, and
+// signals chrome to hide on dismiss. The switcher layer opens it directly.
 //
 // Separate channel name from useConfirm's bus so payloads don't collide;
 // each overlay subscribes only to its own bus. Every payload also names its
@@ -50,10 +50,8 @@ function bus(): BroadcastChannel | null {
   return channel;
 }
 
-/** Open the chrome edit-workspace overlay with a snapshot of the workspace
- * being edited. Safe to call before the overlay's content has booted —
- * the broadcast races the chrome reveal and the overlay's listener picks
- * up the payload as soon as its main.tsx runs. */
+/** Open the edit-workspace layer with a snapshot of the workspace being
+ * edited. The layers document is created at window startup. */
 export function requestEditWorkspace(payload: EditWorkspacePayload): void {
   const ch = bus();
   if (!ch) {
@@ -64,8 +62,8 @@ export function requestEditWorkspace(payload: EditWorkspacePayload): void {
   sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to edit-workspace requests. Called by the overlay content's
- * main.tsx; returns an unsubscribe. */
+/** Subscribe to edit-workspace requests. Called by the workspace layers
+ * document; returns an unsubscribe. */
 export function subscribeToEditWorkspaceRequests(
   handler: (payload: EditWorkspacePayload) => void,
 ): () => void {

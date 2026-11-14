@@ -159,10 +159,29 @@ clears a search, and closes from its first list.
 
 How to test it: key events sent inside the content process (a frame script, `content`
 `dispatchEvent`) skip the chrome listener and cannot show this. Send the key from the
-parent (Marionette `WebDriver:PerformActions` in the chrome context, or
-`windowUtils.sendKeyEvent` in the chrome window) with the overlay frame focused, and log
-`event.target.id` from a capturing window listener. `scripts/overlay-surfaces.test.mjs`
-covers the listener with the frame id as the target.
+parent (Marionette `WebDriver:PerformActions` in the chrome context, or an
+`nsITextInputProcessor` started with `beginInputTransactionForTests(window)` in the chrome
+window; `windowUtils.sendKeyEvent` no longer exists on 160) with the overlay frame focused,
+and log `event.target.id` from a capturing window listener.
+`scripts/overlay-surfaces.test.mjs` covers the listener with the frame id as the target.
+
+### Esc follows the stacking order
+
+Esc goes to the top-most open overlay by stacking: the highest z-index, and at an equal
+z-index the host later in the document, which paints above (`topEscapeOverlay`). An open
+still waiting for its document counts at the place it will appear, a host fading out does
+not count, and each workspace layer counts at its own z-index (see
+[overlay-documents.md](overlay-documents.md#workspace-layers-document)). What Esc then does
+is the overlay's own: the welcome and the import card take it without closing; a shown
+menu, Settings, the bookmark popup and the Bookmarks view handle it in their documents when
+the key's target is their frame; the rest close through their `hide*` function.
+
+Pitfall: the handler used to check a fixed list (pending menu, confirm, edit workspace,
+workspace palette, Settings, import and welcome, switcher, address bar, merge palette,
+palette). A confirmation closed under a command palette opened over it, the welcome
+swallowed Esc under a command palette, and an overlay under a shown menu took Esc before
+the menu. Do not reorder by list again; a new overlay joins `escapeOverlayEntries` and
+takes its place from its host's z-index.
 
 Inside the Settings document the Esc handler is a capturing `keydown` listener on the
 window, not an `onKeyDown` on the field: the focus can be on Back, a path button, Close or

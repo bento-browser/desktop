@@ -1,13 +1,15 @@
-// Cross-process confirm-overlay bridge.
+// Cross-process confirm bridge.
 //
-// Pattern mirrors the command palette: the AlertDialog is hosted in its own
-// chrome-mounted <browser> (confirm.html) so the modal covers the whole
-// browser window — not just the sidebar. Sidebar code calls requestConfirm()
-// to (a) broadcast the payload to the confirm content via BroadcastChannel
-// and (b) signal chrome (via document.title sentinel) to reveal the overlay
-// frame. The confirm content listens, renders the AlertDialog, dispatches
-// the confirm payload's action on accept, and signals chrome to hide on
-// dismiss.
+// The AlertDialog is the confirm layer of the chrome-mounted workspace layers
+// document (workspace-layers.html), so the modal covers the whole browser
+// window, not just the sidebar. Another document (the sidebar, the workspace
+// palette) calls requestConfirm() to (a) broadcast the payload on a
+// BroadcastChannel and (b) signal chrome (via a document.title sentinel) to
+// show the layer. The layers document listens, renders the AlertDialog,
+// dispatches the payload's action on accept, and signals chrome to hide on
+// dismiss. The switcher layer, in that same document, opens the confirm layer
+// directly (workspace-layers/layers.ts): this module's channel never delivers
+// to itself.
 //
 // New BroadcastChannel name (separate from 'bento-shell-bus' which is the
 // tools port) so the confirm payload doesn't collide with action/event
@@ -54,10 +56,8 @@ function bus(): BroadcastChannel | null {
   return channel;
 }
 
-/** Open the chrome confirm overlay with the given payload. Safe to call
- * before the overlay's content has booted — the broadcast and the title
- * change race the chrome script's reveal, and the confirm content listens
- * for the payload as soon as its main.tsx runs. */
+/** Open the confirm layer with the given payload. The layers document is
+ * created at window startup, so it listens before a user action can call this. */
 export function requestConfirm(payload: ConfirmPayload): void {
   const ch = bus();
   if (!ch) {
@@ -70,8 +70,8 @@ export function requestConfirm(payload: ConfirmPayload): void {
   sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to confirm-show payloads. Called by the confirm content's
- * main.tsx; returns an unsubscribe. */
+/** Subscribe to confirm-show payloads. Called by the workspace layers
+ * document; returns an unsubscribe. */
 export function subscribeToConfirmRequests(handler: (payload: ConfirmPayload) => void): () => void {
   const ch = bus();
   if (!ch) return () => {};

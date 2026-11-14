@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bento Edit Workspace</title>
+    <title>Bento Workspace Layers</title>
 
     <script src="./boot.js"></script>
 
-    <!-- Transparent background — the chrome <browser> hosting this page
-         covers the entire browser window; the Dialog backdrop draws its
-         own scrim. Without transparent here, the page background would
-         obscure browser content beneath. -->
+    <!-- Transparent background: the chrome <browser> hosting this page covers
+         the whole browser window, so the switcher menu can render outside the
+         sidebar and the dialogs draw their own backdrop. Chrome keeps the host
+         from taking the pointer while no layer is shown. -->
     <style>
       :root {
         color-scheme: light dark;
@@ -35,6 +35,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/edit-workspace/main.tsx"></script>
+    <script type="module" src="/src/workspace-layers/main.tsx"></script>
   </body>
 </html>

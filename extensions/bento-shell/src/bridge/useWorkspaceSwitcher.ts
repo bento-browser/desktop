@@ -1,7 +1,7 @@
 // Cross-process bridge for the workspace-switcher menu overlay.
 //
-// The menu is hosted in its own chrome-mounted <browser>
-// (workspace-switcher.html) so it can render outside the sidebar — critical
+// The menu is the switcher layer of the chrome-mounted workspace layers
+// document (workspace-layers.html) so it can render outside the sidebar — critical
 // when the rail is collapsed. Without this overlay the Mux Menu's
 // popover renders inside the bento-shell-frame iframe
 // and gets clipped at the iframe boundary. iframes can't paint outside
@@ -70,8 +70,8 @@ export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload):
   sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
 }
 
-/** Subscribe to workspace-switcher open requests. Called by the overlay's
- * main.tsx; returns an unsubscribe. */
+/** Subscribe to workspace-switcher open requests. Called by the workspace
+ * layers document; returns an unsubscribe. */
 export function subscribeToWorkspaceSwitcherRequests(
   handler: (payload: WorkspaceSwitcherOpenPayload) => void,
 ): () => void {

@@ -218,10 +218,8 @@
   #bento-palette-host,
   #bento-workspace-palette-host,
   #bento-addrbar-host,
-  #bento-confirm-host,
-  #bento-edit-workspace-host,
-  #bento-welcome-host,
-  #bento-workspace-switcher-host {
+  #bento-workspace-layers-host,
+  #bento-welcome-host {
     background-color: transparent !important;
   }
 
@@ -1480,10 +1478,20 @@
   }
 
   [data-bento-mode-fade] #bento-palette-host,
-  [data-bento-mode-fade] #bento-merge-palette-host,
-  [data-bento-mode-fade] #bento-confirm-host {
+  [data-bento-mode-fade] #bento-merge-palette-host {
     transition:
       opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #bento-workspace-layers-host {
+    transition:
+      opacity var(--muxui-semantic-motion-modal-transition),
+      var(--bento-mode-fade-colours) !important;
+  }
+
+  [data-bento-mode-fade] #bento-workspace-layers-host[data-bento-layer] {
+    transition:
       var(--bento-mode-fade-colours) !important;
   }
 

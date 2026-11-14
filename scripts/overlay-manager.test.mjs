@@ -583,7 +583,7 @@ test('the table lists the strategies the docs promise', () => {
   );
   assert.deepEqual(
     rows.filter((row) => row.eager).map((row) => row.id),
-    ['confirm', 'edit-workspace', 'workspace-switcher'],
+    ['workspace-layers'],
   );
   // Prewarm order is table order.
   assert.deepEqual(
@@ -705,10 +705,8 @@ test('window startup loads the shell and the eager overlays, not the others', ()
     'MergePalette',
     'SettingsPalette',
     'Addrbar',
-    'Confirm',
-    'EditWorkspace',
+    'WorkspaceLayers',
     'Welcome',
-    'WorkspaceSwitcher',
     'Menu',
     'BookmarksPopup',
     'PanelNavigatorTooltip',

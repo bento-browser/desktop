@@ -1,18 +1,18 @@
-From 09fc09b00696fac5d4e776ba5fcfb9214a8c5c28 Mon Sep 17 00:00:00 2001
+From c9f909500f177ec591c91f3e0995b7e22271f707 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
 
 ---
- browser/base/content/browser-box.inc.xhtml | 54 +++++++++++++++++++++-
- browser/base/jar.mn                        |  9 ++++
- 2 files changed, 62 insertions(+), 1 deletion(-)
+ browser/base/content/browser-box.inc.xhtml | 46 +++++++++++++++++++++-
+ browser/base/jar.mn                        |  9 +++++
+ 2 files changed, 54 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 29a9fb72447a3459d546093af1d8d72f089d9055..df2a1e5b91b81435cf28ec7ecaadcd6a73249554 100644
+index 29a9fb72447a3459d546093af1d8d72f089d9055..bcbae8ad5a71266b9081b7feb8961ada1a17b50f 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -2,7 +2,59 @@
+@@ -2,7 +2,51 @@
  # License, v. 2.0. If a copy of the MPL was not distributed with this
  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
  
@@ -48,14 +48,6 @@ index 29a9fb72447a3459d546093af1d8d72f089d9055..df2a1e5b91b81435cf28ec7ecaadcd6a
 +  <vbox id="bento-merge-palette-host" hidden="true"
 +        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99997; background-color: transparent; pointer-events: auto; display: none; opacity: 0;">
 +    <browser id="bento-merge-palette-frame"
-+             type="content" remote="true" remoteType="extension"
-+             primary="false" flex="1"
-+             transparent="transparent"
-+             style="background-color: transparent; -moz-appearance: none;"/>
-+  </vbox>
-+  <vbox id="bento-confirm-host" hidden="true"
-+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 99998; background-color: transparent; pointer-events: auto; display: none; opacity: 0;">
-+    <browser id="bento-confirm-frame"
 +             type="content" remote="true" remoteType="extension"
 +             primary="false" flex="1"
 +             transparent="transparent"

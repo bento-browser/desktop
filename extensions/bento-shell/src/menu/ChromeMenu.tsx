@@ -92,7 +92,7 @@ export function ChromeMenu({ payload, onSelect, onClose }: ChromeMenuProps) {
   // Invisible anchor positioned at the chrome trigger's rect. Mux
   // uses the trigger element's getBoundingClientRect() to position the
   // popover; an opacity:0, pointer-events:none button still has a rect
-  // for that math. Same trick as workspace-switcher/main.tsx, but no
+  // for that math. Same trick as workspace-layers/SwitcherLayer.tsx, but no
   // sidebar-frame offset translation needed because the chrome trigger's
   // rect is already in chrome-window coords (this overlay frame covers
   // the whole window, so its DOM coords == chrome-window coords).

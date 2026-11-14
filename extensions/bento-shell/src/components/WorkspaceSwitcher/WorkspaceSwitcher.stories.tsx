@@ -112,7 +112,7 @@ export const DeleteWithTabs = () => {
     // workspace (clicking it in real Bento opens the chrome confirm
     // overlay; in Ladle that overlay isn't mounted so the click just
     // broadcasts on 'bento-confirm-bus' with no visible effect — the
-    // dialog itself can be exercised against confirm.html directly).
+    // dialog itself can be exercised against workspace-layers.html directly).
     useTabsStore
       .getState()
       .applySnapshot([
@@ -130,11 +130,11 @@ export const DeleteWithTabs = () => {
 
 DeleteWithTabs.storyName = 'Delete workspace with tabs (delete item visible)';
 
-// Note: the Edit-workspace dialog now lives in its own chrome-mounted
-// overlay (edit-workspace.html) like palette and confirm. Clicking the
+// Note: the Edit-workspace dialog now lives in the edit-workspace
+// layer of the workspace layers overlay (workspace-layers.html). Clicking the
 // Edit menu item in Ladle just broadcasts on 'bento-edit-workspace-bus'
 // with no visible effect — the form itself can be exercised against
-// edit-workspace.html directly.
+// workspace-layers.html directly.
 
 export const Collapsed = () => {
   // Narrow rail: avatar-only trigger, workspace name and chevron hidden.

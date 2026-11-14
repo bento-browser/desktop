@@ -21,6 +21,8 @@ const SHELL_ADDON_ID = 'bento-shell@bento.app';
 // These are the public opaque surfaces. Menu popup/positioner wrappers and
 // scrims are transparent; only the menu BODY belongs in the old UI mask.
 const MODE_SURFACES = '.muxui-command-palette__popup,.muxui-dialog,.muxui-alert-dialog__popup,.muxui-menu,.muxui-popover,.muxui-tooltip';
+// The layer names of the workspace layers document (see setOverlayPresentation in the mount).
+const HOST_LAYER_PATTERN = /^[a-z][a-z-]{0,39}$/;
 const GEOMETRY_PROPERTIES = new Set(['opacity', 'transform', 'translate', 'scale', 'rotate', 'filter', 'clipPath', 'width', 'height', 'left', 'top', 'right', 'bottom']);
 
 function ownModeDocument(actor) {
@@ -132,14 +134,15 @@ export class BentoShellBusChild extends JSWindowActorChild {
         const doc = this.document;
         const win = doc?.defaultView;
         const root = doc?.documentElement;
-        const { presented, generation } = message.data ?? {};
+        const { presented, generation, layer } = message.data ?? {};
         if (
           !win ||
           win.document !== doc ||
           !root ||
           typeof presented !== 'boolean' ||
           !Number.isSafeInteger(generation) ||
-          generation < 0
+          generation < 0 ||
+          (layer !== undefined && (typeof layer !== 'string' || !HOST_LAYER_PATTERN.test(layer)))
         )
           return null;
         const policy = WebExtensionPolicy.getByID(SHELL_ADDON_ID);
@@ -154,6 +157,10 @@ export class BentoShellBusChild extends JSWindowActorChild {
         if (generation < this.#presentationGeneration) return null;
         this.#presentationGeneration = generation;
         root.setAttribute('data-bento-host-presented', String(presented));
+        // A document that hosts several layers (workspace-layers.html) learns which one chrome
+        // shows; the attribute goes with the hide and for a document without layers.
+        if (presented && layer !== undefined) root.setAttribute('data-bento-host-layer', layer);
+        else root.removeAttribute('data-bento-host-layer');
         doc.dispatchEvent(new win.CustomEvent('bento-host-presentation'));
         return { presented, generation };
       } catch {

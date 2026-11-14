@@ -35,7 +35,7 @@ Shell-side workspace state is mirrored in
 `extensions/bento-shell/src/state/workspaces.ts`. Use
 `selectActiveIdForWindow` or `useActiveWorkspaceIdForWindow`; do not assume the
 global fallback is the active workspace for every window.
-Single-workspace editing uses `edit-workspace.html`; all-workspace management
+Single-workspace editing uses the edit-workspace layer of `workspace-layers.html`; all-workspace management
 uses `workspace-palette.html`, opened from the workspace switcher through the
 `useWorkspacePalette` title sentinel. Both surfaces use
 `components/WorkspaceThemePicker/WorkspaceThemePicker.tsx`, which composes the
@@ -51,7 +51,7 @@ monochromatic ids use
 `monochrome-*`, which keeps both Terracotta variants distinct. Legacy unprefixed
 workspace ids resolve to the matching monochromatic theme. Theme selection
 writes stable `Workspace.themeId` values:
-`edit-workspace.html` keeps the choice in draft state until Save dispatches
+The edit-workspace layer keeps the choice in draft state until Save dispatches
 `workspace/update`, while `workspace-palette.html` dispatches
 `workspace/update` immediately for the edited row. Theme search text stays local
 to the picker and is not persisted or sent over the bridge. When the theme
@@ -59,7 +59,7 @@ popover opens, focus moves into its `SearchField`; that field uses `slot={null}`
 to opt out of any surrounding input context so typing there stays local to the
 picker.
 
-`edit-workspace.html` and `workspace-palette.html` re-icon workspaces with the
+The edit-workspace layer and `workspace-palette.html` re-icon workspaces with the
 shared emoji picker in
 `components/WorkspaceIconPicker/WorkspaceIconPicker.tsx`. The picker adapts
 Mux UI's Emoji Picker recipe with `Popover`, `SearchField`, and `ListBox` over
@@ -73,7 +73,7 @@ the Emojibase group/subgroup messages for labels and search. The emoji grid and
 category tab strip hide native scrollbars to prevent first-open
 vertical/horizontal scrollbar flashes while preserving internal scrolling.
 Selecting an icon from the picker or pressing the icon control's overlaid clear
-button still writes `changes.icon`: `edit-workspace.html` keeps the value in
+button still writes `changes.icon`: the edit-workspace layer keeps the value in
 draft state until Save dispatches `workspace/update`, while
 `workspace-palette.html` dispatches `workspace/update` immediately for the
 edited row. The shared `Workspace.icon` schema remains an optional string stored
@@ -95,7 +95,7 @@ workspace switching remains reachable after scrolling long tab lists.
 `useWorkspaceHasPlayingAudio()` and `useWorkspaceIdsWithPlayingAudio()` derive
 workspace-level audio state from the mirrored `TabSnapshot` map, including tabs
 rendered as panels. `WorkspaceSwitcher` uses the first hook for its active
-avatar and `workspace-switcher/main.tsx` uses the second for every menu row;
+avatar and `workspace-layers/SwitcherLayer.tsx` uses the second for every menu row;
 both render the shared `WorkspaceAudioParticles` layer only when a workspace has
 an `audible && !muted` tab. The layer is positioned outside `Avatar.Root` so its
 notes can float beyond the avatar's clipped bounds. It emits finite notes on the
