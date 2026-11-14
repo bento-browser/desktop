@@ -527,7 +527,9 @@ The Passwords sidebar surface is Firefox's
 variables (`--background-color-*`, `--text-color`, `--button-*`,
 `--input-text-*`, link/icon/warning variables, panel shadows, and sidebar card
 variables) to light neutral Mux UI/Bento tokens. The Passwords documents set
-`data-color-mode="light"` and `color-scheme: light` deliberately so macOS or
+`data-bento-theme="default"` (so the Default theme's ladders and APCA text colours
+apply, as in Settings), and `data-color-mode="light"` and `color-scheme: light`
+deliberately so macOS or
 browser dark mode cannot flip `--neutral-5`, `--neutral-10`, and `--neutral-90`
 back to dark surfaces and light text. The full-page Passwords manager and
 import report remain `about:logins` documents;

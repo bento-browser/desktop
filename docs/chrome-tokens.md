@@ -67,8 +67,10 @@ non-Default `data-bento-theme`, so they need only the base sheet.
 Every such document must put `data-bento-theme` and `data-color-mode` on its
 root: the legacy alias bridge (`--neutral-*`, `--radius-*`, `--space-2xs`, ...) and
 the mode blocks apply only to elements that carry Bento attributes, and without
-them each alias computes to nothing. about:logins and megalist set both statically
-(light), the migration host sets them from its query, and about:preferences sets
+them each alias computes to nothing. `data-color-mode` alone is not enough: the
+Default theme's ladders and APCA text colours select on `data-bento-theme='default'`.
+about:logins and megalist set `data-bento-theme="default"` and `data-color-mode="light"`
+statically, the migration host sets them from its query, and about:preferences sets
 `data-bento-theme` statically and copies its host window's `data-color-mode` in
 `preferences.js` (on the mount script's `bento-ui-color-mode` notification, and when the
 page becomes visible or focused).

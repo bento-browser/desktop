@@ -1074,6 +1074,15 @@ window.
   to Mux migration, which moved the aliases from `:root` to the attribute scope;
   found 2026-10-12. Disabling the sheet does not show the cause: the aliases
   vanish with it.
+- `data-color-mode` without `data-bento-theme` resolves the aliases but not the
+  theme: the Default ladders and APCA text colours are declared on
+  `[data-bento-theme='default']`, so such a root shows Mux's unscoped values (cool
+  neutrals, WCAG text). The about:logins documents and megalist (patches 13 and 14)
+  carried only `data-color-mode="light"` until 2026-11-15; their roots now carry
+  `data-bento-theme="default"` like Settings and the migration host. They follow
+  Default, not the workspace theme, because the base sheet holds only Default.
+  `scripts/theme-sheets.test.mjs` fails when an HTML document a patch or
+  `src/browser/` gives the token sheet lacks either root attribute.
 - The same applies to every document that loads `preferences.css`, not only the
   page: its token block maps Firefox tokens onto Bento aliases, so a document
   without `bento-chrome-tokens.css` and the two root attributes computes

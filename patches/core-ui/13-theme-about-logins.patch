@@ -13,7 +13,7 @@ Subject: [PATCH] Theme about logins with Bento tokens
  6 files changed, 61 insertions(+), 7 deletions(-)
 
 diff --git a/browser/components/aboutlogins/content/aboutLogins.html b/browser/components/aboutlogins/content/aboutLogins.html
-index 9bbf5e69b17139d5063977334a869db090af3de1..1bbfab94fd15a3dd28893bb8fd4a5d20684605af 100644
+index 9bbf5e69b17139d5063977334a869db090af3de1..7d8278436ed3b227bc97efeb26717540d4b17293 100644
 --- a/browser/components/aboutlogins/content/aboutLogins.html
 +++ b/browser/components/aboutlogins/content/aboutLogins.html
 @@ -3,11 +3,11 @@
@@ -21,7 +21,7 @@ index 9bbf5e69b17139d5063977334a869db090af3de1..1bbfab94fd15a3dd28893bb8fd4a5d20
  
  <!DOCTYPE html>
 -<html>
-+<html data-color-mode="light" data-theme="light">
++<html data-bento-theme="default" data-color-mode="light" data-theme="light">
    <head>
      <meta charset="utf-8">
      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; object-src 'none'; script-src resource: chrome:; img-src data: blob: https://firefoxusercontent.com https://profile.accounts.firefox.com;">
@@ -39,7 +39,7 @@ index 9bbf5e69b17139d5063977334a869db090af3de1..1bbfab94fd15a3dd28893bb8fd4a5d20
      <link rel="icon" href="chrome://branding/content/icon32.png">
    </head>
 diff --git a/browser/components/aboutlogins/content/aboutLoginsImportReport.html b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
-index 6a6932502d8eb82c70e6aea039580f489224ee60..b8161f2bb9e454dd636e732b298f67656634cbb1 100644
+index 6a6932502d8eb82c70e6aea039580f489224ee60..7488f76fbccef36d1938d5388105a9e6073e6c75 100644
 --- a/browser/components/aboutlogins/content/aboutLoginsImportReport.html
 +++ b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
 @@ -3,14 +3,14 @@
@@ -47,7 +47,7 @@ index 6a6932502d8eb82c70e6aea039580f489224ee60..b8161f2bb9e454dd636e732b298f6765
  
  <!doctype html>
 -<html>
-+<html data-color-mode="light" data-theme="light">
++<html data-bento-theme="default" data-color-mode="light" data-theme="light">
    <head>
      <meta charset="utf-8" />
      <meta

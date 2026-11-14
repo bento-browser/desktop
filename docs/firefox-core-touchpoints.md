@@ -684,7 +684,8 @@ The source review covered every active touchpoint:
   chrome tokens, themes Firefox's Passwords `about:logins` documents,
   shared shadow-component stylesheet, and sidebar megalist surface through the
   generated Mux UI/Bento chrome tokens (Passwords `about:logins` and the megalist sidebar are
-  written with `data-color-mode="light"` and `color-scheme` light in patches 13 and 14, so they
+  written with `data-bento-theme="default"`, `data-color-mode="light"` and `color-scheme` light
+  in patches 13 and 14, so they show the Default theme like Settings, and
   stay light in dark mode and do not fade; making them follow the mode needs a hook in the
   pages' own scripts like patch 12's `syncColorMode` block, which the patches do not carry
   context for, and for `about:logins`, a content-process page without `topChromeWindow`, a
@@ -806,7 +807,8 @@ The source review covered every active touchpoint:
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
   toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
   native Customize Toolbar markup and token variable names, Passwords
-  `about:logins` and megalist stylesheet load order and semantic color variable
+  `about:logins` and megalist stylesheet load order, root `<html>` attributes
+  (`data-bento-theme`, `data-color-mode`) and semantic color variable
   names, native navigation-button alignment, or visibility. A rename or
   semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
   or the chrome window `unload` event silently brings back per-window leaks:
