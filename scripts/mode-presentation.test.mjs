@@ -385,3 +385,23 @@ test('invalid mask support settles colours without capturing any stale full-wind
   assert.ok(f.phases.some(({ phase }) => phase === 'settling'));
   f.presenter.dispose();
 });
+
+test('a hidden document that registers before the mode owner exists is granted at the first commit', async () => {
+  // The eager overlays register at window startup, before the shell background
+  // owns the mode; their readiness announcement waits for this grant.
+  const f = fixture();
+  f.read(() => Promise.reject(new Error('Mode owner unavailable')));
+  const commands = [];
+  const overlay = {
+    id: 'overlay', frame: { ...f.participant.frame, closest: () => ({}) }, current: () => true,
+    async query(command, data) { commands.push([command, data.target?.resolved]); return { applied: command === 'commit' }; },
+  };
+  const registered = f.presenter.synchronizeDocument(overlay);
+  await tick();
+  assert.deepEqual(commands, [], 'no grant before a mode is known');
+  f.read(() => Promise.resolve({ ok: true, pref: 'dark', stamp: { run: 'owner', seq: 2 } }));
+  f.presenter.ownerChanged();
+  assert.deepEqual(await registered, { ready: true });
+  assert.deepEqual(commands, [['commit', 'dark']]);
+  f.presenter.dispose();
+});

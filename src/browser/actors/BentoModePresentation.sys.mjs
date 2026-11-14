@@ -240,6 +240,10 @@ export function createModePresenter({ win, hub, getPageFrames, writeNative, onPh
   let disposed = false;
   let reading = null;
   let readingHint = null;
+  // Resolves at the first commit (or dispose). A document that registers
+  // before the window has a mode waits on it for its first grant.
+  let firstCommitted;
+  const firstCommit = new Promise((resolve) => { firstCommitted = resolve; });
   const phase = (tx, value) => {
     tx.phase = value;
     onPhase({ generation: tx.generation, phase: value, pref: tx.desired.pref, resolved: tx.desired.resolved });
@@ -311,6 +315,7 @@ export function createModePresenter({ win, hub, getPageFrames, writeNative, onPh
     win.windowUtils.updateLayerTree();
     win.windowUtils.syncFlushCompositor();
     current = target;
+    firstCommitted();
     tx.committed = target;
   }
   function queueCommit(tx, target) {
@@ -527,7 +532,12 @@ export function createModePresenter({ win, hub, getPageFrames, writeNative, onPh
       return read;
     },
     async synchronizeDocument(participant) {
-      if (!current) await api.request({ reason: 'register' });
+      // The eager overlays register at window startup, before the shell
+      // background owns the mode, so this read can fail. Their readiness waits
+      // for this grant and nothing else re-registers them: wait for the first
+      // commit instead of failing.
+      if (!current) await api.request({ reason: 'register' }).catch(() => {});
+      if (!current) await firstCommit;
       if (active && isPresented(win, participant.frame)) await api.settle();
       if (!participant.current() || !current) return null;
       const response = await bounded(participant.query('commit', { generation: ++generation, target: current, submit: false }));
@@ -580,6 +590,7 @@ export function createModePresenter({ win, hub, getPageFrames, writeNative, onPh
     dispose() {
       disposed = true;
       ++intent;
+      firstCommitted();
       if (active) {
         const tx = active;
         tx.cancelled = true;

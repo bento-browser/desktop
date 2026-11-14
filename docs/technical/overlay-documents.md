@@ -826,7 +826,7 @@ Manual verification: launch a fresh profile with `--jsdebugger`, and in the
 Browser Toolbox Console run `window.BentoOverlayStats`. Right after the window
 shows, `created` is `['confirm', 'edit-workspace', 'workspace-switcher']` plus
 later idle entries; within a few seconds it also lists `'addrbar'`, `'palette'`,
-and `'menu'`, and the other overlays are `absent`. Open each on-demand overlay
+and `'menu'`, all six report `state: 'ready'`, and the other overlays are `absent`. Open each on-demand overlay
 once and confirm its entry shows `reason: 'show'`, `readyBy: 'signal'`,
 `stalled: false`, and a `firstOpenWaitMs` well under the 5 s stall report.
 
@@ -873,6 +873,15 @@ Overlay document pitfalls:
   the table, the title handlers, and the shell names drift apart.
 - The READY title is deduped per frame like every other title, so it keeps its
   timestamp suffix.
+- Do not let a hosted document's first mode grant depend on the mode owner
+  existing when it registers. The eager overlays register at window startup,
+  before the shell background owns the mode; their one register read failed
+  (`Mode owner unavailable` in the Browser Console), later commits reach only
+  presented documents, and a reveal needs readiness first. They never announced,
+  `BentoOverlayStats` showed them `loading` for the whole session, and their
+  first open stayed pending forever (the 5 s stall report, no reveal). The
+  presenter's `synchronizeDocument` now waits for the window's first commit
+  instead of failing (`scripts/mode-presentation.test.mjs`).
 
 Tests: `scripts/overlay-manager.test.mjs` runs the real manager under fake timers.
 `scripts/mount-motion.test.mjs` runs `measureMotion`, `afterMotion` and
