@@ -5103,7 +5103,11 @@
     const sheets = doc ? Array.from(doc.styleSheets) : [];
     const prefsSheet = sheets.find((sheet) => sheet.href === PREFERENCES_SHEET_HREF);
     if (!prefsSheet) return;
-    if (!sheets.some((sheet) => sheet.href === BENTO_CHROME_STYLESHEET_HREFS[0])) {
+    // Check the link elements too: a sheet still loading is not in styleSheets yet.
+    const tokenLinked = Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).some(
+      (link) => link.href === BENTO_CHROME_STYLESHEET_HREFS[0]
+    );
+    if (!tokenLinked && !sheets.some((sheet) => sheet.href === BENTO_CHROME_STYLESHEET_HREFS[0])) {
       const link = doc.createElementNS('http://www.w3.org/1999/xhtml', 'link');
       link.rel = 'stylesheet';
       link.href = BENTO_CHROME_STYLESHEET_HREFS[0];

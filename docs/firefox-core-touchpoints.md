@@ -2580,7 +2580,9 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   it needs, so those tokens computed empty (runtime: `--border-color`,
   `--input-border-color`, `--neutral-20` empty in the dialog, non-empty on the
   page). Fix in this patch: `gSubDialog`'s `dialogOptions.styleSheets` lists
-  `bento-chrome-tokens.css` before `preferences.css` (the page's order),
+  `bento-chrome-tokens.css` (SubDialog appends it after links the dialog
+  already has, so it can follow `preferences.css`; the tokens resolve either
+  way because they are custom properties read at computed-value time),
   `preferences.js` copies the page root's `data-bento-theme` and
   `data-color-mode` onto each `.dialogFrame` document root on
   `DOMFrameContentLoaded` (the event SubDialog injects its sheets on) and on
