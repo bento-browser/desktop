@@ -615,7 +615,12 @@ if it does not exist. The sync scripts (`sync-shell.sh`,
 legacy platform-named `engine/obj-*` build from an older checkout (or an existing
 directory named by `BENTO_OBJDIR`), print which one on stderr, and fail when several
 legacy directories exist. `sync-builtin-addon-symlinks.sh` also passes
-`--allow-missing`, so an import before any build still succeeds.
+`--allow-missing`, so an import before any build still succeeds. That includes the
+import before the first build into a new `BENTO_OBJDIR` tree (for example
+`BENTO_OBJDIR=obj-bento-release bash scripts/build-release.sh`): the mozconfig still
+names the old tree until the build step regenerates it, so the sync notes the
+mismatch on stderr and skips, and the sync after mach links the new tree.
+`sync-shell.sh`, without `--allow-missing`, fails there instead.
 `package` and `updates-browser` read the target architecture from the object
 directory's `mozinfo.json` (`processor`), because `obj-bento` carries no target
 triple in its name. A checkout built before this change keeps its old directory

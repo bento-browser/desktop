@@ -1294,6 +1294,36 @@ test('BENTO_OBJDIR reaches the generated mozconfig, so mach and the resolver agr
   }
 });
 
+test('the import before the first build into a new BENTO_OBJDIR tree skips the sync instead of failing', async () => {
+  const root = await fixture();
+  try {
+    // The mozconfig still builds into obj-bento; build-release.sh's import runs before
+    // its build step regenerates it for obj-bento-release.
+    await withObjdirEnv(undefined, () => writeMozconfig(root, 'dev'));
+    fs.mkdirSync(engineFile(root, 'obj-bento'));
+    const ctx = createContext(root);
+    await withObjdirEnv('obj-bento-release', async () => {
+      const sync = resolveObjDir(ctx, { allowLegacy: true });
+      assert.equal(sync.dir, undefined);
+      assert.equal(sync.configured, engineFile(root, 'obj-bento-release'));
+      assert.match(sync.note, /engine\/obj-bento-release does not exist yet; pnpm run build creates it/);
+      const lookup = await objdirCommand(root, '--allow-legacy', '--allow-missing');
+      assert.equal(lookup.out, '');
+      assert.match(lookup.err, /^bento: BENTO_OBJDIR=obj-bento-release differs from engine\/obj-bento/);
+      await assert.rejects(() => objdirCommand(root, '--allow-legacy'), /no Firefox object directory: engine\/obj-bento-release does not exist/);
+
+      // Packaging still refuses a BENTO_OBJDIR the mozconfig does not build into.
+      assert.throws(() => resolveObjDir(ctx), /BENTO_OBJDIR=obj-bento-release differs from engine\/obj-bento/);
+
+      // Once the directory exists, the sync uses it.
+      fs.mkdirSync(engineFile(root, 'obj-bento-release'));
+      assert.equal(resolveObjDir(ctx, { allowLegacy: true }).dir, engineFile(root, 'obj-bento-release'));
+    });
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a mozconfig fragment or MOZCONFIG that would redirect mach is rejected', async () => {
   const root = await fixture();
   const previous = process.env.MOZCONFIG;

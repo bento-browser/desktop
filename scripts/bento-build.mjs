@@ -1765,6 +1765,9 @@ function readLocales(ctx, config) {
  * default. `allowLegacy` is for syncing an existing old build before the
  * configured directory exists: it falls back to the single legacy engine/obj-* directory
  * (or an existing BENTO_OBJDIR) with a note, and throws when the choice is ambiguous.
+ * A BENTO_OBJDIR the mozconfig does not name yet and that does not exist (the import
+ * before the first build into a new tree) gives no directory, with a note, so the sync
+ * skips it and the build's own sync links it; `configured` is then that directory.
  */
 export function resolveObjDir(ctx, { allowLegacy = false } = {}) {
   const requested = requestedObjDirName(ctx);
@@ -1776,7 +1779,9 @@ export function resolveObjDir(ctx, { allowLegacy = false } = {}) {
     const mismatch = `BENTO_OBJDIR=${requested} differs from engine/${configuredName}, the directory engine/mozconfig builds into`;
     if (!allowLegacy) fail(`${mismatch}; run pnpm run build with the same BENTO_OBJDIR, or unset it`);
     const dir = path.join(ctx.engineDir, requested);
-    if (!fs.existsSync(dir)) fail(`${mismatch}, and engine/${requested} does not exist`);
+    if (!fs.existsSync(dir)) {
+      return { dir: undefined, configured: dir, note: `${mismatch}, and engine/${requested} does not exist yet; pnpm run build creates it` };
+    }
     return result(dir, `${mismatch}; using engine/${requested} as BENTO_OBJDIR asks`);
   }
   if (fs.existsSync(configured)) return result(configured);
