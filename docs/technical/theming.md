@@ -7,7 +7,10 @@ Workspace theme metadata is stored as `Workspace.themeId`.
 Shell theme flow:
 
 - `scripts/sync-theme-presets.mjs` reads public `@muxui/react/themes`
-  metadata, its `themes.css` rules, and its `styles.css` projection. All reading
+  metadata, its `themes-apca.css` rules, and its `styles.css` projection.
+  `themes-apca.css` holds the same presets, selectors and layer as `themes.css`,
+  with text colours chosen by APCA; `MUX_THEMES_CSS` in `scripts/mux-css.mjs`
+  names it once for resolution and for every generated header. All reading
   of Mux's CSS shape and theme list lives in `scripts/mux-css.mjs`, which
   `scripts/generate-chrome-tokens.mjs` shares; it derives the theme list from the
   package (no fixed count) and fails with a message naming the file and block
@@ -1104,7 +1107,7 @@ window.
 - Canonical sheets keep their rules in `@layer muxui`, after the layer order
   declared in `theme/muxui.css`. An unlayered theme rule would beat Bento's
   component layers. `scripts/mux-css.mjs` (called by `sync-theme-presets.mjs`)
-  fails on any `themes.css` rule it cannot assign to one canonical theme and on a
+  fails on any preset stylesheet rule it cannot assign to one canonical theme and on a
   theme that lacks a light or dark rule.
 - Chrome token updates require regenerating/importing the chrome stylesheets
   (`bento-chrome-tokens.css` and `bento-chrome-themes/`); the shell CSS bundle

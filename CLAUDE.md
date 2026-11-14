@@ -258,7 +258,8 @@ Before creating or modifying a component:
 ## UI dependencies: development and release
 
 Bento consumes the published `@muxui/react@0.1.0-rc.6` npm package. Use its
-public `styles.css`, `themes.css`, and documented component exports. Pin the
+public `styles.css`, `themes-apca.css` (the preset palettes, with text colours
+chosen by APCA), and documented component exports. Pin the
 exact package version; do not use dist-tags, local archives, or working-tree
 links in manifests or locks.
 

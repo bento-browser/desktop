@@ -438,10 +438,11 @@ attributes belong on the same scope element. `themeScope.ts` resolves aliases
 and unknown ids for presentation while `bento-tools` keeps persisted ids
 unchanged.
 
-The preset palettes (`@muxui/react/themes.css`) are not part of that import. Each
+The preset palettes (`@muxui/react/themes-apca.css`, the same presets as
+`themes.css` with text colours chosen by APCA) are not part of that import. Each
 document loads only the themes it shows, from per-theme sheets:
 
-- `scripts/sync-theme-presets.mjs` splits the public `themes.css` into
+- `scripts/sync-theme-presets.mjs` splits the public `themes-apca.css` into
   `extensions/bento-shell/public/themes/<id>.css` (one canonical sheet per theme
   that `@muxui/react/themes` exports, each `@layer muxui { ... }`, standard
   contrast only) plus one sheet per repo-local
@@ -464,7 +465,7 @@ document loads only the themes it shows, from per-theme sheets:
   scope paints the unscoped Mux palette; `themeScopeSheets.test.ts` enforces it.
 - Layer order is unaffected: `theme/muxui.css` still declares
   `@layer muxui, bento;` first, and a sheet's `muxui` rules append to that layer
-  after the package styles, as `themes.css` did when it was imported. A sheet
+  after the package styles, as the preset stylesheet would if it were imported. A sheet
   that boot.js inserted sits before the shared stylesheet in document order, which
   changes nothing: `muxui` is the first layer either way, and a theme rule
   (three attribute selectors) outranks the `:root` and `[data-muxui-color-scheme]`
@@ -1019,7 +1020,7 @@ the same element in every theme and color scheme. Checked on 2026-10-12:
 background, a square corner). `pnpm run lint:tokens` (CI, extensions-checks job) fails when
 shell CSS reads such a name. Declared means any `--x:` in the shell CSS (generated
 presets and `bento-tokens.css` included) or in the public `@muxui/react`
-`styles.css` and `themes.css`; a `var(--x, fallback)` read is allowed, which covers
+`styles.css` and `themes-apca.css`; a `var(--x, fallback)` read is allowed, which covers
 properties components set from JS. Native chrome CSS under `src/browser` is not
 scanned. The same command fails a `bento.*` cascade layer that the root-level
 `@layer` statement in `theme/muxui.css` does not list, and layer CSS it cannot

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
@@ -12,6 +14,7 @@ import {
   themeIdsInSelector,
   unwrapTopLevelLayers,
 } from '../extensions/bento-shell/css-blocks.mjs';
+import { MUX_THEMES_CSS, parseDeclarations } from './mux-css.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATOR = resolve(REPO_ROOT, 'scripts/generate-chrome-tokens.mjs');
@@ -232,6 +235,127 @@ test('--themes-dir overrides the sibling directory', () => {
       { stdio: 'pipe' },
     );
     assert.ok(readdirSync(themesDir).includes('standard-harbour.css'));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// Bento projects Mux's APCA preset stylesheet. These pairs are where it chooses a different text
+// colour from the WCAG 2 themes.css, so each must reach the shell sheet and the chrome sheet as
+// Mux wrote it.
+const muxRequire = createRequire(resolve(REPO_ROOT, 'extensions/bento-shell/package.json'));
+const readMux = (name) => readFileSync(muxRequire.resolve(name), 'utf8');
+const APCA_SAMPLES = [
+  ['standard-harbour', 'light', '--muxui-semantic-color-color-40-fg'],
+  ['standard-harbour', 'dark', '--muxui-semantic-action-foreground'],
+  ['standard-lagoon', 'dark', '--muxui-semantic-color-color-60-fg'],
+  ['standard-violet-dusk', 'light', '--muxui-semantic-color-neutral-50-fg'],
+  ['monochrome-teal', 'dark', '--muxui-semantic-color-color-50-fg'],
+];
+const CHROME_ATTRIBUTES = {
+  theme: 'data-bento-theme',
+  scheme: 'data-color-mode',
+  contrast: 'data-bento-contrast',
+};
+const MUX_ATTRIBUTES = {
+  theme: 'data-muxui-theme',
+  scheme: 'data-muxui-color-scheme',
+  contrast: 'data-muxui-contrast',
+};
+
+// The selector Mux writes for one theme's contrast 'standard' rule in one color scheme.
+function standardSelector(id, scheme, { theme, scheme: mode, contrast } = MUX_ATTRIBUTES) {
+  const dark = `[${mode}='dark']`;
+  return `[${theme}='${id}']${scheme === 'dark' ? dark : `:not(${dark})`}:not([${contrast}='more'])`;
+}
+
+const squashSelector = (selector) =>
+  selector.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim();
+
+// Top-level rules of a sheet with its layer statement and wrappers removed, selectors
+// whitespace-normalised.
+const sheetRules = (css) =>
+  splitTopLevelBlocks(unwrapTopLevelLayers(css.replace(/@layer[^{};]*;/g, ''))).map(
+    ({ prelude, body }) => ({
+      selector: squashSelector(prelude),
+      declarations: parseDeclarations(body),
+    }),
+  );
+
+function declaredValue(css, selector, token) {
+  const rules = sheetRules(css).filter((rule) => rule.selector === selector);
+  assert.equal(rules.length, 1, `one rule for ${selector}`);
+  const value = rules[0].declarations.get(token);
+  assert.ok(value, `${selector} declares ${token}`);
+  return value.replace(/\s+/g, ' ');
+}
+
+// A selector that matches only under contrast 'more': a positive test outside :not().
+const requiresContrastMore = (selector) =>
+  /contrast='more'\]/.test(selector.replace(/:not\([^()]*\)/g, ''));
+
+test('the APCA preset stylesheet is the source the generated headers name', () => {
+  assert.equal(MUX_THEMES_CSS, '@muxui/react/themes-apca.css');
+  const digest = createHash('sha256').update(readMux(MUX_THEMES_CSS)).digest('hex');
+  const presetsIndex = readFileSync(
+    resolve(REPO_ROOT, 'extensions/bento-shell/src/theme/presets/index.css'),
+    'utf8',
+  );
+  assert.ok(presetsIndex.includes(`${MUX_THEMES_CSS} sha256:${digest}`), 'presets index header');
+  const { directory, base } = generate();
+  try {
+    assert.ok(base.includes(`${MUX_THEMES_CSS} sha256:${digest}`), 'chrome base header');
+    for (const sheet of [presetsIndex, base]) {
+      assert.doesNotMatch(sheet, /@muxui\/react\/themes\.css/);
+    }
+    for (const [id] of APCA_SAMPLES) {
+      const shell = readFileSync(join(SHELL_SHEETS, `${id}.css`), 'utf8');
+      assert.ok(shell.includes(`Source: public ${MUX_THEMES_CSS}, contrast standard.`), id);
+      assert.doesNotMatch(shell, /@muxui\/react\/themes\.css/);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('APCA text colours survive shell splitting and chrome conversion', () => {
+  const apca = readMux(MUX_THEMES_CSS);
+  const wcag = readMux('@muxui/react/themes.css');
+  const { directory, themesDir } = generate();
+  try {
+    for (const [id, scheme, token] of APCA_SAMPLES) {
+      const label = `${id} ${scheme} ${token}`;
+      const muxSelector = standardSelector(id, scheme);
+      const expected = declaredValue(apca, muxSelector, token);
+      // Fails if the two Mux files agree here, which would make this sample prove nothing.
+      assert.notEqual(declaredValue(wcag, muxSelector, token), expected, `${label} differs`);
+      const shell = readFileSync(join(SHELL_SHEETS, `${id}.css`), 'utf8');
+      assert.equal(declaredValue(shell, muxSelector, token), expected, `shell ${label}`);
+      const chrome = readFileSync(join(themesDir, `${id}.css`), 'utf8');
+      const chromeSelector = standardSelector(id, scheme, CHROME_ATTRIBUTES);
+      assert.equal(declaredValue(chrome, chromeSelector, token), expected, `chrome ${label}`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('contrast more rules stay absent from shell and chrome theme sheets', () => {
+  // Mux ships them, so an absent rule below is Bento's projection, not the input.
+  assert.ok(
+    sheetRules(readMux(MUX_THEMES_CSS)).some((rule) => requiresContrastMore(rule.selector)),
+  );
+  const { directory, themesDir } = generate();
+  try {
+    for (const id of shellThemeIds) {
+      for (const sheet of [join(SHELL_SHEETS, `${id}.css`), join(themesDir, `${id}.css`)]) {
+        const rules = sheetRules(readFileSync(sheet, 'utf8'));
+        assert.ok(rules.length > 0, sheet);
+        for (const { selector } of rules) {
+          assert.ok(!requiresContrastMore(selector), `${sheet}: ${selector}`);
+        }
+      }
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

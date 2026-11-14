@@ -15,7 +15,8 @@ troubleshoot.
 ## Mental model
 
 - The eight **Standard** and seven **Monochromatic** shipped themes are sourced
-  from the public `@muxui/react/themes` metadata and `themes.css` export.
+  from the public `@muxui/react/themes` metadata and `themes-apca.css` export
+  (the `themes.css` presets with text colours chosen by APCA).
 - `scripts/sync-theme-presets.mjs` rewrites the package selectors to Bento's
   `[data-bento-theme="<id>"]` contract and generates
   `theme/presets/index.css` plus `index.ts`.
