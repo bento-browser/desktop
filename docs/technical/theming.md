@@ -129,7 +129,10 @@ UI color mode flow:
   `preferences.css`: `gSubDialog` injects `bento-chrome-tokens.css` into them,
   and `preferences.js` copies the page root's `data-bento-theme` and
   `data-color-mode` onto each dialog root on `DOMFrameContentLoaded` and on every
-  mode change (no fade inside the dialog).
+  mode change (no fade inside the dialog). Dialogs in the browser window that
+  link `preferences.css` (Clear recent history) get the same from the mount
+  script's `bridgePreferenceDialog`, which `writeGrantedChromeMode` reruns on each
+  mode write.
   The page's `prefers-color-scheme` does not follow `uiColorMode` (measured: it
   stays light with UI mode dark); it follows the content color mode and the OS.
 - `bento-shell-mount.js` seeds chrome `<window data-color-mode="light">` before
@@ -1033,11 +1036,16 @@ window.
   subdialogs (Connection Settings, Delete browsing data) rendered radios,
   checkboxes, fields, the select and Cancel/OK with no border or fill on 159.0.1
   and 160.0 until `gSubDialog` injected the sheet and `preferences.js` copied the
-  attributes onto dialog roots (found 2026-11-14). To check a dialog, read
-  `--neutral-20` on its `documentElement`: empty means the bridge is missing.
-  A Firefox token that the block does not map keeps Firefox's palette: the
-  Delete button's red was `--button-background-color-destructive`, now mapped to
-  `--muxui-semantic-action-danger-background`.
+  attributes onto dialog roots (found 2026-11-14). A dialog outside
+  `about:preferences` that links `preferences.css` itself (Clear recent history
+  through the browser window's `gDialogBox`) had the same gap; the mount script's
+  `bridgePreferenceDialog` covers it on `DOMFrameContentLoaded` and on each mode
+  write. To check a dialog, read `--neutral-20` on its `documentElement`: empty
+  means the bridge is missing. A Firefox token that the block does not map keeps
+  Firefox's palette: the Delete button's red was
+  `--button-background-color-destructive`, now mapped to
+  `--muxui-semantic-action-danger-background` with Firefox's red as the `var()`
+  fallback, so an unbridged document keeps a filled Delete button.
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.

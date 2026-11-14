@@ -1,4 +1,4 @@
-From 307027aab040895f50a5dcbc2c39ae0735dc5f64 Mon Sep 17 00:00:00 2001
+From 819c1ca72ea4bed8ecef259c74168e18d8b0c8f8 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
@@ -6,8 +6,8 @@ Subject: [PATCH] Center and theme native preferences layout
 ---
  browser/components/preferences/preferences.js |  88 +++++++
  .../components/preferences/preferences.xhtml  |   9 +-
- .../themes/shared/preferences/preferences.css | 247 +++++++++++++++++-
- 3 files changed, 334 insertions(+), 10 deletions(-)
+ .../themes/shared/preferences/preferences.css | 249 +++++++++++++++++-
+ 3 files changed, 336 insertions(+), 10 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
 index df1663c5a74c8486b3342a53a58bf62dc9e3963c..1c3cd09f2d0f4cbcef765d251b695bc3f13fcd2b 100644
@@ -157,10 +157,10 @@ index 8e0c6483d6edd587cc425abe16f4a756f88e492b..31b486b6e07e5ddc87d5738fb5a3cfc8
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b8f9bd4b6 100644
+index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca18fd8e174 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
-@@ -22,7 +22,171 @@
+@@ -22,7 +22,173 @@
    --card-padding-block: var(--card-padding-inline);
  
    @media -moz-pref("browser.settings-redesign.enabled") {
@@ -235,10 +235,12 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
 +    --button-border-color-primary-active: transparent;
 +    --button-border-color-primary-disabled: transparent;
 +    --button-border-radius: var(--radius-s);
-+    --button-background-color-destructive: var(--muxui-semantic-action-danger-background);
-+    --button-background-color-destructive-hover: var(--muxui-semantic-action-danger-background-hover);
-+    --button-background-color-destructive-active: var(--muxui-semantic-action-danger-background-pressed);
-+    --button-text-color-destructive: var(--muxui-semantic-color-error-60-fg);
++    /* Firefox's own destructive values are the fallback, for a document that
++       loads this sheet without the Bento token sheet and root attributes. */
++    --button-background-color-destructive: var(--muxui-semantic-action-danger-background, light-dark(var(--color-red-60), var(--color-red-30)));
++    --button-background-color-destructive-hover: var(--muxui-semantic-action-danger-background-hover, light-dark(var(--color-red-70), var(--color-red-20)));
++    --button-background-color-destructive-active: var(--muxui-semantic-action-danger-background-pressed, light-dark(var(--color-red-80), var(--color-red-10)));
++    --button-text-color-destructive: var(--muxui-semantic-color-error-60-fg, light-dark(var(--color-white), var(--color-gray-100)));
 +    --button-text-color: var(--neutral-90);
 +    --button-text-color-hover: var(--neutral-90);
 +    --button-text-color-active: var(--neutral-90);
@@ -333,7 +335,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
    }
  
    user-select: text;
-@@ -107,7 +271,12 @@
+@@ -107,7 +273,12 @@
    padding-top: 0;
    scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
  
@@ -346,7 +348,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
      padding-inline: var(--space-medium);
    }
  }
-@@ -125,6 +294,61 @@
+@@ -125,6 +296,61 @@
    width: 100%;
  }
  
@@ -408,7 +410,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
  html|div[data-category],
  groupbox[data-category],
  setting-group[data-category] {
-@@ -577,6 +801,15 @@ html|dialog,
+@@ -577,6 +803,15 @@ html|dialog,
    -moz-scrollbar-inset-block: 0 var(--dialog-resizer-inset);
  }
  
@@ -424,7 +426,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
  .dialogBox[resizable="true"] {
    resize: both;
    overflow: hidden;
-@@ -659,11 +892,11 @@ html|dialog,
+@@ -659,11 +894,11 @@ html|dialog,
  }
  
  .fxaProfileImage.actionable:hover {
@@ -438,7 +440,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
  }
  
  #useFirefoxSync {
-@@ -1270,12 +1503,12 @@ richlistitem .text-link:hover {
+@@ -1270,12 +1505,12 @@ richlistitem .text-link:hover {
  }
  
  @media (prefers-color-scheme: dark) {
@@ -454,7 +456,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..5ce03ee408eac73ef97a16934a4e1e5b
    }
  }
  
-@@ -1408,7 +1641,7 @@ setting-group[groupid="aiFeatures"] {
+@@ -1408,7 +1643,7 @@ setting-group[groupid="aiFeatures"] {
  
  .ai-controls-description {
    --ai-controls-description-image-margin: calc(64px + var(--space-large));

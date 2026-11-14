@@ -519,10 +519,14 @@ test('the native final writer settles carriers before publishing its granted mod
     window: { getComputedStyle() { assert.equal(attributes.get(COLOR_FADE), 'settle'); writes.push('flush'); return {}; } },
     chromeColorModePref: null, chromeColorStamp: null,
     announceChromeColorMode: () => writes.push('publish'),
+    bridgePreferenceDialogs: () => writes.push('dialogs'),
   };
   vm.runInNewContext(`${mountFunction('writeGrantedChromeMode')}\nwriteGrantedChromeMode({pref:'system', resolved:'dark',stamp:{run:'owner',seq:2}})`, sandbox);
   assert.ok(writes.indexOf(COLOR_FADE) < writes.indexOf('data-color-mode'));
   assert.ok(writes.lastIndexOf('flush') < writes.indexOf('remove:' + COLOR_FADE));
+  // Preference dialogs in the window take the new mode inside the same settle.
+  assert.ok(writes.indexOf('data-color-mode') < writes.indexOf('dialogs'));
+  assert.ok(writes.indexOf('dialogs') < writes.indexOf('flush'));
   assert.equal(writes.at(-1), 'publish');
   assert.equal(attributes.get('data-bento-color-mode-pref'), 'system');
 });
