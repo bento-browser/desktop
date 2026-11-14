@@ -70,7 +70,7 @@ state of both files until the first promotion.
   "release": {
     "version": "0.1.0",
     "buildId": "20261102120000",
-    "marUrl": "https://downloads.bentobrowser.app/Bento-0.1.0-20261102120000-macos-arm64.mar",
+    "marUrl": "https://dl.bentobrowser.app/Bento-0.1.0-20261102120000-macos-arm64.mar",
     "size": 123456789,
     "sha512": "<128 lowercase hex characters>",
     "platformVersion": "158.0",
@@ -114,7 +114,7 @@ descriptor is disabled, so committing a promoted descriptor keeps CI green).
 | Worker                             | `bento-update-service-test`         | `bento-update-service-production`         |
 | Descriptor                         | `update-service/releases/test.json` | `update-service/releases/production.json` |
 | R2 bucket                          | `bento-updates-test`                | `bento-updates`                           |
-| Download host                      | `downloads-test.bentobrowser.app`   | `downloads.bentobrowser.app`              |
+| Download host                      | `dl-test.bentobrowser.app`          | `dl.bentobrowser.app`                     |
 
 The test hosts are meant to answer only Andrew's IP (a WAF rule), and neither
 bucket has `r2.dev` access. Those rules, the buckets, the download custom
@@ -268,7 +268,7 @@ curl -si "https://$HOST/update/6/Bento/"                         # malformed: 40
 ```
 
 Every response must carry `cache-control: no-store`. While `serving` is false,
-all of them except the 400 answer `<updates/>`. `downloads-test` must refuse
+all of them except the 400 answer `<updates/>`. `dl-test` must refuse
 a request from outside the allowlist, and no `r2.dev` URL may answer.
 
 ### Pointing a real client at the test environment
@@ -309,7 +309,7 @@ Not published yet: the updater does not ship. When it does, add this to
 > It carries no account or device identifier. Bento keeps no per-request log
 > for this service and sees only aggregate request counts; Cloudflare hosts the
 > domain and processes the connection under its own privacy policy. When an
-> update is available, Bento downloads it from `downloads.bentobrowser.app`
+> update is available, Bento downloads it from `dl.bentobrowser.app`
 > (Cloudflare R2). The update itself is checked against a signature key that
 > is compiled into Bento before it is applied.
 >
