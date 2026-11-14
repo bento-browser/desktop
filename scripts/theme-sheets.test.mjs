@@ -448,3 +448,67 @@ test('Default carries Harbour ladders and APCA text colours through shell and ch
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// The base sheet's Default theme rules and alias bridge select on the root's Bento attributes,
+// so a native document that links it statically gets Mux's unscoped values without them.
+// Each HTML document a patch or source overlay gives the token sheet must carry
+// data-bento-theme="default" and data-color-mode on its root.
+const TOKEN_SHEET_HREF = 'chrome://browser/content/bento-chrome-tokens.css';
+
+// The patched files of a patch, each as the lines of its hunks after the patch applies.
+function patchedFiles(patch) {
+  return patch
+    .split(/^diff --git /m)
+    .slice(1)
+    .map((section) => ({
+      path: section.match(/^\+\+\+ b\/(.+)$/m)?.[1],
+      after: section
+        .split('\n')
+        .filter((line) => /^[ +]/.test(line) && !line.startsWith('+++'))
+        .map((line) => line.slice(1))
+        .join('\n'),
+    }));
+}
+
+function tokenSheetDocuments() {
+  const documents = [];
+  const patchDirectory = resolve(REPO_ROOT, 'patches');
+  const patches = readdirSync(patchDirectory, { recursive: true }).filter((name) =>
+    name.endsWith('.patch'),
+  );
+  for (const name of patches) {
+    for (const { path, after } of patchedFiles(readFileSync(join(patchDirectory, name), 'utf8'))) {
+      if (/\.x?html$/.test(path ?? '')) documents.push({ label: `${name}: ${path}`, text: after });
+    }
+  }
+  const overlayDirectory = resolve(REPO_ROOT, 'src/browser');
+  for (const name of readdirSync(overlayDirectory, { recursive: true })) {
+    if (/\.x?html$/.test(name)) {
+      const text = readFileSync(join(overlayDirectory, name), 'utf8');
+      documents.push({ label: `src/browser/${name}`, text });
+    }
+  }
+  return documents.filter(({ text }) => text.includes(TOKEN_SHEET_HREF));
+}
+
+test('native documents that link the chrome token sheet carry the Default theme and a mode', () => {
+  const documents = tokenSheetDocuments();
+  for (const page of [
+    '/preferences.xhtml',
+    '/aboutLogins.html',
+    '/aboutLoginsImportReport.html',
+    '/megalist.html',
+    '/bento-migration-host.html',
+  ]) {
+    assert.ok(
+      documents.some(({ label }) => label.endsWith(page)),
+      `${page} links the token sheet`,
+    );
+  }
+  for (const { label, text } of documents) {
+    const root = text.match(/<html\b[^>]*>/)?.[0];
+    assert.ok(root, `${label} has its <html> root in view`);
+    assert.match(root, /\sdata-bento-theme="default"/, `${label} root theme`);
+    assert.match(root, /\sdata-color-mode="(?:light|dark)"/, `${label} root mode`);
+  }
+});
