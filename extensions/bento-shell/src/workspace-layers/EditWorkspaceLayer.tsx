@@ -7,10 +7,7 @@ import { useState } from 'react';
 import { Button, Dialog, Text, TextField } from '@muxui/react';
 import { Column, Row } from '../components/primitives';
 import { dispatch } from '../bridge/useToolsPort';
-import {
-  EDIT_WORKSPACE_CLOSE_PREFIX,
-  type EditWorkspacePayload,
-} from '../bridge/useEditWorkspace';
+import { EDIT_WORKSPACE_CLOSE_PREFIX, type EditWorkspacePayload } from '../bridge/useEditWorkspace';
 import { DEFAULT_THEME_ID } from '../theme/presets';
 import { WorkspaceIconField } from '../components/WorkspaceIconPicker/WorkspaceIconPicker';
 import { WorkspaceThemePicker } from '../components/WorkspaceThemePicker/WorkspaceThemePicker';

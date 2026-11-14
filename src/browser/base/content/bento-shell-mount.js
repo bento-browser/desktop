@@ -4031,8 +4031,11 @@
     if (activeWorkspaceLayer === layer) activeWorkspaceLayer = null;
     if (activeWorkspaceLayer !== null || overlays.hasPendingOpen('workspace-layers')) return;
     const host = document.getElementById('bento-workspace-layers-host');
-    if (!host || host.style.opacity === '0') return;
-    // One style flush again: without the attribute the modal fade applies to the opacity.
+    if (!host) return;
+    // One style flush again: without the attribute the modal fade applies to the opacity. Even
+    // a host already at opacity 0 goes through the settle: a cancelled reopen during a fade
+    // ended the fade's generation, and a cancelled first open was presented in the document
+    // without ever showing; both need the hidden commit and the presentation false.
     host.removeAttribute(WORKSPACE_LAYER_ATTR);
     host.style.opacity = '0';
     host.style.pointerEvents = 'none';
@@ -19082,8 +19085,12 @@
       standard('merge-palette'),
       standard('workspace-palette'),
       standard('settings-palette'),
-      // A Cmd+L still waiting for the sidebar row counts as an open address bar.
-      { ...addrbar, open: addrbar.open || pendingAddrbarOpenRequest !== null },
+      // A Cmd+L still waiting for the sidebar row counts as an open address bar, and so does a
+      // delivered open whose host waits, invisible, for the document's BENTO_ADDRBAR_READY.
+      {
+        ...addrbar,
+        open: addrbar.open || pendingAddrbarOpenRequest !== null || pendingAddrbarReveal !== null,
+      },
       onboarding('welcome'),
       onboarding('embedded-import'),
       ...layers,

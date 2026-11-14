@@ -107,7 +107,10 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
       forwardingRef.current = false;
       return;
     }
-    sendWorkspaceLayerTitle('workspace-switcher', `${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`);
+    sendWorkspaceLayerTitle(
+      'workspace-switcher',
+      `${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`,
+    );
   }
 
   function onActivate(id: string) {

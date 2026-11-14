@@ -260,9 +260,10 @@ truth: none (the payloads are snapshots; the document mirrors the `tabs`,
   `data-bento-host-layer` next to `data-bento-host-presented` and removes it with the
   hide. The document renders a request only while chrome presents the host for that
   layer, so neither order of the bus payload and chrome's reveal shows the wrong layer,
-  and the entrance plays on screen. A hide drops the request of the layer that was
-  presented (and tells the sidebar trigger that the switcher closed); a request for
-  another layer that arrived during the fade-out waits for its own show.
+  and the entrance plays on screen. Each presentation is for one request (the current one
+  of that layer, or the first of that layer to arrive after it); a hide drops only that
+  request (and tells the sidebar trigger that the switcher closed). Any other request that
+  arrived during the fade-out, for this layer or another, waits for its own show.
 - **Layout.** The host is `display: flex` from startup and never resizes; while no
   layer is shown it is `opacity: 0` and `pointer-events: none`. The switcher layer
   translates the sidebar trigger's rect with `window.screenLeft`, which reads zeros in
@@ -299,6 +300,15 @@ Pitfalls:
   modal exit.
 - A second hide during the fade-out must not end the record's generation, or the fade's
   commit (`hidden`, presentation false) never comes and the host stays presented.
+- Every hide that leaves no layer ends in `hideOverlayHostAfterFade`, also for a host
+  already at opacity 0. A reopen requested during a fade and cancelled (Esc) before its
+  presentation was acknowledged ends the fade's generation, so the fade's own commit is
+  dropped; a cancelled first open was presented in the document without showing. An early
+  return at opacity 0 left both without `hidden` and without presentation false.
+- A hide retires the request its presentation was for, by id, never every request of that
+  layer: a reopen near the end of the fade whose payload beats the old hide is a newer
+  request for the same layer, and dropping it left chrome revealing an empty document that
+  took the pointer.
 
 ## Bookmarks view
 

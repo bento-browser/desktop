@@ -14,6 +14,12 @@
 // component plays its own entrance on screen. Closing keeps the layer mounted while chrome fades
 // the host out; the hide (presented false) then drops it. A request whose layer chrome has not
 // presented (yet) waits, so neither order of payload and reveal shows the wrong layer.
+//
+// Each presentation is for one request: the current one if its layer matches, or else the first
+// request for that layer that arrives after it (a payload slower than chrome's reveal). A hide
+// retires only that request, by id. A newer request for the same layer, such as a reopen near
+// the end of the fade whose payload beats the old hide, is no request of the old presentation:
+// it waits for its own and survives the old hide.
 
 import { create } from 'zustand';
 import { sendChromeTitle } from '../bridge/chromeTitle';
@@ -51,6 +57,8 @@ interface WorkspaceLayersState {
   /** The layer chrome presents the host for, or null while the host is hidden. Outside a hosted
    * overlay (Ladle, the standalone preview) every layer counts as presented. */
   presented: WorkspaceLayer | 'any' | null;
+  /** The id of the request the current presentation is for, or null while it has none. */
+  presentedId: number | null;
 }
 
 const HOST_PRESENTED_ATTRIBUTE = 'data-bento-host-presented';
@@ -61,13 +69,20 @@ const hosted =
 export const useWorkspaceLayers = create<WorkspaceLayersState>(() => ({
   request: null,
   presented: hosted ? null : 'any',
+  presentedId: null,
 }));
 
 let nextRequestId = 0;
 
 /** Mounts `request`'s layer in place of the current one once chrome presents it. */
 export function showWorkspaceLayer(request: WorkspaceLayerRequest): void {
-  useWorkspaceLayers.setState({ request: { ...request, id: ++nextRequestId } });
+  const id = ++nextRequestId;
+  useWorkspaceLayers.setState((state) => ({
+    request: { ...request, id },
+    // A payload that arrives after chrome presented its layer belongs to that presentation.
+    presentedId:
+      state.presentedId === null && state.presented === request.layer ? id : state.presentedId,
+  }));
 }
 
 /** Unmounts `layer` if it is the current one; a newer layer that replaced it stays. */
@@ -77,11 +92,17 @@ export function clearWorkspaceLayer(layer: WorkspaceLayer): void {
   );
 }
 
-/** The request to render: the current one, while chrome presents its layer. */
+/** The request to render: the current one, while chrome presents the host for it. */
+export function visibleWorkspaceLayer({
+  request,
+  presented,
+  presentedId,
+}: WorkspaceLayersState): CurrentRequest | null {
+  return request && (presented === 'any' || request.id === presentedId) ? request : null;
+}
+
 export function useVisibleWorkspaceLayer(): CurrentRequest | null {
-  return useWorkspaceLayers(({ request, presented }) =>
-    request && (presented === 'any' || presented === request.layer) ? request : null,
-  );
+  return useWorkspaceLayers(visibleWorkspaceLayer);
 }
 
 function readPresentedLayer(): WorkspaceLayer | null | undefined {
@@ -94,17 +115,28 @@ function readPresentedLayer(): WorkspaceLayer | null | undefined {
 }
 
 /** Follows chrome's presentation of the host for the life of the document. A hide drops the
- * request of the layer that was presented and reports it to `onDropped`; a request for another
- * layer (a sidebar click during the fade-out) waits for its own show. */
+ * request the presentation was for and reports it to `onDropped`; any other request (a sidebar
+ * click during the fade-out, for this layer or another) waits for its own show. */
 export function observeWorkspaceLayersPresentation(
   onDropped: (layer: WorkspaceLayer) => void,
 ): () => void {
   const apply = () => {
     const next = readPresentedLayer();
     if (next === undefined) return;
-    const { request, presented } = useWorkspaceLayers.getState();
-    const dropped = next === null && request?.layer === presented ? request : null;
-    useWorkspaceLayers.setState({ presented: next, request: dropped ? null : request });
+    const { request, presentedId } = useWorkspaceLayers.getState();
+    if (next !== null) {
+      useWorkspaceLayers.setState({
+        presented: next,
+        presentedId: request?.layer === next ? request.id : null,
+      });
+      return;
+    }
+    const dropped = request !== null && request.id === presentedId ? request : null;
+    useWorkspaceLayers.setState({
+      presented: null,
+      presentedId: null,
+      request: dropped ? null : request,
+    });
     if (dropped) onDropped(dropped.layer);
   };
   document.addEventListener('bento-host-presentation', apply);

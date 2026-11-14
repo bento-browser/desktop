@@ -4926,3 +4926,65 @@ test('a layer title is acted on only under its own layer', () => {
   world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', 'BENTO_CLOSE_CONFIRM_3'));
   assert.equal(world.isWorkspaceLayerShown('confirm'), false);
 });
+
+// A presentation query that waits until the test answers it, like the actor's round trip.
+function slowPresentationWorld() {
+  const queries = [];
+  const world = makeWorld({
+    presentationQuery: (_frameId, presented) =>
+      presented ? new Promise((resolve) => queries.push(resolve)) : true,
+  });
+  world.overlays.startEager();
+  world.ready('workspace-layers');
+  return { world, queries };
+}
+
+test('Esc on a reopen still waiting for its presentation settles the host the closed layer left', async () => {
+  const { world, queries } = slowPresentationWorld();
+  world.showConfirm();
+  queries.shift()(true);
+  await Promise.resolve();
+  assert.equal(world.isWorkspaceLayerShown('confirm'), true);
+
+  // Close the confirmation; during its fade the sidebar asks for the switcher, and Esc cancels
+  // that open before its presentation is acknowledged.
+  world.hideConfirm();
+  world.showWorkspaceSwitcher();
+  assert.equal(world.pressEscape(), true);
+  queries.shift()(true);
+  await Promise.resolve();
+  world.advance(10_000);
+
+  const host = world.host('workspace-layers');
+  assert.equal(host.hasAttribute('hidden'), true, 'the host is settled');
+  assert.equal(host.style.pointerEvents, 'none');
+  assert.equal(world.events.presentation.at(-1).presented, false, 'the document is told');
+  assert.equal(world.isWorkspaceLayerOpen('workspace-switcher'), false);
+});
+
+test('a cancelled first open of a layer tells the document it is not presented', async () => {
+  const { world, queries } = slowPresentationWorld();
+  world.showConfirm();
+  assert.equal(world.events.presentation.at(-1).presented, true, 'the query went out');
+  world.hideConfirm();
+  queries.shift()(true);
+  await Promise.resolve();
+  world.advance(10_000);
+  assert.equal(world.events.presentation.at(-1).presented, false);
+  assert.equal(world.host('workspace-layers').hasAttribute('hidden'), true);
+  assert.equal(world.isWorkspaceLayerShown('confirm'), false);
+});
+
+test('Esc while the address bar waits for its document to fill counts it as open', () => {
+  const world = warmWorld();
+  world.showAddrbar('current');
+  // The open was delivered; the host stays invisible until BENTO_ADDRBAR_READY or the fallback.
+  assert.equal(world.overlays.hasPendingOpen('addrbar'), false);
+  assert.notEqual(world.getPendingAddrbarReveal(), null);
+  assert.equal(world.host('addrbar').style.opacity, '0');
+
+  assert.equal(world.pressEscape(), true, 'Esc is consumed');
+  assert.equal(world.getPendingAddrbarReveal(), null, 'the reveal is cancelled');
+  world.advance(10_000);
+  assert.equal(world.host('addrbar').style.opacity, '0', 'it never appears');
+});

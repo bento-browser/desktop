@@ -21,17 +21,19 @@ const CONFIRM: ConfirmPayload = {
   variant: 'danger',
   action: { type: 'workspace/delete', id: 'w1', closeTabs: true },
 };
-const SWITCHER = { triggerRect: { x: 0, y: 0, width: 1, height: 1 }, sidebarScreenX: 0, sidebarScreenY: 0 };
+const SWITCHER = {
+  triggerRect: { x: 0, y: 0, width: 1, height: 1 },
+  sidebarScreenX: 0,
+  sidebarScreenY: 0,
+};
 
 async function load() {
   vi.resetModules();
   const layers = await import('./layers');
   const dropped: string[] = [];
   layers.observeWorkspaceLayersPresentation((layer) => dropped.push(layer));
-  const visible = () => {
-    const { request, presented } = layers.useWorkspaceLayers.getState();
-    return request && (presented === 'any' || presented === request.layer) ? request.layer : null;
-  };
+  const visible = () =>
+    layers.visibleWorkspaceLayer(layers.useWorkspaceLayers.getState())?.layer ?? null;
   return { ...layers, dropped, visible };
 }
 
@@ -89,4 +91,47 @@ describe('workspace layers', () => {
     present('workspace-switcher');
     expect(layers.visible()).toBe('workspace-switcher');
   });
+
+  it('keeps a newer request for the same layer that the previous hide does not retire', async () => {
+    const layers = await load();
+    layers.showWorkspaceLayer({ layer: 'confirm', payload: CONFIRM });
+    present('confirm');
+    layers.showWorkspaceLayer({ layer: 'confirm', payload: { ...CONFIRM, title: 'Again?' } });
+    expect(layers.visible()).toBeNull();
+    present(null);
+    expect(layers.dropped).toEqual([]);
+    present('confirm');
+    expect(layers.useWorkspaceLayers.getState().request?.payload).toMatchObject({
+      title: 'Again?',
+    });
+    expect(layers.visible()).toBe('confirm');
+  });
+
+  it.each([
+    ['before', true],
+    ['after', false],
+  ])(
+    'reopens the switcher at the end of its fade, with the payload %s the old hide',
+    async (_order, payloadFirst) => {
+      const layers = await load();
+      layers.showWorkspaceLayer({ layer: 'workspace-switcher', payload: SWITCHER });
+      present('workspace-switcher');
+      // The menu closes itself; chrome fades the host out.
+      layers.clearWorkspaceLayer('workspace-switcher');
+      const reopen = () =>
+        layers.showWorkspaceLayer({
+          layer: 'workspace-switcher',
+          payload: { ...SWITCHER, sidebarScreenX: 9 },
+        });
+      if (payloadFirst) reopen();
+      present(null);
+      if (!payloadFirst) reopen();
+      // Chrome gets the new open title and presents the host again.
+      present('workspace-switcher');
+      expect(layers.visible()).toBe('workspace-switcher');
+      expect(layers.useWorkspaceLayers.getState().request?.payload).toMatchObject({
+        sidebarScreenX: 9,
+      });
+    },
+  );
 });
