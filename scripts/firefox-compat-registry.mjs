@@ -174,6 +174,7 @@ const FF = {
   xpiDatabase: 'toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs',
   updateService: 'toolkit/mozapps/update/UpdateService.sys.mjs',
   macosSignCommands: 'tools/signing/macos/mach_commands.py',
+  ioUtilsH: 'xpcom/ioutils/IOUtils.h',
 };
 
 export const MEMBERS = [
@@ -2998,6 +2999,19 @@ export const MEMBERS = [
     sites: ['src/browser/base/content/bento-migration-host.js#resource-progress-group'],
     use: 'Progress rows the host restyles.',
     at: [FF.migrationWizard, 'class="resource-progress-group"', 130],
+  },
+
+  // ── Browser session merge reader ──
+  {
+    id: 'IOUtils::Encryption::MAGIC_NUMBER',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: [
+      'extensions/bento-tools/experiments/bento-external-sessions/api.js#ENCRYPTED_SESSION_MAGIC',
+    ],
+    use: "The header IOUtils writes before an encrypted file. SessionWriter encrypts session files only when browser.sessionstore.encryption.available and .enabled are both true. The session merge reader reads no keys, so when a snapshot fails to decode and starts with 'mozEnc' it reports the source as encrypted instead of importing an older plaintext backup. A changed header makes it fall back silently again.",
+    at: [FF.ioUtilsH, "MAGIC_NUMBER\\{\\s*\\{'m', 'o', 'z', 'E', 'n', 'c', '0', '\\\\0'\\}\\}", 820],
   },
 
   // ── Build registration ──

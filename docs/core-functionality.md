@@ -155,7 +155,9 @@ Bento's normal restart persistence, so their tabs remain assigned to those
 workspaces after relaunch. If Bento finds a browser profile but cannot read or
 import its session snapshot, the profile remains in the merge picker as an
 unavailable row instead of disappearing, including when other browser sessions
-are mergeable. The merge picker includes a refresh button so the user can
+are mergeable. A Firefox profile whose latest session file is encrypted is listed
+as unavailable for that reason; Bento does not import an older saved session in
+its place. The merge picker includes a refresh button so the user can
 rescan browser session snapshots without closing and reopening the picker.
 A search field filters the sources, spaces and windows by name, and matches tab titles
 and URLs within the first ten preview tabs of each space or window.

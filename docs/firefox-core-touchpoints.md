@@ -107,14 +107,25 @@ Use this shape for new or changed touchpoints:
   `bookmarksSidebar.xhtml` no longer has that header.
 - SessionStore encryption: Firefox 160 adds `browser.sessionstore.encryption.available`
   and `.enabled` (both false; SessionStartup locks `available` at startup) and
-  `IOUtils` `decrypt` reads keyed by `lockstore.keys.sqlite`. Bento's profile does
-  not encrypt (runtime below). `FirefoxProfileMigrator` now copies the lockstore
-  keys and the encryption pref during first-run import. Bento's
-  `bento-external-sessions` experiment reads `sessionstore.jsonlz4` with
-  `IOUtils.readJSON(..., { decompress: true })` and no `decrypt` option, so a source
-  Firefox profile that turns encryption on would fail that read (session merge and
-  Zen/Firefox scoping). No such profile is expected while the pref defaults to
-  false; recheck on every upgrade.
+  `IOUtils` `encrypt`/`decrypt` keyed by `lockstore.keys.sqlite`. SessionWriter
+  encrypts only when both prefs are true, so stock 160 never encrypts, and Bento's
+  profile does not (runtime below). `FirefoxProfileMigrator` copies the lockstore
+  keys and the `.enabled` pref only inside its session resource, which runs when
+  `MOZ_RESET_PROFILE_SESSION=1` (a profile reset); Bento's first-run import does
+  not set it, so the copy is not on that path. Bento's `bento-external-sessions`
+  experiment reads Firefox/Zen snapshots with
+  `IOUtils.readJSON(..., { decompress: true })` and no `decrypt` option, so it
+  cannot read an encrypted source file. It used to try the next, older snapshot on
+  any failure; it now checks a failed snapshot for the `mozEnc` header
+  (`IOUtils::Encryption::MAGIC_NUMBER` in the registry) and reports the source as
+  "Encrypted session, not supported" instead of importing older tabs. Bento's Zen
+  first-run session resource (`core-ui/09`) reads `zen-sessions.jsonlz4` the same
+  way and logs a failed resource on an encrypted file without a fallback.
+  Regression checks for future updates: run `pnpm run firefox:compat:engine` (the
+  header entry), check `SessionWriter` still requires both prefs and the
+  `firefox.js` defaults, and feed the reader a `mozEnc`-prefixed
+  `recovery.jsonlz4` beside a plaintext `previous.jsonlz4`; the merge palette must
+  show the encrypted reason, not the older tabs.
 - New upstream defaults that Bento already overrides: `browser.mini-window.enabled`
   becomes true upstream; `prefs/bento.js` keeps it false, so the new mini-window
   context-menu items, SessionStore mini-window tracking and `PresShell` viewport
@@ -170,7 +181,7 @@ hand, Settings subdialogs in dark mode, and the first-run import round trip.
 | Chrome Layout Stylesheet | Fullscreen toolbar shift now translates `#vertical-tabs` instead of setting `--fullscreen-menubar-shift`; Bento reads neither, and `#vertical-tabs` sits in the hidden `#sidebar-container`. Native painting needs pixel evidence. |
 | Native Preferences Layout | Dialog token mapping added; see its entry. Runtime tokens match. |
 | Hidden Tabs/Titlebar | Add-ons shortcut patch applies unchanged; no keyset change upstream. The Help menu moves About after the referral item (macOS hides that item). |
-| First-Run Profile Import | Migrator copies session encryption keys and the Glean client id; wizard selector uses a popover target only outside XUL documents; new macOS file-picker string. Import round trip not run. |
+| First-Run Profile Import | Migrator copies session encryption keys (profile reset only) and the Glean client id; wizard selector uses a popover target only outside XUL documents; new macOS file-picker string. Import round trip not run. |
 | Prefs/Branding/Build | Source/version/candidate/patch/branding base align at 160.0; unofficial branding byte-identical. `rust_commands.py` adds cargo config keys only; the thin-LTO test passes. |
 | macOS Release Signing | Not exercised; no change to signing entry points in the patch paths. |
 | Configure/Updater | `update-programs.configure` drops two unused return values; updater `moz.build` adds `SOURCE_HEADERS` only. Dev configure has `--disable-release`, `--disable-updater`, `--enable-macos-target=11.0`; `MOZ_UPDATER` absent, `DEVELOPER_OPTIONS` set, both binaries `minos 11.0`. Release-mode checks not run. |
@@ -4097,6 +4108,7 @@ below is generated; edit the registry, then run
 | `migration-wizard #resource-type-list` | source (engine only) | Resource checkbox list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-type-list` | `browser/components/migration/content/migration-wizard.mjs:89` |
 | `migration-wizard .resource-progress` | source (engine only) | Progress list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress` | `browser/components/migration/content/migration-wizard.mjs:129` |
 | `migration-wizard .resource-progress-group` | source (engine only) | Progress rows the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress-group` | `browser/components/migration/content/migration-wizard.mjs:130` |
+| `IOUtils::Encryption::MAGIC_NUMBER` | source (engine only) | The header IOUtils writes before an encrypted file. SessionWriter encrypts session files only when browser.sessionstore.encryption.available and .enabled are both true. The session merge reader reads no keys, so when a snapshot fails to decode and starts with 'mozEnc' it reports the source as encrypted instead of importing an older plaintext backup. A changed header makes it fall back silently again. | `extensions/bento-tools/experiments/bento-external-sessions/api.js#ENCRYPTED_SESSION_MAGIC` | `xpcom/ioutils/IOUtils.h:820` |
 | `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
 | `Animatable.getAnimations pseudoElement option` | source (engine only) | Selects only the owned native panel ::after animations so preparation can finish its running border-color CSSTransitions before mask collection, without scanning descendants or finishing other motion. | `src/browser/actors/BentoModePresentation.sys.mjs#settleNativeFocusRings` | `dom/webidl/Animatable.webidl:27` |
 | `Window.windowUtils` | source (engine only) | Submits current native/child style state through privileged window utilities before releasing the shared opaque UI hold. | `src/browser/actors/BentoModePresentation.sys.mjs#windowUtils`, `src/browser/actors/BentoShellBusChild.sys.mjs#windowUtils` | `dom/webidl/Window.webidl:602` |

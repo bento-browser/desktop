@@ -102,6 +102,33 @@ describe('loadExternalMergeSources', () => {
     ]);
   });
 
+  it('names an encrypted Firefox session instead of calling it unreadable', async () => {
+    vi.stubGlobal('browser', {
+      bentoExternalSessions: {
+        listCandidates: vi.fn(async () => [
+          {
+            sourceId: 'firefox-default',
+            kind: 'firefox',
+            browserName: 'Firefox',
+            profileName: 'default-release',
+            lastModified: 100,
+          },
+        ]),
+        readSnapshot: vi.fn(async () => {
+          throw new Error('Browser session snapshot is encrypted and unsupported.');
+        }),
+      },
+    });
+
+    await expect(loadExternalMergeSources()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'firefox-default',
+        tabCount: 0,
+        unavailableReason: 'Encrypted session, not supported',
+      }),
+    ]);
+  });
+
   it('keeps unreadable candidates visible beside mergeable sources', async () => {
     vi.stubGlobal('browser', {
       bentoExternalSessions: {
