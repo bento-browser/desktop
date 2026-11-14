@@ -3964,7 +3964,8 @@
   // shell bridge/layerRequest.ts), the same id the payload carries on the layer's bus. The
   // presentation names the layer and that id, and the document renders only the payload with
   // that id; a cancel retires the id here, so no later presentation names it. A title without a
-  // well-formed id opens nothing (parseLayerOpenTitle). The host's z-index follows the shown layer, so each layer stacks
+  // well-formed id opens nothing (parseLayerOpenTitle). The host takes pointer input only once
+  // the document reports that it rendered the current presentation (handleWorkspaceLayerRendered). The host's z-index follows the shown layer, so each layer stacks
   // where its own host did: the switcher below the welcome and the 99997 palettes, the edit
   // dialog with them, the confirmation above them and below the command palette and the menu.
   //
@@ -3983,6 +3984,9 @@
   let activeWorkspaceLayer = null;
   // { layer, requestId } of the newest open, or null once it was hidden or cancelled.
   let requestedWorkspaceLayer = null;
+  // { layer, requestId, generation } of the document's newest rendered report (see
+  // handleWorkspaceLayerRendered), or null.
+  let workspaceLayerRendered = null;
   // Kept equal to LAYER_REQUEST_ID_PATTERN in the shell's bridge/layerRequest.ts and
   // HOST_REQUEST_PATTERN in BentoShellBusChild.sys.mjs (scripts/overlay-surfaces.test.mjs).
   const WORKSPACE_LAYER_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -4001,6 +4005,41 @@
     }
     console.warn('[bento-shell-mount] layer open title without a valid request id:', title);
     return null;
+  }
+
+  // Whether the document reported that it rendered the presentation chrome shows now: the same
+  // layer, request id and presentation generation.
+  function isWorkspaceLayerRendered() {
+    const rendered = workspaceLayerRendered;
+    return (
+      rendered !== null &&
+      activeWorkspaceLayer === rendered.layer &&
+      requestedWorkspaceLayer?.layer === rendered.layer &&
+      requestedWorkspaceLayer.requestId === rendered.requestId &&
+      overlays.generation('workspace-layers') === rendered.generation
+    );
+  }
+
+  // `BENTO_LAYER_RENDERED:<uuid>:<generation>` under the layer's tag: the document rendered the
+  // presented request. The host takes pointer input only once this matches the current
+  // presentation; until then it is shown but lets clicks through, so a presentation whose
+  // payload never came cannot block the window. An older id or generation is ignored.
+  function handleWorkspaceLayerRendered(layer, title) {
+    const parts = title.slice(WORKSPACE_LAYER_RENDERED_PREFIX.length).split(':');
+    if (
+      parts.length !== 3 ||
+      parts[0] !== '' ||
+      !WORKSPACE_LAYER_REQUEST_ID_PATTERN.test(parts[1]) ||
+      !/^\d{1,15}$/.test(parts[2])
+    ) {
+      console.warn('[bento-shell-mount] malformed layer rendered report:', title);
+      return;
+    }
+    workspaceLayerRendered = { layer, requestId: parts[1], generation: Number(parts[2]) };
+    const host = document.getElementById('bento-workspace-layers-host');
+    if (host && host.style.opacity === '1' && isWorkspaceLayerRendered()) {
+      host.style.pointerEvents = 'auto';
+    }
   }
 
   // Whether `layer` is shown, or its open waits for the document or its presentation.
@@ -4036,7 +4075,9 @@
       reveal?.();
       cancelMotion(host, 'hide');
       host.style.zIndex = String(WORKSPACE_LAYER_Z_INDEX[layer]);
-      host.style.pointerEvents = 'auto';
+      // Pointer input waits for the document's rendered report for this presentation (it may
+      // have come before the acknowledgement); the frame still takes the focus, so Esc works.
+      host.style.pointerEvents = isWorkspaceLayerRendered() ? 'auto' : 'none';
       host.removeAttribute('hidden');
       // The attribute and the opacity in one style flush: the attribute's rule has no
       // transition, so the host appears at once.
@@ -5024,6 +5065,8 @@
   // BENTO_LAYER:<layer>:<title> (the shell side is workspace-layers/layers.ts). Its frame's
   // handler routes by layer, as the other handlers route by frame.
   const WORKSPACE_LAYER_TITLE_PREFIX = 'BENTO_LAYER:';
+  // The document rendered a presented request: BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<uuid>:<generation>.
+  const WORKSPACE_LAYER_RENDERED_PREFIX = 'BENTO_LAYER_RENDERED';
   // Generic chrome-menu overlay. Items, anchor, and a routing contextId
   // travel from chrome into the menu page via a 'menu/open' shell-bus
   // action; the menu page reports back via these title prefixes which
@@ -18917,7 +18960,13 @@
       if (!title.startsWith(WORKSPACE_LAYER_TITLE_PREFIX)) return;
       const rest = title.slice(WORKSPACE_LAYER_TITLE_PREFIX.length);
       const colon = rest.indexOf(':');
-      if (colon > 0) workspaceLayerTitleHandlers.get(rest.slice(0, colon))?.(rest.slice(colon + 1));
+      if (colon <= 0) return;
+      const layer = rest.slice(0, colon);
+      const handler = workspaceLayerTitleHandlers.get(layer);
+      if (!handler) return;
+      const inner = rest.slice(colon + 1);
+      if (inner.startsWith(WORKSPACE_LAYER_RENDERED_PREFIX)) handleWorkspaceLayerRendered(layer, inner);
+      else handler(inner);
     };
 
     const titleHandlerByFrameId = new Map([

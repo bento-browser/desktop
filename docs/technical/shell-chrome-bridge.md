@@ -811,8 +811,12 @@ Verify (built app, tools background console or the sidebar): see the checks in
   (`BentoShellBus:HostPresentation`) for that document carries the presented `layer` and
   `requestId` together, which `BentoShellBusChild` writes as `data-bento-host-layer`
   (lowercase letters and hyphens only, up to 40) and `data-bento-host-request` (the UUID
-  pattern); a query with only one of them, or either malformed, is rejected, and both are
-  removed on the hide or for a query without them. See
+  pattern), with the query's generation as `data-bento-host-generation`; a query with only
+  one of them, or either malformed, is rejected, and all three are removed on the hide or
+  for a query without them. Once the document has rendered the presented request it writes
+  `BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<requestId>:<generation>`; chrome rejects a
+  malformed one, ignores one for another layer, id or generation, and gives the host
+  pointer input only for a match (the render gate). See
   [overlay-documents.md](overlay-documents.md#workspace-layers-document).
 - Title writes coalesce: a title replaced before the content process reports it
   never produces a `pagetitlechanged` in chrome. This is not limited to one

@@ -7,6 +7,7 @@ import type { ConfirmPayload } from '../bridge/useConfirm';
 // writes the root attributes first and then fires the event, synchronously.
 let attributes: Map<string, string>;
 let listeners: Set<() => void>;
+let generation = 0;
 
 type Shown = { layer: string; id: string };
 
@@ -15,9 +16,11 @@ function present(target: Shown | null) {
   if (target) {
     attributes.set('data-bento-host-layer', target.layer);
     attributes.set('data-bento-host-request', target.id);
+    attributes.set('data-bento-host-generation', String(++generation));
   } else {
     attributes.delete('data-bento-host-layer');
     attributes.delete('data-bento-host-request');
+    attributes.delete('data-bento-host-generation');
   }
   for (const listener of listeners) listener();
 }
@@ -41,6 +44,7 @@ async function load() {
   const dropped: string[] = [];
   layers.observeWorkspaceLayersPresentation((layer) => dropped.push(layer));
   const shown = () => layers.visibleWorkspaceLayer(layers.useWorkspaceLayers.getState());
+  const report = () => layers.renderedReportTitle(layers.useWorkspaceLayers.getState());
   const confirm = (id: LayerRequestId, title = CONFIRM.title) =>
     layers.showWorkspaceLayer({ layer: 'confirm', id, payload: { ...CONFIRM, title } });
   const switcher = (id: LayerRequestId, sidebarScreenX = 0) =>
@@ -49,7 +53,7 @@ async function load() {
       id,
       payload: { ...SWITCHER, sidebarScreenX },
     });
-  return { ...layers, dropped, shown, confirm, switcher };
+  return { ...layers, dropped, shown, report, confirm, switcher };
 }
 
 const confirmOf = (id: string): Shown => ({ layer: 'confirm', id });
@@ -192,6 +196,75 @@ describe('workspace layers', () => {
     present(null);
     present(confirmOf(b));
     expect(layers.shown()?.payload).toMatchObject({ title: 'B' });
+  });
+
+  // Review of 64f8cec7: presenting A dropped B's payload, which had already arrived, so B's
+  // presentation rendered nothing.
+  it('shows B after A when both payloads arrive before either presentation', async () => {
+    const layers = await load();
+    const a = newLayerRequestId();
+    const b = newLayerRequestId();
+    layers.confirm(a, 'A');
+    layers.confirm(b, 'B');
+    present(confirmOf(a));
+    expect(layers.shown()?.payload).toMatchObject({ title: 'A' });
+    present(confirmOf(b));
+    expect(layers.shown()?.payload).toMatchObject({ title: 'B' });
+    // A's presentation ended, so A is retired; B stays until its own hide.
+    expect([...layers.useWorkspaceLayers.getState().requests.keys()]).toEqual([b]);
+  });
+
+  it('never evicts a payload that arrived after the newest presented one', async () => {
+    const layers = await load();
+    const ids = Array.from({ length: 40 }, () => newLayerRequestId());
+    ids.forEach((id, i) => layers.confirm(id, `C${i}`));
+    present(confirmOf(ids[0]!));
+    expect(layers.shown()?.payload).toMatchObject({ title: 'C0' });
+    present(confirmOf(ids[39]!));
+    expect(layers.shown()?.payload).toMatchObject({ title: 'C39' });
+  });
+
+  it('evicts, past the cap, only payloads older than the newest presented one', async () => {
+    const layers = await load();
+    const stale = Array.from({ length: 31 }, () => newLayerRequestId());
+    stale.forEach((id) => layers.confirm(id, 'stale'));
+    const shownId = newLayerRequestId();
+    layers.confirm(shownId, 'shown');
+    present(confirmOf(shownId));
+    const pending = Array.from({ length: 10 }, () => newLayerRequestId());
+    pending.forEach((id, i) => layers.confirm(id, `P${i}`));
+    const kept = layers.useWorkspaceLayers.getState().requests;
+    expect(kept.size).toBe(32);
+    expect(pending.every((id) => kept.has(id))).toBe(true);
+    expect(kept.has(shownId)).toBe(true);
+    expect(kept.has(stale[0]!)).toBe(false);
+  });
+
+  it('reports the presented request as rendered only once its payload is here', async () => {
+    const layers = await load();
+    const a = newLayerRequestId();
+    present(confirmOf(a));
+    expect(layers.report()).toBeNull();
+    layers.confirm(a, 'A');
+    expect(layers.report()).toBe(`BENTO_LAYER_RENDERED:${a}:${generation}`);
+    present(null);
+    expect(layers.report()).toBeNull();
+  });
+
+  it('tells the sidebar a switcher hid even when its payload never came', async () => {
+    const layers = await load();
+    const s = newLayerRequestId();
+    present(switcherOf(s));
+    present(null);
+    expect(layers.dropped).toEqual(['workspace-switcher']);
+
+    // A switcher that closed itself already told the sidebar.
+    const s2 = newLayerRequestId();
+    layers.switcher(s2);
+    present(switcherOf(s2));
+    layers.clearWorkspaceLayer(s2);
+    present(null);
+    expect(layers.dropped).toEqual(['workspace-switcher']);
   });
 
   it.each([

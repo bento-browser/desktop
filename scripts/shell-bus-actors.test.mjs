@@ -101,7 +101,7 @@ test('host presentation is stored before synchronous dispatch and acknowledges o
   assert.equal(query(true, 7), null);
 });
 
-test('host presentation names the shown layer and request of a document with layers, and drops both with the hide', () => {
+test('host presentation names the shown layer, request and generation of a document with layers, and drops them with the hide', () => {
   const { actor } = loadChild();
   const attributes = new Map();
   actor.contentWindow = {
@@ -124,12 +124,14 @@ test('host presentation names the shown layer and request of a document with lay
   assert.equal(query({ presented: true, generation: 1, layer: 'confirm', requestId: a }).presented, true);
   assert.equal(attributes.get('data-bento-host-layer'), 'confirm');
   assert.equal(attributes.get('data-bento-host-request'), a);
+  assert.equal(attributes.get('data-bento-host-generation'), '1');
   assert.equal(
     query({ presented: true, generation: 2, layer: 'workspace-switcher', requestId: b }).generation,
     2,
   );
   assert.equal(attributes.get('data-bento-host-layer'), 'workspace-switcher');
   assert.equal(attributes.get('data-bento-host-request'), b);
+  assert.equal(attributes.get('data-bento-host-generation'), '2');
   for (const layer of ['', 'Confirm', 'a b', 7, 'x'.repeat(41)]) {
     assert.equal(query({ presented: true, generation: 3, layer, requestId: a }), null, String(layer));
   }
@@ -148,6 +150,7 @@ test('host presentation names the shown layer and request of a document with lay
   assert.equal(query({ presented: false, generation: 3 }).presented, false);
   assert.equal(attributes.has('data-bento-host-layer'), false);
   assert.equal(attributes.has('data-bento-host-request'), false);
+  assert.equal(attributes.has('data-bento-host-generation'), false);
 });
 
 test('the child applies its bound writer synchronously then submits once before ACK; stale/navigation queries cannot submit', async () => {

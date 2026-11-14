@@ -273,16 +273,36 @@ truth: none (the payloads are snapshots; the document mirrors the `tabs`,
   `requestedWorkspaceLayer`); a hide carries `{ presented: false, generation }`.
   `BentoShellBusChild` accepts the layer and the id only together (layer: lowercase
   letters and hyphens, up to 40; id: the same UUID pattern) and writes them as
-  `data-bento-host-layer` and `data-bento-host-request` next to
-  `data-bento-host-presented`, removing both with the hide. The document keeps payloads
-  by request id and renders only the one whose id (and layer) chrome presents, so the
-  order of the bus payload and chrome's reveal never matters and the entrance plays on
-  screen. A payload no presentation names yet is kept until its presentation arrives or
-  chrome presents a newer request of its layer (chrome presents only its newest open, so
-  that older one never shows), capped at eight kept payloads; a presentation whose payload
-  has not arrived shows nothing until that id's payload lands. A hide retires exactly the
-  presented id (and tells the sidebar trigger when that was the switcher); every other kept
-  payload waits for its own presentation.
+  `data-bento-host-layer`, `data-bento-host-request` and `data-bento-host-generation`
+  next to `data-bento-host-presented`, removing all three with the hide. The document
+  renders only the kept payload whose id (and layer) chrome presents. What is guaranteed:
+  the document never renders a payload other than the presented one, and a presented
+  request renders as soon as both its presentation and its payload are in the document,
+  in either order, as long as its payload is still kept.
+- **Retention.** The document keeps payloads by request id until they are obsolete: an
+  id's presentation ended (a hide, or chrome presenting another id). Presenting one
+  request never drops another that has not been presented, so payloads A and B that both
+  arrive before chrome presents A and then B render in turn. A payload chrome never
+  presents (an open cancelled or replaced before its presentation, a title that never
+  reached chrome) is not retired by a hide; past 32 kept payloads the oldest that arrived
+  before the newest presented payload are evicted, and a payload that arrived after the
+  newest presented one is never evicted. Chrome handles an open title within a task of its
+  payload, so in normal use an evicted payload has been superseded. A presented layer that
+  hides reports the hide to the sidebar trigger (`notifyWorkspaceSwitcherClosed`), also
+  when its payload never came, unless the switcher closed itself and already did.
+- **Render gate.** The host is shown at the reveal with `pointer-events: none`. Once the
+  document has committed the presented request, it reports
+  `BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<requestId>:<generation>` (`sendChromeTitle`
+  through `sendWorkspaceLayerTitle`, after React's commit, one report per presentation).
+  Chrome parses it strictly (`handleWorkspaceLayerRendered`: the id pattern and 1 to 15
+  digits, under a known layer tag) and sets `pointer-events: auto` only when the layer,
+  the id and the generation match the current presentation (`isWorkspaceLayerRendered`:
+  `activeWorkspaceLayer`, `requestedWorkspaceLayer` and the manager record's generation),
+  either at the reveal (a report that beat the acknowledgement) or when the report
+  arrives. A report for an older id or generation changes nothing. The frame takes the
+  focus at the reveal as before, so Esc dismisses a presented layer that has not rendered,
+  and clicks pass through to the page under it. Readiness and the presentation
+  acknowledgement are unchanged; nothing is timed.
 - **Layout.** The host is `display: flex` from startup and never resizes; while no
   layer is shown it is `opacity: 0` and `pointer-events: none`. The switcher layer
   translates the sidebar trigger's rect with `window.screenLeft`, which reads zeros in
@@ -333,6 +353,17 @@ Pitfalls:
   empty host that took the pointer. The same applies to the hide: it retires the presented
   id, never every request of that layer, or a reopen whose payload beats the old hide is
   dropped. `src/workspace-layers/layers.test.ts` covers these orders.
+- Do not drop other payloads of a layer when one is presented. Treating "chrome presents
+  only its newest open" as "every other payload of that layer is stale" deleted B's payload
+  when A was presented after both had arrived, so B's presentation rendered nothing and the
+  empty host took the pointer; Esc closed it but an outside click did not, because no layer
+  was mounted to receive it and chrome's outside-click handler does not cover these
+  layers. Retire a payload only when its own presentation ends, and keep the cap from
+  evicting anything newer than the newest presented payload.
+- Do not give the host pointer input at the reveal. A presentation can come before its
+  payload, and a payload can be lost (evicted, or a document reload replaying the open),
+  so the host waits for the document's rendered report for that id and generation; an
+  empty presented host must stay transparent to clicks.
 
 ## Bookmarks view
 

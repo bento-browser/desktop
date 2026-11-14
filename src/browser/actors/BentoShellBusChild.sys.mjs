@@ -168,14 +168,16 @@ export class BentoShellBusChild extends JSWindowActorChild {
         this.#presentationGeneration = generation;
         root.setAttribute('data-bento-host-presented', String(presented));
         // A document that hosts several layers (workspace-layers.html) learns which layer and
-        // which request chrome shows; the attributes go with the hide and for a document
-        // without layers.
+        // which request chrome shows, and the generation it reports back when it rendered them;
+        // the attributes go with the hide and for a document without layers.
         if (presented && target) {
           root.setAttribute('data-bento-host-layer', layer);
           root.setAttribute('data-bento-host-request', requestId);
+          root.setAttribute('data-bento-host-generation', String(generation));
         } else {
           root.removeAttribute('data-bento-host-layer');
           root.removeAttribute('data-bento-host-request');
+          root.removeAttribute('data-bento-host-generation');
         }
         doc.dispatchEvent(new win.CustomEvent('bento-host-presentation'));
         return { presented, generation };

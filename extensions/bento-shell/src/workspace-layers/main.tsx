@@ -30,6 +30,7 @@ import { useOverlayReadySignal } from '../bridge/overlayReady';
 import {
   observeWorkspaceLayersPresentation,
   showWorkspaceLayer,
+  useReportRenderedWorkspaceLayer,
   useVisibleWorkspaceLayer,
 } from './layers';
 import { SwitcherLayer } from './SwitcherLayer';
@@ -49,6 +50,7 @@ function WorkspaceLayersApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });
   useWorkspaceTheme();
   const request = useVisibleWorkspaceLayer();
+  useReportRenderedWorkspaceLayer();
 
   useEffect(() => {
     const unsubscribers = [

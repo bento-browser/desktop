@@ -214,6 +214,8 @@ const FUNCTIONS = [
   'handleAddrbarOpenAnswer',
   'hideAddrbar',
   'parseLayerOpenTitle',
+  'isWorkspaceLayerRendered',
+  'handleWorkspaceLayerRendered',
   'isWorkspaceLayerOpen',
   'isWorkspaceLayerShown',
   'isWorkspaceLayersVisible',
@@ -282,6 +284,7 @@ const CONSTANTS = [
   'WORKSPACE_LAYER_Z_INDEX',
   'WORKSPACE_LAYER_REQUEST_ID_PATTERN',
   'WORKSPACE_LAYER_TITLE_PREFIX',
+  'WORKSPACE_LAYER_RENDERED_PREFIX',
   'WORKSPACE_SWITCHER_CLOSE_PREFIX',
   'EDIT_WORKSPACE_OPEN_PREFIX',
   'EDIT_WORKSPACE_CLOSE_PREFIX',
@@ -776,6 +779,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     let bookmarksToolbarObserver = null;
     let activeWorkspaceLayer = null;
     let requestedWorkspaceLayer = null;
+    let workspaceLayerRendered = null;
     ${extractOverlaysSection()}
     ${FUNCTIONS.map(extractFunction).join('\n')}
     ${extractOverlaysTable()}
@@ -5039,6 +5043,73 @@ function slowPresentationWorld() {
   world.ready('workspace-layers');
   return { world, queries };
 }
+
+const rendered = (id, generation) => `BENTO_LAYER_RENDERED:${id}:${generation}`;
+
+test('the layers host takes pointer input only after the document rendered this presentation', () => {
+  const world = warmWorld();
+  const a = requestId(1);
+  const host = world.host('workspace-layers');
+  world.showConfirm(a);
+  const g = world.events.presentation.at(-1).generation;
+  assert.equal(world.isWorkspaceLayerShown('confirm'), true);
+  assert.equal(host.style.pointerEvents, 'none', 'shown, but clicks pass through');
+
+  // Reports for another id, an older generation, another layer, or malformed ones change nothing.
+  for (const title of [
+    layerTitle('confirm', rendered(requestId(2), g)),
+    layerTitle('confirm', rendered(a, g - 1)),
+    layerTitle('edit-workspace', rendered(a, g)),
+    layerTitle('confirm', `${rendered(a, g)}:1`),
+    layerTitle('confirm', `BENTO_LAYER_RENDERED:${a}`),
+    layerTitle('confirm', `BENTO_LAYER_RENDERED:${a}:x`),
+  ]) {
+    world.titleChanged('bento-workspace-layers-frame', title);
+    assert.equal(host.style.pointerEvents, 'none', title);
+  }
+  world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', rendered(a, g)));
+  assert.equal(host.style.pointerEvents, 'auto');
+
+  // A reopen is a new presentation: the earlier report does not carry over.
+  world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', 'BENTO_CLOSE_CONFIRM_1'));
+  assert.equal(host.style.pointerEvents, 'none');
+  host.dispatch('transitionend', { propertyName: 'opacity' });
+  const b = requestId(3);
+  world.showConfirm(b);
+  const g2 = world.events.presentation.at(-1).generation;
+  assert.notEqual(g2, g);
+  world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', rendered(b, g)));
+  assert.equal(host.style.pointerEvents, 'none', 'a stale generation for the new id');
+  world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', rendered(b, g2)));
+  assert.equal(host.style.pointerEvents, 'auto');
+});
+
+test('a rendered report that beats the presentation acknowledgement opens the host to input at the reveal', async () => {
+  const { world, queries } = slowPresentationWorld();
+  const a = requestId(1);
+  world.showConfirm(a);
+  const g = world.events.presentation.at(-1).generation;
+  world.titleChanged('bento-workspace-layers-frame', layerTitle('confirm', rendered(a, g)));
+  queries.shift()(true);
+  await Promise.resolve();
+  assert.equal(world.isWorkspaceLayerShown('confirm'), true);
+  assert.equal(world.host('workspace-layers').style.pointerEvents, 'auto');
+});
+
+test('a presented layer that never renders lets clicks through, and Esc dismisses it', () => {
+  const world = warmWorld();
+  const host = world.host('workspace-layers');
+  world.showWorkspaceSwitcher(requestId(1));
+  assert.equal(host.style.opacity, '1');
+  // Nothing rendered: the host takes no pointer input, so an outside click reaches the page.
+  assert.equal(host.style.pointerEvents, 'none');
+  assert.equal(world.pressEscape(), true);
+  assert.equal(world.isWorkspaceLayerOpen('workspace-switcher'), false);
+  assert.equal(host.style.opacity, '0');
+  host.dispatch('transitionend', { propertyName: 'opacity' });
+  assert.equal(host.hasAttribute('hidden'), true);
+  assert.equal(world.events.presentation.at(-1).presented, false, 'the document is told');
+});
 
 test('Esc on a reopen still waiting for its presentation settles the host the closed layer left', async () => {
   const { world, queries } = slowPresentationWorld();
