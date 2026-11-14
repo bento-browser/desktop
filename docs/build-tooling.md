@@ -1361,7 +1361,10 @@ generated theme files, so none of them needs a separate step.
   that differs, or is still a link, is replaced through a rename.
   `--content-files` runs only this step, and `generate-chrome-tokens.mjs` runs it
   after writing its default output, so `pnpm run import`, `pnpm run lc` and a
-  direct generator run all leave a current copy. `theme:sync` does not write the
+  direct generator run all leave a current copy. In a checkout whose `engine/` or
+  `.bento/` is borrowed from another checkout, the generator still writes the
+  sheet, prints one `content copy skipped` line naming the borrowed paths and
+  exits 0; a failed copy into the checkout's own object directory fails it. `theme:sync` does not write the
   sheet. `pnpm run build` and `build:ui` run the sync after `mach`, which can
   install the link again. Every other Bento chrome file stays a link because only
   the parent process reads it; a patched Firefox page (`aboutLogins.html`,

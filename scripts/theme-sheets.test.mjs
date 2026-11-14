@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -220,6 +231,67 @@ test('regenerating prunes sheets for removed themes', () => {
     assert.ok(!files.includes('removed-theme.css'));
     assert.ok(files.includes('notes.txt'));
   } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// A checkout with this repository's scripts and config, and its extensions/ (theme sheets) and
+// hoisted node_modules/ (Mux) linked in, so the generator runs with its default output path inside the copy.
+function generatorCheckout() {
+  const directory = mkdtempSync(join(tmpdir(), 'bento-token-copy-'));
+  const root = join(directory, 'checkout');
+  mkdirSync(root);
+  cpSync(resolve(REPO_ROOT, 'scripts'), join(root, 'scripts'), { recursive: true });
+  cpSync(resolve(REPO_ROOT, 'configs'), join(root, 'configs'), { recursive: true });
+  cpSync(resolve(REPO_ROOT, 'bento.json'), join(root, 'bento.json'));
+  symlinkSync(resolve(REPO_ROOT, 'extensions'), join(root, 'extensions'), 'dir');
+  symlinkSync(resolve(REPO_ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
+  const run = () =>
+    spawnSync(process.execPath, [join(root, 'scripts', 'generate-chrome-tokens.mjs')], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, BENTO_OBJDIR: '' },
+    });
+  const sheet = join(root, 'src/browser/base/content/bento-chrome-tokens.css');
+  const appChrome = (engine) =>
+    join(engine, 'obj-bento/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser');
+  return { directory, root, run, sheet, appChrome };
+}
+
+test('the generator writes its sheet but skips the app copy when engine/ is borrowed', () => {
+  const { directory, root, run, sheet, appChrome } = generatorCheckout();
+  try {
+    const foreign = join(directory, 'other-engine');
+    mkdirSync(appChrome(foreign), { recursive: true });
+    symlinkSync(foreign, join(root, 'engine'), 'dir');
+    const result = run();
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(readFileSync(sheet, 'utf8').includes('AUTO-GENERATED'));
+    const skipped = result.stdout.match(/^generate-chrome-tokens: content copy skipped: .*$/gm) ?? [];
+    assert.equal(skipped.length, 1, result.stdout);
+    assert.match(skipped[0], /build outputs are borrowed \(.*engine -> .*other-engine\)/);
+    assert.equal(existsSync(join(appChrome(foreign), 'bento-chrome-tokens.css')), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the generator copies into its own objdir and fails when that copy fails', () => {
+  const { directory, root, run, sheet, appChrome } = generatorCheckout();
+  const target = appChrome(join(root, 'engine'));
+  try {
+    mkdirSync(target, { recursive: true });
+    const copied = run();
+    assert.equal(copied.status, 0, copied.stderr);
+    assert.equal(readFileSync(join(target, 'bento-chrome-tokens.css'), 'utf8'), readFileSync(sheet, 'utf8'));
+
+    rmSync(join(target, 'bento-chrome-tokens.css'));
+    chmodSync(target, 0o555);
+    const failed = run();
+    assert.notEqual(failed.status, 0);
+    assert.match(failed.stderr, /refreshing the built app copy failed/);
+  } finally {
+    chmodSync(target, 0o755);
     rmSync(directory, { recursive: true, force: true });
   }
 });

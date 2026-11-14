@@ -24,7 +24,8 @@ public Mux token surface and Bento's compatibility aliases.
 3. [scripts/import.sh](../scripts/import.sh) invokes the generator during the
    normal source import workflow. After writing the default path, the generator
    runs `scripts/sync-builtin-addon-symlinks.sh --content-files` to refresh the
-   built app's copy of the base sheet; an `--output` run leaves the app alone.
+   built app's copy of the base sheet; an `--output` run leaves the app alone,
+   and a checkout with a borrowed `engine/` skips the copy with a notice.
 4. The chrome layout patch registers the base sheet in `browser/base/jar.mn`,
    and the theme directory by wildcard
    (`content/browser/bento-chrome-themes/ (content/bento-chrome-themes/*.css)`).
