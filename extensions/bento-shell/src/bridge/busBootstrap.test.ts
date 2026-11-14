@@ -14,12 +14,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Action, BentoSettings, Event } from '@shared/protocol';
 import type { AudienceEvent } from '@shared/audience-event';
 import { installFakeChromeTitle } from './fakeChromeTitle';
+import type { ToolsFamily } from './useToolsPort';
 
 function audienceEvent(audience: AudienceEvent['audience'], event: Event): AudienceEvent {
   return { type: 'audience/event', audience, event };
 }
 
-/** Every shell document that calls initToolsPort(): sidebar, address bar, panel
+/** Every shell document that calls initToolsPort: sidebar, address bar, panel
  * trailer, workspace switcher, edit workspace, confirm, welcome, menu, workspace
  * palette, merge palette, palette, and the panel navigator tooltip. */
 const DOCUMENTS = 12;
@@ -309,22 +310,25 @@ function createFakeTools() {
 async function joinDocument({
   sidebarWindowId,
   windowId = sidebarWindowId,
-}: { sidebarWindowId?: number; windowId?: number } = {}) {
+  families,
+}: { sidebarWindowId?: number; windowId?: number; families?: readonly ToolsFamily[] } = {}) {
   vi.resetModules();
   vi.stubGlobal('location', {
     hash: windowId === undefined ? '' : `#bentoWindowId=${windowId}`,
   });
-  const { initToolsPort, enableSidePanelTitleBridge, dispatch } = await import('./useToolsPort');
+  const { initToolsPort, enableSidePanelTitleBridge, dispatch, TOOLS_FAMILIES } =
+    await import('./useToolsPort');
   const { useTabsStore } = await import('../state/tabs');
   const { usePanelsStore } = await import('../state/panels');
   const { useSettingsStore } = await import('../state/settings');
   const { useWorkspacesStore, selectActiveIdForWindow } = await import('../state/workspaces');
   const applied = { panels: 0 };
   usePanelsStore.subscribe(() => (applied.panels += 1));
-  initToolsPort();
+  initToolsPort({ families: families ?? TOOLS_FAMILIES });
   if (sidebarWindowId !== undefined) enableSidePanelTitleBridge();
   bus.drain();
   return {
+    initToolsPort,
     dispatch,
     useTabsStore,
     usePanelsStore,
@@ -360,11 +364,12 @@ async function joinPrivateDocument({
     const detail = (event as CustomEvent<string>).detail;
     relay.listener?.({ documentId, windowId, isPrivate: true, message: JSON.parse(detail) });
   });
-  const { initToolsPort, dispatch, enableSidePanelTitleBridge } = await import('./useToolsPort');
+  const { initToolsPort, dispatch, enableSidePanelTitleBridge, TOOLS_FAMILIES } =
+    await import('./useToolsPort');
   const { useTabsStore } = await import('../state/tabs');
   const { useWorkspacesStore } = await import('../state/workspaces');
   const { useSettingsStore } = await import('../state/settings');
-  initToolsPort();
+  initToolsPort({ families: TOOLS_FAMILIES });
   if (sidebar) enableSidePanelTitleBridge();
   bus.drain();
   bus.partition = 'regular';
@@ -396,7 +401,13 @@ describe('shell bus bootstrap', () => {
     // The extension build defines this flag; here the dev build's value.
     vi.stubGlobal('__BENTO_DEV_RELOAD__', true);
     vi.stubGlobal('browser', {
-      windows: { onRemoved: { addListener: (listener: (id: number) => void) => { windowRemoved = listener; } } },
+      windows: {
+        onRemoved: {
+          addListener: (listener: (id: number) => void) => {
+            windowRemoved = listener;
+          },
+        },
+      },
       runtime: { connect: () => tools.port },
       commands: { onCommand: { addListener: () => {} } },
       bentoChrome: {
@@ -448,7 +459,7 @@ describe('shell bus bootstrap', () => {
     expect(tools.requests).toHaveLength(0);
   });
 
-  // The panel navigator tooltip used to skip initToolsPort(), so its stores stayed
+  // The panel navigator tooltip used to skip initToolsPort, so its stores stayed
   // empty and useWorkspaceTheme/useFirefoxTheme never had a theme or mode to apply.
   it('hydrates the inputs of the theme hooks in an overlay that only joins the bus', async () => {
     tools.assignWindow(7, 'ws-2');
@@ -488,6 +499,57 @@ describe('shell bus bootstrap', () => {
     await joinDocument();
 
     expect(first.applied.panels).toBe(WORKSPACE_IDS.length);
+  });
+
+  it('mirrors only the families an overlay asks for', async () => {
+    tools.boot();
+    tools.requests.length = 0;
+
+    const overlay = await joinDocument({ families: ['workspaces', 'settings'] });
+
+    expect(tools.requests).toEqual(['workspaces/requestSnapshot', 'settings/requestSnapshot']);
+    // A full document's requests still broadcast every snapshot, and tabs keep changing.
+    await joinDocument();
+    tools.emit({
+      type: 'tabs/changed',
+      deltas: [
+        {
+          kind: 'created',
+          tab: {
+            id: 2,
+            windowId: 1,
+            index: 1,
+            title: 'Two',
+            active: false,
+            pinned: false,
+            audible: false,
+            muted: false,
+          },
+        },
+      ],
+    });
+
+    expect(overlay.useTabsStore.getState().hydrated).toBe(false);
+    expect(overlay.useTabsStore.getState().byId).toEqual({});
+    expect(overlay.applied.panels).toBe(0);
+    expect(Object.keys(overlay.useWorkspacesStore.getState().byId)).toEqual(WORKSPACE_IDS);
+    expect(overlay.useSettingsStore.getState().current).not.toBeNull();
+  });
+
+  // Snapshots go out only on the connection's replayed boot, so families added later
+  // would never hydrate: the families are fixed by the first call.
+  it('keeps the families of the first initToolsPort call', async () => {
+    tools.boot();
+    const overlay = await joinDocument({ families: ['workspaces', 'settings'] });
+    tools.requests.length = 0;
+
+    overlay.initToolsPort({ families: ['settings', 'workspaces'] });
+    bus.drain();
+    expect(tools.requests).toEqual([]);
+    expect(() => overlay.initToolsPort({ families: ['workspaces', 'settings', 'tabs'] })).toThrow(
+      /other families/,
+    );
+    expect(() => overlay.initToolsPort({ families: ['workspaces'] })).toThrow(/other families/);
   });
 
   describe('private windows', () => {

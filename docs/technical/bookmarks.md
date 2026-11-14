@@ -422,8 +422,11 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
 - **Default target** (`defaultSaveTarget`, `src/bookmarks/links.ts`): in the current space, the group
   of its newest link, else its first group, else a new "Unsorted". A URL matches a link by
   `urlKey` (`new URL(u).href`, fragment kept); the popover edits the newest match.
-- **Documents.** Two new shell entries, both reading the store mirror themselves (`initToolsPort()`),
-  so chrome passes only ids and anchors, never favicons:
+- **Documents.** Two new shell entries, both reading the store mirror themselves (`initToolsPort`
+  with the `bookmarks` family), so chrome passes only ids and anchors, never favicons. Neither
+  mirrors tabs or panels: the edit popover's tab id, URL and title come in the chrome open request,
+  and the sidebar-only `BENTO_BOOKMARKED_TABS` hook, which reads the tabs mirror, lives in its own
+  module (`src/bookmarks/useBookmarkedTabsSignal.ts`) so these entries do not import it:
   - `bookmarks-popup` (prewarmed overlay, full-window transparent host): the edit popover (Mux
     `Popover`, Name `TextField`, Space and Group `SelectNative`, Remove, Done) and the group, Spaces
     and overflow menus (Mux `Menu`). Components in `components/BookmarkPopup/`.

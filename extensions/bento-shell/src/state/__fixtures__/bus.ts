@@ -4,7 +4,7 @@
 // background to send that event, so the indicator never clears unless we
 // fake it.
 //
-// initToolsPort() opens useToolsPort's BroadcastChannel listener (without
+// initToolsPort opens useToolsPort's BroadcastChannel listener (without
 // it, our post on a separate channel is delivered to nothing). Then we
 // open a second channel on the same name and post the booted event —
 // useToolsPort receives it, flips state.ready=true, and the App
@@ -16,11 +16,11 @@
 // stores — if the requestSnapshot dispatches did somehow get answered,
 // the answer would replace whatever was seeded.
 
-import { initToolsPort } from '../../bridge/useToolsPort';
+import { initToolsPort, TOOLS_FAMILIES } from '../../bridge/useToolsPort';
 
 export function markToolsBootedForStory(): void {
   if (typeof BroadcastChannel === 'undefined') return;
-  initToolsPort();
+  initToolsPort({ families: TOOLS_FAMILIES });
   const ch = new BroadcastChannel('bento-shell-bus');
   ch.postMessage({ kind: 'event', event: { type: 'tools/booted' } });
   ch.close();

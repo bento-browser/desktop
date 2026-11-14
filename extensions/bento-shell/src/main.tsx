@@ -25,7 +25,19 @@ import { initToolsPort, enableSidePanelTitleBridge } from './bridge/useToolsPort
 
 // Establish the tools port immediately so the initial tab snapshot is
 // already on the wire by the time React's first commit lands.
-initToolsPort();
+initToolsPort({
+  families: [
+    'tabs',
+    'workspaces',
+    'settings',
+    'panels',
+    'pinnedPanels',
+    'tabFolders',
+    'bookmarks',
+    'panelFocus',
+    'externalMerge',
+  ],
+});
 
 // The sidebar owns the chrome side-panel reveal/hide signal. Opt this
 // entry into translating panel/show + panel/hide bus events into the

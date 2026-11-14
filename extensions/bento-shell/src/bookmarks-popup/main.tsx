@@ -47,7 +47,7 @@ import {
 import { openBookmarksView } from '../bookmarks/titles';
 import { useBookmarksSnapshot } from '../bookmarks/useBookmarkManager';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings', 'bookmarks'] });
 // Before the ready announcement: chrome presents the host only after it.
 observeHostPresentation();
 

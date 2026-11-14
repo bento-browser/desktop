@@ -23,7 +23,9 @@ import {
 } from '../bridge/useAddrbar';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({
+  families: ['tabs', 'workspaces', 'settings', 'panels', 'savedPanels', 'searchEngines', 'addrbar'],
+});
 document.documentElement.dataset.bentoAddressBar = 'true';
 
 interface AddressBarOpenState {

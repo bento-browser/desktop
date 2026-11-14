@@ -60,7 +60,7 @@ import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({ families: ['tabs', 'workspaces', 'settings', 'panels'] });
 
 const NEW_WORKSPACE_KEY = '__new__';
 const EDIT_ALL_WORKSPACES_KEY = '__edit_all__';

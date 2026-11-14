@@ -20,7 +20,7 @@ import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({ families: ['tabs', 'workspaces', 'settings', 'panels'] });
 
 function WorkspacePaletteApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });

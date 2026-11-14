@@ -770,11 +770,13 @@ Pitfalls:
 
 ## Tooltip document
 
-The panel navigator tooltip document calls `initToolsPort()` like the other
-shell documents, so `useWorkspaceTheme` and `useFirefoxTheme` have the workspace
-and settings mirrors they read. Before this, its stores never hydrated, so it
-kept the Default theme and the color mode from boot. `src/entries.test.ts` fails
-for any entry that applies the workspace theme without joining the bus. Chrome
+The panel navigator tooltip document calls `initToolsPort` like the other
+shell documents (families `workspaces` and `settings`), so `useWorkspaceTheme`
+and `useFirefoxTheme` have the workspace and settings mirrors they read. Before
+this, its stores never hydrated, so it kept the Default theme and the color mode
+from boot. `src/entries.test.ts` fails for any entry whose families do not match
+the stores it imports, so an entry that themes itself must join the bus with
+both (see [shell-chrome-bridge.md](shell-chrome-bridge.md#per-document-event-families)). Chrome
 creates the document when a panel navigator button is hovered or focused (the
 load overlaps the 400 ms hover delay) and sends the label payload again when the
 document announces readiness.

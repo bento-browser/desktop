@@ -29,7 +29,7 @@ import { closeBookmarksView } from './titles';
 import { useOpenTabs } from './useOpenTabs';
 import { useVisibilityTokens } from './visibility';
 
-initToolsPort();
+initToolsPort({ families: ['tabs', 'workspaces', 'settings', 'panels', 'bookmarks'] });
 
 function requestSnapshot() {
   dispatch({ type: 'bookmarks/requestSnapshot' });

@@ -79,6 +79,64 @@ import { readPrivateFromHash, readWindowIdFromHash } from './windowId';
 
 type PanelsSyncEvent = Extract<Event, { type: 'panels/sync' }>;
 
+/** Event families a shell document can mirror, one per tools-fed store. Each entry
+ * passes the ones its components read to initToolsPort; the rest are dropped on
+ * arrival, so a document that never shows tabs keeps no copy of them. */
+export const TOOLS_FAMILIES = [
+  'tabs',
+  'workspaces',
+  'settings',
+  'panels',
+  'pinnedPanels',
+  'tabFolders',
+  'savedPanels',
+  'bookmarks',
+  'privacy',
+  'searchEngines',
+  'addrbar',
+  'panelFocus',
+  'externalMerge',
+] as const;
+export type ToolsFamily = (typeof TOOLS_FAMILIES)[number];
+
+/** The family each store event feeds. Events not listed here ('tools/booted',
+ * 'pong') reach every document. */
+const FAMILY_BY_EVENT: Partial<Record<Event['type'], ToolsFamily>> = {
+  'tabs/snapshot': 'tabs',
+  'tabs/changed': 'tabs',
+  'workspaces/snapshot': 'workspaces',
+  'workspaces/changed': 'workspaces',
+  'settings/snapshot': 'settings',
+  'settings/changed': 'settings',
+  'panels/sync': 'panels',
+  'pinnedPanels/snapshot': 'pinnedPanels',
+  'pinnedPanels/changed': 'pinnedPanels',
+  'tabFolders/snapshot': 'tabFolders',
+  'tabFolders/changed': 'tabFolders',
+  'savedPanels/snapshot': 'savedPanels',
+  'bookmarks/snapshot': 'bookmarks',
+  'privacy/snapshot': 'privacy',
+  'searchEngines/snapshot': 'searchEngines',
+  'addrbar/results': 'addrbar',
+  'addrbar/restoreClosedResult': 'addrbar',
+  'panel/focusedChanged': 'panelFocus',
+  'externalMerge/sources': 'externalMerge',
+  'externalMerge/started': 'externalMerge',
+  'externalMerge/progress': 'externalMerge',
+  'externalMerge/complete': 'externalMerge',
+  'externalMerge/error': 'externalMerge',
+};
+
+/** Snapshots a document asks for after a replayed boot, per requested family. */
+const SNAPSHOT_REQUESTS: Partial<Record<ToolsFamily, Action>> = {
+  tabs: { type: 'tabs/requestSnapshot' },
+  workspaces: { type: 'workspaces/requestSnapshot' },
+  settings: { type: 'settings/requestSnapshot' },
+  pinnedPanels: { type: 'pinnedPanels/requestSnapshot' },
+  tabFolders: { type: 'tabFolders/requestSnapshot' },
+  savedPanels: { type: 'savedPanels/requestSnapshot' },
+};
+
 interface BusState {
   /** Link to the shell background: BroadcastChannel in a regular window, the
    * BentoShellBus relay in a private one (see shellBus.ts). */
@@ -133,6 +191,9 @@ interface BusState {
    * current tools build has sent one. Every panels payload carries it, so chrome can drop one
    * that was built before a newer mode reached it by the direct route. */
   colorStamp: ColorStamp | null;
+  /** Families this document mirrors, set once by initToolsPort (null before it).
+   * Events of any other family are dropped before they reach a store. */
+  families: ReadonlySet<ToolsFamily> | null;
 }
 
 const state: BusState = {
@@ -147,6 +208,7 @@ const state: BusState = {
   pendingPanelsSync: new Map(),
   lastPanelsForChrome: null,
   colorStamp: null,
+  families: null,
 };
 const subscribers = new Set<() => void>();
 
@@ -354,6 +416,8 @@ function ensureConnection(): void {
     const isReplay = typeof data.replayFor === 'string';
     if (isReplay && data.replayFor !== state.helloId) return;
     const event = data.event as Event;
+    const family = FAMILY_BY_EVENT[event.type];
+    if (family && !state.families?.has(family)) return;
     switch (event.type) {
       case 'tools/booted': {
         const wasReady = state.ready;
@@ -368,12 +432,10 @@ function ensureConnection(): void {
         // is complete, and requests would make tools broadcast every
         // snapshot to every document again.
         if (!isReplay || wasReady) return;
-        dispatch({ type: 'tabs/requestSnapshot' });
-        dispatch({ type: 'workspaces/requestSnapshot' });
-        dispatch({ type: 'settings/requestSnapshot' });
-        dispatch({ type: 'pinnedPanels/requestSnapshot' });
-        dispatch({ type: 'tabFolders/requestSnapshot' });
-        dispatch({ type: 'savedPanels/requestSnapshot' });
+        for (const requested of TOOLS_FAMILIES) {
+          const request = SNAPSHOT_REQUESTS[requested];
+          if (request && state.families?.has(requested)) dispatch(request);
+        }
         return;
       }
       case 'tabs/snapshot':
@@ -574,8 +636,27 @@ function getWindowId(): number | null {
   return state.windowId;
 }
 
-/** Initialize the bus (call once at shell mount). Safe to call multiple times. */
-export function initToolsPort(): void {
+/** Initialize the bus: once per document, at shell mount, before the first render
+ * and the first dispatch. `families` lists the tools-fed stores this document's
+ * components read: a store outside it stays empty, so it must match the stores the
+ * entry imports (enforced by src/entries.test.ts). The families are fixed for the
+ * document's lifetime, because snapshots are requested only on the connection's
+ * replayed boot: a repeat call with the same families is a no-op (Ladle stories
+ * prime the bus per story), and one with other families throws. Under Vite HMR an
+ * edited entry re-runs against the kept bus module, so a changed list reloads the
+ * document instead. */
+export function initToolsPort({ families }: { families: readonly ToolsFamily[] }): void {
+  const requested = new Set(families);
+  const current = state.families;
+  if (current) {
+    if (requested.size === current.size && families.every((f) => current.has(f))) return;
+    if (import.meta.hot) {
+      location.reload();
+      return;
+    }
+    throw new Error('initToolsPort: other families');
+  }
+  state.families = requested;
   ensureConnection();
 }
 
