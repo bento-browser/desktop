@@ -3,10 +3,11 @@
  * The one place that reads the shape of the public @muxui/react CSS and theme data.
  *
  * scripts/sync-theme-presets.mjs and scripts/generate-chrome-tokens.mjs both consume
- * styles.css, themes.css and the @muxui/react/themes export. Everything they need to know
- * about how Mux writes those files lives here, so a Mux release that reshapes them fails in
- * one place with one message instead of drifting between two copies. Only the public package
- * surface is read; nothing from Mux's private token compiler or schema is imported.
+ * styles.css, the preset stylesheet named by MUX_THEMES_CSS and the @muxui/react/themes
+ * export. Everything they need to know about how Mux writes those files lives here, so a Mux
+ * release that reshapes them fails in one place with one message instead of drifting between
+ * two copies. Only the public package surface is read; nothing from Mux's private token
+ * compiler or schema is imported.
  *
  * Every function throws MuxSourceError when the input is not the shape Bento understands.
  * The generators wrap their calls in exitOnMuxSourceError to print it and stop the build.
@@ -20,7 +21,11 @@ import { dropContrastMoreSelectors } from '../extensions/bento-shell/contrast-mo
 import { splitTopLevelBlocks, themeIdsInSelector } from '../extensions/bento-shell/css-blocks.mjs';
 
 const STYLES = '@muxui/react/styles.css';
-const THEMES_CSS = '@muxui/react/themes.css';
+/**
+ * The preset stylesheet Bento projects: the same presets, selectors and layer as
+ * themes.css, with text colours chosen by APCA. Generated headers name it from here.
+ */
+export const MUX_THEMES_CSS = '@muxui/react/themes-apca.css';
 const THEMES_MODULE = '@muxui/react/themes';
 
 // Contrast is fixed to 'standard', so the public contrast='more' block is not
@@ -74,7 +79,7 @@ function topLevelBlocks(css, source) {
   }
 }
 
-/** Keep RC4's public layers separate so component roots cannot enter the token bridge. */
+/** Keep Mux's public layers separate so component roots cannot enter the token bridge. */
 function publicLayerCss(css, source) {
   const blocks = topLevelBlocks(css, source);
   const order = '@layer muxui.tokens, muxui.components, muxui.utilities;';
@@ -92,7 +97,7 @@ function publicLayerCss(css, source) {
       throw new MuxSourceError(`${source} has an unexpected or duplicate public layer: ${prelude}`);
     }
     layers.set(name, block.body);
-    if (name !== 'tokens' && source === THEMES_CSS && block.body.trim()) {
+    if (name !== 'tokens' && source === MUX_THEMES_CSS && block.body.trim()) {
       throw new MuxSourceError(`${source} has rules outside the public token layer`);
     }
   }
@@ -198,7 +203,7 @@ function colorSchemeOfThemeRule(selector) {
 }
 
 /**
- * Group the public themes.css rules by theme id, dropping contrast='more' rules (see
+ * Group the public preset stylesheet rules by theme id, dropping contrast='more' rules (see
  * extensions/bento-shell/contrast-more.mjs). Fails on any rule shape this does not
  * understand, so a Mux change cannot silently leak rules into the wrong sheet, and on a
  * theme that lacks a rule for either color scheme.
@@ -209,34 +214,37 @@ export function splitCanonicalThemeRules(themesCss, themeIds) {
   const rulesById = new Map(themeIds.map((id) => [id, []]));
   const schemesById = new Map(themeIds.map((id) => [id, new Set()]));
   for (const { prelude, body } of topLevelBlocks(
-    publicLayerCss(themesCss, THEMES_CSS).get('tokens'),
-    THEMES_CSS,
+    publicLayerCss(themesCss, MUX_THEMES_CSS).get('tokens'),
+    MUX_THEMES_CSS,
   )) {
     if (prelude.startsWith('@')) {
-      throw new MuxSourceError(`${THEMES_CSS} has an unexpected at-rule: ${prelude}`);
+      throw new MuxSourceError(`${MUX_THEMES_CSS} has an unexpected at-rule: ${prelude}`);
     }
     const selector = dropContrastMoreSelectors(prelude);
     if (!selector) continue;
     const ids = new Set(themeIdsInSelector(selector));
     const [id] = ids;
     if (ids.size !== 1 || !rulesById.has(id)) {
-      throw new MuxSourceError(`${THEMES_CSS} has a rule outside the canonical themes: ${prelude}`);
+      throw new MuxSourceError(
+        `${MUX_THEMES_CSS} has a rule outside the canonical themes: ${prelude}`,
+      );
     }
     const scheme = colorSchemeOfThemeRule(selector);
     if (!scheme) {
       throw new MuxSourceError(
-        `${THEMES_CSS} has a theme rule with an unknown color scheme: ${prelude}`,
+        `${MUX_THEMES_CSS} has a theme rule with an unknown color scheme: ${prelude}`,
       );
     }
     schemesById.get(id).add(scheme);
     rulesById.get(id).push(`${selector} {${body}}`);
   }
   for (const [id, rules] of rulesById) {
-    if (rules.length === 0) throw new MuxSourceError(`${THEMES_CSS} has no rules for theme ${id}`);
+    if (rules.length === 0)
+      throw new MuxSourceError(`${MUX_THEMES_CSS} has no rules for theme ${id}`);
     for (const scheme of ['light', 'dark']) {
       if (!schemesById.get(id).has(scheme)) {
         throw new MuxSourceError(
-          `${THEMES_CSS} has no ${scheme} color scheme rule for theme ${id}`,
+          `${MUX_THEMES_CSS} has no ${scheme} color scheme rule for theme ${id}`,
         );
       }
     }
@@ -295,15 +303,15 @@ export function validateThemePresets(presets, defaultPresetId) {
 }
 
 /**
- * Read styles.css and themes.css through `requireFn` (a require rooted at the shell
- * package) with their sha256 digests and the parsed public blocks.
+ * Read styles.css and the MUX_THEMES_CSS preset stylesheet through `requireFn` (a require
+ * rooted at the shell package) with their sha256 digests and the parsed public blocks.
  */
 export function loadMuxPublicCss(requireFn) {
   let stylesPath;
   let themesPath;
   try {
     stylesPath = requireFn.resolve(STYLES);
-    themesPath = requireFn.resolve(THEMES_CSS);
+    themesPath = requireFn.resolve(MUX_THEMES_CSS);
   } catch (error) {
     throw new MuxSourceError(`cannot resolve public Mux CSS from @bento/shell (${error.message})`);
   }

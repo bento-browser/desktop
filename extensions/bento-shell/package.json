@@ -17,7 +17,7 @@
     "ladle:build": "ladle build"
   },
   "dependencies": {
-    "@muxui/react": "0.1.0-rc.4",
+    "@muxui/react": "0.1.0-rc.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.0",

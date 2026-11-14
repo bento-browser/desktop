@@ -8,8 +8,8 @@
  * Default theme only; every other theme is a sheet in public/themes/ that
  * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
  *
- * @muxui/react/styles.css sha256:64d28531195c5ab45a9ee651157c218ffffc5fff14a6418bac505a235b3dea8c
- * @muxui/react/themes.css sha256:379bf26b22ad95160e0f4feec729571e8fc2922129ad17109ab6cfa81656257e
+ * @muxui/react/styles.css sha256:dae58962f39efb99f2a383486e3967462633ed1a9e0d837c5a09381bc31f35ca
+ * @muxui/react/themes-apca.css sha256:f224e9b2c2f10c525eb7481d25331e7308c490e2ba255848d13003f0e47fc644
  */
 
 /* ─── Bento theme: default ───────────────────────────── */
@@ -1342,6 +1342,8 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-switch-selected-track: var(--muxui-semantic-selection-track);
   --muxui-component-switch-selected-track-hover: var(--muxui-semantic-color-color-50);
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-content-default);
+  --muxui-component-tabs-selected-background: var(--muxui-semantic-color-neutral-5);
+  --muxui-component-tabs-selected-foreground: var(--muxui-semantic-color-neutral-5-fg);
   --muxui-component-tabs-tab-foreground: var(--muxui-semantic-content-muted);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-border-subtle);
   --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-50);
@@ -2922,6 +2924,8 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-component-switch-selected-track: var(--muxui-semantic-selection-track);
   --muxui-component-switch-selected-track-hover: var(--muxui-semantic-color-color-50);
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-content-default);
+  --muxui-component-tabs-selected-background: var(--muxui-semantic-color-neutral-5);
+  --muxui-component-tabs-selected-foreground: var(--muxui-semantic-color-neutral-5-fg);
   --muxui-component-tabs-tab-foreground: var(--muxui-semantic-content-muted);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-border-subtle);
   --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-50);
@@ -3488,7 +3492,9 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
     --muxui-semantic-action-selection-background-hover
   );
   --muxui-component-tabs-panel-foreground: var(--muxui-semantic-color-neutral-default-30);
-  --muxui-component-tabs-tab-foreground: var(--muxui-semantic-color-neutral-default-50);
+  --muxui-component-tabs-selected-background: var(--muxui-semantic-color-neutral-100);
+  --muxui-component-tabs-selected-foreground: var(--muxui-semantic-color-neutral-100-fg);
+  --muxui-component-tabs-tab-foreground: var(--muxui-semantic-color-neutral-default-40);
   --muxui-component-tabs-vertical-list-border: var(--muxui-semantic-color-neutral-default-92);
   --muxui-component-taggroup-amber-dot: var(--muxui-reference-color-amber-40);
   --muxui-component-taggroup-amber-foreground: var(--muxui-reference-color-amber-20);

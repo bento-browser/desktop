@@ -76,8 +76,8 @@ importers:
   extensions/bento-shell:
     dependencies:
       '@muxui/react':
-        specifier: 0.1.0-rc.4
-        version: 0.1.0-rc.4(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        specifier: 0.1.0-rc.6
+        version: 0.1.0-rc.6(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@tanstack/react-virtual':
         specifier: ^3.10.0
         version: 3.14.14(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -570,8 +570,8 @@ packages:
     resolution: {integrity: sha512-pRLMNKTSGRoLq+KnEB/7OY5vijw1XmcheAAOiv6pj7W1FG32kAGqj1C/RK/cqxRGr1Fh+zBi8sDur8kj3EQv6A==}
     engines: {node: '>=18'}
 
-  '@muxui/react@0.1.0-rc.4':
-    resolution: {integrity: sha512-9XRnBRYCvSN7quvfL8nNMtNLRV9NMriSmjjGwP8Ja7w90CycxfKCp4xykxRlrWDLWnQgs8086vJ70KKD7BkVtA==}
+  '@muxui/react@0.1.0-rc.6':
+    resolution: {integrity: sha512-MJzCOYP8UDQ49A6DwdD/7x4Qo6vfAFVcH67/1UHMHJnQW7c1zMLCC0kZ2bS9RAkkHjvHP+vDmJkSFQJvWZZ6VA==}
     engines: {node: '>=24.19.0 <25'}
     peerDependencies:
       react: '>=19.2.0 <20'
@@ -3627,7 +3627,7 @@ snapshots:
       outvariant: 1.4.3
       strict-event-emitter: 0.5.1
 
-  '@muxui/react@0.1.0-rc.4(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@muxui/react@0.1.0-rc.6(@floating-ui/dom@1.8.0)(@tiptap/extensions@3.31.4(@tiptap/core@3.31.4(@tiptap/pm@3.31.4))(@tiptap/pm@3.31.4))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@internationalized/date': 3.12.4
       '@tiptap/core': 3.31.4(@tiptap/pm@3.31.4)

@@ -827,9 +827,9 @@ Pitfalls:
 ## Reproducible release dependencies
 
 `pnpm-lock.yaml` is the only lockfile, for developer, CI, and release installs.
-It consumes the exact published npm package `@muxui/react@0.1.0-rc.4` and records
-its registry integrity. The package exposes public `./themes` and `./themes.css`
-entries alongside the root React renderer; consumers use those exports rather
+It consumes the exact published npm package `@muxui/react@0.1.0-rc.6` and records
+its registry integrity. The package exposes public `./themes`, `./themes.css` and
+`./themes-apca.css` entries alongside the root React renderer; consumers use those exports rather
 than generated-file paths. Bento has no committed Mux tarball or local
 provenance sidecar.
 
@@ -1350,16 +1350,20 @@ generated theme files, so none of them needs a separate step.
   `patches/chrome-layout/01-bento-shell-mount.patch`.
   [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
   generator and runs in CI.
-- **Mux CSS shape.** Both generators read Mux's `styles.css`, `themes.css` and
-  `@muxui/react/themes` through one module,
+- **Mux CSS shape.** Both generators read Mux's `styles.css`, the preset
+  stylesheet and `@muxui/react/themes` through one module,
   [`scripts/mux-css.mjs`](../scripts/mux-css.mjs) (tests in
-  [`scripts/mux-css.test.mjs`](../scripts/mux-css.test.mjs)). It matches each
-  public block by its whole selector list inside the declared RC4 layer: root/mode
+  [`scripts/mux-css.test.mjs`](../scripts/mux-css.test.mjs)). The preset
+  stylesheet is `@muxui/react/themes-apca.css`, named once by `MUX_THEMES_CSS`:
+  the same presets, selectors and layer as `themes.css`, with text colours chosen
+  by APCA. That constant drives both the file the generators resolve and the
+  source each generated header names. It matches each
+  public block by its whole selector list inside the declared public layer: root/mode
   tokens in `muxui.tokens`, the compatibility closure in `muxui.components`.
   It checks the public layer order, rejects unexpected or duplicate layers, derives the theme list from the
   package instead of a fixed count, and stops the build with a message that names
   the file and block when Mux changes the shape: a missing, repeated or non-flat
-  block, a missing required token, a `themes.css` rule it cannot assign to one
+  block, a missing required token, a preset rule it cannot assign to one
   theme, or a theme without both a light and a dark rule. A Mux upgrade that adds
   themes needs no generator change; one that reshapes the CSS needs a change in that
   module only.

@@ -23,7 +23,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { unwrapTopLevelLayers } from '../extensions/bento-shell/css-blocks.mjs';
-import { exitOnMuxSourceError, loadMuxPublicCss, PUBLIC_CLOSURE_SELECTOR } from './mux-css.mjs';
+import {
+  exitOnMuxSourceError,
+  loadMuxPublicCss,
+  MUX_THEMES_CSS,
+  PUBLIC_CLOSURE_SELECTOR,
+} from './mux-css.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -98,7 +103,7 @@ function normalizeNativeCss(css) {
   return stripFontFaces(rewriteHtmlToRoot(adaptSelectors(css))).trimEnd();
 }
 
-// The themes.css rules for contrast 'more' are already absent from the shell theme sheets
+// The preset stylesheet's rules for contrast 'more' are already absent from the shell theme sheets
 // this script reads, and the public 'more' block is not projected (see mux-css.mjs).
 function renderPublicMuxCss({ root, modes, closure }) {
   const blocks = [
@@ -219,7 +224,7 @@ const header = `${mplHeader}/*
  * surface and Bento-owned compatibility layers.
  *
  * @muxui/react/styles.css sha256:${muxStylesDigest}
- * @muxui/react/themes.css sha256:${muxThemesDigest}
+ * ${MUX_THEMES_CSS} sha256:${muxThemesDigest}
  * Mux packaged font declarations are omitted because native chrome has no
  * package URL base. The extension bundles the Mux package's self-hosted assets.
  * No remote font or stylesheet import is permitted here.

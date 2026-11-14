@@ -15,9 +15,9 @@ const root = path.resolve(import.meta.dirname, '..');
 const releaseGate = path.join(root, 'scripts/check-release-security.mjs');
 const sbomGenerator = path.join(root, 'scripts/generate-release-sbom.mjs');
 const lockfile = 'pnpm-lock.yaml';
-const muxuiVersion = '0.1.0-rc.4';
+const muxuiVersion = '0.1.0-rc.6';
 const muxuiIntegrity =
-  'sha512-9XRnBRYCvSN7quvfL8nNMtNLRV9NMriSmjjGwP8Ja7w90CycxfKCp4xykxRlrWDLWnQgs8086vJ70KKD7BkVtA==';
+  'sha512-MJzCOYP8UDQ49A6DwdD/7x4Qo6vfAFVcH67/1UHMHJnQW7c1zMLCC0kZ2bS9RAkkHjvHP+vDmJkSFQJvWZZ6VA==';
 const approvedShellRuntimeDependencies = {
   '@muxui/react': muxuiVersion,
   react: '^19.2.0',

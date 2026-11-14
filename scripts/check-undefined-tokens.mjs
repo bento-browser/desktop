@@ -5,6 +5,8 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { MUX_THEMES_CSS } from './mux-css.mjs';
+
 // Fails when shell CSS reads a custom property that nothing declares. `var(--missing)` is
 // invalid at computed-value time, so the declaration silently does nothing (the transparent
 // welcome cells and square favicon corners this check was added after). A `var(--x, fallback)`
@@ -12,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 //
 // Declared means a `--name:` declaration or an `@property --name` rule with an `initial-value`
 // in the shell's own CSS (which includes the generated presets and bento-tokens.css) or in the
-// public @muxui/react styles.css/themes.css. Comments, strings and url() payloads are ignored.
+// public @muxui/react styles.css and preset stylesheet (MUX_THEMES_CSS). Comments, strings and url() payloads are ignored.
 // Native chrome CSS under src/browser is not scanned: it reads Firefox's own tokens too.
 //
 // The same run also checks the `bento` and `bento.*` cascade layers of every shell stylesheet. An
@@ -30,7 +32,7 @@ const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
 // Resolved from the shell package, which owns the pinned PostCSS; the repo root adds no dependency.
 const shellRequire = createRequire(resolve(SHELL_DIR, 'package.json'));
 const { parse } = shellRequire('postcss');
-const MUX_SHEETS = ['@muxui/react/styles.css', '@muxui/react/themes.css'];
+const MUX_SHEETS = ['@muxui/react/styles.css', MUX_THEMES_CSS];
 export const LAYER_ORDER_FILE = 'extensions/bento-shell/src/theme/muxui.css';
 
 // Comments, quoted strings and url() payloads hold text, not declarations or reads. The

@@ -121,6 +121,7 @@
 .bento-workspace-icon-picker__emoji-tabs .muxui-tabs__tab {
   flex: 0 0 var(--bento-workspace-icon-picker-tab-size);
   width: var(--bento-workspace-icon-picker-tab-size);
+  min-inline-size: var(--bento-workspace-icon-picker-tab-size);
   height: var(--bento-workspace-icon-picker-tab-size);
   min-height: var(--bento-workspace-icon-picker-tab-size);
   padding: 0;

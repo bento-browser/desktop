@@ -77,9 +77,9 @@ palette document stays loaded, so it shows with the query it had.
 The command palette, address bar and Settings palette share one highlight
 (`components/primitives/useRowHighlight.ts`, `RowHighlight.css`): rows paint no fill of their
 own, and the list carries a single slab, a pseudo-element of the scrolling list, that slides
-(transform and block/inline size at half the Mux `state` duration, 125 ms in RC4, with the
+(transform and block/inline size at half the Mux `state` duration, 125 ms in rc.6, with the
 same spring easing) to the row holding the virtual focus. Colour and opacity keep the full
-state pair (250 ms in RC4), including coordinated mode fades. First placement and stage
+state pair (250 ms in rc.6), including coordinated mode fades. First placement and stage
 changes are instant; reduced motion disables the transition.
 The hook only measures: a `MutationObserver` on `data-muxui-state-focused` writes the row's box
 into `--bento-row-highlight-*` custom properties, from `offsetTop` and `offsetLeft` so the
@@ -97,7 +97,7 @@ caveats, make the slab change size as it moves, on the same half-duration geomet
 
 Pitfalls:
 
-- Mux RC4 replaces React Aria's unprefixed state attributes. Observe and query
+- Mux replaces React Aria's unprefixed state attributes. Observe and query
   `data-muxui-state-focused` (the number editor follows `data-muxui-state-current`),
   and suppress row fills and detect presses through the matching public state names.
   Legacy selectors leave the slab hidden and Mux's pale row fill visible. A static

@@ -16,7 +16,8 @@
  *     by every entry.
  *   - public/themes/<id>.css: one sheet per other theme, loaded on demand by
  *     src/theme/themeSheets.ts. Canonical sheets carry that theme's rules from
- *     the public @muxui/react/themes.css export inside the `muxui` layer.
+ *     the public preset stylesheet MUX_THEMES_CSS names (scripts/mux-css.mjs)
+ *     inside the `muxui` layer.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -31,6 +32,7 @@ import {
   exitOnMuxSourceError,
   loadMuxPublicCss,
   loadMuxThemePresets,
+  MUX_THEMES_CSS,
   parseDeclarations,
   readReferenceShades,
   splitCanonicalThemeRules,
@@ -503,7 +505,7 @@ const indexCssSource = `/*
  * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
  *
  * @muxui/react/styles.css sha256:${muxStylesDigest}
- * @muxui/react/themes.css sha256:${muxThemesDigest}
+ * ${MUX_THEMES_CSS} sha256:${muxThemesDigest}
  */
 
 /* ─── Bento theme: ${defaultTheme.id} ───────────────────────────── */
@@ -530,7 +532,7 @@ function themeSheetSources() {
   for (const [id, rules] of canonicalThemeRules) {
     sheets.set(
       id,
-      `${header(id, 'public @muxui/react/themes.css, contrast standard')}
+      `${header(id, `public ${MUX_THEMES_CSS}, contrast standard`)}
 @layer muxui {
 ${rules.join('\n\n')}
 }
