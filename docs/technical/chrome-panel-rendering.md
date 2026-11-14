@@ -531,6 +531,14 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   time comes from its token). Do not give them literals back. Do not "fix" this by activating the
   selected tab's workspace from the selection signal: selection fires for
   transient states (closing, adoption) and would fight tools.
+- The curtain is armed only when the selected tab already carries its workspace
+  marker. A tab selected before tools writes it (`shouldDeferReconcileForWorkspaceSwitch`
+  reads `null`) is reconciled at once with the old workspace's held payload, and
+  `handlePanelsTitle` then runs `performWorkspaceSwitchFade` over content that has
+  already changed, which flickers. Tools therefore opens a workspace's first tab
+  unselected and selects it after the marker write (`openWorkspaceFirstTab`, see
+  [workspaces.md](workspaces.md#workspace-pitfalls)); do not work around it in
+  chrome by deferring unmarked selections, which would hold back ordinary new tabs.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
 contextTab` (or the multi-selection), and the new window adopts its first tab

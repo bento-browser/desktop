@@ -1966,6 +1966,24 @@ workspaces.
   workspace id: a window-specific activation of the same workspace is then dropped
   when the global one came first, and the tabs of the new owner are never brought
   to it.
+- A tab tools opens for a workspace the window is switching to must carry its
+  workspace marker before it is selected. Chrome decides at `TabSelect` whether a
+  selection is a workspace switch by reading that SessionStore value
+  (`shouldDeferReconcileForWorkspaceSwitch`); a "New workspace" tab created with
+  `active: true` was selected about 50 ms before `assignWorkspaceEagerly` wrote the
+  marker, so chrome drew it at once beside the old workspace's panels, and the fade
+  that started when the new `panels/sync` arrived ran over content already swapped
+  (New Tab page, blank, New Tab page). `openWorkspaceFirstTab`
+  (`workspaces/FirstTab.ts`) opens the tab unselected, awaits the marker write,
+  asks the activation's `isCurrent` again, then selects it. It serves the empty
+  workspace branch of `handleWorkspaceActivation`, `ensureReplacementTab` and the
+  first parked entry in `restoreParkedEntries`. Superseded after the create, the tab
+  is kept unselected as the workspace's tab (the next activation selects it); do not
+  close it, because the window's new workspace may have no tab yet and the removal
+  would read as it emptying (`afterTabRemoved`). A failed marker write still selects
+  the tab (no fade); a failed selection opens a selected tab the old way, so the
+  window does not stay on the old workspace's tab. See the curtain note in
+  [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
 - A tab Bento moves between windows itself must go through `moveTabsToWindow`
   (or `moveWorkspaceTabsToWindow`, the pinned-first variant below).
   Only the move's own record distinguishes it from a drag when the window

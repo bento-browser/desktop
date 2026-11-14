@@ -784,8 +784,13 @@ describe('protocol handler workspace delete', () => {
     await vi.waitFor(() => {
       expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
     });
-    expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: true });
+    // Selected only once its workspace marker is written, so chrome fades the switch.
+    expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: false });
     expect(ctx.tabs.assignWorkspaceEagerly).toHaveBeenCalledWith(50, 'ws-other');
+    expect(browser.tabs.update).toHaveBeenCalledWith(50, { active: true });
+    expect(vi.mocked(ctx.tabs.assignWorkspaceEagerly).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(browser.tabs.update).mock.invocationCallOrder[0]!,
+    );
     expect(ctx.tabs.unmarkClosing).not.toHaveBeenCalled();
   });
 

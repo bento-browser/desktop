@@ -1,5 +1,6 @@
 import { moveWorkspaceTabsToWindow } from '../tabs/AdoptedTab';
 import type { TabRegistry } from '../tabs/TabRegistry';
+import { openWorkspaceFirstTab } from '../workspaces/FirstTab';
 import { planParkedRestore, type ParkedWorkspaceTab } from './ParkedWorkspace';
 
 export interface ParkedRestoreDeps {
@@ -104,13 +105,22 @@ export async function restoreParkedEntries(deps: ParkedRestoreDeps): Promise<Par
     }
 
     try {
-      const created = await browser.tabs.create({
-        url: entry.url,
-        active,
-        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
-      });
-      if (typeof created.id !== 'number') continue;
-      tabs.assignWorkspaceEagerly(created.id, workspaceId);
+      // The workspace's first tab is selected only once its marker is written (FirstTab.ts).
+      const created = active
+        ? await openWorkspaceFirstTab({
+            workspaceId,
+            windowId: targetWindowId,
+            url: entry.url,
+            tabs,
+            stillCurrent,
+          })
+        : await browser.tabs.create({
+            url: entry.url,
+            active: false,
+            ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+          });
+      if (typeof created?.id !== 'number') continue;
+      if (!active) tabs.assignWorkspaceEagerly(created.id, workspaceId);
       if (entry.pinned) {
         void browser.tabs.update(created.id, { pinned: true }).catch((err) => {
           console.warn('[bento-tools] parked tab pin restore failed:', created.id, err);

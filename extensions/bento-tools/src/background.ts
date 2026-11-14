@@ -19,6 +19,7 @@ import {
 import { wasHandedOver } from './tabs/Handover';
 import { createCreatedTabs, readTabSessionValueWithRetries } from './tabs/CreatedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
+import { openWorkspaceFirstTab } from './workspaces/FirstTab';
 import {
   createActivationGenerations,
   hasSelectedWorkspaceTab,
@@ -2234,13 +2235,13 @@ async function handleWorkspaceActivation(
     }
   } else if (create) {
     try {
-      const created = await browser.tabs.create({
-        active: true,
-        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+      // Selected only once its workspace marker is written, so chrome fades the switch.
+      await openWorkspaceFirstTab({
+        workspaceId: wsId,
+        windowId: targetWindowId,
+        tabs,
+        stillCurrent: isCurrent,
       });
-      if (typeof created.id === 'number') {
-        tabs.assignWorkspaceEagerly(created.id, wsId);
-      }
     } catch (err) {
       console.warn('[bento-tools] newtab for empty workspace failed:', err);
     }
