@@ -26,9 +26,10 @@ troubleshoot.
 - A **workspace** stores a `themeId` string (`extensions/_shared/protocol.ts`).
   Undefined means "use the Default theme" (`default`).
 - The **Default theme** is Mux's Standard Harbour preset under Bento's own id.
-  `extensions/bento-shell/src/theme/presets/default.css` carries Harbour's brand
-  and neutral ladders and no text colours. The sync fails when those ladders differ
-  from Harbour's in `themes-apca.css`, and copies Harbour's APCA text colours (the
+  `extensions/bento-shell/src/theme/presets/default.css` declares only Harbour's
+  brand and neutral ladders. The sync fails when any declaration there, under any
+  selector, is not a Harbour ladder shade with Harbour's value in
+  `themes-apca.css` (`scripts/default-theme.mjs`), and copies Harbour's APCA text colours (the
   `--muxui-semantic-color-*-fg` endpoint choices, which every other foreground role
   aliases) into Default's generated light and dark rules, so Default cannot drift
   from Harbour. Default's light and dark rules follow the scope's
@@ -166,7 +167,8 @@ Default is not imported. It follows the Standard Harbour preset of the pinned
 
 - Text colours need no edit. `pnpm run theme:sync` copies Harbour's text colours
   from `themes-apca.css` into Default's rules on every run, and rejects a
-  `default.css` that sets any `--color-N-fg` or `--neutral-N-fg` itself.
+  `default.css` that declares anything but Harbour's ladder shades, under any
+  selector or at-rule (a text colour, a role, an alias or a plain property).
 - When a Mux upgrade retunes Harbour's palettes, `pnpm run theme:sync` fails and
   names each `--brand-N` or `--neutral-default-N` shade whose value differs.
   Copy Harbour's values (its `--muxui-reference-color-brand-N` and

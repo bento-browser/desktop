@@ -14,10 +14,11 @@
  * any element with `data-bento-theme="default"` shows them regardless of the
  * document-root theme.
  *
- * Default is Mux's Harbour preset under Bento's id. These ladders must equal
- * Harbour's in @muxui/react/themes-apca.css (scripts/sync-theme-presets.mjs
- * fails otherwise), and Default's text colours are not set here: the sync
- * copies Harbour's APCA text colours into Default's generated rules.
+ * Default is Mux's Harbour preset under Bento's id. This file may declare only
+ * Harbour's ladders, each with Harbour's value in @muxui/react/themes-apca.css
+ * (scripts/default-theme.mjs; the sync fails otherwise). Text colours and the
+ * --neutral-default and --*-color aliases come from the generated rules: the
+ * sync copies Harbour's APCA text colours into them.
  */
 
 :root {
@@ -35,7 +36,6 @@
 }
 
 :root {
-  --neutral-default: var(--neutral-default-60);
   --neutral-default-5: #fbfaf8;
   --neutral-default-10: #f6f3f1;
   --neutral-default-12: #f3f0ed;
@@ -63,7 +63,4 @@
   --neutral-default-96: #332f2c;
   --neutral-default-98: #2f2b28;
   --neutral-default-100: #25211e;
-  --display-color: var(--neutral-default-90);
-  --text-color: var(--neutral-default-90);
-  --mono-color: var(--neutral-default-90);
 }

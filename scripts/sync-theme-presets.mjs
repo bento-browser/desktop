@@ -11,10 +11,11 @@
  * and emits the legacy token bridge consumed by existing Bento CSS. Do not
  * import Mux's private token compiler or schema here.
  *
- * Bento's Default theme is Mux's Harbour preset under Bento's id: default.css must carry
- * Harbour's brand and neutral ladders, and Default's text colours (the `*-fg` endpoint
- * choices, which every foreground role aliases) are copied from Harbour's rules in
- * MUX_THEMES_CSS, so Default cannot drift from the preset stylesheet Bento ships.
+ * Bento's Default theme is Mux's Harbour preset under Bento's id: default.css may declare
+ * only Harbour's brand and neutral ladders (scripts/default-theme.mjs), and Default's text
+ * colours (the `*-fg` endpoint choices, which every foreground role aliases) are copied from
+ * Harbour's rules in MUX_THEMES_CSS, so Default cannot drift from the preset stylesheet
+ * Bento ships.
  *
  * Output is split so a document loads only the theme it shows:
  *   - presets/index.css: the Default theme and the shared token bridge, imported
@@ -43,6 +44,7 @@ import {
   splitCanonicalThemeRules,
   themeSchemeDeclarations,
 } from './mux-css.mjs';
+import { defaultThemeSourceErrors, harbourTextColours } from './default-theme.mjs';
 import { rewriteThemeSelectors } from './theme-selector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,8 +60,6 @@ const SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 const DEFAULT_THEME_ID = 'default';
 // The canonical preset Default follows (see the header).
 const DEFAULT_SOURCE_THEME_ID = 'standard-harbour';
-// Mux's contrast-chosen text colours. Every other foreground role is a var() alias of one.
-const TEXT_COLOUR_TOKEN = /^--muxui-semantic-color-[a-z-]+-\d+-fg$/;
 function usageError(message) {
   console.error('sync-theme-presets: ' + message);
   process.exit(1);
@@ -491,38 +491,22 @@ if (!defaultSourceRules) {
 const defaultSourceSchemes = exitOnMuxSourceError('sync-theme-presets', () =>
   themeSchemeDeclarations(defaultSourceRules),
 );
-// Default's ladders are Harbour's, so Harbour's text colours fit Default's backgrounds.
-const ladderMismatches = [
-  ...publicBrandShades.map((shade) => ['brand', `--brand-${shade}`, shade]),
-  ...publicNeutralShades.map((shade) => ['neutral', `--neutral-default-${shade}`, shade]),
-].flatMap(([family, token, shade]) => {
-  const expected = defaultSourceSchemes.light
-    .get(`--muxui-reference-color-${family}-${shade}`)
-    ?.toLowerCase();
-  const actual = extractToken(defaultSource.sourceCss, token);
-  return actual === expected ? [] : [`${token} ${actual ?? 'missing'} (Harbour ${expected})`];
-});
-if (ladderMismatches.length > 0) {
-  usageError(
-    `default.css must carry ${DEFAULT_SOURCE_THEME_ID}'s ladders from ${MUX_THEMES_CSS}: ` +
-      ladderMismatches.join(', '),
-  );
-}
-const defaultOwnForegrounds = extractForegroundOverrides(defaultSource.sourceCss);
-if (Object.values(defaultOwnForegrounds).some((overrides) => overrides.size > 0)) {
-  usageError(
-    `default.css must not set text colours; Default takes them from ${DEFAULT_SOURCE_THEME_ID}`,
-  );
-}
-const textColours = (declarations) =>
-  new Map([...declarations].filter(([token]) => TEXT_COLOUR_TOKEN.test(token)));
-const defaultForegrounds = {
-  root: new Map(),
-  light: textColours(defaultSourceSchemes.light),
-  dark: textColours(defaultSourceSchemes.dark),
-};
+const defaultForegrounds = { root: new Map(), ...harbourTextColours(defaultSourceSchemes) };
 if (defaultForegrounds.light.size === 0 || defaultForegrounds.dark.size === 0) {
   usageError(`${MUX_THEMES_CSS} declares no text colours for ${DEFAULT_SOURCE_THEME_ID}`);
+}
+// default.css may hold only Harbour's ladders, so Harbour's text colours fit Default's
+// backgrounds and nothing in it can override the derived rules (scripts/default-theme.mjs).
+const defaultSourceErrors = defaultThemeSourceErrors(
+  defaultSource.sourceCss,
+  defaultSourceSchemes,
+  publicShades,
+);
+if (defaultSourceErrors.length > 0) {
+  usageError(
+    `default.css may declare only ${DEFAULT_SOURCE_THEME_ID}'s ladders from ${MUX_THEMES_CSS}:\n  ` +
+      defaultSourceErrors.join('\n  '),
+  );
 }
 
 const localThemes = localThemeSources.map((theme) => ({

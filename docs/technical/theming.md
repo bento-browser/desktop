@@ -25,9 +25,13 @@ Shell theme flow:
   (`DEFAULT_SOURCE_THEME_ID` in `sync-theme-presets.mjs`). Its CSS is the public
   `styles.css` root, mode and closure blocks scoped to
   `[data-muxui-theme='default']`, with the ladders from `presets/default.css`.
-  The sync fails unless every `--brand-N` and `--neutral-default-N` there equals
-  Harbour's `--muxui-reference-color-*` value in `MUX_THEMES_CSS`, and unless
-  `default.css` sets no `-fg` token. It then appends Harbour's
+  `scripts/default-theme.mjs` reads every declaration in `default.css`, under any
+  selector, and the sync fails unless each is a `--brand-N` or
+  `--neutral-default-N` equal to Harbour's `--muxui-reference-color-*` value in
+  `MUX_THEMES_CSS`, every shade the projection needs is present, and the file has
+  no at-rule. Text colours (Harbour's `-fg` names and their legacy
+  `--color-N-fg` / `--neutral-N-fg` aliases) get their own message;
+  `scripts/default-theme.test.mjs` feeds it the bypasses. It then appends Harbour's
   `--muxui-semantic-color-*-fg` declarations from the contrast 'standard' light and
   dark rules of `MUX_THEMES_CSS` to Default's light and dark blocks. Every other
   foreground role in `styles.css` (action, button, checkbox, tag, tabs, `on-solid`)
@@ -1038,7 +1042,11 @@ window.
   APCA switch left Default on WCAG choices (for example light `color-40-fg` and
   `neutral-50-fg`, dark `color-60-fg` and the action foreground) while Harbour
   moved. The sync now copies Harbour's `-fg` values and rejects a `default.css`
-  that sets any.
+  that declares anything but Harbour's ladder shades. A first version of that
+  check read only the first value of each ladder token and only the
+  `data-color-mode` selector forms of legacy `-fg` names, so a dark-scoped
+  `--brand-60` or `--muxui-semantic-color-color-60-fg`, or one under an
+  `html[...]` selector that outranks the generated rules, passed and was emitted.
 - The dev server (`pnpm --filter @bento/shell dev`) once ranked `bento.app`
   below `bento.components` while the build ranked it above. `main.tsx` imports
   `shell-document.css` and `app.css` (both `bento.app`) before `App` pulls in
