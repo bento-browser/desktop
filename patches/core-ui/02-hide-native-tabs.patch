@@ -1,4 +1,4 @@
-From 34b937a0fb0dfd836c8317c652b5bb3d58c2d068 Mon Sep 17 00:00:00 2001
+From 762f845f0915e92cb7c0ad4cc43d93b43b2727a2 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs
@@ -10,10 +10,10 @@ Subject: [PATCH] Hide native Firefox tabs
  3 files changed, 13 insertions(+), 2 deletions(-)
 
 diff --git a/browser/components/preferences/config/tabs-browsing.mjs b/browser/components/preferences/config/tabs-browsing.mjs
-index 4f4aa1a0d9a52f2d9bdc29bab71d97f359c1a680..2392d514a802fffc1b3789f1b609456d0db21382 100644
+index 8dd2855e9dcbc8e260e14d1a522683529f8b639a..c41301678d03df4580a8250c6efb9d085a84f7e3 100644
 --- a/browser/components/preferences/config/tabs-browsing.mjs
 +++ b/browser/components/preferences/config/tabs-browsing.mjs
-@@ -627,6 +627,8 @@ SettingGroupManager.registerGroups({
+@@ -653,6 +653,8 @@ SettingGroupManager.registerGroups({
      l10nId: "browser-layout-header2",
      iconSrc: "chrome://browser/skin/sidebar-expanded.svg",
      headingLevel: 2,
@@ -23,10 +23,10 @@ index 4f4aa1a0d9a52f2d9bdc29bab71d97f359c1a680..2392d514a802fffc1b3789f1b609456d
        {
          id: "browserLayoutRadioGroup",
 diff --git a/browser/components/preferences/tests/browser_appearance_pane.js b/browser/components/preferences/tests/browser_appearance_pane.js
-index e7659a039baf965f02db7462378b16d303ef057a..f51a5be443548a71be1d56cc4e178a5a6ec49711 100644
+index 39687ae6e37d419248fb8534133da23fbb03df5f..e925e520e0bcc4988d754d1a120a1b235de274d8 100644
 --- a/browser/components/preferences/tests/browser_appearance_pane.js
 +++ b/browser/components/preferences/tests/browser_appearance_pane.js
-@@ -439,7 +439,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
+@@ -431,7 +431,11 @@ add_task(async function test_browser_layout_group_in_tabs_browsing_pane() {
  
    let group = doc.querySelector('setting-group[groupid="browserLayout"]');
    ok(group, "browserLayout setting-group exists in tabs-browsing pane");

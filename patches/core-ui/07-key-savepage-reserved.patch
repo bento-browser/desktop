@@ -1,4 +1,4 @@
-From 988ef9438bff36c26f991134e05d45abff8efad0 Mon Sep 17 00:00:00 2001
+From 40a56a177007a6f8cedc612fa2d40a18e25c06a1 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:37 +1000
 Subject: [PATCH] Reserve Firefox save page key for Bento

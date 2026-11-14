@@ -1,4 +1,4 @@
-From b95588df7eb32fc404b37bb59a1606de7c39639d Mon Sep 17 00:00:00 2001
+From 4cf2eeb78bba1cb4d2efa58030f9953f8d6e31ea Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 12 Oct 2026 07:04:08 +1100
 Subject: [PATCH] Hide the About updates group when the updater is not built in
@@ -25,7 +25,7 @@ index c28905c8da122b090b52b540194e4c0a5c56f0c1..13c8e4ad08ca9f2027e0ecddea6a3555
        {
          id: "updatesManagedByOS",
 diff --git a/browser/components/preferences/tests/browser_updates_managed_by_os.js b/browser/components/preferences/tests/browser_updates_managed_by_os.js
-index aee2b9137aa76ed2506cf95893ee7d663fe21995..7fd9fdc382c44fe6362e61b40e453a9aff6fd2e7 100644
+index a0c95a8d891e51d803fb6b79561aedc70836cb8c..662a5c02d58bc8764c418134c4a51d5c14e94a71 100644
 --- a/browser/components/preferences/tests/browser_updates_managed_by_os.js
 +++ b/browser/components/preferences/tests/browser_updates_managed_by_os.js
 @@ -16,11 +16,25 @@ add_task(async function test_updates_managed_by_os_message_bar() {

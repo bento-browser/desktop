@@ -1,4 +1,4 @@
-From 503e81fe7530058bd8f3c00f97e4815a43a45295 Mon Sep 17 00:00:00 2001
+From 8a57817941c563969779a929f73d0236c113e795 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 2 Nov 2026 03:08:39 +1100
 Subject: [PATCH] Compile Bento update certificates for the bento channel
@@ -8,7 +8,7 @@ Subject: [PATCH] Compile Bento update certificates for the bento channel
  1 file changed, 7 insertions(+), 1 deletion(-)
 
 diff --git a/toolkit/mozapps/update/updater/moz.build b/toolkit/mozapps/update/updater/moz.build
-index 1f997ef0cad1e477c591257c0a41c4a873c2e708..a444eca4d473a79e287e391b1eb70e7cf9c5a0ab 100644
+index ddffad4673070a472dfe3df6da4fd4e57c3f6690..18e5f0f1c40a8521bc334b73c7e9e5030bddb754 100644
 --- a/toolkit/mozapps/update/updater/moz.build
 +++ b/toolkit/mozapps/update/updater/moz.build
 @@ -107,7 +107,13 @@ xpcshell_cert.script = "gen_cert_header.py:create_header"

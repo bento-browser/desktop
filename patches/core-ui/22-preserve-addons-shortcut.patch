@@ -1,4 +1,4 @@
-From 7c60a2ef5318b296da32beb750e6c00250a13e92 Mon Sep 17 00:00:00 2001
+From 14c05c82dc29800073c6390ac8aabd79ccc7357b Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 11 Nov 2026 01:29:51 +1100
 Subject: [PATCH] Preserve Bento Add-ons shortcut and omit native tab search
@@ -11,7 +11,7 @@ Subject: [PATCH] Preserve Bento Add-ons shortcut and omit native tab search
  4 files changed, 3 insertions(+), 22 deletions(-)
 
 diff --git a/browser/base/content/browser-menubar.inc.xhtml b/browser/base/content/browser-menubar.inc.xhtml
-index b36b57dc08d3443f2747fa5ed9fa79603f611301..ea461ff47202e536021909a6ba5f6374617556c5 100644
+index 4c0f4eb017ff661a847dc64068389a553d832472..866af17f6716e2ffa775c3053a7bfad458b377ea 100644
 --- a/browser/base/content/browser-menubar.inc.xhtml
 +++ b/browser/base/content/browser-menubar.inc.xhtml
 @@ -231,10 +231,6 @@
@@ -55,10 +55,10 @@ index c74706582727173690d52285bbde7a5baa90a7da..cb0ed4b303c021d3e91095374ff88aa9
  #ifdef XP_MACOSX
      <key id="key_sanitize_mac" command="Tools:Sanitize" keycode="VK_BACK" modifiers="accel,shift"/>
 diff --git a/browser/base/content/browser-sets.js b/browser/base/content/browser-sets.js
-index b6345b7c99a55d81f5c09dfea4f1aff2a3cfa775..93c94f658481c0f054962b948fe1412b6db10b7a 100644
+index d3da8787f466ced22592c4f1a241f68a0dfcd283..b35e13159160c97a219374b85ed45515bd4e993d 100644
 --- a/browser/base/content/browser-sets.js
 +++ b/browser/base/content/browser-sets.js
-@@ -157,13 +157,6 @@ document.addEventListener(
+@@ -169,13 +169,6 @@ document.addEventListener(
            case "Browser:SearchBookmarks":
              PlacesCommandHook.searchBookmarks();
              break;

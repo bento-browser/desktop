@@ -1,15 +1,15 @@
-From 360e86c2cc6510361d606c562c1f9f5a67828c3d Mon Sep 17 00:00:00 2001
+From 7dae18f112961bbe10563a6540c0596e4df1d7ce Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:42 +1000
 Subject: [PATCH] Add mach build hang guards
 
 ---
- build/mach_initialize.py                             |  2 +-
- python/mach/mach/main.py                             | 12 ++++++++----
- python/mach/mach/mixin/process.py                    |  2 +-
- python/mozbuild/mozbuild/base.py                     |  2 +-
- .../mozbase/mozprocess/mozprocess/processhandler.py  | 11 +++++++++--
- 5 files changed, 20 insertions(+), 9 deletions(-)
+ build/mach_initialize.py                              |  2 +-
+ python/mach/mach/main.py                              |  2 +-
+ python/mach/mach/mixin/process.py                     |  2 +-
+ python/mozbuild/mozbuild/base.py                      |  2 +-
+ .../mozbase/mozprocess/mozprocess/processhandler.py   | 11 +++++++++--
+ 5 files changed, 13 insertions(+), 6 deletions(-)
 
 diff --git a/build/mach_initialize.py b/build/mach_initialize.py
 index fb0170ba89e4994ec41e35eeed9b01da0caf09a8..cbc4322f993d9028ddc38055dc14c32bfd31f795 100644
@@ -25,35 +25,18 @@ index fb0170ba89e4994ec41e35eeed9b01da0caf09a8..cbc4322f993d9028ddc38055dc14c32b
          _finalize_telemetry_glean(
              context.telemetry,
 diff --git a/python/mach/mach/main.py b/python/mach/mach/main.py
-index c1abf1ad7455d6df0dd62f76f617bb4570e5cdcf..c36bec8df4326636612111eae0d05f8d2c875b0b 100644
+index d92685c02bd2e867db2bb0638318e31eab1e4dff..fe17e703036d75ec835318acbc39b5b41c4456ef 100644
 --- a/python/mach/mach/main.py
 +++ b/python/mach/mach/main.py
-@@ -388,9 +388,13 @@ To see more help for a specific command, run:
-             def _finish_telemetry_init(future):
-                 from .telemetry import report_invocation_metrics
- 
--                context.telemetry = future.result()
--                report_invocation_metrics(context.telemetry, handler.name)
--                context._telemetry_init_done.set()
-+                try:
-+                    context.telemetry = future.result()
-+                    report_invocation_metrics(context.telemetry, handler.name)
-+                except Exception:
-+                    self.logger.exception("Failed to initialize mach telemetry.")
-+                finally:
-+                    context._telemetry_init_done.set()
- 
-             self._telemetry_future.add_done_callback(_finish_telemetry_init)
- 
-@@ -504,7 +508,7 @@ To see more help for a specific command, run:
+@@ -509,7 +509,7 @@ To see more help for a specific command, run:
              return 1
          finally:
              if context._telemetry_init_done is not None:
 -                context._telemetry_init_done.wait()
 +                context._telemetry_init_done.wait(timeout=30)
- 
-     def log(self, level, action, params, format_str):
-         """Helper method to record a structured log event."""
+                 if context._telemetry_init_error is not None:
+                     print(
+                         "Warning: failed to initialize mach telemetry: "
 diff --git a/python/mach/mach/mixin/process.py b/python/mach/mach/mixin/process.py
 index 1105b25c04e5db54519323208b7f3230be0ef8b6..2206c6227bc9f93ccab09a8a90c501ae705f7320 100644
 --- a/python/mach/mach/mixin/process.py
@@ -81,7 +64,7 @@ index 7325c8b4b8474571e616c21347163a6d41a367c8..5fb33cc49463763d477acac4a13c9708
          return self._metrics
  
 diff --git a/testing/mozbase/mozprocess/mozprocess/processhandler.py b/testing/mozbase/mozprocess/mozprocess/processhandler.py
-index 60967649ae53a596cdf476959831d83c5fbdf3db..26fe1e611332132e915567c38d02c47851a8a56a 100644
+index 1802a021cf1a0fc1811fdfc57143cec97fbea877..fc41975591b4f18df49873ed9a47b7e6c97ccce0 100644
 --- a/testing/mozbase/mozprocess/mozprocess/processhandler.py
 +++ b/testing/mozbase/mozprocess/mozprocess/processhandler.py
 @@ -98,7 +98,7 @@ class ProcessHandlerMixin:

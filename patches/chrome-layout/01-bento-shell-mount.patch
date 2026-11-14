@@ -1,4 +1,4 @@
-From 70c6b849acf53625607a21d95feddb292890cf35 Mon Sep 17 00:00:00 2001
+From 09fc09b00696fac5d4e776ba5fcfb9214a8c5c28 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:25 +1000
 Subject: [PATCH] Add Bento shell mount to browser chrome
@@ -9,7 +9,7 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
  2 files changed, 62 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index 599313b65c654906f3d52c0852d284937e31d09c..a8668eff75adf0a3c4b9d21aea81ac872cdb4faf 100644
+index 29a9fb72447a3459d546093af1d8d72f089d9055..df2a1e5b91b81435cf28ec7ecaadcd6a73249554 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
 @@ -2,7 +2,59 @@

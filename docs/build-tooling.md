@@ -71,6 +71,16 @@ Cached LLVM 21 `llvm-strip` rejects that load command. Mozilla's Clang 22 build
 includes `llvm-objcopy-macho-dyld-environment.patch`; use its strip binary while
 keeping the existing compiler cache and package stripping enabled.
 
+Firefox 160.0 still needs it: with the cached LLVM 21 tool, `pnpm run package`
+stops at `llvm-strip: error: unsupported load command (cmd=0x27)`. On the
+160.0 upgrade (2026-11-14) the recipe below worked with two differences: the
+artifact helper ran under the default Homebrew Python 3.15.2 (the 3.14
+requirement and the `rtoml` failure did not reproduce), and the saved
+environment file needed only the `STRIP` line. That run used
+`.bento/cache/firefox-160-llvm22`, `.bento/toolchains/firefox-160-llvm22` and
+`.bento/firefox-160.env` in place of the 159 names, and the artifact was
+LLVM 22.1.8.
+
 This recipe starts at the root of an already imported 159.0.1 worktree with
 Bento's normal native-build prerequisites installed. On this host it also requires
 Homebrew Python 3.14 at `/opt/homebrew/opt/python@3.14/libexec/bin/python3`

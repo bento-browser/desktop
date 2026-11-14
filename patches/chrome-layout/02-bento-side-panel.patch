@@ -1,4 +1,4 @@
-From d0e685c82c4c2f9974a0777f4aa1e42bb1c9756f Mon Sep 17 00:00:00 2001
+From 12a330da1f083d5f14546e598ddb613e080e5353 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:27 +1000
 Subject: [PATCH] Add Bento side panel host
@@ -8,10 +8,10 @@ Subject: [PATCH] Add Bento side panel host
  1 file changed, 1 insertion(+)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
-index a8668eff75adf0a3c4b9d21aea81ac872cdb4faf..e51db778503f1eceb9b8207e5036be5b0b4f314f 100644
+index df2a1e5b91b81435cf28ec7ecaadcd6a73249554..83a831606f901f3a3d376147f70b2c30720e5c40 100644
 --- a/browser/base/content/browser-box.inc.xhtml
 +++ b/browser/base/content/browser-box.inc.xhtml
-@@ -80,6 +80,7 @@
+@@ -81,6 +81,7 @@
    <tabbox id="tabbrowser-tabbox" flex="1" tabcontainer="tabbrowser-tabs">
      <tabpanels id="tabbrowser-tabpanels" flex="1" selectedIndex="0"/>
    </tabbox>

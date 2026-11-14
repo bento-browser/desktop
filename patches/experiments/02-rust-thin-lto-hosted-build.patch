@@ -1,4 +1,4 @@
-From 2934e9bbe391c327591869fe3f1cff53bf21c803 Mon Sep 17 00:00:00 2001
+From 52389beee859ebd6b9831069884e731a4740e629 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 24 Aug 2026 14:13:08 +1000
 Subject: [PATCH] Use ThinLTO for hosted release Rust linking
@@ -31,7 +31,7 @@ index 8979a2e4e8d92e9aa4478c397cf4891211608f24..9bc43f7db4bf272b2d33a879a86f3980
  with only_when(target_has_linux_kernel & compile_environment):
      option(env="MOZ_NO_PIE_COMPAT", help="Enable non-PIE wrapper")
 diff --git a/python/mozbuild/mozbuild/rust_commands.py b/python/mozbuild/mozbuild/rust_commands.py
-index 4167286b96f9f3219ed395accdc1866deb33c4d8..8d28442aef5d66c2dd9bfff39aae7bf0239a1869 100644
+index 445185b521237d17213cb5377b71b1f8287fa463..a91506bf777d35d3f330c3669e207ff19e8935d8 100644
 --- a/python/mozbuild/mozbuild/rust_commands.py
 +++ b/python/mozbuild/mozbuild/rust_commands.py
 @@ -50,6 +50,7 @@ def _bool(v):
@@ -42,7 +42,7 @@ index 4167286b96f9f3219ed395accdc1866deb33c4d8..8d28442aef5d66c2dd9bfff39aae7bf0
      "BINDGEN_EXTRA_CLANG_ARGS": _as_list,
      "CARGO": _as_str,
      "CARGOFLAGS": _as_args,
-@@ -418,7 +419,10 @@ def _rustc_flags(cmd, substs, invocation):
+@@ -434,7 +435,10 @@ def _rustc_flags(cmd, substs, invocation):
          flags += substs.get("MOZ_RUST_LIBRARY_RUSTCFLAGS")
  
      if applies_library_lto(cmd.kind, cmd.lto, substs):

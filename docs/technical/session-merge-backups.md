@@ -76,7 +76,21 @@ profiles below `Profiles/<profile-id>`. It returns opaque source ids,
 browser/profile labels, and modified times only. It reads Firefox/Zen `jsonlz4`
 snapshots as decoded JSON strings and Chromium session files as base64 bytes. It
 does not return absolute paths, and unreadable or stale source ids produce
-sanitized errors.
+sanitized errors. The read passes no `decrypt` option, so it cannot decode the
+encrypted session files (keys in `lockstore.keys.sqlite`) that Firefox 160 or
+later writes when both `browser.sessionstore.encryption.available` and
+`browser.sessionstore.encryption.enabled` are true. Stock Firefox 160 defaults
+both to false and locks `available` at startup, so encryption is off unless the
+default changes. Firefox/Zen reads try each snapshot newest first and move to
+the next one when a read fails, because recovery files can be mid-write. A
+failed snapshot that starts with the IOUtils encryption header (`mozEnc`, the
+`IOUtils::Encryption::MAGIC_NUMBER` firefox-compat entry) stops that loop: the
+reader throws `Browser session snapshot is encrypted and unsupported.` and
+`loadExternalMergeSources()` lists the source as disabled with "Encrypted
+session, not supported". Pitfall: without that check, an encrypted
+`recovery.jsonlz4` beside an older plaintext `previous.jsonlz4` imports the
+older tabs without any error. See the Firefox 160.0 review in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md#firefox-1600-upgrade-review-2026-11-14).
 
 Chromium discovery and Chromium snapshot reads are intentionally separate
 operations. Discovery uses directory traversal plus `IOUtils.stat()` to find

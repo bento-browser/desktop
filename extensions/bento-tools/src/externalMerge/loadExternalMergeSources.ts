@@ -12,6 +12,10 @@ interface SourceLoadFailure {
   message: string;
 }
 
+// ENCRYPTED_SESSION_MESSAGE in experiments/bento-external-sessions/api.js: the reader found a
+// Firefox 160+ encrypted session file and stopped rather than fall back to an older snapshot.
+const ENCRYPTED_SNAPSHOT_MESSAGE = 'Browser session snapshot is encrypted and unsupported.';
+
 function hasExternalSessionsApi(): boolean {
   return typeof browser.bentoExternalSessions?.listCandidates === 'function';
 }
@@ -45,9 +49,12 @@ function unavailableSourceFromFailure(failure: SourceLoadFailure): ExternalMerge
   const visibleButUnreadable = failure.message.match(
     /^Session files were found, but file reads failed(?: \(([^/\\)]+)\))?\.$/,
   );
-  const readReason = visibleButUnreadable
-    ? `Session files visible, but unreadable${visibleButUnreadable[1] ? ` (${visibleButUnreadable[1]})` : ''}`
-    : 'Session file unreadable';
+  const readReason =
+    failure.message === ENCRYPTED_SNAPSHOT_MESSAGE
+      ? 'Encrypted session, not supported'
+      : visibleButUnreadable
+        ? `Session files visible, but unreadable${visibleButUnreadable[1] ? ` (${visibleButUnreadable[1]})` : ''}`
+        : 'Session file unreadable';
 
   return {
     id: failure.candidate.sourceId,

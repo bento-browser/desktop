@@ -27,6 +27,11 @@
     ['sessionstore-backups', 'recovery.baklz4'],
     ['sessionstore-backups', 'previous.jsonlz4'],
   ];
+  // First bytes of a file IOUtils wrote with `encrypt` (IOUtils::Encryption::MAGIC_NUMBER,
+  // whose version byte follows). Firefox 160+ writes session files this way when a profile
+  // turns on session encryption; this reader has no key for them.
+  const ENCRYPTED_SESSION_MAGIC = 'mozEnc';
+  const ENCRYPTED_SESSION_MESSAGE = 'Browser session snapshot is encrypted and unsupported.';
 
   const CHROMIUM_BROWSER_ROOTS = [
     {
@@ -163,6 +168,15 @@
     } catch {
       const text = await readText(path);
       return JSON.parse(text);
+    }
+  }
+
+  async function isEncryptedSessionFile(path) {
+    try {
+      const head = await IOUtils.read(path, { maxBytes: ENCRYPTED_SESSION_MAGIC.length });
+      return String.fromCharCode(...head) === ENCRYPTED_SESSION_MAGIC;
+    } catch {
+      return false;
     }
   }
 
@@ -834,6 +848,11 @@
                     json: JSON.stringify(compactJson),
                   };
                 } catch {
+                  // An encrypted snapshot is newer than every candidate after it, so falling
+                  // back would import an older session in its place.
+                  if (await isEncryptedSessionFile(snapshot.path)) {
+                    throw sanitizedError(ENCRYPTED_SESSION_MESSAGE);
+                  }
                   // Recovery snapshots can be mid-write. Try the next candidate.
                 }
               }

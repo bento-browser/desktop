@@ -1,4 +1,4 @@
-From b59e0c6bfc25953422a53c38706d5ba479bfae99 Mon Sep 17 00:00:00 2001
+From 7fee33a7da4c29452b22dc6d8b71a72a311d2da1 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:47 +1000
 Subject: [PATCH] Disable Firefox split view
@@ -10,10 +10,10 @@ Subject: [PATCH] Disable Firefox split view
  3 files changed, 14 insertions(+), 9 deletions(-)
 
 diff --git a/browser/base/content/nsContextMenu.sys.mjs b/browser/base/content/nsContextMenu.sys.mjs
-index 6c3aaeb0ee4b2e3836dd3f4615143cb6fab74d54..b85dba71fde0a76fce5c5ac639f9f3ce8e7993a8 100644
+index 945bb4038cbd4a63e7fc8acdf9315a79792ea9ed..818ce0de207e535ae0995dc6d5f42c22b80b65b4 100644
 --- a/browser/base/content/nsContextMenu.sys.mjs
 +++ b/browser/base/content/nsContextMenu.sys.mjs
-@@ -534,9 +534,11 @@ export class nsContextMenu {
+@@ -521,9 +521,11 @@ export class nsContextMenu {
      let showContainers =
        Services.prefs.getBoolPref("privacy.userContext.enabled") &&
        lazy.ContextualIdentityService.getPublicIdentities().length;
@@ -29,10 +29,10 @@ index 6c3aaeb0ee4b2e3836dd3f4615143cb6fab74d54..b85dba71fde0a76fce5c5ac639f9f3ce
      let showSmartWindow = lazy.AIWindow.isAIWindowEnabled();
      this.showItem("context-openlink", shouldShow && !isWindowPrivate);
 diff --git a/browser/components/tabbrowser/content/tab-context-menu.js b/browser/components/tabbrowser/content/tab-context-menu.js
-index be3252ae5f20fdd94e266372a5ccb1eec234fb6d..00bf221f86964b52df5b4dee0fd391d37a219128 100644
+index 0e2c8eafc88892e8a6b8f55f40b5ea396209bcd5..0563953032be451f35ec8acecbd8cb554ee68628 100644
 --- a/browser/components/tabbrowser/content/tab-context-menu.js
 +++ b/browser/components/tabbrowser/content/tab-context-menu.js
-@@ -759,11 +759,12 @@ var TabContextMenu = {
+@@ -779,11 +779,12 @@ var TabContextMenu = {
        contextEditNote.hidden = true;
      }
  
@@ -51,10 +51,10 @@ index be3252ae5f20fdd94e266372a5ccb1eec234fb6d..00bf221f86964b52df5b4dee0fd391d3
        "context_moveTabToSplitView"
      );
 diff --git a/browser/components/tabbrowser/content/tab.mjs b/browser/components/tabbrowser/content/tab.mjs
-index 81c6e5dd4047fc7d57b5938e797a014c71d07cf9..4cc861afde472957e436178b684d44c8deadb50e 100644
+index a14ff17858c6c4e028496013cd51aea253138700..3300daad238a4ff97851fef0381ede696707d191 100644
 --- a/browser/components/tabbrowser/content/tab.mjs
 +++ b/browser/components/tabbrowser/content/tab.mjs
-@@ -667,7 +667,9 @@ export class MozTabbrowserTab extends MozElements.MozTab {
+@@ -675,7 +675,9 @@ export class MozTabbrowserTab extends MozElements.MozTab {
          !event.target.classList.contains("tab-audio-button") &&
          !this.selected &&
          !gBrowser.selectedTab.hidden &&

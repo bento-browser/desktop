@@ -1,4 +1,4 @@
-From bdd74dd3a0f0e7892226f5b06455885b4dff879f Mon Sep 17 00:00:00 2001
+From 620b26e0966a2d62affbb05ce434008aefb05647 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:39 +1000
 Subject: [PATCH] Import Firefox profile data on first Bento run
@@ -14,7 +14,7 @@ Subject: [PATCH] Import Firefox profile data on first Bento run
  7 files changed, 564 insertions(+), 14 deletions(-)
 
 diff --git a/browser/components/migration/FirefoxProfileMigrator.sys.mjs b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
-index 97ea4c32aee10eb88d04f037f991f721b368fb7a..75d6c607d6ede4765446e1c22fbea9ae06a99452 100644
+index a03bbf06c48ef29ce087b8704302036ed390dd62..fcf2e03fb065024cdc94a6f8ac5499b10c3aa1bd 100644
 --- a/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 +++ b/browser/components/migration/FirefoxProfileMigrator.sys.mjs
 @@ -23,8 +23,44 @@ ChromeUtils.defineESModuleGetters(lazy, {
@@ -257,7 +257,7 @@ index 97ea4c32aee10eb88d04f037f991f721b368fb7a..75d6c607d6ede4765446e1c22fbea9ae
    }
  
    _getFileObject(dir, fileName) {
-@@ -499,3 +683,323 @@ export class FirefoxProfileMigrator extends MigratorBase {
+@@ -543,3 +727,323 @@ export class FirefoxProfileMigrator extends MigratorBase {
      return true;
    }
  }
@@ -599,7 +599,7 @@ index a90bea865b178bc4615d3b5f3b7ab4a2953bfa30..2ec3d87bdb08123376cab02a324cf527
  
    /**
 diff --git a/browser/components/migration/MigrationUtils.sys.mjs b/browser/components/migration/MigrationUtils.sys.mjs
-index 1289865805d2d6cbb7813da5fabf000284d7ac4c..62458035e11a35568f6883836aa5a7bc72f16eab 100644
+index 2e0a7baeac07ba961b7cddef85e3b9c3be691065..f797b12aacfd6d52310473b2cb211f6ba4e3a567 100644
 --- a/browser/components/migration/MigrationUtils.sys.mjs
 +++ b/browser/components/migration/MigrationUtils.sys.mjs
 @@ -43,9 +43,15 @@ function getL10n() {
@@ -687,7 +687,7 @@ index cea5d6b33c8f23c73afb799e5ebc7076b61de26c..82948d7d32919186d2f16b67c7a5dc35
        if (!(await migrator.hasPermissions())) {
          // If we're unable to get permissions for this migrator, then we
 diff --git a/browser/components/migration/content/migration-wizard.mjs b/browser/components/migration/content/migration-wizard.mjs
-index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfdd8ad271b 100644
+index cadf7a21603f37d16bc2d48f8d83f85fc7292f0a..3d16c3968f531bdb9100f5c8a2f416ac16585dca 100644
 --- a/browser/components/migration/content/migration-wizard.mjs
 +++ b/browser/components/migration/content/migration-wizard.mjs
 @@ -108,6 +108,9 @@ export class MigrationWizard extends HTMLElement {
@@ -700,7 +700,7 @@ index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfd
                </fieldset>
              </details>
  
-@@ -525,11 +528,11 @@ export class MigrationWizard extends HTMLElement {
+@@ -529,11 +532,11 @@ export class MigrationWizard extends HTMLElement {
      if (panelItem.brandImage) {
        this.#browserProfileSelector.querySelector(
          ".migrator-icon"
@@ -714,7 +714,7 @@ index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfd
      }
  
      let key = panelItem.getAttribute("key");
-@@ -688,7 +691,7 @@ export class MigrationWizard extends HTMLElement {
+@@ -692,7 +695,7 @@ export class MigrationWizard extends HTMLElement {
  
        let button = opt.shadowRoot.querySelector("button");
        if (migrator.brandImage) {
@@ -723,7 +723,7 @@ index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfd
        }
  
        if (migrator.profile) {
-@@ -1287,6 +1290,8 @@ export class MigrationWizard extends HTMLElement {
+@@ -1293,6 +1296,8 @@ export class MigrationWizard extends HTMLElement {
          "migration-list-autofill-label",
        [MigrationWizardConstants.DISPLAYED_RESOURCE_TYPES.PAYMENT_METHODS]:
          "migration-list-payment-methods-label",
@@ -733,7 +733,7 @@ index f6ada525e6f4fdb0a5ab311d0d47f8bb87d00ccc..1fff8d113073b60dac28a58bc7ce9cfd
  
      if (MigrationWizardConstants.USES_FAVORITES.includes(key)) {
 diff --git a/browser/locales/en-US/browser/migrationWizard.ftl b/browser/locales/en-US/browser/migrationWizard.ftl
-index d27c77501a658c75a177150e7a2df4ceda4387ae..01721cf485425e89d3bff6168297782907372c94 100644
+index a248f3964f5ee41b2d8aa7f4360af79add5a50c9..145d1e9e7ac75a3a0f5478408349aa34a473597d 100644
 --- a/browser/locales/en-US/browser/migrationWizard.ftl
 +++ b/browser/locales/en-US/browser/migrationWizard.ftl
 @@ -37,6 +37,10 @@ migration-wizard-migrator-display-name-chromium-edge = Microsoft Edge
@@ -748,10 +748,10 @@ index d27c77501a658c75a177150e7a2df4ceda4387ae..01721cf485425e89d3bff61682977829
  migration-wizard-migrator-display-name-file-bookmarks = Bookmarks from HTML file
  migration-wizard-migrator-display-name-ie = Microsoft Internet Explorer
 diff --git a/toolkit/xre/nsAppRunner.cpp b/toolkit/xre/nsAppRunner.cpp
-index 003fc8545a7a8940dad6c34c3e15f8eb26928f68..812cd722a2304867f22dec36c9e648ebd5d79002 100644
+index 2a39c67eb8d70c181088d68c0c70f751c5056af1..3e9dcbae3c03bbbe97724c59780b1e7a3f5a458b 100644
 --- a/toolkit/xre/nsAppRunner.cpp
 +++ b/toolkit/xre/nsAppRunner.cpp
-@@ -3267,6 +3267,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
+@@ -3262,6 +3262,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
      gDoMigration = true;
    }
  

@@ -1,4 +1,4 @@
-From 003b977a99ffde7eadb901f314da90d3ff6e8ad8 Mon Sep 17 00:00:00 2001
+From 21dce53a784bda9ceafd4790f22a0d27bc4ad5d2 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab
@@ -8,10 +8,10 @@ Subject: [PATCH] Preserve Bento behavior when closing the last tab
  1 file changed, 14 insertions(+), 5 deletions(-)
 
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index 946b18d3342e6a417078be826373ecfde22d9c56..3f4c841d03331bd435be055988287146a96f443e 100644
+index b98a91f6f69f2fdaac02144685d97dbfcc9a5771..53f4899f2b8339e832d004d7d33d91e0520e0d82 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -6277,12 +6277,18 @@ export class Tabbrowser {
+@@ -6278,12 +6278,18 @@ export class Tabbrowser {
        metricsContext,
      } = {}
    ) {
@@ -34,7 +34,7 @@ index 946b18d3342e6a417078be826373ecfde22d9c56..3f4c841d03331bd435be055988287146
      ) {
        this.documentGlobal.closeWindow(
          true,
-@@ -6764,7 +6770,10 @@ export class Tabbrowser {
+@@ -6765,7 +6771,10 @@ export class Tabbrowser {
      var newTab = false;
      if (this.#isLastTabInWindow(aTab)) {
        closeWindow =
