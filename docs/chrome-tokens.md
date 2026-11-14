@@ -22,12 +22,18 @@ public Mux token surface and Bento's compatibility aliases.
      `--themes-dir <path>` says. This is required for checks that must not write
      the engine source tree. Sheets for removed themes are deleted.
 3. [scripts/import.sh](../scripts/import.sh) invokes the generator during the
-   normal source import workflow.
+   normal source import workflow. After writing the default path, the generator
+   runs `scripts/sync-builtin-addon-symlinks.sh --content-files` to refresh the
+   built app's copy of the base sheet; an `--output` run leaves the app alone.
 4. The chrome layout patch registers the base sheet in `browser/base/jar.mn`,
    and the theme directory by wildcard
    (`content/browser/bento-chrome-themes/ (content/bento-chrome-themes/*.css)`).
    `scripts/sync-builtin-addon-symlinks.sh` links that directory into a dev app
-   bundle, because the build lists wildcard files once.
+   bundle, because the build lists wildcard files once. It copies the base sheet
+   instead, as a real file in `dist/bin` and `Bento.app`, because `about:logins`
+   reads it in a sandboxed content process that cannot follow a link back into
+   the checkout. The theme sheets stay linked: only parent-process chrome
+   documents attach them.
 5. [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
    links the base sheet, `bento-chrome-theme.css`, and then the chrome layout
    sheet [bento-shell-mount.css](../src/browser/base/content/bento-shell-mount.css)

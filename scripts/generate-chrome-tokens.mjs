@@ -15,8 +15,13 @@
  *   - bento-chrome-themes/<id>.css: one sheet per other theme, derived from the
  *     shell's theme sheets (extensions/bento-shell/public/themes). The mount
  *     script attaches the active one. jar.mn registers the directory by wildcard.
+ *
+ * After writing the default path it refreshes the built app's real-file copy of
+ * the base sheet (sync-builtin-addon-symlinks.sh --content-files), which a dev
+ * build cannot link because about:logins reads it in a content process.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -312,3 +317,16 @@ console.log(
   `generate-chrome-tokens: ${baseChanged ? 'wrote' : 'unchanged'} ${outputPath} (${sizeKb} kB)` +
     `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)`,
 );
+
+// An --output run is isolated and leaves the built app alone.
+if (outputPath === DEFAULT_OUT_PATH) {
+  const sync = spawnSync(
+    'bash',
+    [resolve(REPO_ROOT, 'scripts/sync-builtin-addon-symlinks.sh'), '--content-files'],
+    { cwd: REPO_ROOT, stdio: 'inherit' },
+  );
+  if (sync.status !== 0) {
+    console.error('generate-chrome-tokens: refreshing the built app copy failed');
+    process.exit(sync.status ?? 1);
+  }
+}

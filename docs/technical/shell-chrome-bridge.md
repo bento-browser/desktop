@@ -531,7 +531,7 @@ Pitfalls:
   Console and compare the two exports.
 - A content-process actor (`BentoKeyChild`, `BentoShellBusChild`, any new
   `*Child.sys.mjs`) must be copied into the dev app as a real file, with its parent
-  module beside it: add a `copy_content_actor` line in
+  module beside it: add its name to the actor list in `copy_content_files` in
   `scripts/sync-builtin-addon-symlinks.sh`. A dev build otherwise leaves the file a
   symlink chain into `src/browser/actors`, which the content-process sandbox cannot
   read (read paths cover the app bundle, not the checkout), so the load fails
