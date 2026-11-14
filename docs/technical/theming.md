@@ -125,6 +125,11 @@ UI color mode flow:
   mode already differs announces nothing, so the page also re-reads when it
   becomes visible (`visibilitychange`) and on window `focus`. `preferences.css` sets
   `color-scheme` from that attribute so Firefox's own `light-dark()` tokens agree.
+  Settings subdialogs (`gSubDialog`) are separate documents that also load
+  `preferences.css`: `gSubDialog` injects `bento-chrome-tokens.css` into them,
+  and `preferences.js` copies the page root's `data-bento-theme` and
+  `data-color-mode` onto each dialog root on `DOMFrameContentLoaded` and on every
+  mode change (no fade inside the dialog).
   The page's `prefers-color-scheme` does not follow `uiColorMode` (measured: it
   stays light with UI mode dark); it follows the content color mode and the OS.
 - `bento-shell-mount.js` seeds chrome `<window data-color-mode="light">` before
@@ -1021,6 +1026,18 @@ window.
   to Mux migration, which moved the aliases from `:root` to the attribute scope;
   found 2026-10-12. Disabling the sheet does not show the cause: the aliases
   vanish with it.
+- The same applies to every document that loads `preferences.css`, not only the
+  page: its token block maps Firefox tokens onto Bento aliases, so a document
+  without `bento-chrome-tokens.css` and the two root attributes computes
+  `--border-color`, `--button-background-color` and the rest to nothing. Settings
+  subdialogs (Connection Settings, Delete browsing data) rendered radios,
+  checkboxes, fields, the select and Cancel/OK with no border or fill on 159.0.1
+  and 160.0 until `gSubDialog` injected the sheet and `preferences.js` copied the
+  attributes onto dialog roots (found 2026-11-14). To check a dialog, read
+  `--neutral-20` on its `documentElement`: empty means the bridge is missing.
+  A Firefox token that the block does not map keeps Firefox's palette: the
+  Delete button's red was `--button-background-color-destructive`, now mapped to
+  `--muxui-semantic-action-danger-background`.
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.
