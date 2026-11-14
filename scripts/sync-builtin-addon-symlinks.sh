@@ -3,9 +3,10 @@
 # local iteration.
 #
 # Built-in addon dist/ directories and chrome-process support files are safe
-# as symlinks. Content-process actor modules are copied as real files because
-# macOS content sandboxing refuses app-bundle symlinks that point back into
-# the source checkout.
+# as symlinks. Files a content process reads (the actor modules and
+# bento-chrome-tokens.css, which about:logins links) are copied as real files
+# because macOS content sandboxing refuses app-bundle symlinks that point back
+# into the source checkout.
 #
 # The extension-copy step generates a static moz.build with explicit
 # per-FILE listings at first build. Files emitted between builds (Vite shared
@@ -19,8 +20,21 @@
 #
 # Wired into `pnpm run import` and post-build scripts. Direct mach invocations
 # bypass this, so use the package scripts for the complete pipeline.
+# `--content-files` refreshes only the real-file copies; generate-chrome-tokens.mjs
+# runs it after writing the token sheet so a regenerated sheet never leaves a
+# stale copy in the app.
 
 set -euo pipefail
+
+CONTENT_FILES_ONLY=0
+case "${1:-}" in
+  "") ;;
+  --content-files) CONTENT_FILES_ONLY=1 ;;
+  *)
+    echo "usage: sync-builtin-addon-symlinks.sh [--content-files]" >&2
+    exit 2
+    ;;
+esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -83,10 +97,10 @@ sync_addon() {
 # Bento chrome content files (registered in patches/chrome-layout/01-bento-
 # shell-mount.patch's jar.mn entry). The first full mach build creates the
 # install-time symlinks under chrome/browser/content/browser/; new chrome
-# files added between full builds (like bento-chrome-tokens.css after we
-# wired up the Mux/Bento token bridge) won't appear in the deployed app
-# until either a full rebuild OR we symlink them ourselves. Same approach
-# the addon-dist sync above uses.
+# files added between full builds won't appear in the deployed app until
+# either a full rebuild OR we symlink them ourselves. Same approach the
+# addon-dist sync above uses. A file a content process reads is copied by
+# copy_content_files below instead.
 SRC_CHROME_ROOT="engine/browser/base/content"
 
 sync_chrome_file() {
@@ -142,39 +156,60 @@ sync_chrome_dir() {
   return 0
 }
 
-SRC_ACTORS_ROOT="src/browser/actors"
-
-copy_content_actor() {
-  local filename="$1"
-  local source="$REPO_ROOT/$SRC_ACTORS_ROOT/$filename"
+# Copies <source> as a real file named <label>'s basename into each existing
+# <target-root>. A target that is already a regular file with the same bytes is
+# left alone; anything else (a symlink, a stale copy) is replaced by a rename, so
+# a running browser never reads a half-written file.
+copy_content_file() {
+  local source="$1"
+  local label="$2"
+  shift 2
+  local filename="${label##*/}"
   local copied=0
 
   if [ ! -f "$source" ]; then
-    echo "sync-symlinks: actor source $source missing — skipping $filename"
+    echo "sync-symlinks: content source $source missing — skipping $label"
     return 0
   fi
 
-  for target_root in "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"; do
+  for target_root in "$@"; do
     local target="$target_root/$filename"
     if [ ! -d "$target_root" ]; then
       continue
     fi
-    rm -f "$target" || {
-      echo "sync-symlinks: failed to remove $target" >&2
-      return 1
-    }
-    cp "$source" "$target" || {
+    copied=1
+    if [ -f "$target" ] && [ ! -L "$target" ] && cmp -s "$source" "$target"; then
+      echo "sync-symlinks: $label already current in $target_root"
+      continue
+    fi
+    local staged="$target.bento-sync.$$"
+    if ! { cp "$source" "$staged" && mv -f "$staged" "$target"; }; then
+      rm -f "$staged"
       echo "sync-symlinks: failed to copy $source -> $target" >&2
       return 1
-    }
-    copied=1
-    echo "sync-symlinks: actor/$filename copied -> $target_root"
+    fi
+    echo "sync-symlinks: $label copied -> $target_root"
   done
 
   if [ "$copied" -eq 0 ]; then
-    echo "sync-symlinks: actor targets missing — skipping $filename"
+    echo "sync-symlinks: $label targets missing — skipping"
   fi
   return 0
+}
+
+# Content-process actors and the token sheet are real files, never symlinks: the
+# content sandbox cannot follow a link out of the app bundle into src/. One line
+# per file in src/browser/actors.
+copy_content_files() {
+  local actors_root="$REPO_ROOT/src/browser/actors"
+  local actor
+  for actor in BentoKeyChild.sys.mjs BentoKeyParent.sys.mjs BentoModePresentation.sys.mjs \
+    BentoShellBusChild.sys.mjs BentoShellBusParent.sys.mjs; do
+    copy_content_file "$actors_root/$actor" "actor/$actor" "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"
+  done
+  # about:logins and its import report run in a content process and link this sheet.
+  copy_content_file "$REPO_ROOT/src/browser/base/content/bento-chrome-tokens.css" \
+    chrome/bento-chrome-tokens.css "$BIN_CHROME_ROOT" "$APP_CHROME_ROOT"
 }
 
 # The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
@@ -186,34 +221,33 @@ OBJ_DIR="$(node "$REPO_ROOT/scripts/bento-build.mjs" objdir --allow-legacy --all
 if [ -z "$OBJ_DIR" ]; then
   echo "sync-symlinks: no engine object directory found — nothing to do (run a full build first)"
 else
-  APP_DIST_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/builtin-addons"
-  if [ ! -d "$APP_DIST_ROOT" ]; then
-    echo "sync-symlinks: $APP_DIST_ROOT missing — skipping add-ons"
-  else
-    sync_addon bento-shell
-    sync_addon bento-tools
+  APP_RESOURCES="$OBJ_DIR/dist/Bento.app/Contents/Resources"
+  APP_DIST_ROOT="$APP_RESOURCES/browser/chrome/browser/builtin-addons"
+  APP_CHROME_ROOT="$APP_RESOURCES/browser/chrome/browser/content/browser"
+  BIN_CHROME_ROOT="$OBJ_DIR/dist/bin/browser/chrome/browser/content/browser"
+  APP_ACTORS_ROOT="$APP_RESOURCES/browser/actors"
+  BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"
+
+  if [ "$CONTENT_FILES_ONLY" -eq 0 ]; then
+    if [ ! -d "$APP_DIST_ROOT" ]; then
+      echo "sync-symlinks: $APP_DIST_ROOT missing — skipping add-ons"
+    else
+      sync_addon bento-shell
+      sync_addon bento-tools
+    fi
+
+    # Only the parent process reads these, so links into the source tree work.
+    sync_chrome_file bento-chrome-theme.css
+    sync_chrome_dir bento-chrome-themes
+    sync_chrome_file bento-migration-host.css
+    sync_chrome_file bento-migration-host.html
+    sync_chrome_file bento-migration-host.js
+    sync_chrome_file bento-migration-wizard-bridge.css
+    sync_chrome_file bento-shell-mount.js
+    sync_chrome_file bento-shell-mount.css
   fi
 
-  APP_CHROME_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/chrome/browser/content/browser"
-  sync_chrome_file bento-chrome-tokens.css
-  sync_chrome_file bento-chrome-theme.css
-  sync_chrome_dir bento-chrome-themes
-  sync_chrome_file bento-migration-host.css
-  sync_chrome_file bento-migration-host.html
-  sync_chrome_file bento-migration-host.js
-  sync_chrome_file bento-migration-wizard-bridge.css
-  sync_chrome_file bento-shell-mount.js
-  sync_chrome_file bento-shell-mount.css
-
-  APP_ACTORS_ROOT="$OBJ_DIR/dist/Bento.app/Contents/Resources/browser/actors"
-  BIN_ACTORS_ROOT="$OBJ_DIR/dist/bin/browser/actors"
-  # Content-process actors are real files, never symlinks: the content sandbox cannot follow a
-  # link out of the app bundle into src/browser/actors. One line per file in src/browser/actors.
-  copy_content_actor BentoKeyChild.sys.mjs
-  copy_content_actor BentoKeyParent.sys.mjs
-  copy_content_actor BentoModePresentation.sys.mjs
-  copy_content_actor BentoShellBusChild.sys.mjs
-  copy_content_actor BentoShellBusParent.sys.mjs
+  copy_content_files
 fi
 
 echo "sync-symlinks: finished"

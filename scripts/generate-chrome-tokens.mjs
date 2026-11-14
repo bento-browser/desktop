@@ -15,8 +15,14 @@
  *   - bento-chrome-themes/<id>.css: one sheet per other theme, derived from the
  *     shell's theme sheets (extensions/bento-shell/public/themes). The mount
  *     script attaches the active one. jar.mn registers the directory by wildcard.
+ *
+ * After writing the default path it refreshes the built app's real-file copy of
+ * the base sheet (sync-builtin-addon-symlinks.sh --content-files), which a dev
+ * build cannot link because about:logins reads it in a content process. A
+ * checkout that borrows another checkout's engine/ skips that copy with a notice.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
@@ -312,3 +318,38 @@ console.log(
   `generate-chrome-tokens: ${baseChanged ? 'wrote' : 'unchanged'} ${outputPath} (${sizeKb} kB)` +
     `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)`,
 );
+
+// Refreshes the built app's copy of the sheet. A checkout whose engine/ or .bento/ is
+// borrowed from another checkout must not write there, so the copy is skipped (the sheet
+// above is still written); a failed copy into this checkout's own objdir is an error.
+function refreshContentCopy() {
+  const preflight = spawnSync(
+    process.execPath,
+    [resolve(REPO_ROOT, 'scripts/bento-build.mjs'), 'preflight'],
+    { cwd: REPO_ROOT, encoding: 'utf8' },
+  );
+  if (preflight.status !== 0) {
+    if (!/build outputs must stay inside checkout/.test(preflight.stderr)) {
+      console.error(`generate-chrome-tokens: preflight failed\n${preflight.stderr.trim()}`);
+      process.exit(preflight.status ?? 1);
+    }
+    // The preflight lists each borrowed path as an indented 'requested -> resolved' line.
+    const borrowed = preflight.stderr.match(/^ {2}\S.* -> .*$/gm) ?? [];
+    console.log(
+      `generate-chrome-tokens: content copy skipped: build outputs are borrowed (${borrowed.map((line) => line.trim()).join(', ')})`,
+    );
+    return;
+  }
+  const sync = spawnSync(
+    'bash',
+    [resolve(REPO_ROOT, 'scripts/sync-builtin-addon-symlinks.sh'), '--content-files'],
+    { cwd: REPO_ROOT, stdio: 'inherit' },
+  );
+  if (sync.status !== 0) {
+    console.error('generate-chrome-tokens: refreshing the built app copy failed');
+    process.exit(sync.status ?? 1);
+  }
+}
+
+// An --output run is isolated and leaves the built app alone.
+if (outputPath === DEFAULT_OUT_PATH) refreshContentCopy();

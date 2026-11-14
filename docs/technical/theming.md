@@ -1083,6 +1083,19 @@ window.
   Default, not the workspace theme, because the base sheet holds only Default.
   `scripts/theme-sheets.test.mjs` fails when an HTML document a patch or
   `src/browser/` gives the token sheet lacks either root attribute.
+- `about:logins` and `about:loginsimportreport` run in a sandboxed content
+  process, so in a dev build their `bento-chrome-tokens.css` must be a real file
+  in the app bundle. Until 2026-11-15 it was a symlink through `engine/` to
+  `src/browser/base/content/`, outside the read paths of the macOS content
+  sandbox: the sheet loaded with 0 rules, every token was undefined and both
+  pages rendered white, while Settings, megalist and the chrome (parent
+  process) read the same link. With `MOZ_DISABLE_CONTENT_SANDBOX=1` the sheet had
+  17 rules and the canvas computed to `#fbfaf8`, which separates this from a
+  missing root attribute. `scripts/sync-builtin-addon-symlinks.sh` now copies the
+  sheet into `dist/bin` and `Bento.app` (`copy_content_files`), and
+  `scripts/generate-chrome-tokens.mjs` refreshes that copy after each write. To
+  check, read `document.styleSheets` in the page: a token sheet with
+  `cssRules.length` 0 is a sheet the process could not read.
 - The same applies to every document that loads `preferences.css`, not only the
   page: its token block maps Firefox tokens onto Bento aliases, so a document
   without `bento-chrome-tokens.css` and the two root attributes computes

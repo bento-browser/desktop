@@ -1347,7 +1347,28 @@ generated theme files, so none of them needs a separate step.
   links the `bento-chrome-themes/` directory into the app bundle so a dev build
   sees regenerated sheets without a native rebuild; a new theme file in a packaged
   build comes from the `jar.mn` wildcard in
-  `patches/chrome-layout/01-bento-shell-mount.patch`.
+  `patches/chrome-layout/01-bento-shell-mount.patch`. Only parent-process chrome
+  documents attach theme sheets, so links work for them.
+- **Content-process copies.** A dev build installs `jar.mn` files as symlinks
+  into `engine/`, and Bento's overlay files there are symlinks into `src/`. The
+  macOS content sandbox reads the app bundle and `engine/` but not `src/`, so a
+  file a content process loads through that chain arrives empty.
+  `sync-builtin-addon-symlinks.sh` therefore copies those files as real files into
+  both `dist/bin/browser/` and `dist/Bento.app/Contents/Resources/browser/`
+  (`copy_content_files`): the content-process actor modules and
+  `bento-chrome-tokens.css`, which `about:logins` and `about:loginsimportreport`
+  link. A copy whose bytes already match is reported as `already current`; one
+  that differs, or is still a link, is replaced through a rename.
+  `--content-files` runs only this step, and `generate-chrome-tokens.mjs` runs it
+  after writing its default output, so `pnpm run import`, `pnpm run lc` and a
+  direct generator run all leave a current copy. In a checkout whose `engine/` or
+  `.bento/` is borrowed from another checkout, the generator still writes the
+  sheet, prints one `content copy skipped` line naming the borrowed paths and
+  exits 0; a failed copy into the checkout's own object directory fails it. `theme:sync` does not write the
+  sheet. `pnpm run build` and `build:ui` run the sync after `mach`, which can
+  install the link again. Every other Bento chrome file stays a link because only
+  the parent process reads it; a patched Firefox page (`aboutLogins.html`,
+  `common.css`) is a real file in `engine/` and needs no copy.
   [`scripts/theme-sheets.test.mjs`](../scripts/theme-sheets.test.mjs) covers the
   generator and runs in CI.
 - **Mux CSS shape.** Both generators read Mux's `styles.css`, the preset

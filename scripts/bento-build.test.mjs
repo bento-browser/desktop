@@ -1557,7 +1557,7 @@ async function scriptFixture() {
   return root;
 }
 
-const runScript = (root, script) => spawnSync('bash', [path.join(root, 'scripts', script)], {
+const runScript = (root, script, args = []) => spawnSync('bash', [path.join(root, 'scripts', script), ...args], {
   cwd: root,
   encoding: 'utf8',
   env: { ...process.env, BENTO_OBJDIR: '' },
@@ -1730,6 +1730,60 @@ test('shell scripts act on the one selected object directory, never on every obj
     assert.equal(noop.status, 0, noop.stderr);
     assert.match(noop.stdout, /nothing to do/);
     assert.notEqual(runScript(root, 'sync-shell.sh').status, 0);
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('content-process files become real copies that track the source and report when already current', async () => {
+  const root = await scriptFixture();
+  try {
+    const chromeDir = (...prefix) => engineFile(root, 'obj-bento', 'dist', ...prefix, 'browser', 'chrome', 'browser', 'content', 'browser');
+    const chromeDirs = [chromeDir('bin'), chromeDir('Bento.app', 'Contents', 'Resources')];
+    const sourceDir = path.join(root, 'src', 'browser', 'base', 'content');
+    const engineDir = engineFile(root, 'browser', 'base', 'content');
+    const sheet = 'bento-chrome-tokens.css';
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(engineDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, sheet), 'tokens v1');
+    fs.writeFileSync(path.join(sourceDir, 'bento-shell-mount.css'), 'mount');
+    // A dev build's chain: app bundle -> engine -> src, which the content sandbox refuses to follow.
+    fs.symlinkSync(path.join(sourceDir, sheet), path.join(engineDir, sheet));
+    fs.symlinkSync(path.join(sourceDir, 'bento-shell-mount.css'), path.join(engineDir, 'bento-shell-mount.css'));
+    for (const dir of chromeDirs) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.symlinkSync(path.join(engineDir, sheet), path.join(dir, sheet));
+    }
+    const readReal = (file) => {
+      const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      try {
+        return fs.readFileSync(fd, 'utf8');
+      } finally {
+        fs.closeSync(fd);
+      }
+    };
+
+    // --content-files copies only; the parent-process links are left to the full sync.
+    const copied = runScript(root, 'sync-builtin-addon-symlinks.sh', ['--content-files']);
+    assert.equal(copied.status, 0, copied.stderr);
+    for (const dir of chromeDirs) assert.equal(readReal(path.join(dir, sheet)), 'tokens v1');
+    assert.equal(copied.stdout.match(/chrome\/bento-chrome-tokens\.css copied ->/g)?.length, 2);
+    assert.equal(fs.existsSync(path.join(chromeDirs[1], 'bento-shell-mount.css')), false);
+
+    const again = runScript(root, 'sync-builtin-addon-symlinks.sh');
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(again.stdout.match(/chrome\/bento-chrome-tokens\.css already current in/g)?.length, 2);
+    assert.doesNotMatch(again.stdout, /bento-chrome-tokens\.css copied/);
+    assert.equal(fs.readlinkSync(path.join(chromeDirs[1], 'bento-shell-mount.css')), path.join(engineDir, 'bento-shell-mount.css'));
+
+    // A regenerated sheet replaces a stale copy.
+    fs.writeFileSync(path.join(sourceDir, sheet), 'tokens v2');
+    const refreshed = runScript(root, 'sync-builtin-addon-symlinks.sh', ['--content-files']);
+    assert.equal(refreshed.status, 0, refreshed.stderr);
+    for (const dir of chromeDirs) assert.equal(readReal(path.join(dir, sheet)), 'tokens v2');
+    assert.deepEqual(fs.readdirSync(chromeDirs[0]), [sheet], 'no staged file is left behind');
+
+    assert.equal(runScript(root, 'sync-builtin-addon-symlinks.sh', ['--bogus']).status, 2);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
