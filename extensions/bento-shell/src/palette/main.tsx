@@ -23,7 +23,7 @@ import { initToolsPort } from '../bridge/useToolsPort';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({ families: ['tabs', 'workspaces', 'settings', 'panels'] });
 
 /** Sentinel document.title prefix that chrome's bento-shell-mount.js
  * listens for via DOMTitleChanged. window.parent.postMessage doesn't reach

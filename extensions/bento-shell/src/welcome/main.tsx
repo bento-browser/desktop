@@ -85,7 +85,7 @@ import { importCopy, type ImportBrowserKey } from './importSources';
 import { useImportHandoff } from './useImportHandoff';
 import { useImportSources } from './useImportSources';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings', 'privacy'] });
 
 const WELCOME_STEP_STORAGE_KEY = 'bento-welcome-step';
 const WELCOME_STEP_HASH_KEY = 'bentoWelcomeStep';

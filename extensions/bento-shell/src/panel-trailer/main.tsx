@@ -34,7 +34,7 @@ import { useSavedPanelsStore } from '../state/savedPanels';
 import { PanelTrailer } from '../components/PanelTrailer/PanelTrailer';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings', 'savedPanels'] });
 
 function onAddBlank() {
   // Append a blank panel via chrome's addNewPanel marker path. This keeps

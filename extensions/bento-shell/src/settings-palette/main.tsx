@@ -28,7 +28,7 @@ import { createSettingsPaletteStore, type SettingsPaletteHost } from './settings
 import { BACK_TO_PALETTE_TITLE_PREFIX, CLOSE_TITLE_PREFIX, titleFor } from './titles';
 import { useShowSignal } from './useShowSignal';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings'] });
 
 function close() {
   sendChromeTitle(titleFor(CLOSE_TITLE_PREFIX));

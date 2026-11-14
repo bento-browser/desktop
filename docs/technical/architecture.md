@@ -31,7 +31,8 @@ Bento's core browsing model is split across three layers:
 The state contract is declared in `extensions/_shared/protocol.ts`. UI code
 dispatches `Action` messages through `extensions/bento-shell/src/bridge/useToolsPort.ts`.
 `bento-tools` mutates stores and broadcasts `Event` payloads back. Shell Zustand
-stores are mirrors only.
+stores are mirrors only, and each shell document mirrors only the event families
+its entry names (see [shell-chrome-bridge.md](shell-chrome-bridge.md#per-document-event-families)).
 
 Port validation: `bento-tools` never trusts the `Action` type on the shell port.
 After `isAuthorizedShellPort`, every

@@ -20,7 +20,7 @@ import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 import { subscribeToMergePaletteLifecycle } from '../bridge/useMergePaletteBus';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings', 'externalMerge'] });
 
 const CLOSE_TITLE_PREFIX = 'BENTO_CLOSE_MERGE_PALETTE';
 

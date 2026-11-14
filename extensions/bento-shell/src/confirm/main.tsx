@@ -36,7 +36,7 @@ import {
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings'] });
 
 function ConfirmApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });

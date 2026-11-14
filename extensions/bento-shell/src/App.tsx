@@ -15,7 +15,7 @@ import { SidebarAddressBar } from './components/SidebarAddressBar/SidebarAddress
 import { ColorModeCycle } from './components/ColorModeCycle/ColorModeCycle';
 import { dispatch, useCurrentWindowId, useToolsReady } from './bridge/useToolsPort';
 import { startWelcomeRequests } from './bridge/useWelcome';
-import { useBookmarkedTabsSignal } from './bookmarks/useBookmarkManager';
+import { useBookmarkedTabsSignal } from './bookmarks/useBookmarkedTabsSignal';
 import { useWorkspaceTheme } from './theme/useWorkspaceTheme';
 import { useSettingsStore } from './state/settings';
 import { useTabsStore } from './state/tabs';

@@ -192,7 +192,7 @@ are separate: waiting for the policy does not consume window id retries.
 
 ## Shell bus bootstrap
 
-All shell documents in all windows (the 12 entries that call `initToolsPort()`:
+All shell documents in all windows (the 12 entries that call `initToolsPort`:
 sidebar, address bar, panel trailer, workspace switcher, edit workspace,
 confirm, welcome, menu, workspace palette, merge palette, palette, panel
 navigator tooltip) in regular windows share one
@@ -210,9 +210,10 @@ private windows cannot use that channel; see
   tagged `replayFor: helloId`. `BroadcastChannel` still delivers the replay to
   every document, but each one drops replays tagged for another id, so a join
   costs the other documents no store update, snapshot request, or
-  `BENTO_PANELS` title write. The joiner requests the six snapshots once, on
-  the replayed boot, and only if it had not already seen a live boot. Tools
-  answers each request with a snapshot broadcast to every document.
+  `BENTO_PANELS` title write. The joiner requests its snapshots once, on the
+  replayed boot, and only if it had not already seen a live boot: of the six,
+  only those of the families it mirrors (next section). Tools answers each
+  request with a snapshot broadcast to every document.
 - Chrome forwarding is order independent: the sidebar writes `BENTO_PANELS`
   only for its window's active workspace, which it learns from the workspace
   snapshot, and the payload embeds the settings snapshot (every settings field
@@ -240,12 +241,78 @@ private windows cannot use that channel; see
   gone out call `emitPanelsSyncNow` directly.
 
 The Bookmarks document is not one of the 12 and takes no part in the boot replay: it calls
-`initToolsPort()` (a 13th document on the bus) but needs only one snapshot, so it sends
+`initToolsPort` (a 13th document on the bus) but needs only one snapshot, so it sends
 `bookmarks/requestSnapshot` when its port is ready and on every show instead of waiting for
 `tools/booted`. Tools sends `bookmarks/snapshot` to regular windows only and broadcasts the
-whole snapshot after every bookmarks change. The event handler in `useToolsPort.ts` is shared,
-so every shell document applies it to its own copy of `state/bookmarks.ts`, which only the
-Bookmarks document reads. See [bookmarks.md](bookmarks.md).
+whole snapshot after every bookmarks change. Only the documents that mirror the `bookmarks`
+family (below) apply it to their copy of `state/bookmarks.ts`. See [bookmarks.md](bookmarks.md).
+
+### Per-document event families
+
+Source of truth stays in `bento-tools`; each shell document's Zustand stores
+are mirrors, and a document mirrors only the event families its entry names:
+`initToolsPort({ families })` in each `src/<entry>/main.tsx` (the sidebar in
+`src/main.tsx`). `ToolsFamily` (`bridge/useToolsPort.ts`, `TOOLS_FAMILIES`) has
+one family per tools-fed store: `tabs`, `workspaces`, `settings`, `panels`
+(`panels/sync`), `pinnedPanels`, `tabFolders`, `savedPanels`, `bookmarks`,
+`privacy`, `searchEngines`, `addrbar` (address bar results), `panelFocus`
+(`panel/focusedChanged`) and `externalMerge`. `FAMILY_BY_EVENT` maps each
+handled event type to its family; the bus handler drops an event of a family
+the document did not name before any store sees it, and the replayed-boot
+snapshot requests cover only named families. `tools/booted` and `pong` reach
+every document.
+
+`initToolsPort` is one call per document, made before the first render and the
+first `dispatch`, and its families are fixed for the document's lifetime: the
+snapshots go out only on the connection's replayed boot, so a family added to a
+live connection would never hydrate. A repeat call with the same families (in
+any order) is a no-op, which Ladle relies on when each story primes the bus
+(`state/__fixtures__/bus.ts`); a repeat call with other families throws, except
+under Vite HMR, where an edited entry re-runs against the kept bus module and a
+changed list reloads the document instead.
+
+The protocol is unchanged: the background still broadcasts every event on the
+one `BroadcastChannel` (a channel cannot address one listener), and the private
+relay still posts every event to each document of the window. Each document
+still receives and deserializes every message, but no longer keeps the
+families it does not read, so a document without `tabs` stops growing with the
+tab count (about 30 KB per open tab per document, measured 2026-11-13).
+
+| Entry                                                                    | Families                                                                                           |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| sidebar (`main.tsx`)                                                     | tabs, workspaces, settings, panels, pinnedPanels, tabFolders, bookmarks, panelFocus, externalMerge |
+| address-bar                                                              | tabs, workspaces, settings, panels, savedPanels, searchEngines, addrbar                            |
+| bookmarks                                                                | tabs, workspaces, settings, panels, bookmarks                                                      |
+| bookmarks-popup, bookmarks-toolbar                                       | workspaces, settings, bookmarks                                                                    |
+| palette, workspace-palette, workspace-switcher                           | tabs, workspaces, settings, panels                                                                 |
+| panel-trailer                                                            | workspaces, settings, savedPanels                                                                  |
+| merge-palette                                                            | workspaces, settings, externalMerge                                                                |
+| welcome                                                                  | workspaces, settings, privacy                                                                      |
+| confirm, edit-workspace, menu, panel-navigator-tooltip, settings-palette | workspaces, settings                                                                               |
+
+`workspaces` and `settings` are in every list because `useWorkspaceTheme` and
+`useFirefoxTheme` read them. `src/entries.test.ts` parses each module with the
+TypeScript compiler API and walks each entry's runtime import graph (static
+imports and re-exports that are not type-only, and `import('literal')`, with
+either quote style; a `.js` specifier resolves to its `.ts`/`.tsx` source and
+a Vite `?query` suffix is dropped, as the bundler does; an unresolved local
+import fails the test; it does not follow `useToolsPort.ts`, which imports
+every store). It fails unless the entry has exactly one `initToolsPort` call whose
+`families` is an array literal of strings, and those families are exactly the
+tools-fed store modules the entry reaches. A commented-out call counts as
+missing. In-memory fixture cases prove a double-quoted store import, a missing
+or repeated call and a non-literal list fail. A further case fails when
+`useToolsPort.ts` feeds a store the test does not map to a family.
+`bridge/busBootstrap.test.ts` covers the drop and the filtered requests ("mirrors
+only the families an overlay asks for") and the single-call contract ("keeps the
+families of the first initToolsPort call").
+
+Manual verification (built app): in `about:memory`, measure explicit memory of
+the confirm, edit-workspace and menu documents with 1 open tab and with 30; it
+should not grow with the tab count. Then open each overlay and check that it
+shows its data (theme and colour mode in every one; tabs in the palette,
+workspace palette and switcher; saved panels in the trailer; merge sources in
+the merge palette; privacy levels in Welcome).
 
 Message counts for one window with N documents joining one at a time after
 tools booted (`bridge/busBootstrap.test.ts`, N = 12 with the tooltip): 72
@@ -253,8 +320,10 @@ snapshot requests and 468 snapshot deliveries. Measured at N = 11, before the
 tooltip joined: 66 and 396, and before the guard 396 requests and 3036
 deliveries, because every replayed `tools/booted` made every document request
 all six snapshots again. With all 12 documents listening when tools boots: 0
-requests. Documents that chrome creates lazily (next section) join late, so
-each one costs a 6-request snapshot burst when it is created instead of at
+requests. These counts assume every document mirrors every family, as the test
+documents do; real entries request fewer (two for confirm, edit workspace,
+menu and the tooltip). Documents that chrome creates lazily (next section) join
+late, so each one costs its snapshot burst when it is created instead of at
 window startup.
 
 Manual verification: in the bento-shell background console (about:debugging,
@@ -262,7 +331,9 @@ Inspect), attach a `BroadcastChannel('bento-shell-bus')` listener that counts
 messages with `kind === 'action'` and an `action.type` ending in
 `/requestSnapshot`, and messages with `kind === 'event'` and an `event.type`
 ending in `/snapshot`, then open a window. A document that joined after tools
-booted adds 6 requests; documents that were listening at boot add none.
+booted adds one request per family it mirrors among the six (tabs, workspaces,
+settings, pinnedPanels, tabFolders, savedPanels); documents that were listening
+at boot add none.
 
 Bus bootstrap pitfalls:
 
@@ -296,6 +367,26 @@ Bus bootstrap pitfalls:
   broadcasts, requests carry no correlation id, and `savedPanels/snapshot` is
   also emitted unsolicited, so matching replies to requesters by order would
   mis-tag broadcasts. Targeting needs a request id in `Action` and `Event`.
+- Do not read a tools-fed store from a document whose entry does not name its
+  family in `initToolsPort({ families })`. The store stays at its empty
+  initial state (`hydrated: false` for tabs), so the surface silently shows no
+  data instead of failing. Add the family in the same change as the import;
+  `src/entries.test.ts` fails until the two match. Do not pass every family to
+  an overlay "to be safe" either: each one it mirrors without reading costs
+  memory per tab or per item in every window.
+- A new tools event that feeds a store needs a `FAMILY_BY_EVENT` entry. Without
+  one it reaches every document (safe, but the store is mirrored everywhere).
+- Do not add families after boot (a second `initToolsPort` with more families,
+  as an earlier draft allowed). The connection already exists, so no snapshot
+  request goes out and the new store stays empty (`hydrated: false`); the call
+  now throws. Likewise call `initToolsPort` before any `dispatch`: a dispatch
+  opens the connection, and its replayed boot arrives with no families named,
+  so every snapshot it carried is dropped.
+- A shared hook module puts every store it imports in each importer's graph, so
+  an entry would have to mirror stores only another document reads. Keep a hook
+  that reads a store only one entry needs in its own module (the sidebar's
+  `useBookmarkedTabsSignal` reads tabs; the bookmark toolbar and popup import
+  `useBookmarkManager` and mirror no tabs or panels).
 
 ## Private windows: the BentoShellBus relay
 

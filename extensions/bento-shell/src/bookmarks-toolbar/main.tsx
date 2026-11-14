@@ -25,7 +25,7 @@ import { initToolsPort } from '../bridge/useToolsPort';
 import { sendBookmarkPopupOpen, useOpenBookmarkPopupKey } from '../bridge/bookmarkPopup';
 import { useBookmarksSnapshot } from '../bookmarks/useBookmarkManager';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings', 'bookmarks'] });
 
 function BookmarksToolbarApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });

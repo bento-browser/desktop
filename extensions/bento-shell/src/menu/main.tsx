@@ -43,7 +43,7 @@ import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 import { notifyMenuClosed, subscribeToMenuOpen } from '../bridge/useMenuOpen';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings'] });
 
 function MenuApp() {
   useFirefoxTheme({ preferStoredSystemResolution: true });

@@ -44,7 +44,7 @@ import './edit-workspace.css';
 import { sendChromeTitle } from '../bridge/chromeTitle';
 import { useOverlayReadySignal } from '../bridge/overlayReady';
 
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings'] });
 
 function workspaceInitial(name: string): string {
   const trimmed = name.trim();

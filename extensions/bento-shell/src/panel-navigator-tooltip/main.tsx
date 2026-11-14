@@ -18,7 +18,7 @@ import { useOverlayReadySignal } from '../bridge/overlayReady';
 // settings mirrors it hydrates feed useWorkspaceTheme and useFirefoxTheme below,
 // so the tooltip follows the active theme and color mode instead of keeping the
 // Default theme and the mode from boot.
-initToolsPort();
+initToolsPort({ families: ['workspaces', 'settings'] });
 
 interface NavigatorTooltipPayload {
   label: string;
