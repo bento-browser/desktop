@@ -85,12 +85,6 @@ describe('workspace theme presets', () => {
     );
     expect(generatedThemeCss).toContain('--brand-60: #025768;');
     expect(generatedThemeCss).toContain('--neutral-default-20: #e5e1dd;');
-    expect(generatedThemeCss).toContain(
-      '--muxui-semantic-color-color-50-fg: var(--muxui-semantic-color-color-5);',
-    );
-    expect(generatedThemeCss).toContain(
-      '--muxui-semantic-color-color-50-fg: var(--muxui-semantic-color-color-100);',
-    );
     expect(generatedThemeCss).toContain('--muxui-popup-bg: var(--muxui-semantic-surface-raised);');
     expect(generatedThemeCss).not.toContain(
       '--muxui-semantic-color-neutral-20: var(--neutral-default-20);',

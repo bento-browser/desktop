@@ -5,8 +5,10 @@
  * files supply Bento-specific themes. Selectors are adapted to
  * data-bento-theme, and the public Mux base blocks are scoped to
  * data-muxui-theme for default/custom compatibility. This file carries the
- * Default theme only; every other theme is a sheet in public/themes/ that
- * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
+ * Default theme only, with standard-harbour's text colours from
+ * @muxui/react/themes-apca.css. Every other theme is a sheet in
+ * public/themes/ that src/theme/themeSheets.ts loads on demand. Do not edit
+ * by hand.
  *
  * @muxui/react/styles.css sha256:dae58962f39efb99f2a383486e3967462633ed1a9e0d837c5a09381bc31f35ca
  * @muxui/react/themes-apca.css sha256:f224e9b2c2f10c525eb7481d25331e7308c490e2ba255848d13003f0e47fc644
@@ -26,42 +28,32 @@
  * mirror the active theme instead of identifying as their own thing.
  *
  * This file pins the Default theme's --brand-* and warm neutral ladders so
- * any element with `data-bento-theme="default"` shows the measured Bento
- * baseline regardless of the document-root theme.
+ * any element with `data-bento-theme="default"` shows them regardless of the
+ * document-root theme.
  *
- * Regenerate this file from a static Scale export with:
- *   pnpm theme:import default <scale.css>
+ * Default is Mux's Harbour preset under Bento's id. These ladders must equal
+ * Harbour's in @muxui/react/themes-apca.css (scripts/sync-theme-presets.mjs
+ * fails otherwise), and Default's text colours are not set here: the sync
+ * copies Harbour's APCA text colours into Default's generated rules.
  */
 
 [data-bento-theme='default'] {
-  --brand-5: #f2f9fb;
+  --brand-5: #f7fbfc;
   --brand-10: #dde9ed;
   --brand-20: #b4cad1;
-  --brand-30: #8cacb6;
+  --brand-30: #96b7c1;
   --brand-40: #648f9b;
   --brand-50: #3b7381;
   --brand-60: #025768; /* BASE */
   --brand-70: #004958;
   --brand-80: #003b48;
   --brand-90: #002e39;
-  --brand-100: #00222a;
-}
-
-/* Light-mode fg overrides follow the Bento theme and mode attributes. */
-
-html[data-bento-theme='default']:not([data-color-mode='dark']) {
-  --color-50-fg: var(--color-5);
-}
-
-@media (prefers-color-scheme: dark) {
-  html[data-bento-theme='default']:not([data-color-mode='light']) {
-    --color-50-fg: var(--color-100);
-  }
+  --brand-100: #001c23;
 }
 
 [data-bento-theme='default'] {
   --neutral-default: var(--neutral-default-60);
-  --neutral-default-5: #faf7f5;
+  --neutral-default-5: #fbfaf8;
   --neutral-default-10: #f6f3f1;
   --neutral-default-12: #f3f0ed;
   --neutral-default-14: #efece9;
@@ -74,7 +66,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --neutral-default-28: #d5d0cc;
   --neutral-default-30: #d1ccc8;
   --neutral-default-40: #bab4af;
-  --neutral-default-50: #9e9792;
+  --neutral-default-50: #8f8884;
   --neutral-default-60: #79716b;
   --neutral-default-70: #655e58;
   --neutral-default-80: #514b47;
@@ -87,7 +79,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --neutral-default-94: #36322f;
   --neutral-default-96: #332f2c;
   --neutral-default-98: #2f2b28;
-  --neutral-default-100: #2c2825;
+  --neutral-default-100: #25211e;
   --display-color: var(--neutral-default-90);
   --text-color: var(--neutral-default-90);
   --mono-color: var(--neutral-default-90);
@@ -2803,18 +2795,18 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   );
   --muxui-semantic-typography-utility-size: 1rem;
   /* Reset raw Bento ladders before re-linking Mux references on nested scopes. */
-  --brand-5: #f2f9fb;
+  --brand-5: #f7fbfc;
   --brand-10: #dde9ed;
   --brand-20: #b4cad1;
-  --brand-30: #8cacb6;
+  --brand-30: #96b7c1;
   --brand-40: #648f9b;
   --brand-50: #3b7381;
   --brand-60: #025768;
   --brand-70: #004958;
   --brand-80: #003b48;
   --brand-90: #002e39;
-  --brand-100: #00222a;
-  --neutral-default-5: #faf7f5;
+  --brand-100: #001c23;
+  --neutral-default-5: #fbfaf8;
   --neutral-default-10: #f6f3f1;
   --neutral-default-12: #f3f0ed;
   --neutral-default-14: #efece9;
@@ -2827,7 +2819,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --neutral-default-28: #d5d0cc;
   --neutral-default-30: #d1ccc8;
   --neutral-default-40: #bab4af;
-  --neutral-default-50: #9e9792;
+  --neutral-default-50: #8f8884;
   --neutral-default-60: #79716b;
   --neutral-default-70: #655e58;
   --neutral-default-80: #514b47;
@@ -2840,7 +2832,7 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --neutral-default-94: #36322f;
   --neutral-default-96: #332f2c;
   --neutral-default-98: #2f2b28;
-  --neutral-default-100: #2c2825;
+  --neutral-default-100: #25211e;
   /* Compatibility projection: preserve Bento ladders without rewriting Mux semantic mode aliases. */
   --muxui-reference-color-brand-5: var(--brand-5);
   --muxui-reference-color-brand-10: var(--brand-10);
@@ -3443,7 +3435,44 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-reference-color-neutral-96: var(--neutral-default-96);
   --muxui-reference-color-neutral-98: var(--neutral-default-98);
   --muxui-reference-color-neutral-100: var(--neutral-default-100);
-  --muxui-semantic-color-color-50-fg: var(--muxui-semantic-color-color-5);
+  --muxui-semantic-color-color-10-fg: #001c23;
+  --muxui-semantic-color-color-100-fg: #f7fbfc;
+  --muxui-semantic-color-color-20-fg: #001c23;
+  --muxui-semantic-color-color-30-fg: #001c23;
+  --muxui-semantic-color-color-40-fg: #f7fbfc;
+  --muxui-semantic-color-color-5-fg: #001c23;
+  --muxui-semantic-color-color-50-fg: #f7fbfc;
+  --muxui-semantic-color-color-60-fg: #f7fbfc;
+  --muxui-semantic-color-color-70-fg: #f7fbfc;
+  --muxui-semantic-color-color-80-fg: #f7fbfc;
+  --muxui-semantic-color-color-90-fg: #f7fbfc;
+  --muxui-semantic-color-neutral-10-fg: #25211e;
+  --muxui-semantic-color-neutral-100-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-12-fg: #25211e;
+  --muxui-semantic-color-neutral-14-fg: #25211e;
+  --muxui-semantic-color-neutral-16-fg: #25211e;
+  --muxui-semantic-color-neutral-18-fg: #25211e;
+  --muxui-semantic-color-neutral-20-fg: #25211e;
+  --muxui-semantic-color-neutral-22-fg: #25211e;
+  --muxui-semantic-color-neutral-24-fg: #25211e;
+  --muxui-semantic-color-neutral-26-fg: #25211e;
+  --muxui-semantic-color-neutral-28-fg: #25211e;
+  --muxui-semantic-color-neutral-30-fg: #25211e;
+  --muxui-semantic-color-neutral-40-fg: #25211e;
+  --muxui-semantic-color-neutral-5-fg: #25211e;
+  --muxui-semantic-color-neutral-50-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-60-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-70-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-80-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-82-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-84-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-86-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-88-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-90-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-92-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-94-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-96-fg: #fbfaf8;
+  --muxui-semantic-color-neutral-98-fg: #fbfaf8;
 }
 
 [data-muxui-theme='default'][data-muxui-color-scheme='dark'] {
@@ -4015,7 +4044,92 @@ html[data-bento-theme='default']:not([data-color-mode='dark']) {
   --muxui-reference-color-neutral-96: var(--neutral-default-96);
   --muxui-reference-color-neutral-98: var(--neutral-default-98);
   --muxui-reference-color-neutral-100: var(--neutral-default-100);
-  --muxui-semantic-color-color-50-fg: var(--muxui-semantic-color-color-100);
+  --muxui-semantic-color-color-10-fg: #f7fbfc;
+  --muxui-semantic-color-color-100-fg: #001c23;
+  --muxui-semantic-color-color-20-fg: #f7fbfc;
+  --muxui-semantic-color-color-30-fg: #f7fbfc;
+  --muxui-semantic-color-color-40-fg: #f7fbfc;
+  --muxui-semantic-color-color-5-fg: #f7fbfc;
+  --muxui-semantic-color-color-50-fg: #f7fbfc;
+  --muxui-semantic-color-color-60-fg: #f7fbfc;
+  --muxui-semantic-color-color-70-fg: #001c23;
+  --muxui-semantic-color-color-80-fg: #001c23;
+  --muxui-semantic-color-color-90-fg: #001c23;
+  --muxui-semantic-color-neutral-10-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-100-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-12-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-14-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-16-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-18-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-20-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-22-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-24-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-26-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-28-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-30-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-40-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-5-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-50-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-60-fg: #f6f3f1;
+  --muxui-semantic-color-neutral-70-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-80-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-82-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-84-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-86-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-88-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-90-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-92-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-94-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-96-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
+  --muxui-semantic-color-neutral-98-fg: color-mix(
+    in srgb,
+    var(--muxui-semantic-color-neutral-10) 85%,
+    #000000
+  );
 }
 
 [data-muxui-theme='default'][data-muxui-contrast='standard'] {

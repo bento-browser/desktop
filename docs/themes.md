@@ -25,9 +25,15 @@ troubleshoot.
   Bento's Default option.
 - A **workspace** stores a `themeId` string (`extensions/_shared/protocol.ts`).
   Undefined means "use the Default theme" (`default`).
-- The **Default theme** is repo-local too:
-  `extensions/bento-shell/src/theme/presets/default.css`. Updating it
-  does not require changing the Mux package.
+- The **Default theme** is Mux's Standard Harbour preset under Bento's own id.
+  `extensions/bento-shell/src/theme/presets/default.css` carries Harbour's brand
+  and neutral ladders and no text colours. The sync fails when those ladders differ
+  from Harbour's in `themes-apca.css`, and copies Harbour's APCA text colours (the
+  `--muxui-semantic-color-*-fg` endpoint choices, which every other foreground role
+  aliases) into Default's generated light and dark rules, so Default cannot drift
+  from Harbour. Default's light and dark rules follow the scope's
+  `data-muxui-color-scheme` (shell) or `data-color-mode` (chrome) attribute like every
+  other theme; no Default rule reads `prefers-color-scheme`.
 - `useWorkspaceTheme()` mirrors the active workspace's `themeId` onto
   `<html data-bento-theme="…">` in every shell document. The sidebar
   also pushes it to the Firefox chrome window via the `BENTO_THEME:`
@@ -117,10 +123,9 @@ pnpm theme:import sunset ~/Desktop/sunset.css \
   --name "Sunset"
 ```
 
-`<id>` must be lowercase kebab-case (`/^[a-z][a-z0-9-]*$/`). Use
-`default` when you want to replace Bento's built-in Default theme. Package ids
-and their legacy monochromatic aliases are reserved and cannot be shadowed by a
-repo-local theme.
+`<id>` must be lowercase kebab-case (`/^[a-z][a-z0-9-]*$/`). `default` is
+refused: Default follows Harbour (see below). Package ids and their legacy
+monochromatic aliases are reserved and cannot be shadowed by a repo-local theme.
 
 The script ([scripts/import-theme.mjs](../scripts/import-theme.mjs))
 does three things:
@@ -142,21 +147,6 @@ does three things:
 Re-running with the same `<id>` overwrites the `.css` file and deterministically
 regenerates both generated artifacts.
 
-### Updating the Default theme
-
-Default is a Bento-owned preset. Generate CSS in Scale, then run:
-
-```sh
-pnpm theme:import default ~/Desktop/default.css \
-  --name "Default"
-```
-
-That regenerates `extensions/bento-shell/src/theme/presets/default.css`
-with `[data-bento-theme="default"]` selectors and updates the first
-`BENTO_THEMES` entry's `brand60` / `neutral20` values. Workspaces with
-`themeId` unset, cleared, or explicitly set to `default` will use this
-theme.
-
 After importing:
 
 ```sh
@@ -168,6 +158,23 @@ The importer's sync step wrote the shell sheet
 (`bento-chrome-tokens.css` and `bento-chrome-themes/<id>.css`) so the new theme
 reaches the Firefox chrome window too — required if you want the URL bar /
 tabstrip / titlebar to re-skin alongside the shell.
+
+### Updating the Default theme
+
+Default is not imported. It follows the Standard Harbour preset of the pinned
+`@muxui/react`:
+
+- Text colours need no edit. `pnpm run theme:sync` copies Harbour's text colours
+  from `themes-apca.css` into Default's rules on every run, and rejects a
+  `default.css` that sets any `--color-N-fg` or `--neutral-N-fg` itself.
+- When a Mux upgrade retunes Harbour's palettes, `pnpm run theme:sync` fails and
+  names each `--brand-N` or `--neutral-default-N` shade whose value differs.
+  Copy Harbour's values (its `--muxui-reference-color-brand-N` and
+  `--muxui-reference-color-neutral-N` in `themes-apca.css`) into `default.css`,
+  then run `pnpm run theme:sync` and `node scripts/generate-chrome-tokens.mjs`.
+
+Workspaces with `themeId` unset, cleared, or explicitly set to `default` use this
+theme.
 
 ## Picking a theme inside Bento
 
@@ -241,8 +248,11 @@ Add the neutral palette for a full UI re-skin:
 }
 ```
 
-Add fg overrides if your brand-60 doesn't pass contrast with Mux UI's
-default `--color-60-fg`:
+A custom theme's text colours are not chosen by APCA. Bento does not compute
+contrast: without overrides, each `--color-N-fg` and `--neutral-N-fg` takes the
+fixed endpoint that the public Mux `styles.css` base theme maps to that shade,
+resolved against your ladder. Add fg overrides if your brand-60 doesn't pass
+contrast with that default `--color-60-fg`:
 
 ```css
 html[data-bento-theme='<id>']:not([data-color-mode='dark']) {

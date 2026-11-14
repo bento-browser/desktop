@@ -1019,7 +1019,8 @@ The theme system should support:
 - curated accessible presets;
 - a grouped selector containing Bento's Default palette, eight standard palettes
   and seven monochromatic palettes. The standard and monochromatic palettes pick
-  their text colours with the APCA contrast method; Default keeps its own;
+  their text colours with the APCA contrast method, and Default, which is the
+  Harbour palette, uses Harbour's;
 - per-workspace theme selection;
 - light, dark, and Auto UI modes; switching presents the sidebar, toolbar,
   Settings, menus and palettes together on the theme's state motion. A rapid

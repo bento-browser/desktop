@@ -21,6 +21,30 @@ Shell theme flow:
   `extensions/bento-shell/public/themes/<id>.css`. Canonical sheets hold that
   theme's `data-muxui-theme` rules inside `@layer muxui`; repo-local custom
   themes are unlayered. All of these are tracked generated files.
+- Default is Mux's `standard-harbour` preset under Bento's id
+  (`DEFAULT_SOURCE_THEME_ID` in `sync-theme-presets.mjs`). Its CSS is the public
+  `styles.css` root, mode and closure blocks scoped to
+  `[data-muxui-theme='default']`, with the ladders from `presets/default.css`.
+  The sync fails unless every `--brand-N` and `--neutral-default-N` there equals
+  Harbour's `--muxui-reference-color-*` value in `MUX_THEMES_CSS`, and unless
+  `default.css` sets no `-fg` token. It then appends Harbour's
+  `--muxui-semantic-color-*-fg` declarations from the contrast 'standard' light and
+  dark rules of `MUX_THEMES_CSS` to Default's light and dark blocks. Every other
+  foreground role in `styles.css` (action, button, checkbox, tag, tabs, `on-solid`)
+  is a `var()` alias of one of those, so all of Default's colour tokens resolve
+  to Harbour's (measured 2026-11-15 in headless Chromium: 0 of 249 Harbour
+  colour tokens and 0 of 33 legacy `--color-N-fg` / `--neutral-N-fg` / accent
+  aliases differ, light and dark). Default's light and dark come from
+  `data-muxui-color-scheme` in the shell and `data-color-mode` in chrome, as for
+  every theme; no Default rule reads `prefers-color-scheme`.
+  `scripts/theme-sheets.test.mjs` asserts the ladders and text colours in
+  `presets/index.css` and the chrome base sheet.
+- Repo-local custom themes (none ship) get no APCA choice. Their text colours are
+  the fixed endpoints `styles.css` maps each shade to, resolved against the
+  custom ladder, plus any `-fg` overrides the source CSS carries
+  (`extractForegroundOverrides`). Bento computes no contrast and must not import
+  Mux's private compiler, so an APCA custom theme needs its `-fg` overrides
+  chosen outside Bento.
 - `extensions/bento-shell/src/theme/themeSheets.ts` attaches a theme's sheet as
   a `<link>` (`./themes/<id>.css`) only in documents that show the theme.
   `useWorkspaceTheme.ts` calls `applyRootTheme.ts`, which asks for the active
@@ -1008,6 +1032,13 @@ window.
 
 ## Theme pitfalls
 
+- Do not give Default text colours of its own. Until 2026-11-15 `default.css`
+  carried Harbour's palette-v1 ladders and a hand `--color-50-fg` override, and
+  its other text colours came from the WCAG endpoints of `styles.css`, so the
+  APCA switch left Default on WCAG choices (for example light `color-40-fg` and
+  `neutral-50-fg`, dark `color-60-fg` and the action foreground) while Harbour
+  moved. The sync now copies Harbour's `-fg` values and rejects a `default.css`
+  that sets any.
 - The dev server (`pnpm --filter @bento/shell dev`) once ranked `bento.app`
   below `bento.components` while the build ranked it above. `main.tsx` imports
   `shell-document.css` and `app.css` (both `bento.app`) before `App` pulls in
