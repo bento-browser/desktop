@@ -46,7 +46,7 @@ function usage(extra) {
   console.error('  pnpm theme:import <id> <path-to-scale.css> [--name "Display Name"]');
   console.error('');
   console.error('  <id> must be lowercase kebab-case (matches /^[a-z][a-z0-9-]*$/).');
-  console.error('  Use <id> "default" to replace Bento\'s repo-local Default preset.');
+  console.error('  "default" is not importable: Default follows Mux\'s Harbour preset.');
   process.exit(1);
 }
 
@@ -79,6 +79,11 @@ if (!/^[a-z][a-z0-9-]*$/.test(id)) {
   usage('<id> must match /^[a-z][a-z0-9-]*$/ (got: ' + JSON.stringify(id) + ')');
 }
 if (!existsSync(inputPath)) usage('input file not found: ' + inputPath);
+// Default is Harbour under Bento's id (scripts/sync-theme-presets.mjs checks its ladders and
+// takes its text colours from Harbour), so a Scale export cannot replace it.
+if (id === 'default') {
+  usage('Default follows standard-harbour from @muxui/react; see docs/themes.md');
+}
 
 const name = flags.name || id.charAt(0).toUpperCase() + id.slice(1);
 

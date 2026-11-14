@@ -253,6 +253,27 @@ export function splitCanonicalThemeRules(themesCss, themeIds) {
 }
 
 /**
+ * One theme's declarations per color scheme, from the rules splitCanonicalThemeRules returned
+ * for it. Later rules of a scheme win, as in the cascade.
+ *
+ * @returns {{ light: Map<string, string>, dark: Map<string, string> }}
+ */
+export function themeSchemeDeclarations(rules) {
+  const schemes = { light: new Map(), dark: new Map() };
+  for (const rule of rules) {
+    const open = rule.indexOf('{');
+    const scheme = colorSchemeOfThemeRule(rule.slice(0, open));
+    if (!scheme) {
+      throw new MuxSourceError(`${MUX_THEMES_CSS} has a theme rule with an unknown color scheme`);
+    }
+    for (const [token, value] of parseDeclarations(rule.slice(open + 1, rule.lastIndexOf('}')))) {
+      schemes[scheme].set(token, value);
+    }
+  }
+  return schemes;
+}
+
+/**
  * Check the MUXUI_THEME_PRESETS record list. The count is whatever the package ships: the
  * checks are that it is non-empty, every record is well formed, ids are unique, legacy
  * monochrome preset ids are unique (they become the alias table), and Mux's own default

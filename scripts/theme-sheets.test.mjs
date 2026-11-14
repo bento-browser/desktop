@@ -360,3 +360,91 @@ test('contrast more rules stay absent from shell and chrome theme sheets', () =>
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// Bento's Default theme is Harbour under Bento's id: sync-theme-presets.mjs requires Harbour's
+// ladders in default.css and copies Harbour's text colours (the `*-fg` endpoint choices, which
+// every other foreground role aliases) from the APCA preset stylesheet into Default's rules.
+const DEFAULT_SOURCE = 'standard-harbour';
+const TEXT_COLOUR = /^--muxui-semantic-color-[a-z-]+-\d+-fg$/;
+const squashValue = (value) =>
+  value.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim().toLowerCase();
+
+// The declarations of every rule with exactly this selector, later rules winning.
+function ruleDeclarations(css, selector) {
+  const rules = sheetRules(css).filter((rule) => rule.selector === selector);
+  assert.ok(rules.length > 0, `a rule for ${selector}`);
+  return new Map(rules.flatMap((rule) => [...rule.declarations]));
+}
+
+test('Default carries Harbour ladders and APCA text colours through shell and chrome', () => {
+  const apca = readMux(MUX_THEMES_CSS);
+  const wcag = readMux('@muxui/react/themes.css');
+  const shell = readFileSync(
+    resolve(REPO_ROOT, 'extensions/bento-shell/src/theme/presets/index.css'),
+    'utf8',
+  );
+  const { directory, base: chrome } = generate();
+  try {
+    const projections = [
+      [
+        'shell',
+        shell,
+        (scheme) => `[data-muxui-theme='default'][data-muxui-color-scheme='${scheme}']`,
+      ],
+      ['chrome', chrome, (scheme) => `[data-bento-theme='default'][data-color-mode='${scheme}']`],
+    ];
+    let apcaChoices = 0;
+    for (const scheme of ['light', 'dark']) {
+      const harbourSelector = standardSelector(DEFAULT_SOURCE, scheme);
+      const harbour = ruleDeclarations(apca, harbourSelector);
+      const harbourWcag = ruleDeclarations(wcag, harbourSelector);
+      const textColours = [...harbour].filter(([token]) => TEXT_COLOUR.test(token));
+      assert.ok(textColours.length >= 30, `${scheme}: Harbour declares its text colours`);
+      for (const [label, css, selector] of projections) {
+        const defaults = ruleDeclarations(css, selector(scheme));
+        for (const [token, value] of textColours) {
+          assert.equal(
+            squashValue(defaults.get(token) ?? 'missing'),
+            squashValue(value),
+            `${label} ${scheme} ${token}`,
+          );
+        }
+      }
+      // Fails if Harbour's APCA and WCAG 2 text colours agree, which would make this prove nothing.
+      apcaChoices += textColours.filter(
+        ([token, value]) => harbourWcag.get(token) !== value,
+      ).length;
+    }
+    assert.ok(apcaChoices > 0, 'APCA chooses some Harbour text colour differently from WCAG 2');
+
+    // Harbour's text colours fit only Harbour's backgrounds, so the ladders must match too.
+    const harbourLight = ruleDeclarations(apca, standardSelector(DEFAULT_SOURCE, 'light'));
+    const ladder = [...harbourLight].flatMap(([token, value]) => {
+      const match = token.match(/^--muxui-reference-color-(brand|neutral)-(\d+)$/);
+      if (!match) return [];
+      return [
+        [match[1] === 'brand' ? `--brand-${match[2]}` : `--neutral-default-${match[2]}`, value],
+      ];
+    });
+    assert.ok(ladder.length >= 30, 'Harbour declares its ladders');
+    for (const [label, css] of projections) {
+      const defaults = ruleDeclarations(css, "[data-bento-theme='default']");
+      for (const [token, value] of ladder) {
+        assert.equal(defaults.get(token)?.toLowerCase(), value.toLowerCase(), `${label} ${token}`);
+      }
+      // No hand-set legacy text colour: each one only aliases the Mux role above.
+      for (const { selector, declarations } of sheetRules(css)) {
+        for (const [token, value] of declarations) {
+          if (!/^--(?:color|neutral)-\d+-fg$/.test(token)) continue;
+          assert.match(
+            value,
+            /^var\(--muxui-semantic-color-[a-z-]+-\d+-fg\)$/,
+            `${label} ${selector} ${token}`,
+          );
+        }
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

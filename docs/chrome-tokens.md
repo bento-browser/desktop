@@ -144,8 +144,9 @@ native sidebar and Places documents (which mirror the root's attributes) manage
 their own link the same way. The theme sheet is not added to shadow roots:
 custom properties inherit into them from the host document. The generated Mux
 theme rules select the same canonical values as the extension. Bento's Default
-preset remains a scoped warm ladder with `--neutral-default-20: #e5e1dd`; the
-unscoped shell fallback can keep its cool neutral family.
+preset is Harbour's warm ladder and APCA text colours under the `default` id
+(see [docs/themes.md](themes.md)); the unscoped shell fallback can keep its cool
+neutral family.
 
 Theme sheets load after `bento-chrome-theme.css` and `bento-shell-mount.css`, so a
 theme rule now follows rules it used to precede. That is safe because no property

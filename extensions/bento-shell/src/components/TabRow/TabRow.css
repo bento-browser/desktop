@@ -154,7 +154,7 @@
   }
 
   .bento-tab-row--active .muxui-text {
-    color: var(--color-5);
+    color: var(--color-60-fg);
   }
 
   .bento-tab-row__favicon {
@@ -423,7 +423,7 @@
 }
 
 .bento-tab-row--active > .muxui-text {
-  color: var(--color-5);
+  color: var(--color-60-fg);
 }
 
 /* Unlayered by design: Mux UI text/button/icon utilities are unlayered, so

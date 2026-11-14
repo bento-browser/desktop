@@ -14,10 +14,10 @@
  * specificity (CSS spec: any unlayered rule outranks any layered rule).
  * Keep these rules outside @layer so they can override Mux UI's defaults.
  *
- * Pair: --bento-workspace-accent (--{hue}-60) for the saturated bg,
- * --bento-workspace-accent-fg (--{hue}-5) for the lightest tint of the
- * same hue as foreground. Mirrors Mux UI's --color-60 / --color-60-fg
- * convention so contrast stays legible across every workspace color.
+ * Pair: --bento-workspace-accent (--color-60) for the saturated bg,
+ * --bento-workspace-accent-fg (--color-60-fg) for the foreground: the
+ * theme's own text colour for that step, which Mux chooses by APCA in light
+ * and dark.
  *
  * The fallback (initial / icon) text needs its own selector — Mux UI
  * sets `color: var(--neutral-70)` directly on `.muxui-avatar__fallback`,
@@ -335,10 +335,10 @@ html[data-bento-collapsed='true']
  * layout and token intent. */
 .muxui-avatar.bento-workspace-switcher__avatar {
   background-color: var(--muxui-semantic-color-color-60);
-  color: var(--muxui-semantic-color-color-5);
+  color: var(--muxui-semantic-color-color-60-fg);
 }
 .muxui-avatar.bento-workspace-switcher__avatar .muxui-avatar__fallback {
-  color: var(--muxui-semantic-color-color-5);
+  color: var(--muxui-semantic-color-color-60-fg);
 }
 .muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
   background-color: var(--muxui-semantic-color-neutral-5);

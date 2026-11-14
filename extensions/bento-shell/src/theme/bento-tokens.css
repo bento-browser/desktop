@@ -49,7 +49,7 @@
        Root declaration covers the no-theme case (e.g. Ladle previews
        and the brief window before useWorkspaceTheme runs). */
     --bento-workspace-accent: var(--color-60);
-    --bento-workspace-accent-fg: var(--color-5);
+    --bento-workspace-accent-fg: var(--color-60-fg);
 
     /* Vertical tab strip dimensions. -min/-max bound the user-resizable
        expanded sidebar; -collapsed is the fixed narrow-rail width when
@@ -527,7 +527,7 @@
     --text-color: var(--neutral-default-90);
     --mono-color: var(--neutral-default-90);
     --bento-workspace-accent: var(--color-60);
-    --bento-workspace-accent-fg: var(--color-5);
+    --bento-workspace-accent-fg: var(--color-60-fg);
     --bento-brand-bg: var(--neutral-5);
   }
 }

@@ -11,6 +11,12 @@
  * and emits the legacy token bridge consumed by existing Bento CSS. Do not
  * import Mux's private token compiler or schema here.
  *
+ * Bento's Default theme is Mux's Harbour preset under Bento's id: default.css may declare
+ * only Harbour's brand and neutral ladders (scripts/default-theme.mjs), and Default's text
+ * colours (the `*-fg` endpoint choices, which every foreground role aliases) are copied from
+ * Harbour's rules in MUX_THEMES_CSS, so Default cannot drift from the preset stylesheet
+ * Bento ships.
+ *
  * Output is split so a document loads only the theme it shows:
  *   - presets/index.css: the Default theme and the shared token bridge, imported
  *     by every entry.
@@ -36,7 +42,9 @@ import {
   parseDeclarations,
   readReferenceShades,
   splitCanonicalThemeRules,
+  themeSchemeDeclarations,
 } from './mux-css.mjs';
+import { defaultThemeSourceErrors, extractToken, harbourTextColours } from './default-theme.mjs';
 import { rewriteThemeSelectors } from './theme-selector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +58,8 @@ const INDEX_TS_PATH = resolve(PRESETS_DIR, 'index.ts');
 const SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 
 const DEFAULT_THEME_ID = 'default';
+// The canonical preset Default follows (see the header).
+const DEFAULT_SOURCE_THEME_ID = 'standard-harbour';
 function usageError(message) {
   console.error('sync-theme-presets: ' + message);
   process.exit(1);
@@ -60,10 +70,6 @@ function displayNameFromId(id) {
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function extractToken(css, token) {
-  return css.match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1].toLowerCase();
 }
 
 function extractPresetName(css, id) {
@@ -456,14 +462,6 @@ const defaultNeutral20 = extractToken(defaultSource.sourceCss, '--neutral-defaul
 if (!defaultNeutral20) {
   usageError('default.css must provide --neutral-default-20');
 }
-const localThemes = localThemeSources.map((theme) => ({
-  ...theme,
-  brandShades: publicBrandShades,
-  neutralShades: publicNeutralShades,
-  neutral20: extractToken(theme.sourceCss, '--neutral-default-20') ?? defaultNeutral20,
-  foregroundOverrides: extractForegroundOverrides(theme.sourceCss),
-}));
-
 const canonicalThemes = muxThemes.map((theme) => ({
   id: theme.id,
   name: theme.name,
@@ -475,18 +473,54 @@ const canonicalThemes = muxThemes.map((theme) => ({
 }));
 const standardThemes = canonicalThemes.filter((theme) => theme.collection === 'standard');
 const monochromeThemes = canonicalThemes.filter((theme) => theme.collection === 'monochrome');
+const canonicalThemeRules = exitOnMuxSourceError('sync-theme-presets', () =>
+  splitCanonicalThemeRules(
+    muxThemesCss,
+    canonicalThemes.map((theme) => theme.id),
+  ),
+);
+
+const defaultSourceRules = canonicalThemeRules.get(DEFAULT_SOURCE_THEME_ID);
+if (!defaultSourceRules) {
+  usageError(`${MUX_THEMES_CSS} has no ${DEFAULT_SOURCE_THEME_ID} theme for Default to follow`);
+}
+const defaultSourceSchemes = exitOnMuxSourceError('sync-theme-presets', () =>
+  themeSchemeDeclarations(defaultSourceRules),
+);
+const defaultForegrounds = { root: new Map(), ...harbourTextColours(defaultSourceSchemes) };
+if (defaultForegrounds.light.size === 0 || defaultForegrounds.dark.size === 0) {
+  usageError(`${MUX_THEMES_CSS} declares no text colours for ${DEFAULT_SOURCE_THEME_ID}`);
+}
+// default.css may hold only Harbour's ladders, so Harbour's text colours fit Default's
+// backgrounds and nothing in it can override the derived rules (scripts/default-theme.mjs).
+const defaultSourceErrors = defaultThemeSourceErrors(
+  defaultSource.sourceCss,
+  defaultSourceSchemes,
+  publicShades,
+);
+if (defaultSourceErrors.length > 0) {
+  usageError(
+    `default.css may declare only ${DEFAULT_SOURCE_THEME_ID}'s ladders from ${MUX_THEMES_CSS}:\n  ` +
+      defaultSourceErrors.join('\n  '),
+  );
+}
+
+const localThemes = localThemeSources.map((theme) => ({
+  ...theme,
+  brandShades: publicBrandShades,
+  neutralShades: publicNeutralShades,
+  neutral20: extractToken(theme.sourceCss, '--neutral-default-20') ?? defaultNeutral20,
+  foregroundOverrides:
+    theme.id === DEFAULT_THEME_ID
+      ? defaultForegrounds
+      : extractForegroundOverrides(theme.sourceCss),
+}));
 const themes = [...localThemes, ...canonicalThemes];
 const muxCompatibilityBlocks = buildMuxCompatibilityCss(
   muxPublicBlocks,
   publicShades,
   localThemes,
   defaultBrandValues,
-);
-const canonicalThemeRules = exitOnMuxSourceError('sync-theme-presets', () =>
-  splitCanonicalThemeRules(
-    muxThemesCss,
-    canonicalThemes.map((theme) => theme.id),
-  ),
 );
 // Default stays in the shared stylesheet: it is the document's first-paint theme and the
 // fallback for unknown ids. Every other theme is its own sheet.
@@ -501,8 +535,10 @@ const indexCssSource = `/*
  * files supply Bento-specific themes. Selectors are adapted to
  * data-bento-theme, and the public Mux base blocks are scoped to
  * data-muxui-theme for default/custom compatibility. This file carries the
- * Default theme only; every other theme is a sheet in public/themes/ that
- * src/theme/themeSheets.ts loads on demand. Do not edit by hand.
+ * Default theme only, with ${DEFAULT_SOURCE_THEME_ID}'s text colours from
+ * ${MUX_THEMES_CSS}. Every other theme is a sheet in
+ * public/themes/ that src/theme/themeSheets.ts loads on demand. Do not edit
+ * by hand.
  *
  * @muxui/react/styles.css sha256:${muxStylesDigest}
  * ${MUX_THEMES_CSS} sha256:${muxThemesDigest}
