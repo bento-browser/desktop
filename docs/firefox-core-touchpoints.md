@@ -325,6 +325,21 @@ The source review covered every active touchpoint:
 
 - Status: Active
 - Last updated: 2026-11-14
+- Preference dialogs in the browser window (2026-11-14): Clear recent history
+  (`Sanitizer.showUI` through `gDialogBox`) links `preferences.css` itself, so
+  patch core-ui/12's token block maps its Firefox tokens onto Bento aliases that
+  its document did not define, and its radios, checkboxes, select and buttons had
+  no border or fill (found on 159.0.1 and 160.0). The mount script's
+  `bridgePreferenceDialog` gives such a dialog what `about:preferences` gives its
+  own subdialogs: on `DOMFrameContentLoaded` (capture, on the window; SubDialog
+  injects its sheets on the same event) for a `.dialogFrame` of this document
+  whose document has `preferences.css` among its sheets, it inserts
+  `bento-chrome-tokens.css` before that sheet's link and sets
+  `data-bento-theme="default"` and the window's `data-color-mode` on the dialog
+  root; `writeGrantedChromeMode` runs it again for every `.dialogFrame` on each
+  mode write, inside the presenter's settle, so the dialog flips with the window.
+  A dialog that does not load `preferences.css` is not touched. Depends on the
+  `window-modal-dialog-template` markup and `DOMFrameContentLoaded` (registry).
 - Firefox 160.0 split-view review (2026-11-14): read the full diff of
   `browser/components/tabbrowser/`, `toolkit/content/widgets/tabbox.js` and both
   split-view pref spellings (neither pref changes). Tab selection, activation,
@@ -812,7 +827,8 @@ The source review covered every active touchpoint:
   (below).
 - Regression checks for future updates: run `pnpm run firefox:compat:engine`
   against the target source before anything else and fix or remove every hook it
-  reports missing, confirm the Browser Console shows
+  reports missing, open Clear recent history from the browser window in light
+  and dark mode and confirm its controls have Bento borders and fills, confirm the Browser Console shows
   `[bento-compat] probed N members` with no `[bento-compat] missing` errors in a
   built app, run `pnpm run test:panels -- --app <built app>` (the panel suite: it
   builds two panels through the add-panel path, switches the main tab and closes both
@@ -2554,6 +2570,35 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 
 - Status: Active
 - Last updated: 2026-11-14
+- Settings subdialogs (2026-11-14, found on 160.0 and 159.0.1): in Connection
+  Settings, Delete browsing data and every other `gSubDialog` dialog, radios,
+  checkboxes, text fields, the select and the Cancel/OK buttons had no border or
+  fill. The dialog document loads `preferences.css` (SubDialog injects it, or the
+  dialog links it), so this patch's token block points Firefox tokens such as
+  `--border-color` and `--button-background-color` at Bento aliases, but the
+  dialog document had neither `bento-chrome-tokens.css` nor the root attributes
+  it needs, so those tokens computed empty (runtime: `--border-color`,
+  `--input-border-color`, `--neutral-20` empty in the dialog, non-empty on the
+  page). Fix in this patch: `gSubDialog`'s `dialogOptions.styleSheets` lists
+  `bento-chrome-tokens.css` (SubDialog appends it after links the dialog
+  already has, so it can follow `preferences.css`; the tokens resolve either
+  way because they are custom properties read at computed-value time),
+  `preferences.js` copies the page root's `data-bento-theme` and
+  `data-color-mode` onto each `.dialogFrame` document root on
+  `DOMFrameContentLoaded` (the event SubDialog injects its sheets on) and on
+  every mode change, and the `color-scheme` rule matches `:root` instead of
+  `#preferences-root`. The Delete button's pink fill was Firefox's
+  `--button-background-color-destructive`, which `sanitizeDialog_v2.css` maps
+  the primary button onto; the token block now maps the destructive background,
+  hover, active and text tokens to `--muxui-semantic-action-danger-background`
+  (`-hover`, `-pressed`) and `--muxui-semantic-color-error-60-fg`, each with
+  Firefox's own destructive value as the `var()` fallback, so a document that
+  still lacks the Bento tokens keeps Firefox's red. A mode change with a dialog
+  open switches the dialog content without the page's fade. A dialog in the
+  browser window that links `preferences.css` itself (Clear recent history,
+  `Sanitizer.showUI` through `gDialogBox`) is bridged by the mount script
+  instead: see Chrome Panel Shell Mount, "Preference dialogs in the browser
+  window".
 - Firefox 160.0 review (2026-11-14): upstream moved `html|dialog` and
   `.dialogBox` onto new `--dialog-background-color`, `--dialog-border-color`,
   `--dialog-border-radius`, `--dialog-box-shadow` and `--dialog-padding` tokens
@@ -2596,6 +2641,9 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   - `engine/browser/themes/shared/preferences/preferences.css`
   - `src/browser/base/content/bento-chrome-tokens.css`
   - `src/browser/base/content/bento-shell-mount.js` (`applyChromeColorMode`)
+  - depends on `toolkit/modules/SubDialog.sys.mjs` (`dialogOptions.styleSheets`,
+    `DOMFrameContentLoaded`) and the `.dialogFrame` template in
+    `preferences.xhtml`
 - Bento functionality: centers Firefox's native `about:preferences` content pane
   and category navigation as one unit in the available browser content area, so
   the settings controls do not sit flush against the side nav on wide windows.
@@ -2607,7 +2655,10 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   that `preferences.js` copies from the root of the window hosting the page,
   because the token sheet's aliases and mode blocks apply only to elements with
   those attributes; `color-scheme` follows the same attribute so Firefox's
-  `light-dark()` tokens agree. The mount script's `applyChromeColorMode`
+  `light-dark()` tokens agree. Settings subdialogs load `preferences.css` too:
+  `gSubDialog` injects the token sheet into them and `preferences.js` copies
+  both root attributes onto each dialog root when it loads and on every mode
+  change. The mount script's `applyChromeColorMode`
   announces each change on the `bento-ui-color-mode` observer topic, and the
   page looks its host window up again each time (`topChromeWindow`), because a
   Settings tab moved to another window keeps its document. A move into a window
@@ -2638,7 +2689,12 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   settings redesign layout changes, in-content variable names, or preferences
   widget token dependencies can reintroduce left alignment, alter the content
   pane width, or disconnect preferences controls from Bento's Mux UI palette.
-- Regression checks for future updates: on `about:preferences` read the computed
+- Regression checks for future updates: open Clear recent history from the
+  browser window (`Sanitizer.showUI(window)`) in light and dark mode and flip the
+  mode with it open: its root carries `data-bento-theme="default"` and the
+  window's `data-color-mode`, `bento-chrome-tokens.css` precedes
+  `preferences.css` in its sheets, and its controls and Delete button match the
+  Settings copy. On `about:preferences` read the computed
   `--background-color-box`, `--border-radius-circle`, `--space-large` and
   `--neutral-5` on the root (all must be non-empty), confirm
   `data-color-mode` follows the sidebar color mode control in both directions
@@ -2657,7 +2713,12 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   neutral-10 page background, borderless neutral-5 cards/tiles without box
   shadows, search field, switches, buttons, selected category, links, dialogs,
   warning/info boxes, and QR/AI promo surfaces; confirm forced colors still
-  follows Firefox/system colors.
+  follows Firefox/system colors. Open Connection Settings and Delete browsing
+  data in light and dark mode: the dialog root carries the page's
+  `data-bento-theme` and `data-color-mode`, `--border-color` and `--neutral-20`
+  are non-empty in the dialog document, radios, checkboxes, fields, the select
+  and Cancel show borders or fills, the Delete button uses the Bento danger
+  fill, and flipping the mode with a dialog open updates the dialog.
 - Rollback or migration notes: remove the `pack="center"` XHTML override and
   the `.main-content` width bound if upstream Firefox adopts a centered
   preferences layout. Remove the `bento-chrome-tokens.css` link and preferences
@@ -4121,6 +4182,9 @@ below is generated; edit the registry, then run
 | `JSActor.sendQuery` | source (engine only) | Waits for the overlay actor to apply parent-owned presentation state synchronously before native reveal or focus. | `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation`, `src/browser/actors/BentoShellBusParent.sys.mjs#sendQuery`, `src/browser/actors/BentoShellBusChild.sys.mjs#sendQuery` | `dom/chrome-webidl/JSActor.webidl:16` |
 | `JSWindowActorChild.document` | source (engine only) | Binds presentation updates to the actor document; a WindowProxy may already refer to a replacement page during navigation. | `src/browser/actors/BentoShellBusChild.sys.mjs#this.document` | `dom/chrome-webidl/JSWindowActor.webidl:60` |
 | `CanonicalBrowsingContext.topChromeWindow` | source (engine only) | The BentoShellBus parent actor reads it to find the browser window that hosts a shell frame, and takes the document's window id and privacy from it (embedderElement.ownerGlobal is null for these frames). preferences.js reads the window that hosts about:preferences to copy its Bento color mode onto the page root. It reads it again on every 'bento-ui-color-mode' notification, on visibilitychange and on focus, because a tab moved to another window keeps the document. | `patches/core-ui/12-center-native-preferences.patch#topChromeWindow`, `src/browser/actors/BentoShellBusParent.sys.mjs#topChromeWindow` | `dom/chrome-webidl/BrowsingContext.webidl:355` |
+| `DOMFrameContentLoaded` | source (engine only) | Chrome-only event fired on a top window, capture phase, when a frame's document has parsed; SubDialog injects its sheets on the same event. On the about:preferences window gSubDialog's dialogOptions.styleSheets carries bento-chrome-tokens.css and preferences.js copies the page root's data-bento-theme and data-color-mode onto a .dialogFrame document's root. On the browser window the mount script does the same for a .dialogFrame whose document links preferences.css (Clear recent history through gDialogBox): it inserts the token sheet before preferences.css and sets the Default theme and the window's mode. Either way the token sheet's aliases resolve in the dialog from its first paint. | `patches/core-ui/12-center-native-preferences.patch#DOMFrameContentLoaded`, `bridgePreferenceDialog` | `toolkit/modules/SubDialog.sys.mjs:819` |
+| `dialogFrame` | source (engine only) | Class of the <browser> in the about:preferences dialog template that SubDialog clones into #dialogStack for each Settings subdialog. preferences.js matches it on DOMFrameContentLoaded and queries #dialogStack .dialogFrame on each color mode change to copy the mode onto open subdialog roots. | `patches/core-ui/12-center-native-preferences.patch#dialogFrame` | `browser/components/preferences/preferences.xhtml:284` |
+| `window-modal-dialog-template` | source (engine only) | The browser window's gDialogBox clones this template's <browser class="dialogFrame"> into #window-modal-dialog for each window-modal dialog (Clear recent history among them). The mount script matches .dialogFrame on DOMFrameContentLoaded and queries every .dialogFrame in the window on each color mode write (writeGrantedChromeMode), bridging only those whose document links preferences.css; tab-modal frames from #dialogStackTemplate carry the same class. | `bridgePreferenceDialog` | `browser/base/content/browser.xhtml:141` |
 | `JSWindowActorParent.manager` | source (engine only) | The BentoShellBus parent actor reads its WindowGlobalParent to check which document a relayed message comes from. | `src/browser/actors/BentoShellBusParent.sys.mjs#manager` | `dom/chrome-webidl/JSWindowActor.webidl:26` |
 | `WindowGlobalParent.documentURI` | source (engine only) | The BentoShellBus parent actor accepts a message only from a document of the bento-shell extension: it reads the loaded document scheme and host here, and a null or foreign URI is refused, so a web page that reached the actor cannot speak for a window. | `src/browser/actors/BentoShellBusParent.sys.mjs#documentURI`, `src/browser/base/content/bento-shell-mount.js#setOverlayPresentation` | `dom/chrome-webidl/WindowGlobalActors.webidl:159` |
 | `WebExtensionPolicy.getByID` | source (engine only) | The BentoShellBus parent actor looks up the bento-shell policy by add-on id to learn the moz-extension host that its documents have. | `src/browser/actors/BentoShellBusParent.sys.mjs#getByID`, `src/browser/actors/BentoShellBusChild.sys.mjs#getByID` | `dom/chrome-webidl/WebExtensionPolicy.webidl:294` |

@@ -5090,6 +5090,42 @@
   function announceChromeColorMode(resolved) {
     Services.obs.notifyObservers(window, BENTO_UI_COLOR_MODE_TOPIC, resolved);
   }
+  // A dialog in this window whose document links preferences.css (Clear recent
+  // history through gDialogBox) reads the Bento aliases that patch core-ui/12's
+  // token block maps Firefox tokens onto, so it gets what about:preferences
+  // gives its own subdialogs: the token sheet before preferences.css, the
+  // Default theme and this window's color mode on its root. It runs when the
+  // dialog document has parsed (when SubDialog injects its own sheets) and on
+  // every mode write; other chrome dialogs are left alone.
+  const PREFERENCES_SHEET_HREF = 'chrome://browser/skin/preferences/preferences.css';
+  function bridgePreferenceDialog(frame) {
+    const doc = frame.contentDocument;
+    const sheets = doc ? Array.from(doc.styleSheets) : [];
+    const prefsSheet = sheets.find((sheet) => sheet.href === PREFERENCES_SHEET_HREF);
+    if (!prefsSheet) return;
+    // Check the link elements too: a sheet still loading is not in styleSheets yet.
+    const tokenLinked = Array.from(doc.querySelectorAll('link[rel="stylesheet"]')).some(
+      (link) => link.href === BENTO_CHROME_STYLESHEET_HREFS[0]
+    );
+    if (!tokenLinked && !sheets.some((sheet) => sheet.href === BENTO_CHROME_STYLESHEET_HREFS[0])) {
+      const link = doc.createElementNS('http://www.w3.org/1999/xhtml', 'link');
+      link.rel = 'stylesheet';
+      link.href = BENTO_CHROME_STYLESHEET_HREFS[0];
+      const owner = prefsSheet.ownerNode;
+      if (owner?.nodeType === Node.ELEMENT_NODE) owner.before(link);
+      else doc.documentElement.prepend(link);
+    }
+    const mode = document.documentElement.getAttribute('data-color-mode') === 'dark' ? 'dark' : 'light';
+    doc.documentElement.setAttribute('data-bento-theme', BENTO_DEFAULT_THEME_ID);
+    doc.documentElement.setAttribute('data-color-mode', mode);
+  }
+  function bridgePreferenceDialogs() {
+    for (const frame of document.querySelectorAll('.dialogFrame')) bridgePreferenceDialog(frame);
+  }
+  window.addEventListener('DOMFrameContentLoaded', (event) => {
+    const frame = event.target;
+    if (frame.ownerDocument === document && frame.classList?.contains('dialogFrame')) bridgePreferenceDialog(frame);
+  }, true);
   function writeGrantedChromeMode(target) {
     const root = document.documentElement;
     root.style.removeProperty('--bento-mode-fade-delay');
@@ -5097,6 +5133,7 @@
     root.setAttribute('data-color-mode', target.resolved);
     root.setAttribute('data-theme', target.resolved);
     root.setAttribute('data-bento-color-mode-pref', target.pref);
+    bridgePreferenceDialogs();
     chromeColorModePref = target.pref;
     chromeColorStamp = target.stamp;
     // Native inline gradient carriers still reference the shared token cascade.
