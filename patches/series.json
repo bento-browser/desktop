@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "base": {
     "product": "firefox",
-    "version": "159.0.1",
-    "tree": "22b0993cbd09d10b02762db22623dc9cf0b15964",
-    "contentTree": "b78ac4189fd81ed2e9584f0d0da374ed844db540578b84afab97725496439580"
+    "version": "160.0",
+    "tree": "aa47e2cad509806d3667e2858efc5303f711ca89",
+    "contentTree": "9b011e7c86d1e72e0cab3e43956c4a8728e0892c62580f73ffb63149ee54a957"
   },
   "series": [
     {

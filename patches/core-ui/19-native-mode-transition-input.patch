@@ -1,20 +1,20 @@
-From e2484c56be6c61845232a1182ca695779719bea9 Mon Sep 17 00:00:00 2001
+From 89ce03e653ae2d151ce1c0d2e055945604675c1f Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 31 Oct 2026 23:38:29 +1100
 Subject: [PATCH] Preserve input for owned native theme capture transitions
 
 ---
- dom/view-transitions/ViewTransition.cpp       |  45 ++++
+ dom/view-transitions/ViewTransition.cpp       |  47 ++++
  dom/view-transitions/ViewTransition.h         |   7 +
  .../test/browser/browser.toml                 |   2 +
  .../browser_bento_native_theme_input.js       | 223 ++++++++++++++++++
  layout/base/PresShell.cpp                     |   8 +-
  layout/base/TouchManager.cpp                  |   9 +-
- 6 files changed, 290 insertions(+), 4 deletions(-)
+ 6 files changed, 292 insertions(+), 4 deletions(-)
  create mode 100644 dom/view-transitions/test/browser/browser_bento_native_theme_input.js
 
 diff --git a/dom/view-transitions/ViewTransition.cpp b/dom/view-transitions/ViewTransition.cpp
-index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf2359a9a0 100644
+index 7f36816d01ae03e9522c2858feb9269020eea9af..98f19304d509bc35d8ea887ccd81c0da4f78a671 100644
 --- a/dom/view-transitions/ViewTransition.cpp
 +++ b/dom/view-transitions/ViewTransition.cpp
 @@ -25,6 +25,7 @@
@@ -25,7 +25,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
  #include "nsCanvasFrame.h"
  #include "nsDisplayList.h"
  #include "nsFrameState.h"
-@@ -289,6 +290,7 @@ already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument(
+@@ -300,6 +301,7 @@ already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument(
    MOZ_ASSERT(aInboundParams);
    RefPtr<ViewTransition> vt =
        new ViewTransition(aDocument, nullptr, std::move(aResolvedRule));
@@ -33,8 +33,8 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    vt->mNamedElements = std::move(aInboundParams->namedElements);
    vt->mNames = std::move(aInboundParams->names);
    vt->mInitialSnapshotContainingBlockSize =
-@@ -303,6 +305,13 @@ already_AddRefed<ViewTransition> ViewTransition::CreateCrossDocument(
-   return vt.forget();
+@@ -428,6 +430,13 @@ void ViewTransition::BeginDeferredOutboundCapture(
+   }
  }
  
 +bool ViewTransition::PreservesNativeThemeInput() const {
@@ -47,7 +47,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
  Element* ViewTransition::GetViewTransitionTreeRoot() const {
    return mSnapshotContainingBlock
               ? mSnapshotContainingBlock->GetFirstElementChild()
-@@ -1102,6 +1111,7 @@ void ViewTransition::Activate() {
+@@ -1238,6 +1247,7 @@ void ViewTransition::Activate() {
      // If failure is returned, then skip the view transition for transition...
      return SkipTransition(*skipReason);
    }
@@ -55,7 +55,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
  
    // Step 6: Setup transition pseudo-elements for transition.
    SetupTransitionPseudoElements();
-@@ -1351,6 +1361,7 @@ static void ForEachFrameWithViewTransitionName(Document* aDoc,
+@@ -1515,6 +1525,7 @@ static void ForEachFrameWithViewTransitionName(Document* aDoc,
  // https://drafts.csswg.org/css-view-transitions/#capture-the-old-state
  Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
    MOZ_ASSERT(mNamedElements.IsEmpty());
@@ -63,13 +63,15 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
  
    // Steps 1/2 are variable declarations.
    // Step 3: Let usedTransitionNames be a new set of strings.
-@@ -1443,6 +1454,21 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
+@@ -1613,6 +1624,23 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
    for (auto& [f, name] : captureElements) {
      SetCaptured(f, false, nullptr);
    }
-+  // Latch only after a successful old capture. A cross-document transition
-+  // also has a null callback, so it must be excluded explicitly.
-+  if (!mIsCrossDocument && !mUpdateCallback && captureElements.Length() == 1) {
++  // Latch only after a successful old capture. Inbound and outbound
++  // cross-document transitions also have a null callback, so they must be
++  // excluded explicitly.
++  if (!mIsCrossDocument && !mIsOutboundCrossDocument && !mUpdateCallback &&
++      captureElements.Length() == 1) {
 +    auto* root = mDocument->GetRootElement();
 +    auto* ps = mDocument->GetPresShell();
 +    RefPtr<nsAtom> marker = NS_Atomize("data-bento-mode-presentation");
@@ -85,7 +87,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    return result;
  }
  
-@@ -1450,6 +1476,11 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
+@@ -1620,6 +1648,11 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
  Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
    nsTHashSet<nsAtom*> usedTransitionNames;
    Maybe<SkipTransitionReason> result;
@@ -97,7 +99,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    ForEachFrameWithViewTransitionName(mDocument, [&](nsIFrame* aFrame) {
      // As a fast path we check for v-t-n first.
      RefPtr<nsAtom> name = DocumentScopedTransitionNameFor(aFrame);
-@@ -1473,6 +1504,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
+@@ -1643,6 +1676,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
            SkipTransitionReason::DuplicateTransitionNameCapturingNewState);
        return false;
      }
@@ -108,7 +110,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
      bool wasPresent = true;
      auto& capturedElement = mNamedElements.LookupOrInsertWith(name, [&] {
        wasPresent = false;
-@@ -1501,6 +1536,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
+@@ -1671,6 +1708,10 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
      SetCaptured(aFrame, true, name);
      return true;
    });
@@ -119,7 +121,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    return result;
  }
  
-@@ -1687,6 +1726,7 @@ bool ViewTransition::CheckForActiveAnimations() const {
+@@ -1857,6 +1898,7 @@ bool ViewTransition::CheckForActiveAnimations() const {
  }
  
  void ViewTransition::ClearNamedElements() {
@@ -127,7 +129,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    for (auto& entry : mNamedElements) {
      if (auto* element = entry.GetData()->mNewElement.get()) {
        if (nsIFrame* f = element->GetPrimaryFrame()) {
-@@ -1769,6 +1809,7 @@ void ViewTransition::SkipTransition(
+@@ -1939,6 +1981,7 @@ void ViewTransition::SkipTransition(
    VT_LOG("ViewTransition::SkipTransition(%d, %d)\n", int(mPhase), int(aReason));
    AUTO_PROFILER_TERMINATING_FLOW_MARKER("ViewTransition::SkipTransition",
                                          LAYOUT, Flow::FromPointer(this));
@@ -135,7 +137,7 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
    if (mPhase == Phase::Done) {
      return;
    }
-@@ -1822,6 +1863,10 @@ void ViewTransition::SkipTransition(
+@@ -1997,6 +2040,10 @@ void ViewTransition::SkipTransition(
          readyPromise->MaybeRejectWithInvalidStateError(
              "Skipped view transition due to root element going away");
          break;
@@ -147,10 +149,10 @@ index a07a4aae3445edd29293a05be720d1e0e9cbbf15..d5a43f945d920592f6932162706c59cf
          readyPromise->MaybeRejectWithInvalidStateError(
              "Skipped view transition due to page swap");
 diff --git a/dom/view-transitions/ViewTransition.h b/dom/view-transitions/ViewTransition.h
-index 4159f711a25f90f3a3b077cd071985293175f41e..8ad039aa92edb5e0d2c810a4f6b26f3e429d973a 100644
+index 1a57e2eb7e51554d80e2fbe3e0ef2b171e016c04..d9074cbc044a097600845e8d0f67da78f341a461 100644
 --- a/dom/view-transitions/ViewTransition.h
 +++ b/dom/view-transitions/ViewTransition.h
-@@ -62,6 +62,7 @@ enum class SkipTransitionReason : uint8_t {
+@@ -67,6 +67,7 @@ enum class SkipTransitionReason : uint8_t {
    UpdateCallbackRejected,
    DuplicateTransitionNameCapturingOldState,
    DuplicateTransitionNameCapturingNewState,
@@ -158,7 +160,7 @@ index 4159f711a25f90f3a3b077cd071985293175f41e..8ad039aa92edb5e0d2c810a4f6b26f3e
    PseudoUpdateFailure,
    Resize,
    PageSwap,
-@@ -179,6 +180,10 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
+@@ -215,6 +216,10 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
  
    void Activate();
  
@@ -169,10 +171,10 @@ index 4159f711a25f90f3a3b077cd071985293175f41e..8ad039aa92edb5e0d2c810a4f6b26f3e
   private:
    using CapturedElement = ViewTransitionCapturedElement;
  
-@@ -247,6 +252,8 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
-   RefPtr<nsITimer> mTimeoutTimer;
- 
-   Phase mPhase = Phase::PendingCapture;
+@@ -293,6 +298,8 @@ class ViewTransition final : public nsISupports, public nsWrapperCache {
+   // runs it after the capture.
+   std::function<void(UniquePtr<ViewTransitionParams>&&)>
+       mOutboundCaptureProceed;
 +  bool mIsCrossDocument = false;
 +  bool mPreservesNativeThemeInput = false;
    // The wrapper of the pseudo-elements tree, to make sure it is always
@@ -416,7 +418,7 @@ index 0000000000000000000000000000000000000000..78762e382d1ed217a6cfc1057c35c804
 +  }
 +});
 diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
-index ca58605fd207e17050ead0f37bd63aa3f7edb7e7..605752a90e9d8449bff2e50ba3568ddb15e7b8d5 100644
+index f22d9718cbabe8dccffee7c6901a93826b55bf30..4a1db7f829ee66dfab128d0e30a79d6c1c0c2426 100644
 --- a/layout/base/PresShell.cpp
 +++ b/layout/base/PresShell.cpp
 @@ -125,6 +125,7 @@
@@ -427,7 +429,7 @@ index ca58605fd207e17050ead0f37bd63aa3f7edb7e7..605752a90e9d8449bff2e50ba3568ddb
  #include "mozilla/gfx/2D.h"
  #include "mozilla/gfx/Types.h"
  #include "mozilla/glean/GfxMetrics.h"
-@@ -8091,8 +8092,11 @@ nsIFrame* PresShell::EventHandler::GetFrameToHandleNonTouchEvent(
+@@ -8094,8 +8095,11 @@ nsIFrame* PresShell::EventHandler::GetFrameToHandleNonTouchEvent(
  
    Document* doc = GetDocument();
    if (MOZ_UNLIKELY(doc && doc->RenderingSuppressedForViewTransitions())) {

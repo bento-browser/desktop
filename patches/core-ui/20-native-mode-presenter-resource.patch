@@ -1,4 +1,4 @@
-From f837849fbf0f7758e69e5239cfbf665196340779 Mon Sep 17 00:00:00 2001
+From 0e761143a11ba4b3c524b2d7574a1c102deb5b05 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sun, 1 Nov 2026 00:25:19 +1100
 Subject: [PATCH] Package the shared native mode presenter actor resource

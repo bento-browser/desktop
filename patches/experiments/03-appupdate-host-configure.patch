@@ -1,4 +1,4 @@
-From 14e0d31f8950c234f64e4f60d1aa661c69782ae4 Mon Sep 17 00:00:00 2001
+From c0035bebd4fbdfe93adb8ea9366b6ce4dd8f0038 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 2 Nov 2026 03:07:44 +1100
 Subject: [PATCH] Wire MOZ_APPUPDATE_HOST through configure
@@ -8,7 +8,7 @@ Subject: [PATCH] Wire MOZ_APPUPDATE_HOST through configure
  1 file changed, 13 insertions(+)
 
 diff --git a/build/moz.configure/update-programs.configure b/build/moz.configure/update-programs.configure
-index c017c7fb5eec536b736a9dae8dcdb5a80f7bbade..633f41dc0812932125b6c19f77674450112c46d9 100644
+index 6351d36cf29c1b22b9c9306953513fdbc43c63fb..645b6abca9261efce72932d3ab793657aaadd7ea 100644
 --- a/build/moz.configure/update-programs.configure
 +++ b/build/moz.configure/update-programs.configure
 @@ -159,6 +159,19 @@ set_config(

@@ -1,4 +1,4 @@
-From 1fe636bc028ada88114edc47b8f886f494ab9380 Mon Sep 17 00:00:00 2001
+From 88edad7d05cc8134189691a2e182bbf4e51b5f0f Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 4 Nov 2026 18:26:19 +1100
 Subject: [PATCH] Package distribution add-ons in a build not made by Mozilla

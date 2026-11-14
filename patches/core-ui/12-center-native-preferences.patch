@@ -1,16 +1,16 @@
-From 92b929169a431b7551729558e0b497d3d8fa7b1c Mon Sep 17 00:00:00 2001
+From bee2fb44229750311d595fd7841b8c52986c0fe2 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  68 ++++++
+ browser/components/preferences/preferences.js |  68 +++++
  .../components/preferences/preferences.xhtml  |   9 +-
- .../themes/shared/preferences/preferences.css | 229 +++++++++++++++++-
- 3 files changed, 295 insertions(+), 11 deletions(-)
+ .../themes/shared/preferences/preferences.css | 243 +++++++++++++++++-
+ 3 files changed, 310 insertions(+), 10 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
-index 8b3acf475ad7be98c51eac0ddf65affb3c35846e..48e4f98846b8d30e92ac5881bd605a5d63233cac 100644
+index df1663c5a74c8486b3342a53a58bf62dc9e3963c..e1691b1e4efefd7028d34332469b9088227041fe 100644
 --- a/browser/components/preferences/preferences.js
 +++ b/browser/components/preferences/preferences.js
 @@ -65,6 +65,74 @@ var fxAccounts = getFxAccountsSingleton();
@@ -89,7 +89,7 @@ index 8b3acf475ad7be98c51eac0ddf65affb3c35846e..48e4f98846b8d30e92ac5881bd605a5d
    gApplicationUpdateService: [
      "@mozilla.org/updates/update-service;1",
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index e8da75f2c27e312e0170520959d3daf883f56048..1dff3c38c7f313c64ff82b4eca6dc8efb16400b6 100644
+index 8e0c6483d6edd587cc425abe16f4a756f88e492b..31b486b6e07e5ddc87d5738fb5a3cfc87d16d19a 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
 @@ -8,7 +8,9 @@
@@ -111,7 +111,7 @@ index e8da75f2c27e312e0170520959d3daf883f56048..1dff3c38c7f313c64ff82b4eca6dc8ef
    <link
      rel="stylesheet"
      href="chrome://browser/skin/preferences/preferences.css"
-@@ -112,7 +115,7 @@
+@@ -114,7 +117,7 @@
                  src="chrome://browser/locale/browser.properties"/>
  
    <stack id="preferences-stack" flex="1">
@@ -120,7 +120,7 @@ index e8da75f2c27e312e0170520959d3daf883f56048..1dff3c38c7f313c64ff82b4eca6dc8ef
  
      <html:moz-page-nav id="categories" data-l10n-id="category-nav-heading" allownoselection="true">
        <html:moz-page-nav-button id="category-general"
-@@ -227,7 +230,7 @@
+@@ -229,7 +232,7 @@
        <key data-l10n-id="focus-search" key="" modifiers="accel" id="focusSearch1"/>
      </keyset>
  
@@ -130,10 +130,10 @@ index e8da75f2c27e312e0170520959d3daf883f56048..1dff3c38c7f313c64ff82b4eca6dc8ef
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb1476677365384781 100644
+index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..7435859188caa7ae30680ab9466c65f644ec6f17 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
-@@ -22,7 +22,160 @@
+@@ -22,7 +22,167 @@
    --card-padding-block: var(--card-padding-inline);
  
    @media -moz-pref("browser.settings-redesign.enabled") {
@@ -239,6 +239,13 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
 +    --color-accent-primary-active: var(--color-40);
 +    --color-accent-primary-selected: var(--color-60);
 +    --dialog-warning-text-color: light-dark(var(--warning-80), var(--warning-40));
++    /* Firefox 160 moved dialogs onto --dialog-* tokens (popup colors by
++       default); keep the Bento box surface, radius and shadow. */
++    --dialog-background-color: var(--background-color-box);
++    --dialog-border-color: transparent;
++    --dialog-border-radius: var(--border-radius-medium);
++    --dialog-box-shadow: var(--popup-box-shadow);
++    --dialog-padding: var(--space-xlarge);
 +
 +    --focus-outline-color: var(--color-60);
 +
@@ -295,7 +302,7 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
    }
  
    user-select: text;
-@@ -107,7 +260,12 @@
+@@ -107,7 +267,12 @@
    padding-top: 0;
    scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
  
@@ -308,7 +315,7 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
      padding-inline: var(--space-medium);
    }
  }
-@@ -125,6 +283,61 @@
+@@ -125,6 +290,61 @@
    width: 100%;
  }
  
@@ -370,16 +377,23 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
  html|div[data-category],
  groupbox[data-category],
  setting-group[data-category] {
-@@ -577,7 +790,7 @@ html|dialog,
-   @media not (forced-colors) {
-     html|dialog,
-     .dialogBox {
--      --background-color-canvas: #42414d;
-+      --background-color-canvas: var(--neutral-12);
-     }
-   }
+@@ -577,6 +797,15 @@ html|dialog,
+   -moz-scrollbar-inset-block: 0 var(--dialog-resizer-inset);
  }
-@@ -655,11 +868,11 @@ html|dialog,
+ 
++@media (prefers-color-scheme: dark) {
++  @media not (forced-colors) {
++    html|dialog,
++    .dialogBox {
++      --background-color-canvas: var(--neutral-12);
++    }
++  }
++}
++
+ .dialogBox[resizable="true"] {
+   resize: both;
+   overflow: hidden;
+@@ -659,11 +888,11 @@ html|dialog,
  }
  
  .fxaProfileImage.actionable:hover {
@@ -393,7 +407,7 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
  }
  
  #useFirefoxSync {
-@@ -1266,12 +1479,12 @@ richlistitem .text-link:hover {
+@@ -1270,12 +1499,12 @@ richlistitem .text-link:hover {
  }
  
  @media (prefers-color-scheme: dark) {
@@ -409,7 +423,7 @@ index e30a31aa52bed81fe2e6d7536869a0820688205c..51c03cb04e0e4542c33f4fcb14766773
    }
  }
  
-@@ -1404,7 +1617,7 @@ setting-group[groupid="aiFeatures"] {
+@@ -1408,7 +1637,7 @@ setting-group[groupid="aiFeatures"] {
  
  .ai-controls-description {
    --ai-controls-description-image-margin: calc(64px + var(--space-large));

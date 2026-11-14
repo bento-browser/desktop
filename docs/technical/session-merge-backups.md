@@ -76,7 +76,11 @@ profiles below `Profiles/<profile-id>`. It returns opaque source ids,
 browser/profile labels, and modified times only. It reads Firefox/Zen `jsonlz4`
 snapshots as decoded JSON strings and Chromium session files as base64 bytes. It
 does not return absolute paths, and unreadable or stale source ids produce
-sanitized errors.
+sanitized errors. The read passes no `decrypt` option: a Firefox 160 or later
+source profile with `browser.sessionstore.encryption.enabled` writes encrypted
+session files (keys in `lockstore.keys.sqlite`) that this read cannot decode.
+The pref defaults to false; see the Firefox 160.0 review in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md#firefox-1600-upgrade-review-2026-11-14).
 
 Chromium discovery and Chromium snapshot reads are intentionally separate
 operations. Discovery uses directory traversal plus `IOUtils.stat()` to find
