@@ -44,7 +44,7 @@ import {
   splitCanonicalThemeRules,
   themeSchemeDeclarations,
 } from './mux-css.mjs';
-import { defaultThemeSourceErrors, harbourTextColours } from './default-theme.mjs';
+import { defaultThemeSourceErrors, extractToken, harbourTextColours } from './default-theme.mjs';
 import { rewriteThemeSelectors } from './theme-selector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,10 +70,6 @@ function displayNameFromId(id) {
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function extractToken(css, token) {
-  return css.match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1].toLowerCase();
 }
 
 function extractPresetName(css, id) {

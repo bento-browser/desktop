@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { defaultThemeSourceErrors } from './default-theme.mjs';
+import { defaultThemeSourceErrors, extractToken } from './default-theme.mjs';
 import {
   loadMuxPublicCss,
   loadMuxThemePresets,
@@ -88,3 +88,10 @@ test('rejects a ladder shade that differs from Harbour or is missing', () => {
   const missing = source.replace(/^\s*--brand-60:[^\n]*\n/m, '');
   assert.ok(errors(missing).some((message) => /--brand-60 is missing/.test(message)));
 });
+
+test('the sync reads no token value from a comment', () => {
+  const css = "/* Old --brand-60: #ff0000; */\n:root { --brand-60: #025768; --neutral-default-90: #e6e2df; }\n/* --neutral-default-90: #000000; */";
+  assert.equal(extractToken(css, '--brand-60'), '#025768');
+  assert.equal(extractToken(css, '--neutral-default-90'), '#e6e2df');
+});
+

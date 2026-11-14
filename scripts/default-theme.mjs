@@ -11,6 +11,16 @@
 import { findClosingBrace } from '../extensions/bento-shell/css-blocks.mjs';
 
 /** Mux's contrast-chosen text colours. Every other foreground role is a var() alias of one. */
+/** CSS with its comments removed, so a value written inside a comment is never read. */
+export function stripCssComments(css) {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+/** The first hex value `css` declares for `token`, ignoring comments; the validator and the sync read the same text. */
+export function extractToken(css, token) {
+  return stripCssComments(css).match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1].toLowerCase();
+}
+
 export const TEXT_COLOUR_TOKEN = /^--muxui-semantic-color-[a-z-]+-\d+-fg$/;
 
 /** Harbour's text colour declarations per color scheme: what the sync copies into Default. */
@@ -90,7 +100,7 @@ function declarations(css, errors) {
       cursor = close + 1;
     }
   };
-  walk(css.replace(/\/\*[\s\S]*?\*\//g, ''), '');
+  walk(stripCssComments(css), '');
   return found;
 }
 
