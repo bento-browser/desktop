@@ -218,7 +218,9 @@ and overlay host generation are separate identities. The parent derives routing
 from the actual actor context, never supplied window ids. Navigation and stale
 ACKs cannot submit or reveal replacement documents. Hidden/startup hosts settle
 instantly; their readiness waits for a grant and reveal re-reads the owner before
-unhiding. No hidden host waits for an animation frame.
+unhiding. A register that arrives before the window has a mode (the eager
+overlays, before the shell background owns it) waits for the window's first
+commit and is granted then. No hidden host waits for an animation frame.
 
 A reversal reuses the same old image and opacity effect at its current progress.
 At the old-opaque endpoint the finished reaction pauses synchronously before
@@ -325,6 +327,9 @@ transition, callback capture waits, or per-frame flushes. Do not ACK before know
 nested theme-scope updates or let a late stylesheet continuation rewrite the old
 scheme. Do not remove the opaque hold before a reversal's underlying commit.
 Keep actual-window ownership and current-WindowGlobal checks at every actor await.
+Do not fail a register because the mode owner is not up yet: nothing
+re-registers the document and commits reach only presented documents, so a
+hidden overlay never gets the first grant its readiness waits for.
 
 Keep `bento-add-panel-trailer` out of `modePageFrames()`'s active slots. Its
 `split-view-panel-active` class enables painting, but its saved-panel grid and
