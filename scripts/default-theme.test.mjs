@@ -90,8 +90,8 @@ test('rejects a ladder shade that differs from Harbour or is missing', () => {
 });
 
 test('the sync reads no token value from a comment', () => {
-  const css = "/* Old --brand-60: #ff0000; */\n:root { --brand-60: #025768; --neutral-default-90: #e6e2df; }\n/* --neutral-default-90: #000000; */";
+  const css =
+    '/* Old --brand-60: #ff0000; */\n:root { --brand-60: #025768; --neutral-default-90: #e6e2df; }\n/* --neutral-default-90: #000000; */';
   assert.equal(extractToken(css, '--brand-60'), '#025768');
   assert.equal(extractToken(css, '--neutral-default-90'), '#e6e2df');
 });
-

@@ -18,7 +18,9 @@ export function stripCssComments(css) {
 
 /** The first hex value `css` declares for `token`, ignoring comments; the validator and the sync read the same text. */
 export function extractToken(css, token) {
-  return stripCssComments(css).match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1].toLowerCase();
+  return stripCssComments(css)
+    .match(new RegExp(`${token}\\s*:\\s*(#[0-9a-fA-F]{3,8})`))?.[1]
+    .toLowerCase();
 }
 
 export const TEXT_COLOUR_TOKEN = /^--muxui-semantic-color-[a-z-]+-\d+-fg$/;
