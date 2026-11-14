@@ -21,6 +21,12 @@
 
 import type { Action } from '@shared/protocol';
 import { sendChromeTitle } from './chromeTitle';
+import {
+  isLayerRequestId,
+  layerOpenTitle,
+  newLayerRequestId,
+  type LayerRequestId,
+} from './layerRequest';
 import { isForThisWindow, thisWindowId } from './windowId';
 
 export const CONFIRM_BUS_NAME = 'bento-confirm-bus';
@@ -45,6 +51,8 @@ interface ShowMessage {
   kind: 'show';
   /** The chrome window the request is for (windowId.ts). */
   windowId: number | null;
+  /** Names this request end to end: chrome's open and presentation carry it too. */
+  requestId: LayerRequestId;
   payload: ConfirmPayload;
 }
 
@@ -58,26 +66,39 @@ function bus(): BroadcastChannel | null {
 
 /** Open the confirm layer with the given payload. The layers document is
  * created at window startup, so it listens before a user action can call this. */
-export function requestConfirm(payload: ConfirmPayload): void {
+export function requestConfirm(payload: ConfirmPayload): LayerRequestId | null {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestConfirm: no BroadcastChannel — cannot open');
-    return;
+    return null;
   }
-  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
-  // Timestamp suffix so successive opens always change the title string
-  // (and therefore are picked up by the chrome script's title poll).
-  sendChromeTitle(`${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
+  const requestId = newLayerRequestId();
+  ch.postMessage({
+    kind: 'show',
+    windowId: thisWindowId,
+    requestId,
+    payload,
+  } satisfies ShowMessage);
+  sendChromeTitle(layerOpenTitle(CONFIRM_OPEN_PREFIX, requestId));
+  return requestId;
 }
 
 /** Subscribe to confirm-show payloads. Called by the workspace layers
  * document; returns an unsubscribe. */
-export function subscribeToConfirmRequests(handler: (payload: ConfirmPayload) => void): () => void {
+export function subscribeToConfirmRequests(
+  handler: (payload: ConfirmPayload, requestId: LayerRequestId) => void,
+): () => void {
   const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
+    if (
+      data?.kind === 'show' &&
+      isForThisWindow(data.windowId) &&
+      isLayerRequestId(data.requestId)
+    ) {
+      handler(data.payload, data.requestId);
+    }
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

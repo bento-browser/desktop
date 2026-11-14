@@ -1091,8 +1091,10 @@ document`), then in a built app open the command palette, address bar, a sidebar
   it stays `display: flex` and never resizes (the switcher's `window.screenLeft`
   math), it appears at once (`[data-bento-layer]` has no transition) and fades out
   on the modal role from `bento-shell-mount.css` with a generated twin. The host
-  presentation query carries the shown layer (`layer`, written by
-  `BentoShellBusChild` as `data-bento-host-layer`). Titles from the frame are
+  presentation query carries the shown layer and the request id of its open (`layer`
+  and `requestId`, written by `BentoShellBusChild` as `data-bento-host-layer` and
+  `data-bento-host-request`); the layer open titles carry that id
+  (`<prefix>:<uuid>:<ts>`), and chrome rejects one without a valid id. Titles from the frame are
   `BENTO_LAYER:<layer>:<title>`. The chrome Esc handler now picks the top-most open
   overlay by z-index and document order (`topEscapeOverlay`) for every overlay; it
   uses `Node.compareDocumentPosition` on the hosts, no Firefox-private member.

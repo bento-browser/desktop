@@ -13,6 +13,12 @@
 // ignores other windows': the channel reaches every Bento window's documents.
 
 import { sendChromeTitle } from './chromeTitle';
+import {
+  isLayerRequestId,
+  layerOpenTitle,
+  newLayerRequestId,
+  type LayerRequestId,
+} from './layerRequest';
 import { isForThisWindow, thisWindowId } from './windowId';
 
 export const WORKSPACE_SWITCHER_BUS_NAME = 'bento-workspace-switcher-bus';
@@ -38,6 +44,8 @@ export interface WorkspaceSwitcherOpenPayload {
 interface ShowMessage {
   kind: 'show';
   windowId: number | null;
+  /** Names this request end to end: chrome's open and presentation carry it too. */
+  requestId: LayerRequestId;
   payload: WorkspaceSwitcherOpenPayload;
 }
 
@@ -60,26 +68,41 @@ function bus(): BroadcastChannel | null {
  * Caller passes the trigger's bounding rect in its own window's coords +
  * the sidebar's screen position so the overlay can position the menu
  * exactly next to the trigger as it appears on screen. */
-export function requestWorkspaceSwitcher(payload: WorkspaceSwitcherOpenPayload): void {
+export function requestWorkspaceSwitcher(
+  payload: WorkspaceSwitcherOpenPayload,
+): LayerRequestId | null {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestWorkspaceSwitcher: no BroadcastChannel');
-    return;
+    return null;
   }
-  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
-  sendChromeTitle(`${WORKSPACE_SWITCHER_OPEN_PREFIX}_${Date.now()}`);
+  const requestId = newLayerRequestId();
+  ch.postMessage({
+    kind: 'show',
+    windowId: thisWindowId,
+    requestId,
+    payload,
+  } satisfies ShowMessage);
+  sendChromeTitle(layerOpenTitle(WORKSPACE_SWITCHER_OPEN_PREFIX, requestId));
+  return requestId;
 }
 
 /** Subscribe to workspace-switcher open requests. Called by the workspace
  * layers document; returns an unsubscribe. */
 export function subscribeToWorkspaceSwitcherRequests(
-  handler: (payload: WorkspaceSwitcherOpenPayload) => void,
+  handler: (payload: WorkspaceSwitcherOpenPayload, requestId: LayerRequestId) => void,
 ): () => void {
   const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as BusMessage | undefined;
-    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
+    if (
+      data?.kind === 'show' &&
+      isForThisWindow(data.windowId) &&
+      isLayerRequestId(data.requestId)
+    ) {
+      handler(data.payload, data.requestId);
+    }
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

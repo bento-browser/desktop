@@ -20,6 +20,7 @@ import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../theme/themeScope';
 import { useThemeSheets } from '../theme/themeSheets';
 import { dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
+import { layerOpenTitle, newLayerRequestId, type LayerRequestId } from '../bridge/layerRequest';
 import { CONFIRM_OPEN_PREFIX } from '../bridge/useConfirm';
 import { EDIT_WORKSPACE_OPEN_PREFIX } from '../bridge/useEditWorkspace';
 import { WORKSPACE_PALETTE_OPEN_PREFIX } from '../bridge/useWorkspacePalette';
@@ -74,7 +75,13 @@ function looksLikeEmojiValue(value: string): boolean {
   return /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F]/u.test(value);
 }
 
-export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwitcherOpenPayload }) {
+export function SwitcherLayer({
+  requestId,
+  payload: openPayload,
+}: {
+  requestId: LayerRequestId;
+  payload: WorkspaceSwitcherOpenPayload;
+}) {
   const colorScheme = useResolvedColorScheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   // Each avatar renders in its own workspace's theme scope.
@@ -102,7 +109,7 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
     // independent channels.
     notifyWorkspaceSwitcherClosed();
     // The menu goes at once, as it did in its own document; a layer that replaced it stays.
-    clearWorkspaceLayer('workspace-switcher');
+    clearWorkspaceLayer(requestId);
     if (forwardingRef.current) {
       forwardingRef.current = false;
       return;
@@ -130,8 +137,10 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
   function onRequestEdit() {
     if (!canEdit || !active) return;
     forwardingRef.current = true;
+    const id = newLayerRequestId();
     showWorkspaceLayer({
       layer: 'edit-workspace',
+      id,
       payload: {
         workspaceId: active.id,
         name: active.name,
@@ -139,7 +148,7 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
         icon: active.icon,
       },
     });
-    sendWorkspaceLayerTitle('workspace-switcher', `${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
+    sendWorkspaceLayerTitle('workspace-switcher', layerOpenTitle(EDIT_WORKSPACE_OPEN_PREFIX, id));
   }
   function onRequestEditAll() {
     forwardingRef.current = true;
@@ -152,8 +161,10 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
       return;
     }
     forwardingRef.current = true;
+    const id = newLayerRequestId();
     showWorkspaceLayer({
       layer: 'confirm',
+      id,
       payload: {
         title: `Delete "${active.name}"?`,
         description: `This will close ${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'} in this workspace. This action cannot be undone.`,
@@ -162,7 +173,7 @@ export function SwitcherLayer({ payload: openPayload }: { payload: WorkspaceSwit
         action: { type: 'workspace/delete', id: active.id, closeTabs: true },
       },
     });
-    sendWorkspaceLayerTitle('workspace-switcher', `${CONFIRM_OPEN_PREFIX}_${Date.now()}`);
+    sendWorkspaceLayerTitle('workspace-switcher', layerOpenTitle(CONFIRM_OPEN_PREFIX, id));
   }
 
   // Translate sidebar-frame-local trigger coords into chrome-window coords.

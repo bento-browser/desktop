@@ -213,6 +213,7 @@ const FUNCTIONS = [
   'takeAddrbarOpenRequest',
   'handleAddrbarOpenAnswer',
   'hideAddrbar',
+  'parseLayerOpenTitle',
   'isWorkspaceLayerOpen',
   'isWorkspaceLayerShown',
   'isWorkspaceLayersVisible',
@@ -279,6 +280,7 @@ const CONSTANTS = [
   'OVERLAY_READY_PREFIX',
   'WORKSPACE_LAYER_ATTR',
   'WORKSPACE_LAYER_Z_INDEX',
+  'WORKSPACE_LAYER_REQUEST_ID_PATTERN',
   'WORKSPACE_LAYER_TITLE_PREFIX',
   'WORKSPACE_SWITCHER_CLOSE_PREFIX',
   'EDIT_WORKSPACE_OPEN_PREFIX',
@@ -358,6 +360,7 @@ const EXPORTED = [
   'isWorkspaceLayerOpen',
   'isWorkspaceLayerShown',
   'topEscapeOverlay',
+  'parseLayerOpenTitle',
   'showWelcome',
   'showChromeMenu',
   'hideChromeMenu',
@@ -532,6 +535,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     scrim: new Set(),
     scrimShown: [],
     errors: [],
+    warnings: [],
     presentation: [],
     noted: [],
     focusFallback: 0,
@@ -659,7 +663,7 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     Uint8Array,
     MutationObserver: FakeMutationObserver,
     console: {
-      warn: () => {},
+      warn: (...args) => events.warnings.push(args.map(String).join(' ')),
       error: (...args) => events.errors.push(args.map(String).join(' ')),
     },
     Date,
@@ -682,11 +686,11 @@ function makeWorld({ windowId = 7, fadeMs = 180, privateWindow = false, presenta
     setBentoBookmarksToolbarSrc: navigate('bookmarks-toolbar'),
     setBentoPanelNavigatorTooltipSrc: navigate('panel-navigator-tooltip'),
     replayPanelNavigatorTooltipPayload: () => {},
-    setOverlayPresentation: (frameId, presented, generation, layer) => {
+    setOverlayPresentation: (frameId, presented, generation, target) => {
       events.presentation.push(
-        layer === undefined
-          ? { frameId, presented, generation }
-          : { frameId, presented, generation, layer },
+        target
+          ? { frameId, presented, generation, layer: target.layer, requestId: target.requestId }
+          : { frameId, presented, generation },
       );
       return presentationQuery ? presentationQuery(frameId, presented, generation) : true;
     },
@@ -985,6 +989,12 @@ function warmWorld(options) {
 }
 
 const MENU = { anchor: { left: 5, top: 6, width: 7, height: 8 }, items: [{ id: 'a' }] };
+
+/** Workspace layer request ids, as the shell makes them (bridge/layerRequest.ts). */
+const requestId = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const RID = requestId(1);
+/** A layer open title: `<prefix>:<request id>:<timestamp>`. */
+const openTitle = (prefix, id = RID) => `${prefix}:${id}:1700000000000`;
 const STALL_MS = 5000;
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
@@ -1057,7 +1067,7 @@ test('a cold merge palette open followed by the toggle or Esc never appears', ()
 test('Esc cancels each cold open in turn, top of the stack first', () => {
   const world = makeWorld();
   world.showWorkspacePalette();
-  world.showConfirm();
+  world.showConfirm(RID);
   world.showPalette();
   world.showWelcome();
 
@@ -1083,8 +1093,8 @@ test('Esc cancels each cold open in turn, top of the stack first', () => {
 
 test('the workspace layers share one waiting open: the newest request wins', () => {
   const world = makeWorld();
-  world.showConfirm();
-  world.showEditWorkspace();
+  world.showConfirm(requestId(1));
+  world.showEditWorkspace(requestId(2));
   assert.equal(world.isWorkspaceLayerOpen('confirm'), false, 'replaced');
   assert.equal(world.isWorkspaceLayerOpen('edit-workspace'), true);
 
@@ -1094,13 +1104,101 @@ test('the workspace layers share one waiting open: the newest request wins', () 
   const host = world.host('workspace-layers');
   assert.equal(host.style.zIndex, '99997');
   assert.equal(host.getAttribute('data-bento-layer'), 'edit-workspace');
-  // The presentation names the layer the open is for.
+  // The waiting open kept its request id: the presentation names the layer and the id of the
+  // newest open, and no presentation ever named the replaced one.
   assert.deepEqual(world.events.presentation.at(-1), {
     frameId: 'bento-workspace-layers-frame',
     presented: true,
     generation: world.events.presentation.at(-1).generation,
     layer: 'edit-workspace',
+    requestId: requestId(2),
   });
+  assert.equal(world.events.presentation.some((p) => p.requestId === requestId(1)), false);
+});
+
+test('a cancelled layer open retires its request id: no later presentation names it', async () => {
+  const { world, queries } = slowPresentationWorld();
+  world.showConfirm(requestId(1));
+  assert.equal(world.events.presentation.at(-1).requestId, requestId(1), 'the query went out');
+  world.hideConfirm();
+  queries.shift()(true);
+  await Promise.resolve();
+  world.advance(10_000);
+  // The document reloads; nothing is replayed for the cancelled request.
+  world.ready('workspace-layers');
+  world.showWorkspaceSwitcher(requestId(2));
+  queries.shift()(true);
+  await Promise.resolve();
+  const named = world.events.presentation.filter((p) => p.presented).map((p) => p.requestId);
+  assert.deepEqual(named, [requestId(1), requestId(2)]);
+  assert.equal(world.isWorkspaceLayerOpen('confirm'), false);
+  assert.equal(world.isWorkspaceLayerShown('workspace-switcher'), true);
+});
+
+test('a layer open title opens its layer only with a well-formed request id', () => {
+  const ID = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  const malformed = (prefix) => [
+    `${prefix}_1700000000000`,
+    `${prefix}:1700000000000`,
+    `${prefix}::1700000000000`,
+    `${prefix}:not-an-id:1700000000000`,
+    `${prefix}:${ID.toUpperCase()}:1700000000000`,
+    `${prefix}:${ID}`,
+    `${prefix}:${ID}:`,
+    `${prefix}:${ID}:x`,
+    `${prefix}:${ID}:1:2`,
+    `${prefix}:${ID}x:1`,
+  ];
+  // The sidebar's routes (handleShellFrameTitle) call the same parseLayerOpenTitle; this harness
+  // does not load that handler's other dependencies, so its rules are checked directly below.
+  for (const prefix of ['BENTO_OPEN_CONFIRM', 'BENTO_OPEN_EDIT_WORKSPACE',
+    'BENTO_OPEN_WORKSPACE_SWITCHER']) {
+    const world = makeWorld();
+    for (const title of malformed(prefix)) {
+      assert.equal(world.parseLayerOpenTitle(title, prefix), null, title);
+    }
+    assert.equal(world.parseLayerOpenTitle(openTitle(prefix, ID), prefix), ID);
+  }
+  const routes = [
+    ['bento-workspace-palette-frame', 'BENTO_OPEN_CONFIRM', 'confirm', (t) => t],
+    ['bento-workspace-layers-frame', 'BENTO_OPEN_CONFIRM', 'confirm',
+      (t) => layerTitle('workspace-switcher', t)],
+    ['bento-workspace-layers-frame', 'BENTO_OPEN_EDIT_WORKSPACE', 'edit-workspace',
+      (t) => layerTitle('workspace-switcher', t)],
+  ];
+  for (const [frameId, prefix, layer, wrap] of routes) {
+    const world = warmWorld();
+    world.ready('workspace-palette');
+    if (frameId === 'bento-workspace-palette-frame') world.showWorkspacePalette();
+    if (frameId === 'bento-workspace-layers-frame') world.showWorkspaceSwitcher(requestId(9));
+    const before = world.events.presentation.length;
+    for (const title of malformed(prefix)) {
+      world.titleChanged(frameId, wrap(title));
+      assert.equal(world.isWorkspaceLayerShown(layer) && layer !== 'workspace-switcher', false,
+        `${frameId} ${title}`);
+    }
+    assert.equal(world.events.warnings.length, malformed(prefix).length, `${frameId} ${prefix}`);
+    assert.equal(world.events.presentation.length, before, 'nothing was presented');
+    world.titleChanged(frameId, wrap(openTitle(prefix, ID)));
+    assert.equal(world.isWorkspaceLayerShown(layer), true, `${frameId} ${prefix}`);
+    assert.equal(world.events.presentation.at(-1).requestId, ID);
+    assert.equal(world.events.presentation.at(-1).layer, layer);
+  }
+});
+
+test('the request id pattern is the same in the shell, the mount and the actor', () => {
+  const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  const pattern = (source, name) => {
+    const match = new RegExp(`${name} =\\s*(/[^\\n]*/);`).exec(source);
+    assert.ok(match, name);
+    return match[1];
+  };
+  const shell = pattern(read('extensions/bento-shell/src/bridge/layerRequest.ts'),
+    'LAYER_REQUEST_ID_PATTERN');
+  assert.equal(pattern(MOUNT, 'WORKSPACE_LAYER_REQUEST_ID_PATTERN'), shell);
+  assert.equal(pattern(read('src/browser/actors/BentoShellBusChild.sys.mjs'),
+    'HOST_REQUEST_PATTERN'), shell);
+  assert.ok(new RegExp(shell.slice(1, -1)).test(crypto.randomUUID()), 'a UUID matches');
 });
 
 test('Esc is consumed but does not cancel the mandatory welcome overlay', () => {
@@ -1140,7 +1238,7 @@ test('the welcome is showing only while visible and not fading out, and again af
 
 test('every hide function cancels a cold open', () => {
   const world = makeWorld();
-  world.showConfirm();
+  world.showConfirm(RID);
   world.showMergePalette();
   world.showChromeMenu({ ...MENU });
 
@@ -1166,9 +1264,9 @@ test('no overlay is revealed before its document announces, however long that ta
     palette: (world) => world.showPalette(),
     'workspace-palette': (world) => world.showWorkspacePalette(),
     'merge-palette': (world) => world.showMergePalette(),
-    confirm: (world) => world.showConfirm(),
-    'edit-workspace': (world) => world.showEditWorkspace(),
-    'workspace-switcher': (world) => world.showWorkspaceSwitcher(),
+    confirm: (world) => world.showConfirm(RID),
+    'edit-workspace': (world) => world.showEditWorkspace(RID),
+    'workspace-switcher': (world) => world.showWorkspaceSwitcher(RID),
     welcome: (world) => world.showWelcome(),
     menu: (world) => world.showChromeMenu({ ...MENU }),
   };
@@ -4576,7 +4674,7 @@ test('a never-revealed host commits false immediately when dismissed during its 
 
 test('the workspace switcher keeps layout and blocks input during exit, then commits hidden', () => {
   const world = warmWorld();
-  world.showWorkspaceSwitcher();
+  world.showWorkspaceSwitcher(RID);
   world.hideWorkspaceSwitcher();
   const host = world.host('workspace-layers');
   assert.equal(host.style.pointerEvents, 'none');
@@ -4590,14 +4688,14 @@ test('the workspace switcher keeps layout and blocks input during exit, then com
 
 test('workspace close returns owned focus immediately, ignores outside focus, and cancels old queued focus on reopen', () => {
   const world = warmWorld();
-  world.showWorkspaceSwitcher();
+  world.showWorkspaceSwitcher(RID);
   const frame = world.frame('workspace-layers');
   world.setNativeFocus(frame);
   world.hideWorkspaceSwitcher();
   assert.equal(world.frame('shell').focusCount, 1);
   world.advance(0);
   assert.equal(frame.focusCount, 0, 'the queued focus from the closed open is stale');
-  world.showWorkspaceSwitcher();
+  world.showWorkspaceSwitcher(RID);
   world.advance(0);
   assert.equal(frame.focusCount, 1, 'the new open owns its focus callback');
   world.setNativeFocus({ id: 'outside-click-target' });
@@ -4605,7 +4703,7 @@ test('workspace close returns owned focus immediately, ignores outside focus, an
   assert.equal(world.frame('shell').focusCount, 1, 'an outside click retains its focus');
 
   const hiddenSidebar = warmWorld();
-  hiddenSidebar.showWorkspaceSwitcher();
+  hiddenSidebar.showWorkspaceSwitcher(RID);
   hiddenSidebar.setNativeFocus(hiddenSidebar.frame('workspace-layers'));
   hiddenSidebar.host('shell').classList.contains = (name) => name === 'bento-sidebar-hidden';
   hiddenSidebar.hideWorkspaceSwitcher();
@@ -4675,8 +4773,8 @@ test('with no fade (reduced motion) every hide completes at once', () => {
     ['workspace-palette', () => world.showWorkspacePalette(), () => world.hideWorkspacePalette()],
     ['merge-palette', () => world.showMergePalette(), () => world.hideMergePalette()],
     ['settings-palette', () => world.showSettingsPalette(), () => world.hideSettingsPalette()],
-    ['workspace-layers', () => world.showConfirm(), () => world.hideConfirm()],
-    ['workspace-layers', () => world.showEditWorkspace(), () => world.hideEditWorkspace()],
+    ['workspace-layers', () => world.showConfirm(RID), () => world.hideConfirm()],
+    ['workspace-layers', () => world.showEditWorkspace(RID), () => world.hideEditWorkspace()],
     ['welcome', () => world.showWelcome(), () => world.hideWelcome()],
   ]) {
     world.ready(id);
@@ -4728,7 +4826,7 @@ test('showing again during the fade cancels the pending hide, and the next hide 
 
 test('hiding twice replaces the pending hide instead of stacking waits', () => {
   const world = warmWorld();
-  world.showConfirm();
+  world.showConfirm(RID);
   const host = world.host('workspace-layers');
   world.hideConfirm();
   world.hideConfirm();
@@ -4835,14 +4933,14 @@ test('Esc goes to the top-most shown overlay by stacking, for every overlay', ()
   // A shown menu (100000) above a confirmation: the menu handles its own Esc, and the
   // confirmation under it does not take the key.
   const menuOverConfirm = warmWorld();
-  menuOverConfirm.showConfirm();
+  menuOverConfirm.showConfirm(RID);
   menuOverConfirm.showChromeMenu({ ...MENU });
   assert.equal(menuOverConfirm.pressEscape('bento-menu-frame'), false);
   assert.equal(menuOverConfirm.isWorkspaceLayerShown('confirm'), true);
 
   // The command palette (99999) opened over a confirmation (99998) closes first.
   const paletteOverConfirm = warmWorld();
-  paletteOverConfirm.showConfirm();
+  paletteOverConfirm.showConfirm(RID);
   paletteOverConfirm.showPalette();
   assert.equal(paletteOverConfirm.pressEscape('bento-palette-frame'), true);
   assert.equal(paletteOverConfirm.host('palette').style.opacity, '0');
@@ -4856,7 +4954,7 @@ test('Esc goes to the top-most shown overlay by stacking, for every overlay', ()
   confirmOverWorkspacePalette.showWorkspacePalette();
   confirmOverWorkspacePalette.titleChanged(
     'bento-workspace-palette-frame',
-    'BENTO_OPEN_CONFIRM_1',
+    openTitle('BENTO_OPEN_CONFIRM'),
   );
   assert.equal(confirmOverWorkspacePalette.isWorkspaceLayerShown('confirm'), true);
   assert.equal(confirmOverWorkspacePalette.isShown('workspace-palette'), true, 'the palette stays');
@@ -4876,7 +4974,7 @@ test('Esc goes to the top-most shown overlay by stacking, for every overlay', ()
 
   // At an equal z-index the later host is on top: the import card (99998) above a confirmation.
   const stack = warmWorld();
-  stack.showConfirm();
+  stack.showConfirm(RID);
   stack.host('embedded-import').style.display = 'flex';
   stack.host('embedded-import').style.opacity = '1';
   stack.host('embedded-import').removeAttribute('hidden');
@@ -4885,15 +4983,18 @@ test('Esc goes to the top-most shown overlay by stacking, for every overlay', ()
 
 test('the switcher hands its host to the edit and confirm layers without a fade or focus return', () => {
   for (const [title, layer, z] of [
-    ['BENTO_OPEN_EDIT_WORKSPACE_1', 'edit-workspace', '99997'],
-    ['BENTO_OPEN_CONFIRM_1', 'confirm', '99998'],
+    ['BENTO_OPEN_EDIT_WORKSPACE', 'edit-workspace', '99997'],
+    ['BENTO_OPEN_CONFIRM', 'confirm', '99998'],
   ]) {
     const world = warmWorld();
-    world.showWorkspaceSwitcher();
+    world.showWorkspaceSwitcher(requestId(1));
     const host = world.host('workspace-layers');
     assert.equal(host.style.zIndex, '99995', 'the switcher stacks below the welcome');
     world.setNativeFocus(world.frame('workspace-layers'));
-    world.titleChanged('bento-workspace-layers-frame', layerTitle('workspace-switcher', title));
+    world.titleChanged(
+      'bento-workspace-layers-frame',
+      layerTitle('workspace-switcher', openTitle(title, requestId(2))),
+    );
 
     assert.equal(world.isWorkspaceLayerShown(layer), true, layer);
     assert.equal(world.isWorkspaceLayerOpen('workspace-switcher'), false);
@@ -4905,7 +5006,7 @@ test('the switcher hands its host to the edit and confirm layers without a fade 
 
     world.titleChanged(
       'bento-workspace-layers-frame',
-      layerTitle(layer, title.replace('OPEN', 'CLOSE')),
+      layerTitle(layer, `${title.replace('OPEN', 'CLOSE')}_1`),
     );
     assert.equal(host.style.opacity, '0');
     assert.equal(host.style.pointerEvents, 'none');
@@ -4918,7 +5019,7 @@ test('the switcher hands its host to the edit and confirm layers without a fade 
 
 test('a layer title is acted on only under its own layer', () => {
   const world = warmWorld();
-  world.showConfirm();
+  world.showConfirm(RID);
   // An edit-workspace close does not close the confirmation, and an untagged title does nothing.
   world.titleChanged('bento-workspace-layers-frame', layerTitle('edit-workspace', 'BENTO_CLOSE_CONFIRM_1'));
   world.titleChanged('bento-workspace-layers-frame', 'BENTO_CLOSE_CONFIRM_2');
@@ -4941,7 +5042,7 @@ function slowPresentationWorld() {
 
 test('Esc on a reopen still waiting for its presentation settles the host the closed layer left', async () => {
   const { world, queries } = slowPresentationWorld();
-  world.showConfirm();
+  world.showConfirm(RID);
   queries.shift()(true);
   await Promise.resolve();
   assert.equal(world.isWorkspaceLayerShown('confirm'), true);
@@ -4949,7 +5050,7 @@ test('Esc on a reopen still waiting for its presentation settles the host the cl
   // Close the confirmation; during its fade the sidebar asks for the switcher, and Esc cancels
   // that open before its presentation is acknowledged.
   world.hideConfirm();
-  world.showWorkspaceSwitcher();
+  world.showWorkspaceSwitcher(RID);
   assert.equal(world.pressEscape(), true);
   queries.shift()(true);
   await Promise.resolve();
@@ -4964,7 +5065,7 @@ test('Esc on a reopen still waiting for its presentation settles the host the cl
 
 test('a cancelled first open of a layer tells the document it is not presented', async () => {
   const { world, queries } = slowPresentationWorld();
-  world.showConfirm();
+  world.showConfirm(RID);
   assert.equal(world.events.presentation.at(-1).presented, true, 'the query went out');
   world.hideConfirm();
   queries.shift()(true);

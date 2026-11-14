@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installFakeChromeTitle } from './fakeChromeTitle';
+import { LAYER_REQUEST_ID_PATTERN } from './layerRequest';
 import {
   FakeBroadcastChannel,
   installFakeNetwork,
@@ -69,6 +70,22 @@ describe.each(['confirm', 'edit-workspace', 'workspace-switcher'] satisfies Over
       sender.request('Alpha');
 
       expect(applied).toEqual(['Alpha']);
+    });
+
+    it('carry the request id unchanged, and drop a payload without a valid one', async () => {
+      const sender = await loadDocument(4, kind);
+      const overlay = await loadDocument(4, kind);
+      const applied: string[] = [];
+      overlay.subscribe((_label, requestId) => applied.push(requestId));
+
+      const requestId = sender.request('Alpha');
+      expect(requestId).toMatch(LAYER_REQUEST_ID_PATTERN);
+      expect(applied).toEqual([requestId]);
+
+      for (const bad of [undefined, 'not-an-id', 7]) {
+        postRaw(sender.busName, { kind: 'show', windowId: 4, requestId: bad, payload: {} });
+      }
+      expect(applied).toEqual([requestId]);
     });
 
     it('carry the window id the receiver compares', async () => {

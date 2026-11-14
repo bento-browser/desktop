@@ -1502,14 +1502,14 @@
       navigate,
       handshake,
       onReady,
-      // The workspace layers document hosts three layers: its presentation names the one
-      // chrome shows (the open's layer), so the document renders that layer and no other.
+      // The workspace layers document hosts three layers: its presentation names the layer and
+      // the request id of the newest open, so the document renders that request and no other.
       setPresented: handshake === false ? undefined : (presented, generation) =>
         setOverlayPresentation(
           frameId,
           presented,
           generation,
-          id === 'workspace-layers' && presented ? requestedWorkspaceLayer : undefined,
+          id === 'workspace-layers' && presented ? requestedWorkspaceLayer : null,
         ),
       suspend: () => {
         // Reveal ids and timers belong to the old page; the open callback keeps its payload.
@@ -1611,9 +1611,10 @@
     return 'moz-extension://' + policy.mozExtensionHostname + path;
   }
 
-  // `layer` names the layer of the workspace layers document that a reveal shows (the actor writes
-  // it on the document's root); other documents pass none.
-  async function setOverlayPresentation(frameId, presented, generation, layer) {
+  // `target` ({ layer, requestId }) names the layer and the request of the workspace layers
+  // document that a reveal shows (the actor writes both on the document's root); other documents,
+  // and every hide, pass null.
+  async function setOverlayPresentation(frameId, presented, generation, target) {
     const frame = document.getElementById(frameId);
     const windowGlobal = frame?.browsingContext?.currentWindowGlobal;
     if (!windowGlobal || windowGlobal.documentURI?.scheme !== 'moz-extension') return false;
@@ -1621,7 +1622,9 @@
     if (frame.browsingContext?.currentWindowGlobal !== windowGlobal) return false;
     const reply = await windowGlobal.getActor('BentoShellBus').sendQuery(
       'BentoShellBus:HostPresentation',
-      layer ? { presented, generation, layer } : { presented, generation },
+      target
+        ? { presented, generation, layer: target.layer, requestId: target.requestId }
+        : { presented, generation },
     );
     return frame.browsingContext?.currentWindowGlobal === windowGlobal &&
       reply?.generation === generation && reply.presented === presented;
@@ -3954,8 +3957,14 @@
   //
   // The overlay manager has one record for the document (readiness, the queued open, the
   // presentation generation); this section keeps which layer is shown (activeWorkspaceLayer) and
-  // which one the newest open is for (requestedWorkspaceLayer). A newer open replaces a waiting
-  // one, as for every overlay. The host's z-index follows the shown layer, so each layer stacks
+  // the layer and request id the newest open is for (requestedWorkspaceLayer). A newer open
+  // replaces a waiting one, as for every overlay.
+  //
+  // Every open title carries the request id its opener made (`<OPEN PREFIX>:<uuid>:<ts>`,
+  // shell bridge/layerRequest.ts), the same id the payload carries on the layer's bus. The
+  // presentation names the layer and that id, and the document renders only the payload with
+  // that id; a cancel retires the id here, so no later presentation names it. A title without a
+  // well-formed id opens nothing (parseLayerOpenTitle). The host's z-index follows the shown layer, so each layer stacks
   // where its own host did: the switcher below the welcome and the 99997 palettes, the edit
   // dialog with them, the confirmation above them and below the command palette and the menu.
   //
@@ -3972,13 +3981,33 @@
     confirm: 99998,
   };
   let activeWorkspaceLayer = null;
+  // { layer, requestId } of the newest open, or null once it was hidden or cancelled.
   let requestedWorkspaceLayer = null;
+  // Kept equal to LAYER_REQUEST_ID_PATTERN in the shell's bridge/layerRequest.ts and
+  // HOST_REQUEST_PATTERN in BentoShellBusChild.sys.mjs (scripts/overlay-surfaces.test.mjs).
+  const WORKSPACE_LAYER_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  // The request id of a layer open title `<prefix>:<uuid>:<digits>`, or null (with a warning)
+  // when the id is missing or malformed: chrome never opens a layer it cannot name.
+  function parseLayerOpenTitle(title, prefix) {
+    const parts = title.slice(prefix.length).split(':');
+    if (
+      parts.length === 3 &&
+      parts[0] === '' &&
+      WORKSPACE_LAYER_REQUEST_ID_PATTERN.test(parts[1]) &&
+      /^\d+$/.test(parts[2])
+    ) {
+      return parts[1];
+    }
+    console.warn('[bento-shell-mount] layer open title without a valid request id:', title);
+    return null;
+  }
 
   // Whether `layer` is shown, or its open waits for the document or its presentation.
   function isWorkspaceLayerOpen(layer) {
     return (
       activeWorkspaceLayer === layer ||
-      (requestedWorkspaceLayer === layer && overlays.hasPendingOpen('workspace-layers'))
+      (requestedWorkspaceLayer?.layer === layer && overlays.hasPendingOpen('workspace-layers'))
     );
   }
 
@@ -3994,14 +4023,14 @@
   }
 
   // `reveal` adds what belongs to the layer (the toolbar scrim); the focus goes to the frame.
-  function showWorkspaceLayer(layer, reveal) {
+  function showWorkspaceLayer(layer, requestId, reveal) {
     const host = document.getElementById('bento-workspace-layers-host');
     if (!host) {
       console.warn('[bento-shell-mount] showWorkspaceLayer: bento-workspace-layers-host missing');
       return;
     }
-    // Before the open: a ready document is presented for this layer inside overlays.open.
-    requestedWorkspaceLayer = layer;
+    // Before the open: a ready document is presented for this request inside overlays.open.
+    requestedWorkspaceLayer = { layer, requestId };
     openOverlay('workspace-layers', () => {
       activeWorkspaceLayer = layer;
       reveal?.();
@@ -4019,14 +4048,15 @@
 
   // Hides `layer` if it is shown and cancels its waiting open. The host fades out only when no
   // other layer is shown or waiting: a layer that replaces this one keeps it up. When the newest
-  // open is this layer's, the cancel also ends the generation, so its queued focus goes stale; a
-  // second hide during the fade leaves the generation alone, so the fade still commits.
+  // open is this layer's, the cancel also ends the generation, so its queued focus goes stale, and
+  // retires its request id; a second hide during the fade leaves the generation alone, so the
+  // fade still commits.
   function hideWorkspaceLayer(layer) {
-    if (
-      requestedWorkspaceLayer === layer &&
-      (activeWorkspaceLayer === layer || overlays.hasPendingOpen('workspace-layers'))
-    ) {
-      overlays.cancel('workspace-layers');
+    if (requestedWorkspaceLayer?.layer === layer) {
+      if (activeWorkspaceLayer === layer || overlays.hasPendingOpen('workspace-layers')) {
+        overlays.cancel('workspace-layers');
+      }
+      requestedWorkspaceLayer = null;
     }
     if (activeWorkspaceLayer === layer) activeWorkspaceLayer = null;
     if (activeWorkspaceLayer !== null || overlays.hasPendingOpen('workspace-layers')) return;
@@ -4042,8 +4072,8 @@
     hideOverlayHostAfterFade(host, null, true);
   }
 
-  function showConfirm() {
-    showWorkspaceLayer('confirm', () => showOverlayToolbarScrim('confirm'));
+  function showConfirm(requestId) {
+    showWorkspaceLayer('confirm', requestId, () => showOverlayToolbarScrim('confirm'));
   }
 
   function hideConfirm() {
@@ -4051,8 +4081,8 @@
     hideWorkspaceLayer('confirm');
   }
 
-  function showEditWorkspace() {
-    showWorkspaceLayer('edit-workspace', () => showOverlayToolbarScrim('edit-workspace'));
+  function showEditWorkspace(requestId) {
+    showWorkspaceLayer('edit-workspace', requestId, () => showOverlayToolbarScrim('edit-workspace'));
   }
 
   function hideEditWorkspace() {
@@ -4060,8 +4090,8 @@
     hideWorkspaceLayer('edit-workspace');
   }
 
-  function showWorkspaceSwitcher() {
-    showWorkspaceLayer('workspace-switcher');
+  function showWorkspaceSwitcher(requestId) {
+    showWorkspaceLayer('workspace-switcher', requestId);
   }
 
   // A focused switcher gives the focus back at hide-start: to the sidebar, or to the selected
@@ -18830,10 +18860,17 @@
         handleSidebarAddressCopyTitle(title);
       } else if (title.startsWith(SIDEBAR_ADDRESS_READY_PREFIX)) {
         handleSidebarAddressReadyTitle();
-      } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
-      else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
-      else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
-      else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
+      } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+        if (requestId) showConfirm(requestId);
+      } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, EDIT_WORKSPACE_OPEN_PREFIX);
+        if (requestId) showEditWorkspace(requestId);
+      } else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+      else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, WORKSPACE_SWITCHER_OPEN_PREFIX);
+        if (requestId) showWorkspaceSwitcher(requestId);
+      }
       else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
       else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
       else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
@@ -18853,12 +18890,16 @@
       ['workspace-switcher', (title) => {
         if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) hideWorkspaceSwitcher();
         else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
-          showEditWorkspace();
+          const requestId = parseLayerOpenTitle(title, EDIT_WORKSPACE_OPEN_PREFIX);
+          if (!requestId) return;
+          showEditWorkspace(requestId);
           hideWorkspaceSwitcher();
         } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
           // Delete with tabs: the destructive confirmation replaces the menu. The same title
           // from the workspace palette leaves that palette open (its own frame's handler).
-          showConfirm();
+          const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+          if (!requestId) return;
+          showConfirm(requestId);
           hideWorkspaceSwitcher();
         } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
           hideWorkspaceSwitcher();
@@ -18923,7 +18964,8 @@
           if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
             hideWorkspacePalette();
           } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
-            showConfirm();
+            const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+            if (requestId) showConfirm(requestId);
           }
         },
       ],

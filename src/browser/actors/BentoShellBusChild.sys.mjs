@@ -21,8 +21,12 @@ const SHELL_ADDON_ID = 'bento-shell@bento.app';
 // These are the public opaque surfaces. Menu popup/positioner wrappers and
 // scrims are transparent; only the menu BODY belongs in the old UI mask.
 const MODE_SURFACES = '.muxui-command-palette__popup,.muxui-dialog,.muxui-alert-dialog__popup,.muxui-menu,.muxui-popover,.muxui-tooltip';
-// The layer names of the workspace layers document (see setOverlayPresentation in the mount).
+// The layer names of the workspace layers document and the ids of their requests (see
+// setOverlayPresentation in the mount). HOST_REQUEST_PATTERN is kept equal to
+// WORKSPACE_LAYER_REQUEST_ID_PATTERN in the mount and LAYER_REQUEST_ID_PATTERN in the shell
+// (scripts/overlay-surfaces.test.mjs checks the three).
 const HOST_LAYER_PATTERN = /^[a-z][a-z-]{0,39}$/;
+const HOST_REQUEST_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const GEOMETRY_PROPERTIES = new Set(['opacity', 'transform', 'translate', 'scale', 'rotate', 'filter', 'clipPath', 'width', 'height', 'left', 'top', 'right', 'bottom']);
 
 function ownModeDocument(actor) {
@@ -134,7 +138,9 @@ export class BentoShellBusChild extends JSWindowActorChild {
         const doc = this.document;
         const win = doc?.defaultView;
         const root = doc?.documentElement;
-        const { presented, generation, layer } = message.data ?? {};
+        const { presented, generation, layer, requestId } = message.data ?? {};
+        // A layer and its request id come together or not at all.
+        const target = layer !== undefined || requestId !== undefined;
         if (
           !win ||
           win.document !== doc ||
@@ -142,7 +148,11 @@ export class BentoShellBusChild extends JSWindowActorChild {
           typeof presented !== 'boolean' ||
           !Number.isSafeInteger(generation) ||
           generation < 0 ||
-          (layer !== undefined && (typeof layer !== 'string' || !HOST_LAYER_PATTERN.test(layer)))
+          (target &&
+            (typeof layer !== 'string' ||
+              !HOST_LAYER_PATTERN.test(layer) ||
+              typeof requestId !== 'string' ||
+              !HOST_REQUEST_PATTERN.test(requestId)))
         )
           return null;
         const policy = WebExtensionPolicy.getByID(SHELL_ADDON_ID);
@@ -157,10 +167,16 @@ export class BentoShellBusChild extends JSWindowActorChild {
         if (generation < this.#presentationGeneration) return null;
         this.#presentationGeneration = generation;
         root.setAttribute('data-bento-host-presented', String(presented));
-        // A document that hosts several layers (workspace-layers.html) learns which one chrome
-        // shows; the attribute goes with the hide and for a document without layers.
-        if (presented && layer !== undefined) root.setAttribute('data-bento-host-layer', layer);
-        else root.removeAttribute('data-bento-host-layer');
+        // A document that hosts several layers (workspace-layers.html) learns which layer and
+        // which request chrome shows; the attributes go with the hide and for a document
+        // without layers.
+        if (presented && target) {
+          root.setAttribute('data-bento-host-layer', layer);
+          root.setAttribute('data-bento-host-request', requestId);
+        } else {
+          root.removeAttribute('data-bento-host-layer');
+          root.removeAttribute('data-bento-host-request');
+        }
         doc.dispatchEvent(new win.CustomEvent('bento-host-presentation'));
         return { presented, generation };
       } catch {

@@ -17,6 +17,12 @@
 // reaches the edit-workspace document of every Bento window.
 
 import { sendChromeTitle } from './chromeTitle';
+import {
+  isLayerRequestId,
+  layerOpenTitle,
+  newLayerRequestId,
+  type LayerRequestId,
+} from './layerRequest';
 import { isForThisWindow, thisWindowId } from './windowId';
 
 export const EDIT_WORKSPACE_BUS_NAME = 'bento-edit-workspace-bus';
@@ -39,6 +45,8 @@ export interface EditWorkspacePayload {
 interface ShowMessage {
   kind: 'show';
   windowId: number | null;
+  /** Names this request end to end: chrome's open and presentation carry it too. */
+  requestId: LayerRequestId;
   payload: EditWorkspacePayload;
 }
 
@@ -52,26 +60,39 @@ function bus(): BroadcastChannel | null {
 
 /** Open the edit-workspace layer with a snapshot of the workspace being
  * edited. The layers document is created at window startup. */
-export function requestEditWorkspace(payload: EditWorkspacePayload): void {
+export function requestEditWorkspace(payload: EditWorkspacePayload): LayerRequestId | null {
   const ch = bus();
   if (!ch) {
     console.warn('[bento-shell] requestEditWorkspace: no BroadcastChannel — cannot open');
-    return;
+    return null;
   }
-  ch.postMessage({ kind: 'show', windowId: thisWindowId, payload } satisfies ShowMessage);
-  sendChromeTitle(`${EDIT_WORKSPACE_OPEN_PREFIX}_${Date.now()}`);
+  const requestId = newLayerRequestId();
+  ch.postMessage({
+    kind: 'show',
+    windowId: thisWindowId,
+    requestId,
+    payload,
+  } satisfies ShowMessage);
+  sendChromeTitle(layerOpenTitle(EDIT_WORKSPACE_OPEN_PREFIX, requestId));
+  return requestId;
 }
 
 /** Subscribe to edit-workspace requests. Called by the workspace layers
  * document; returns an unsubscribe. */
 export function subscribeToEditWorkspaceRequests(
-  handler: (payload: EditWorkspacePayload) => void,
+  handler: (payload: EditWorkspacePayload, requestId: LayerRequestId) => void,
 ): () => void {
   const ch = bus();
   if (!ch) return () => {};
   const listener = (e: MessageEvent) => {
     const data = e.data as ShowMessage | undefined;
-    if (data?.kind === 'show' && isForThisWindow(data.windowId)) handler(data.payload);
+    if (
+      data?.kind === 'show' &&
+      isForThisWindow(data.windowId) &&
+      isLayerRequestId(data.requestId)
+    ) {
+      handler(data.payload, data.requestId);
+    }
   };
   ch.addEventListener('message', listener);
   return () => ch.removeEventListener('message', listener);

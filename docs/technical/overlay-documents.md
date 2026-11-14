@@ -184,8 +184,8 @@ once. The workspace layers host keeps `display:flex` for the switcher's coordina
 disables input at hide-start, and commits hidden/false at opacity completion. A
 focused switcher returns focus to the sidebar at hide-start (selected browser if the
 sidebar is unavailable or fully hidden), unless another layer took the frame over;
-outside-click focus is retained. The workspace layers query also names the layer it
-presents (see [Workspace layers document](#workspace-layers-document)). Deferred overlay
+outside-click focus is retained. The workspace layers query also names the layer and the
+request id it presents (see [Workspace layers document](#workspace-layers-document)). Deferred overlay
 focus checks the current generation. Menu hide and a
 null tooltip payload are immediate. Tooltip shows and replays use the same ready
 and presentation gate. An open that reloads is concealed until its replacement
@@ -216,16 +216,25 @@ the menu must stay above the command palette and these layers below it. Source o
 truth: none (the payloads are snapshots; the document mirrors the `tabs`,
 `workspaces`, `settings` and `panels` families). Persistence path: none.
 
-- **One layer at a time.** The document mounts the newest request's layer and
-  unmounts the one it replaces (`layers.ts`, keyed by request, so drafts, focus and the
+- **One layer at a time.** The document mounts the presented request's layer and
+  unmounts the one it replaces (`layers.ts`, keyed by request id, so drafts, focus and the
   Mux entrance start fresh). A dialog that stayed mounted would have React Aria hide and
   trap everything outside it, the other layers included.
-- **Requests.** The sidebar and the workspace palette post on the layer's bus with a
-  title, as before (`requestWorkspaceSwitcher`, `requestEditWorkspace`,
-  `requestConfirm`). The switcher's Edit this workspace and Delete open their layer in
-  the document (`showWorkspaceLayer`) and write the open title: a `BroadcastChannel`
-  never delivers to the object that posted, and each bridge module keeps one channel, so
-  a post from the switcher would not reach its own document's subscription.
+- **Requests carry an id.** Whoever opens a layer makes a request id
+  (`newLayerRequestId`, `bridge/layerRequest.ts`: a lowercase random UUID, typed as the
+  branded `LayerRequestId`) and puts it in both the bus payload and the open title. The
+  sidebar and the workspace palette post
+  `{ kind: 'show', windowId, requestId, payload }` on the layer's bus
+  (`requestWorkspaceSwitcher`, `requestEditWorkspace`, `requestConfirm`) and write
+  `<OPEN PREFIX>:<requestId>:<ts>` (`layerOpenTitle`; `BENTO_OPEN_WORKSPACE_SWITCHER`,
+  `BENTO_OPEN_EDIT_WORKSPACE`, `BENTO_OPEN_CONFIRM`); the subscriptions drop a message
+  without a well-formed id. The switcher's Edit this workspace and Delete open their
+  layer in the document (`showWorkspaceLayer({ layer, id, payload })`) and write the same
+  open title under the switcher's layer tag: a `BroadcastChannel` never delivers to the
+  object that posted, and each bridge module keeps one channel, so a post from the
+  switcher would not reach its own document's subscription. Window scoping leaves the id
+  untouched; the layer buses are document-to-document `BroadcastChannel`s, which work
+  inside the private partition, so the private-window relay never carries them.
 - **Titles name their layer.** Every title of the document is
   `BENTO_LAYER:<layer>:<title>` (`sendWorkspaceLayerTitle`). The frame's handler routes
   by layer the way the other handlers route by frame, so `BENTO_OPEN_CONFIRM` from the
@@ -234,13 +243,17 @@ truth: none (the payloads are snapshots; the document mirrors the `tabs`,
   the document; it is untagged and read before the frame's handler.
 - **Chrome state.** The overlay manager has one record (`workspace-layers`): readiness,
   the one waiting open (a newer request replaces it, as for every overlay), the
-  presentation generation. `showWorkspaceLayer(layer, reveal)` records the newest
-  requested layer and opens the record; the reveal sets `activeWorkspaceLayer`.
-  `isWorkspaceLayerOpen(layer)` is "shown, or the waiting open is for it";
-  `hideWorkspaceLayer(layer)` cancels the record's open and generation only when the
-  newest open is that layer's, and fades the host out only when no layer is shown or
-  waiting, so a layer requested before the switcher is hidden keeps the host and the
-  focus (the title handlers show the new layer first, then hide the switcher).
+  presentation generation. The title handlers parse the open title strictly
+  (`parseLayerOpenTitle`: exactly `<prefix>:<uuid>:<digits>`, with the id matching
+  `WORKSPACE_LAYER_REQUEST_ID_PATTERN`); a missing or malformed id opens nothing and logs a
+  warning. `showWorkspaceLayer(layer, requestId, reveal)` records `{ layer, requestId }` of
+  the newest open (`requestedWorkspaceLayer`) and opens the record; the reveal sets
+  `activeWorkspaceLayer`. `isWorkspaceLayerOpen(layer)` is "shown, or the waiting open is
+  for it"; `hideWorkspaceLayer(layer)` cancels the record's open and generation only when
+  the newest open is that layer's, retires its request id, and fades the host out only
+  when no layer is shown or waiting, so a layer requested before the switcher is hidden
+  keeps the host and the focus (the title handlers show the new layer first, then hide the
+  switcher).
 - **Stacking.** The host's z-index follows the shown layer (`WORKSPACE_LAYER_Z_INDEX`):
   switcher 99995 (below the welcome and the 99997 palettes), edit 99997, confirm 99998
   (above the workspace, Settings and merge palettes, below the command palette 99999
@@ -255,15 +268,21 @@ truth: none (the payloads are snapshots; the document mirrors the `tabs`,
   menu goes at once in its document, as it did in its own host (the menu unmounted on
   its own close, so its host faded out empty), and the incoming dialog plays its
   entrance. Closing keeps the layer mounted until the host's fade-out has finished.
-- **Presentation names the layer.** The reveal's host presentation query carries
-  `layer` (`setOverlayPresentation`); `BentoShellBusChild` writes it as
-  `data-bento-host-layer` next to `data-bento-host-presented` and removes it with the
-  hide. The document renders a request only while chrome presents the host for that
-  layer, so neither order of the bus payload and chrome's reveal shows the wrong layer,
-  and the entrance plays on screen. Each presentation is for one request (the current one
-  of that layer, or the first of that layer to arrive after it); a hide drops only that
-  request (and tells the sidebar trigger that the switcher closed). Any other request that
-  arrived during the fade-out, for this layer or another, waits for its own show.
+- **Presentation names the request.** The reveal's host presentation query carries
+  `{ presented: true, generation, layer, requestId }` (`setOverlayPresentation`, from
+  `requestedWorkspaceLayer`); a hide carries `{ presented: false, generation }`.
+  `BentoShellBusChild` accepts the layer and the id only together (layer: lowercase
+  letters and hyphens, up to 40; id: the same UUID pattern) and writes them as
+  `data-bento-host-layer` and `data-bento-host-request` next to
+  `data-bento-host-presented`, removing both with the hide. The document keeps payloads
+  by request id and renders only the one whose id (and layer) chrome presents, so the
+  order of the bus payload and chrome's reveal never matters and the entrance plays on
+  screen. A payload no presentation names yet is kept until its presentation arrives or
+  chrome presents a newer request of its layer (chrome presents only its newest open, so
+  that older one never shows), capped at eight kept payloads; a presentation whose payload
+  has not arrived shows nothing until that id's payload lands. A hide retires exactly the
+  presented id (and tells the sidebar trigger when that was the switcher); every other kept
+  payload waits for its own presentation.
 - **Layout.** The host is `display: flex` from startup and never resizes; while no
   layer is shown it is `opacity: 0` and `pointer-events: none`. The switcher layer
   translates the sidebar trigger's rect with `window.screenLeft`, which reads zeros in
@@ -305,10 +324,15 @@ Pitfalls:
   presentation was acknowledged ends the fade's generation, so the fade's own commit is
   dropped; a cancelled first open was presented in the document without showing. An early
   return at opacity 0 left both without `hidden` and without presentation false.
-- A hide retires the request its presentation was for, by id, never every request of that
-  layer: a reopen near the end of the fade whose payload beats the old hide is a newer
-  request for the same layer, and dropping it left chrome revealing an empty document that
-  took the pointer.
+- Correlate a presentation with its payload only by the request id chrome names, never by
+  layer or by arrival order. Binding a presentation to "the current request of that layer,
+  or the first of that layer to arrive after it" bound it to a stale payload in two orders:
+  a confirmation B presented while A was still fading, before B's payload arrived (bound to
+  the retained A), and a cancelled A whose payload arrived after B's presentation (bound to
+  A). Both left B requested while the document rendered nothing, so chrome revealed an
+  empty host that took the pointer. The same applies to the hide: it retires the presented
+  id, never every request of that layer, or a reopen whose payload beats the old hide is
+  dropped. `src/workspace-layers/layers.test.ts` covers these orders.
 
 ## Bookmarks view
 
@@ -798,7 +822,7 @@ failed chrome-side lookup) accepts the message, as an unscoped bus always did.
 
 | Bus                                             | Sender                                                                 | Window id carried as                                  | Receiver filter                                    |
 | ----------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| `bento-confirm-bus` `show`                      | `requestConfirm` in a shell document                                   | `windowId` (sender's hash)                            | `subscribeToConfirmRequests`                       |
+| `bento-confirm-bus` `show` (with `requestId`)   | `requestConfirm` in a shell document                                   | `windowId` (sender's hash)                            | `subscribeToConfirmRequests`                       |
 | `bento-edit-workspace-bus` `show`               | `requestEditWorkspace` in a shell document                             | `windowId`                                            | `subscribeToEditWorkspaceRequests`                 |
 | `bento-workspace-switcher-bus` `show`, `closed` | `requestWorkspaceSwitcher`, `notifyWorkspaceSwitcherClosed`            | `windowId`                                            | `subscribeToWorkspaceSwitcherRequests`, `...Close` |
 | `bento-addrbar-bus` `open`                      | chrome, `BentoAddrbarOpen` frame script (`dispatchAddrbarOpen`)        | `windowId` from `getChromeWindowId()`                 | `subscribeToAddrbarOpenRequests`                   |

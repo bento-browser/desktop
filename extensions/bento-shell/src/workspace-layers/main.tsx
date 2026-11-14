@@ -52,13 +52,15 @@ function WorkspaceLayersApp() {
 
   useEffect(() => {
     const unsubscribers = [
-      subscribeToWorkspaceSwitcherRequests((payload) =>
-        showWorkspaceLayer({ layer: 'workspace-switcher', payload }),
+      subscribeToWorkspaceSwitcherRequests((payload, id) =>
+        showWorkspaceLayer({ layer: 'workspace-switcher', id, payload }),
       ),
-      subscribeToEditWorkspaceRequests((payload) =>
-        showWorkspaceLayer({ layer: 'edit-workspace', payload }),
+      subscribeToEditWorkspaceRequests((payload, id) =>
+        showWorkspaceLayer({ layer: 'edit-workspace', id, payload }),
       ),
-      subscribeToConfirmRequests((payload) => showWorkspaceLayer({ layer: 'confirm', payload })),
+      subscribeToConfirmRequests((payload, id) =>
+        showWorkspaceLayer({ layer: 'confirm', id, payload }),
+      ),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, []);
@@ -69,7 +71,7 @@ function WorkspaceLayersApp() {
   // Keyed by request, so every open mounts its layer afresh (drafts, focus, Mux entrance).
   switch (request.layer) {
     case 'workspace-switcher':
-      return <SwitcherLayer key={request.id} payload={request.payload} />;
+      return <SwitcherLayer key={request.id} requestId={request.id} payload={request.payload} />;
     case 'edit-workspace':
       return <EditWorkspaceLayer key={request.id} payload={request.payload} />;
     case 'confirm':

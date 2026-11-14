@@ -2,27 +2,27 @@
 // dialog and the confirmation dialog share one chrome host and one document
 // (docs/technical/overlay-documents.md, "Workspace layers document").
 //
-// One layer is mounted at a time: the newest request replaces the current one. A request comes
-// from another document over that layer's bus (the sidebar, the workspace palette) or from the
-// switcher in this document through showWorkspaceLayer: a BroadcastChannel does not deliver a
-// message to the object that posted it, and each bridge module keeps one channel, so a request
-// from inside this document never reaches its own subscription.
+// One layer is mounted at a time: the one chrome presents. Each request carries an id
+// (bridge/layerRequest.ts) made by whoever opens the layer: the sidebar and the workspace palette
+// post it with the payload on the layer's bus and in the open title; the switcher in this
+// document opens edit and confirm through showWorkspaceLayer, because a BroadcastChannel does not
+// deliver a message to the object that posted it and each bridge module keeps one channel.
 //
-// A layer renders only while chrome presents the host for that layer: the BentoShellBus actor
-// writes `data-bento-host-presented` and `data-bento-host-layer` on the root (the host
-// presentation query names the layer). Chrome shows the host at once, so the layer's Mux
-// component plays its own entrance on screen. Closing keeps the layer mounted while chrome fades
-// the host out; the hide (presented false) then drops it. A request whose layer chrome has not
-// presented (yet) waits, so neither order of payload and reveal shows the wrong layer.
+// Chrome keeps the id with its open and names the layer and the id in the host presentation: the
+// BentoShellBus actor writes `data-bento-host-presented`, `data-bento-host-layer` and
+// `data-bento-host-request` on the root. The document renders the payload whose id is presented
+// and nothing else. A payload no presentation names yet is kept by id until its presentation
+// arrives, or until chrome presents a newer request for its layer (chrome presents only its
+// newest open, so an older one of that layer never shows); a presentation whose payload has not
+// arrived shows nothing until that payload lands; a hide retires exactly the presented id.
+// Nothing is matched by layer alone or by arrival order.
 //
-// Each presentation is for one request: the current one if its layer matches, or else the first
-// request for that layer that arrives after it (a payload slower than chrome's reveal). A hide
-// retires only that request, by id. A newer request for the same layer, such as a reopen near
-// the end of the fade whose payload beats the old hide, is no request of the old presentation:
-// it waits for its own and survives the old hide.
+// Chrome shows the host at once, so the layer's Mux component plays its own entrance on screen.
+// Closing keeps the layer mounted while chrome fades the host out; the hide then drops it.
 
 import { create } from 'zustand';
 import { sendChromeTitle } from '../bridge/chromeTitle';
+import { isLayerRequestId, type LayerRequestId } from '../bridge/layerRequest';
 import type { ConfirmPayload } from '../bridge/useConfirm';
 import type { EditWorkspacePayload } from '../bridge/useEditWorkspace';
 import type { WorkspaceSwitcherOpenPayload } from '../bridge/useWorkspaceSwitcher';
@@ -47,97 +47,115 @@ export function sendWorkspaceLayerTitle(layer: WorkspaceLayer, title: string): v
   sendChromeTitle(`${WORKSPACE_LAYER_TITLE_PREFIX}${layer}:${title}`);
 }
 
-type CurrentRequest = WorkspaceLayerRequest & {
-  /** Increases with every request, so a repeated open remounts its layer. */
-  id: number;
-};
+export type LayerRequest = WorkspaceLayerRequest & { id: LayerRequestId };
+
+/** A presentation of the host: the layer and the request chrome shows. */
+type Target = { layer: WorkspaceLayer; id: LayerRequestId };
 
 interface WorkspaceLayersState {
-  request: CurrentRequest | null;
-  /** The layer chrome presents the host for, or null while the host is hidden. Outside a hosted
-   * overlay (Ladle, the standalone preview) every layer counts as presented. */
-  presented: WorkspaceLayer | 'any' | null;
-  /** The id of the request the current presentation is for, or null while it has none. */
-  presentedId: number | null;
+  /** Payloads by request id, in arrival order. */
+  requests: ReadonlyMap<LayerRequestId, LayerRequest>;
+  /** The layer and request chrome presents the host for, or null while the host is hidden.
+   * Outside a hosted overlay (Ladle, the standalone preview) the newest request shows. */
+  presented: Target | 'any' | null;
 }
 
 const HOST_PRESENTED_ATTRIBUTE = 'data-bento-host-presented';
 const HOST_LAYER_ATTRIBUTE = 'data-bento-host-layer';
+const HOST_REQUEST_ATTRIBUTE = 'data-bento-host-request';
+// A payload whose open chrome cancelled, or that arrived after chrome presented a newer request
+// for its layer, is never presented or superseded; the oldest goes once this many are kept, so
+// the map stays small.
+const KEPT_REQUESTS = 8;
 const hosted =
   new URLSearchParams(globalThis.location?.hash.slice(1) ?? '').get('bentoHostedOverlay') === '1';
 
 export const useWorkspaceLayers = create<WorkspaceLayersState>(() => ({
-  request: null,
+  requests: new Map(),
   presented: hosted ? null : 'any',
-  presentedId: null,
 }));
 
-let nextRequestId = 0;
-
-/** Mounts `request`'s layer in place of the current one once chrome presents it. */
-export function showWorkspaceLayer(request: WorkspaceLayerRequest): void {
-  const id = ++nextRequestId;
-  useWorkspaceLayers.setState((state) => ({
-    request: { ...request, id },
-    // A payload that arrives after chrome presented its layer belongs to that presentation.
-    presentedId:
-      state.presentedId === null && state.presented === request.layer ? id : state.presentedId,
-  }));
+/** Keeps `request`'s payload until chrome presents its id (or shows it at once outside chrome). */
+export function showWorkspaceLayer(request: LayerRequest): void {
+  useWorkspaceLayers.setState(({ requests, presented }) => {
+    const next = new Map(requests);
+    next.delete(request.id);
+    next.set(request.id, request);
+    for (const id of next.keys()) {
+      if (next.size <= KEPT_REQUESTS) break;
+      if (presented === 'any' || presented?.id !== id) next.delete(id);
+    }
+    return { requests: next };
+  });
 }
 
-/** Unmounts `layer` if it is the current one; a newer layer that replaced it stays. */
-export function clearWorkspaceLayer(layer: WorkspaceLayer): void {
-  useWorkspaceLayers.setState((state) =>
-    state.request?.layer === layer ? { request: null } : state,
-  );
+/** Unmounts the request `id` (the switcher closing itself); any other request stays. */
+export function clearWorkspaceLayer(id: LayerRequestId): void {
+  useWorkspaceLayers.setState(({ requests }) => {
+    if (!requests.has(id)) return {};
+    const next = new Map(requests);
+    next.delete(id);
+    return { requests: next };
+  });
 }
 
-/** The request to render: the current one, while chrome presents the host for it. */
+/** The request to render: the one whose id chrome presents, once its payload is here. */
 export function visibleWorkspaceLayer({
-  request,
+  requests,
   presented,
-  presentedId,
-}: WorkspaceLayersState): CurrentRequest | null {
-  return request && (presented === 'any' || request.id === presentedId) ? request : null;
+}: WorkspaceLayersState): LayerRequest | null {
+  if (presented === null) return null;
+  if (presented === 'any') return [...requests.values()].at(-1) ?? null;
+  const request = requests.get(presented.id);
+  return request?.layer === presented.layer ? request : null;
 }
 
-export function useVisibleWorkspaceLayer(): CurrentRequest | null {
+export function useVisibleWorkspaceLayer(): LayerRequest | null {
   return useWorkspaceLayers(visibleWorkspaceLayer);
 }
 
-function readPresentedLayer(): WorkspaceLayer | null | undefined {
+// undefined: no presentation yet. A shown host whose presentation names no valid layer and id
+// shows nothing (`target` null) rather than guessing.
+function readPresentation(): { shown: true; target: Target | null } | { shown: false } | undefined {
   const root = document.documentElement;
   const presented = root.getAttribute(HOST_PRESENTED_ATTRIBUTE);
-  if (presented === 'false') return null;
+  if (presented === 'false') return { shown: false };
   if (presented !== 'true') return undefined;
   const layer = root.getAttribute(HOST_LAYER_ATTRIBUTE);
-  return layer !== null && isWorkspaceLayer(layer) ? layer : null;
+  const id = root.getAttribute(HOST_REQUEST_ATTRIBUTE);
+  const valid = layer !== null && isWorkspaceLayer(layer) && isLayerRequestId(id);
+  return { shown: true, target: valid ? { layer, id } : null };
 }
 
-/** Follows chrome's presentation of the host for the life of the document. A hide drops the
- * request the presentation was for and reports it to `onDropped`; any other request (a sidebar
- * click during the fade-out, for this layer or another) waits for its own show. */
+/** Follows chrome's presentation of the host for the life of the document. A hide retires the
+ * presented request and reports its layer to `onDropped` (the sidebar trigger then drops its open
+ * state for a switcher chrome hid); every other kept payload waits for its own presentation. */
 export function observeWorkspaceLayersPresentation(
   onDropped: (layer: WorkspaceLayer) => void,
 ): () => void {
   const apply = () => {
-    const next = readPresentedLayer();
+    const next = readPresentation();
     if (next === undefined) return;
-    const { request, presentedId } = useWorkspaceLayers.getState();
-    if (next !== null) {
-      useWorkspaceLayers.setState({
-        presented: next,
-        presentedId: request?.layer === next ? request.id : null,
+    if (next.shown) {
+      const { target } = next;
+      useWorkspaceLayers.setState(({ requests }) => {
+        if (!target) return { presented: null };
+        // The presented request supersedes every other kept one for its layer.
+        const kept = new Map(requests);
+        for (const [id, request] of requests) {
+          if (request.layer === target.layer && id !== target.id) kept.delete(id);
+        }
+        return { presented: target, requests: kept };
       });
       return;
     }
-    const dropped = request !== null && request.id === presentedId ? request : null;
-    useWorkspaceLayers.setState({
-      presented: null,
-      presentedId: null,
-      request: dropped ? null : request,
-    });
-    if (dropped) onDropped(dropped.layer);
+    const { requests, presented } = useWorkspaceLayers.getState();
+    const retired =
+      presented !== null && presented !== 'any' ? requests.get(presented.id) : undefined;
+    const kept = new Map(requests);
+    if (retired) kept.delete(retired.id);
+    useWorkspaceLayers.setState({ presented: null, requests: kept });
+    if (retired) onDropped(retired.layer);
   };
   document.addEventListener('bento-host-presentation', apply);
   return () => document.removeEventListener('bento-host-presentation', apply);

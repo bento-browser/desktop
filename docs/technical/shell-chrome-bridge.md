@@ -802,11 +802,17 @@ Verify (built app, tools background console or the sidebar): see the checks in
   as `BENTO_LAYER:<layer>:<title>` (`sendWorkspaceLayerTitle`), and chrome routes it by
   layer as it routes other documents by frame: the handlers that branch on the sender
   (a confirmation from the switcher replaces it, the same one from the workspace
-  palette does not) read the layer. Its readiness title stays untagged. The host
-  presentation query (`BentoShellBus:HostPresentation`) carries the presented layer
-  for that document, which `BentoShellBusChild` writes as `data-bento-host-layer`
-  (lowercase letters and hyphens only, up to 40; anything else is rejected) and
-  removes on the hide or for a query without one. See
+  palette does not) read the layer. Its readiness title stays untagged. The layer open
+  titles (`BENTO_OPEN_WORKSPACE_SWITCHER`, `BENTO_OPEN_EDIT_WORKSPACE`,
+  `BENTO_OPEN_CONFIRM`) are `<prefix>:<requestId>:<ts>`, where the request id is the
+  lowercase UUID the opener also put in its bus payload
+  (`{ kind: 'show', windowId, requestId, payload }`); chrome rejects such a title whose
+  id is missing or malformed. The host presentation query
+  (`BentoShellBus:HostPresentation`) for that document carries the presented `layer` and
+  `requestId` together, which `BentoShellBusChild` writes as `data-bento-host-layer`
+  (lowercase letters and hyphens only, up to 40) and `data-bento-host-request` (the UUID
+  pattern); a query with only one of them, or either malformed, is rejected, and both are
+  removed on the hide or for a query without them. See
   [overlay-documents.md](overlay-documents.md#workspace-layers-document).
 - Title writes coalesce: a title replaced before the content process reports it
   never produces a `pagetitlechanged` in chrome. This is not limited to one
