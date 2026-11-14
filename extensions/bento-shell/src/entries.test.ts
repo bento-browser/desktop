@@ -1,7 +1,7 @@
 // Invariants every shell document entry has to keep. They are source checks
 // because each entry is a side-effecting module that mounts into a real document.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -57,8 +57,14 @@ const STORE_FAMILY = new Map<string, ToolsFamily>(
  * in-memory modules in front of the disk. */
 type ReadSource = (path: string) => string | null;
 
-const readDisk: ReadSource = (path) =>
-  existsSync(path) && statSync(path).isFile() ? readFileSync(path, 'utf8') : null;
+const readDisk: ReadSource = (path) => {
+  // Read directly instead of checking first: a missing file or a directory throws.
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+};
 
 function read(path: string): string {
   return readFileSync(path, 'utf8');
