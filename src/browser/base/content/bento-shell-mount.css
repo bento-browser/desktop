@@ -596,14 +596,23 @@
   50% { opacity: 1; }
 }
 /* Fade of the overlay hosts declared in browser-box.inc.xhtml (palette, merge
-   palette, confirm). The hosts the mount script creates carry the same
-   transition inline, except the Bookmarks view host (below). The show and hide
-   functions read the computed value to time their display:none cleanup, so no
-   duration is repeated in script. */
+   palette). The hosts the mount script creates carry the same transition
+   inline, except the Bookmarks view and workspace layers hosts (below). The show
+   and hide functions read the computed value to time their display:none
+   cleanup, so no duration is repeated in script. */
 #bento-palette-host,
-#bento-merge-palette-host,
-#bento-confirm-host {
+#bento-merge-palette-host {
   transition: opacity var(--muxui-semantic-motion-modal-transition);
+}
+/* The workspace layers host (switcher, edit workspace, confirm) fades out on the modal role and
+   appears at once: each layer's Mux component plays its own entrance in the document. The
+   transition is taken from the style a change arrives at, so the attribute (set with the opacity
+   that shows the host, removed with the one that hides it, in one style flush) picks it. */
+#bento-workspace-layers-host {
+  transition: opacity var(--muxui-semantic-motion-modal-transition);
+}
+#bento-workspace-layers-host[data-bento-layer] {
+  transition: none;
 }
 /* The Bookmarks view host fades in on the modal role and out on modal-dismiss. A transition is
    taken from the style a change arrives at, so the root attribute (set with the opacity that

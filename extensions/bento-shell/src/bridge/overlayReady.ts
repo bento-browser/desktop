@@ -22,10 +22,8 @@ export type OverlayName =
   | 'bookmarks'
   | 'bookmarks-popup'
   | 'addrbar'
-  | 'confirm'
-  | 'edit-workspace'
+  | 'workspace-layers'
   | 'welcome'
-  | 'workspace-switcher'
   | 'menu'
   | 'panel-navigator-tooltip';
 

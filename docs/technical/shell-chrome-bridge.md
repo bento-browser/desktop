@@ -12,8 +12,8 @@ the parent and dispatches a chrome-only, bubbling `pagetitlechanged` event on
 the embedding `<browser>` element. `attachPaletteCloseListener()` in
 `bento-shell-mount.js` installs one capture-phase `window` listener that looks
 up `event.target.id` in a frame-id to handler table (shell, palette, merge
-palette, workspace palette, address bar, confirm, edit-workspace, welcome,
-embedded import, menu, workspace switcher, and panel trailer frames), checks
+palette, workspace palette, address bar, workspace layers, welcome,
+embedded import, menu, and panel trailer frames), checks
 that the frame is showing its expected Bento document (a `moz-extension://` URL
 whose host is the bento-shell add-on's `mozExtensionHostname`, or the
 `chrome://browser/content/bento-migration-host.html` URL for the non-remote
@@ -192,10 +192,10 @@ are separate: waiting for the policy does not consume window id retries.
 
 ## Shell bus bootstrap
 
-All shell documents in all windows (the 12 entries that call `initToolsPort`:
-sidebar, address bar, panel trailer, workspace switcher, edit workspace,
-confirm, welcome, menu, workspace palette, merge palette, palette, panel
-navigator tooltip) in regular windows share one
+All shell documents in all windows (the entries that call `initToolsPort`:
+sidebar, address bar, panel trailer, workspace layers, welcome, menu, workspace
+palette, merge palette, Settings palette, palette, panel navigator tooltip and the
+Bookmarks documents) in regular windows share one
 `BroadcastChannel('bento-shell-bus')`. `bento-shell/src/background.ts` owns the
 only port to `bento-tools` and relays events and actions both ways. Documents in
 private windows cannot use that channel; see
@@ -284,11 +284,11 @@ tab count (about 30 KB per open tab per document, measured 2026-11-13).
 | address-bar                                                              | tabs, workspaces, settings, panels, savedPanels, searchEngines, addrbar                            |
 | bookmarks                                                                | tabs, workspaces, settings, panels, bookmarks                                                      |
 | bookmarks-popup, bookmarks-toolbar                                       | workspaces, settings, bookmarks                                                                    |
-| palette, workspace-palette, workspace-switcher                           | tabs, workspaces, settings, panels                                                                 |
+| palette, workspace-palette, workspace-layers                             | tabs, workspaces, settings, panels                                                                 |
 | panel-trailer                                                            | workspaces, settings, savedPanels                                                                  |
 | merge-palette                                                            | workspaces, settings, externalMerge                                                                |
 | welcome                                                                  | workspaces, settings, privacy                                                                      |
-| confirm, edit-workspace, menu, panel-navigator-tooltip, settings-palette | workspaces, settings                                                                               |
+| menu, panel-navigator-tooltip, settings-palette                          | workspaces, settings                                                                               |
 
 `workspaces` and `settings` are in every list because `useWorkspaceTheme` and
 `useFirefoxTheme` read them. `src/entries.test.ts` parses each module with the
@@ -308,8 +308,9 @@ only the families an overlay asks for") and the single-call contract ("keeps the
 families of the first initToolsPort call").
 
 Manual verification (built app): in `about:memory`, measure explicit memory of
-the confirm, edit-workspace and menu documents with 1 open tab and with 30; it
-should not grow with the tab count. Then open each overlay and check that it
+the menu document with 1 open tab and with 30; it should not grow with the tab
+count (the workspace layers document mirrors `tabs` for the switcher, so it
+grows by about 0.9 MB at 30 tabs). Then open each overlay and check that it
 shows its data (theme and colour mode in every one; tabs in the palette,
 workspace palette and switcher; saved panels in the trailer; merge sources in
 the merge palette; privacy levels in Welcome).
@@ -321,8 +322,7 @@ tooltip joined: 66 and 396, and before the guard 396 requests and 3036
 deliveries, because every replayed `tools/booted` made every document request
 all six snapshots again. With all 12 documents listening when tools boots: 0
 requests. These counts assume every document mirrors every family, as the test
-documents do; real entries request fewer (two for confirm, edit workspace,
-menu and the tooltip). Documents that chrome creates lazily (next section) join
+documents do; real entries request fewer (two for the menu and the tooltip). Documents that chrome creates lazily (next section) join
 late, so each one costs its snapshot burst when it is created instead of at
 window startup.
 
@@ -798,6 +798,26 @@ Verify (built app, tools background console or the sidebar): see the checks in
 
 ## Title IPC pitfalls
 
+- A document that hosts several overlays (`workspace-layers.html`) writes every title
+  as `BENTO_LAYER:<layer>:<title>` (`sendWorkspaceLayerTitle`), and chrome routes it by
+  layer as it routes other documents by frame: the handlers that branch on the sender
+  (a confirmation from the switcher replaces it, the same one from the workspace
+  palette does not) read the layer. Its readiness title stays untagged. The layer open
+  titles (`BENTO_OPEN_WORKSPACE_SWITCHER`, `BENTO_OPEN_EDIT_WORKSPACE`,
+  `BENTO_OPEN_CONFIRM`) are `<prefix>:<requestId>:<ts>`, where the request id is the
+  lowercase UUID the opener also put in its bus payload
+  (`{ kind: 'show', windowId, requestId, payload }`); chrome rejects such a title whose
+  id is missing or malformed. The host presentation query
+  (`BentoShellBus:HostPresentation`) for that document carries the presented `layer` and
+  `requestId` together, which `BentoShellBusChild` writes as `data-bento-host-layer`
+  (lowercase letters and hyphens only, up to 40) and `data-bento-host-request` (the UUID
+  pattern), with the query's generation as `data-bento-host-generation`; a query with only
+  one of them, or either malformed, is rejected, and all three are removed on the hide or
+  for a query without them. Once the document has rendered the presented request it writes
+  `BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<requestId>:<generation>`; chrome rejects a
+  malformed one, ignores one for another layer, id or generation, and gives the host
+  pointer input only for a match (the render gate). See
+  [overlay-documents.md](overlay-documents.md#workspace-layers-document).
 - Title writes coalesce: a title replaced before the content process reports it
   never produces a `pagetitlechanged` in chrome. This is not limited to one
   synchronous block. Reload of a profile with `welcomeSeen` false lost

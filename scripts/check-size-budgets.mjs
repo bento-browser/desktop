@@ -35,13 +35,8 @@ const jsEntryBudgets = [
     limit: '200 KB',
   },
   {
-    name: 'bento-shell · confirm cold-start JS (gz)',
-    entry: 'extensions/bento-shell/dist/assets/confirm.js',
-    limit: '200 KB',
-  },
-  {
-    name: 'bento-shell · edit-workspace cold-start JS (gz)',
-    entry: 'extensions/bento-shell/dist/assets/edit-workspace.js',
+    name: 'bento-shell · workspace-layers cold-start JS (gz)',
+    entry: 'extensions/bento-shell/dist/assets/workspace-layers.js',
     limit: '200 KB',
   },
   {
@@ -70,7 +65,6 @@ const jsEntryBudgets = [
     limit: '200 KB',
   },
   ...[
-    'workspace-switcher',
     'panel-trailer',
     'panel-navigator-tooltip',
     'bookmarks',

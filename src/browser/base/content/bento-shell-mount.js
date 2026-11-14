@@ -1091,9 +1091,9 @@
   //
   // Strategies (entry.eager / entry.prewarm in the table):
   //   eager   created by startEager() at window startup, as before documents were
-  //           lazy: the overlays a user action can request at once (confirm,
-  //           edit workspace, workspace switcher), whose payloads travel
-  //           between documents that cannot wait.
+  //           lazy: the workspace layers document (workspace switcher, edit
+  //           workspace, confirm), whose payloads travel between documents that
+  //           cannot wait.
   //   idle    created one at a time at idle after the launch veil lifts, so the
   //           first open does not show a load (address bar, palette, menu).
   //   demand  created by the first open (everything else).
@@ -1461,6 +1461,9 @@
   // is bridge/overlayReady.ts). Handled for every overlay frame before its own
   // title handler.
   const OVERLAY_READY_PREFIX = 'BENTO_OVERLAY_READY';
+  // On the workspace layers host while it shows a layer, naming it. bento-shell-mount.css gives
+  // the host no transition under it, so the host appears at once and fades out without it.
+  const WORKSPACE_LAYER_ATTR = 'data-bento-layer';
 
   // Set on the chrome root while the Bookmarks view is shown. bento-shell-mount.css hides the Bento
   // chrome under it (see showBookmarksView).
@@ -1499,13 +1502,25 @@
       navigate,
       handshake,
       onReady,
+      // The workspace layers document hosts three layers: its presentation names the layer and
+      // the request id of the newest open, so the document renders that request and no other.
       setPresented: handshake === false ? undefined : (presented, generation) =>
-        setOverlayPresentation(frameId, presented, generation),
+        setOverlayPresentation(
+          frameId,
+          presented,
+          generation,
+          id === 'workspace-layers' && presented ? requestedWorkspaceLayer : null,
+        ),
       suspend: () => {
         // Reveal ids and timers belong to the old page; the open callback keeps its payload.
         if (id === 'addrbar') clearPendingAddrbarReveal();
         // The chrome comes back while the document reloads; the replayed open hides it again.
         if (id === 'bookmarks') document.documentElement.removeAttribute(BOOKMARKS_VIEW_ATTR);
+        // The replayed open shows its layer again (its run keeps the layer).
+        if (id === 'workspace-layers') {
+          activeWorkspaceLayer = null;
+          document.getElementById('bento-workspace-layers-host')?.removeAttribute(WORKSPACE_LAYER_ATTR);
+        }
         const host = document.getElementById('bento-' + id + '-host');
         if (host) {
           host.style.opacity = '0';
@@ -1531,18 +1546,12 @@
         canCreate: isBentoBookmarksActive,
         navigate: setBentoBookmarksPopupSrc,
       }),
-      overlayEntry({ id: 'confirm', eager: true, navigate: setBentoConfirmSrc }),
+      // The workspace switcher, edit workspace and confirm layers (showWorkspaceLayer).
       overlayEntry({
-        id: 'edit-workspace',
+        id: 'workspace-layers',
         eager: true,
         created: true,
-        navigate: setBentoEditWorkspaceSrc,
-      }),
-      overlayEntry({
-        id: 'workspace-switcher',
-        eager: true,
-        created: true,
-        navigate: setBentoWorkspaceSwitcherSrc,
+        navigate: setBentoWorkspaceLayersSrc,
       }),
       overlayEntry({
         id: 'workspace-palette',
@@ -1602,14 +1611,20 @@
     return 'moz-extension://' + policy.mozExtensionHostname + path;
   }
 
-  async function setOverlayPresentation(frameId, presented, generation) {
+  // `target` ({ layer, requestId }) names the layer and the request of the workspace layers
+  // document that a reveal shows (the actor writes both on the document's root); other documents,
+  // and every hide, pass null.
+  async function setOverlayPresentation(frameId, presented, generation, target) {
     const frame = document.getElementById(frameId);
     const windowGlobal = frame?.browsingContext?.currentWindowGlobal;
     if (!windowGlobal || windowGlobal.documentURI?.scheme !== 'moz-extension') return false;
     if (presented && bentoModePresenter) await bentoModePresenter.prepareReveal(frame);
     if (frame.browsingContext?.currentWindowGlobal !== windowGlobal) return false;
     const reply = await windowGlobal.getActor('BentoShellBus').sendQuery(
-      'BentoShellBus:HostPresentation', { presented, generation },
+      'BentoShellBus:HostPresentation',
+      target
+        ? { presented, generation, layer: target.layer, requestId: target.requestId }
+        : { presented, generation },
     );
     return frame.browsingContext?.currentWindowGlobal === windowGlobal &&
       reply?.generation === generation && reply.presented === presented;
@@ -1873,12 +1888,8 @@
     setFrameSrc('bento-addrbar-frame', '/dist/address-bar.html');
   }
 
-  function setBentoConfirmSrc() {
-    setFrameSrc('bento-confirm-frame', '/dist/confirm.html');
-  }
-
-  function setBentoEditWorkspaceSrc() {
-    setFrameSrc('bento-edit-workspace-frame', '/dist/edit-workspace.html');
+  function setBentoWorkspaceLayersSrc() {
+    setFrameSrc('bento-workspace-layers-frame', '/dist/workspace-layers.html');
   }
 
   let __bentoWelcomeResumeStep;
@@ -1946,10 +1957,6 @@
     }
     if (migrator) params.set('migrator', migrator);
     frame.setAttribute('src', `${BENTO_EMBEDDED_IMPORT_URL}?${params.toString()}`);
-  }
-
-  function setBentoWorkspaceSwitcherSrc() {
-    setFrameSrc('bento-workspace-switcher-frame', '/dist/workspace-switcher.html');
   }
 
   function setBentoMenuSrc() {
@@ -2224,15 +2231,22 @@
     inlineFade: false,
   });
 
+  // The workspace layers document: the workspace switcher menu, the edit-workspace dialog and the
+  // confirmation dialog (showWorkspaceLayer). Its z-index follows the layer it shows
+  // (WORKSPACE_LAYER_Z_INDEX), so it starts at the switcher's. It comes before the welcome and
+  // embedded import hosts in the document: at an equal z-index the later host paints above, so
+  // the import card (99998) stays above a confirmation, and the edit dialog (99997) above the
+  // palettes created before it, as when each layer had its own host. Its fade is in
+  // bento-shell-mount.css (out on the modal role, in at once), so no inline transition.
   ensureOverlayHost({
-    hostId: 'bento-edit-workspace-host',
-    zIndex: 99997,
+    hostId: 'bento-workspace-layers-host',
+    zIndex: 99995,
+    inlineFade: false,
   });
 
-  // Welcome overlay (first-run). Same dev-factory path. zIndex below
-  // confirm/edit-workspace so a confirmation popup over a still-visible
-  // welcome (theoretical) takes precedence; in practice welcome is the
-  // very first overlay a user sees and there's nothing to stack against.
+  // Welcome overlay (first-run). Same dev-factory path. Above the workspace switcher and below
+  // the edit-workspace and confirm layers, so a confirmation over a still-visible welcome
+  // (theoretical) takes precedence; in practice welcome is the very first overlay a user sees.
   ensureOverlayHost({
     hostId: 'bento-welcome-host',
     zIndex: 99996,
@@ -2246,20 +2260,6 @@
   ensureOverlayHost({
     hostId: 'bento-embedded-import-host',
     zIndex: 99998,
-  });
-
-  // Workspace-switcher overlay. The Mux Menu popover would otherwise
-  // be clipped at the sidebar iframe boundary — useless when the rail is
-  // collapsed to 4rem. Lifting the menu into a chrome-mounted <browser>
-  // lets it render anywhere in the chrome window.
-  // zIndex BELOW edit-workspace (99997) so an Edit dialog opened from a
-  // menu item correctly overlays the menu while it's still fading out.
-  // ABOVE the welcome (99996) since the menu can in principle open while
-  // welcome is still mounted (welcome is dismissable but the menu would
-  // be the user's natural next action).
-  ensureOverlayHost({
-    hostId: 'bento-workspace-switcher-host',
-    zIndex: 99995,
   });
 
   ensureOverlayHost({
@@ -2280,22 +2280,17 @@
     zIndex: 99994,
   });
 
-  // Pre-warm: keep the host laid out (display:flex) from chrome init so
-  // window.screenLeft inside the overlay frame is accurate from the
-  // start. Without this, the first menu open mis-positions: the overlay
-  // React app receives the bus payload and re-renders BEFORE chrome's
-  // title handler fires showWorkspaceSwitcher(); inside a display:
-  // none host, the iframe's content has no laid-out screen position
-  // and window.screenLeft returns stale zeros, so the trigger-to-
-  // overlay coord translation collapses and the menu ends up at the
-  // chrome window's centre.
-  // Invisibility + non-interactivity comes from opacity:0 +
-  // pointer-events:none — the host stays in the layout tree but
-  // intercepts no events and paints nothing visible.
-  const wsSwitcherHostInit = document.getElementById('bento-workspace-switcher-host');
-  if (wsSwitcherHostInit) {
-    wsSwitcherHostInit.style.display = 'flex';
-    wsSwitcherHostInit.style.pointerEvents = 'none';
+  // Pre-warm: keep the workspace layers host laid out (display:flex) from chrome init, and never
+  // resize it, so window.screenLeft inside its frame is right from the start. The switcher layer
+  // translates the sidebar trigger's coordinates with it; inside a display:none host the frame
+  // has no laid-out screen position, window.screenLeft returns stale zeros, and the first menu
+  // ends up at the window's centre. Invisibility and non-interactivity come from opacity:0 and
+  // pointer-events:none: the host stays in the layout tree but takes no events and paints
+  // nothing.
+  const workspaceLayersHostInit = document.getElementById('bento-workspace-layers-host');
+  if (workspaceLayersHostInit) {
+    workspaceLayersHostInit.style.display = 'flex';
+    workspaceLayersHostInit.style.pointerEvents = 'none';
     // opacity:0 and hidden=true already set by ensureOverlayHost defaults.
   }
 
@@ -2594,9 +2589,6 @@
   // retargetLibraryKeyToBookmarksView). Other overlays open above it and do not close it. The
   // Bookmarks manager can be turned off in Settings: every open is then refused, an open view
   // closes, and the Library key is Firefox's again (applyChromeBookmarksEnabled).
-  function isBookmarksViewVisible(host) {
-    return host.style.display !== 'none';
-  }
 
   // Open from the moment its reveal sets the root attribute until its hide removes it, and while an
   // open waits for the document. (The host stays visible through the fade-out, so a reopen or a
@@ -2629,9 +2621,7 @@
     'settings-palette',
     'addrbar',
     'welcome',
-    'confirm',
-    'edit-workspace',
-    'workspace-switcher',
+    'workspace-layers',
     'menu',
     'bookmarks-popup',
     'embedded-import',
@@ -3651,14 +3641,12 @@
 
   function getAddrbarFocusPreservingFrame() {
     const candidates = [
-      ['bento-confirm-host', isConfirmVisible, 'bento-confirm-frame'],
-      ['bento-edit-workspace-host', isEditWorkspaceVisible, 'bento-edit-workspace-frame'],
+      ['bento-workspace-layers-host', isWorkspaceLayersVisible, 'bento-workspace-layers-frame'],
       ['bento-workspace-palette-host', isWorkspacePaletteVisible, 'bento-workspace-palette-frame'],
       ['bento-merge-palette-host', isMergePaletteVisible, 'bento-merge-palette-frame'],
       ['bento-settings-palette-host', isSettingsPaletteVisible, 'bento-settings-palette-frame'],
       ['bento-embedded-import-host', isEmbeddedImportVisible, 'bento-embedded-import-frame'],
       ['bento-welcome-host', isWelcomeVisible, 'bento-welcome-frame'],
-      ['bento-workspace-switcher-host', isWorkspaceSwitcherVisible, 'bento-workspace-switcher-frame'],
     ];
     for (const [hostId, isVisible, frameId] of candidates) {
       // An overlay still waiting for its document counts: it will appear over the
@@ -3960,145 +3948,217 @@
     hideOverlayHostAfterFade(host);
   }
 
-  // ─── Confirm overlay (workspace delete, etc.) ──────────────────────────
-  // Same chrome-overlay pattern as the palette: a transparent <browser>
-  // sized to fill the window hosts the AlertDialog, so confirm modals are
-  // not clipped to the sidebar's bounds. Visibility is driven by sidebar
-  // title-IPC (BENTO_OPEN_CONFIRM_*) and confirm-content title-IPC
-  // (BENTO_CLOSE_CONFIRM_*). The payload travels independently via the
-  // 'bento-confirm-bus' BroadcastChannel.
-  function isConfirmVisible(host) {
-    return host.style.display !== 'none';
+  // ─── Workspace layers overlay (switcher, edit workspace, confirm) ──────
+  // One <browser> (workspace-layers.html) hosts three layers, one shown at a time: the workspace
+  // switcher menu, the edit-workspace dialog and the confirmation dialog. The sidebar and the
+  // workspace palette request a layer with a payload on its bus and a title; the switcher layer
+  // opens the other two inside its own document, then writes the open title tagged with its
+  // layer (WORKSPACE_LAYER_TITLE_PREFIX), so chrome shows the new layer and hides the switcher.
+  //
+  // The overlay manager has one record for the document (readiness, the queued open, the
+  // presentation generation); this section keeps which layer is shown (activeWorkspaceLayer) and
+  // the layer and request id the newest open is for (requestedWorkspaceLayer). A newer open
+  // replaces a waiting one, as for every overlay.
+  //
+  // Every open title carries the request id its opener made (`<OPEN PREFIX>:<uuid>:<ts>`,
+  // shell bridge/layerRequest.ts), the same id the payload carries on the layer's bus. The
+  // presentation names the layer and that id, and the document renders only the payload with
+  // that id; a cancel retires the id here, so no later presentation names it. A title without a
+  // well-formed id opens nothing (parseLayerOpenTitle). The host takes pointer input only once
+  // the document reports that it rendered the current presentation (handleWorkspaceLayerRendered). The host's z-index follows the shown layer, so each layer stacks
+  // where its own host did: the switcher below the welcome and the 99997 palettes, the edit
+  // dialog with them, the confirmation above them and below the command palette and the menu.
+  //
+  // The host is shown at once and fades out on the modal role (bento-shell-mount.css: the
+  // WORKSPACE_LAYER_ATTR rule has no transition). The layer's own Mux component plays its entrance
+  // in the document, which renders a layer only once chrome presents the host for it (the
+  // presentation query names the layer, see overlayEntry). A layer that replaces another while
+  // the host is shown keeps the host up: the outgoing switcher menu goes at once in its document,
+  // as it did in its own host, and the incoming dialog plays its entrance. The host never resizes
+  // and is never display:none (see the pre-warm above).
+  const WORKSPACE_LAYER_Z_INDEX = {
+    'workspace-switcher': 99995,
+    'edit-workspace': 99997,
+    confirm: 99998,
+  };
+  let activeWorkspaceLayer = null;
+  // { layer, requestId } of the newest open, or null once it was hidden or cancelled.
+  let requestedWorkspaceLayer = null;
+  // { layer, requestId, generation } of the document's newest rendered report (see
+  // handleWorkspaceLayerRendered), or null.
+  let workspaceLayerRendered = null;
+  // Kept equal to LAYER_REQUEST_ID_PATTERN in the shell's bridge/layerRequest.ts and
+  // HOST_REQUEST_PATTERN in BentoShellBusChild.sys.mjs (scripts/overlay-surfaces.test.mjs).
+  const WORKSPACE_LAYER_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  // The request id of a layer open title `<prefix>:<uuid>:<digits>`, or null (with a warning)
+  // when the id is missing or malformed: chrome never opens a layer it cannot name.
+  function parseLayerOpenTitle(title, prefix) {
+    const parts = title.slice(prefix.length).split(':');
+    if (
+      parts.length === 3 &&
+      parts[0] === '' &&
+      WORKSPACE_LAYER_REQUEST_ID_PATTERN.test(parts[1]) &&
+      /^\d+$/.test(parts[2])
+    ) {
+      return parts[1];
+    }
+    console.warn('[bento-shell-mount] layer open title without a valid request id:', title);
+    return null;
   }
 
-  function showConfirm() {
-    const host = document.getElementById('bento-confirm-host');
-    if (!host) {
-      console.warn('[bento-shell-mount] showConfirm: bento-confirm-host missing');
+  // Whether the document reported that it rendered the presentation chrome shows now: the same
+  // layer, request id and presentation generation.
+  function isWorkspaceLayerRendered() {
+    const rendered = workspaceLayerRendered;
+    return (
+      rendered !== null &&
+      activeWorkspaceLayer === rendered.layer &&
+      requestedWorkspaceLayer?.layer === rendered.layer &&
+      requestedWorkspaceLayer.requestId === rendered.requestId &&
+      overlays.generation('workspace-layers') === rendered.generation
+    );
+  }
+
+  // `BENTO_LAYER_RENDERED:<uuid>:<generation>` under the layer's tag: the document rendered the
+  // presented request. The host takes pointer input only once this matches the current
+  // presentation; until then it is shown but lets clicks through, so a presentation whose
+  // payload never came cannot block the window. An older id or generation is ignored.
+  function handleWorkspaceLayerRendered(layer, title) {
+    const parts = title.slice(WORKSPACE_LAYER_RENDERED_PREFIX.length).split(':');
+    if (
+      parts.length !== 3 ||
+      parts[0] !== '' ||
+      !WORKSPACE_LAYER_REQUEST_ID_PATTERN.test(parts[1]) ||
+      !/^\d{1,15}$/.test(parts[2])
+    ) {
+      console.warn('[bento-shell-mount] malformed layer rendered report:', title);
       return;
     }
-    openOverlay('confirm', () => {
-      showOverlayToolbarScrim('confirm');
+    workspaceLayerRendered = { layer, requestId: parts[1], generation: Number(parts[2]) };
+    const host = document.getElementById('bento-workspace-layers-host');
+    if (host && host.style.opacity === '1' && isWorkspaceLayerRendered()) {
+      host.style.pointerEvents = 'auto';
+    }
+  }
+
+  // Whether `layer` is shown, or its open waits for the document or its presentation.
+  function isWorkspaceLayerOpen(layer) {
+    return (
+      activeWorkspaceLayer === layer ||
+      (requestedWorkspaceLayer?.layer === layer && overlays.hasPendingOpen('workspace-layers'))
+    );
+  }
+
+  // Whether `layer` is on screen (shown and not fading out).
+  function isWorkspaceLayerShown(layer) {
+    const host = document.getElementById('bento-workspace-layers-host');
+    return activeWorkspaceLayer === layer && host?.style.opacity === '1';
+  }
+
+  // isOverlayOpen's visibility test for the host as a whole: some layer is shown.
+  function isWorkspaceLayersVisible() {
+    return activeWorkspaceLayer !== null;
+  }
+
+  // `reveal` adds what belongs to the layer (the toolbar scrim); the focus goes to the frame.
+  function showWorkspaceLayer(layer, requestId, reveal) {
+    const host = document.getElementById('bento-workspace-layers-host');
+    if (!host) {
+      console.warn('[bento-shell-mount] showWorkspaceLayer: bento-workspace-layers-host missing');
+      return;
+    }
+    // Before the open: a ready document is presented for this request inside overlays.open.
+    requestedWorkspaceLayer = { layer, requestId };
+    openOverlay('workspace-layers', () => {
+      activeWorkspaceLayer = layer;
+      reveal?.();
       cancelMotion(host, 'hide');
-      host.style.display = 'flex';
+      host.style.zIndex = String(WORKSPACE_LAYER_Z_INDEX[layer]);
+      // Pointer input waits for the document's rendered report for this presentation (it may
+      // have come before the acknowledgement); the frame still takes the focus, so Esc works.
+      host.style.pointerEvents = isWorkspaceLayerRendered() ? 'auto' : 'none';
       host.removeAttribute('hidden');
-      void host.getBoundingClientRect();
+      // The attribute and the opacity in one style flush: the attribute's rule has no
+      // transition, so the host appears at once.
+      host.setAttribute(WORKSPACE_LAYER_ATTR, layer);
       host.style.opacity = '1';
-      const frame = document.getElementById('bento-confirm-frame');
-      focusOverlayFrame(frame);
+      focusOverlayFrame(document.getElementById('bento-workspace-layers-frame'));
     });
+  }
+
+  // Hides `layer` if it is shown and cancels its waiting open. The host fades out only when no
+  // other layer is shown or waiting: a layer that replaces this one keeps it up. When the newest
+  // open is this layer's, the cancel also ends the generation, so its queued focus goes stale, and
+  // retires its request id; a second hide during the fade leaves the generation alone, so the
+  // fade still commits.
+  function hideWorkspaceLayer(layer) {
+    if (requestedWorkspaceLayer?.layer === layer) {
+      if (activeWorkspaceLayer === layer || overlays.hasPendingOpen('workspace-layers')) {
+        overlays.cancel('workspace-layers');
+      }
+      requestedWorkspaceLayer = null;
+    }
+    if (activeWorkspaceLayer === layer) activeWorkspaceLayer = null;
+    if (activeWorkspaceLayer !== null || overlays.hasPendingOpen('workspace-layers')) return;
+    const host = document.getElementById('bento-workspace-layers-host');
+    if (!host) return;
+    // One style flush again: without the attribute the modal fade applies to the opacity. Even
+    // a host already at opacity 0 goes through the settle: a cancelled reopen during a fade
+    // ended the fade's generation, and a cancelled first open was presented in the document
+    // without ever showing; both need the hidden commit and the presentation false.
+    host.removeAttribute(WORKSPACE_LAYER_ATTR);
+    host.style.opacity = '0';
+    host.style.pointerEvents = 'none';
+    hideOverlayHostAfterFade(host, null, true);
+  }
+
+  function showConfirm(requestId) {
+    showWorkspaceLayer('confirm', requestId, () => showOverlayToolbarScrim('confirm'));
   }
 
   function hideConfirm() {
-    overlays.cancel('confirm');
-    const host = document.getElementById('bento-confirm-host');
-    if (!host) {
-      hideOverlayToolbarScrim('confirm');
-      return;
-    }
     hideOverlayToolbarScrim('confirm');
-    host.style.opacity = '0';
-    hideOverlayHostAfterFade(host);
+    hideWorkspaceLayer('confirm');
   }
 
-  // ─── Edit-workspace overlay ────────────────────────────────────────────
-  // Same chrome-overlay pattern as confirm/palette: a transparent
-  // <browser> sized to fill the window hosts the form Dialog. Sidebar
-  // never holds modal UI.
-  function isEditWorkspaceVisible(host) {
-    return host.style.display !== 'none';
-  }
-
-  function showEditWorkspace() {
-    const host = document.getElementById('bento-edit-workspace-host');
-    if (!host) {
-      console.warn('[bento-shell-mount] showEditWorkspace: host missing');
-      return;
-    }
-    openOverlay('edit-workspace', () => {
-      showOverlayToolbarScrim('edit-workspace');
-      cancelMotion(host, 'hide');
-      host.style.display = 'flex';
-      host.removeAttribute('hidden');
-      void host.getBoundingClientRect();
-      host.style.opacity = '1';
-      const frame = document.getElementById('bento-edit-workspace-frame');
-      focusOverlayFrame(frame);
-    });
+  function showEditWorkspace(requestId) {
+    showWorkspaceLayer('edit-workspace', requestId, () => showOverlayToolbarScrim('edit-workspace'));
   }
 
   function hideEditWorkspace() {
-    overlays.cancel('edit-workspace');
-    const host = document.getElementById('bento-edit-workspace-host');
-    if (!host) {
-      hideOverlayToolbarScrim('edit-workspace');
-      return;
-    }
     hideOverlayToolbarScrim('edit-workspace');
-    host.style.opacity = '0';
-    hideOverlayHostAfterFade(host);
+    hideWorkspaceLayer('edit-workspace');
   }
 
-  // ─── Workspace-switcher overlay ────────────────────────────────────────
-  // The Mux Menu popover would otherwise be clipped at the sidebar
-  // iframe boundary — useless when the rail is collapsed to 4rem and the
-  // menu would render entirely outside the visible sidebar. Lifting it
-  // into a chrome-mounted <browser> lets the menu render anywhere in the
-  // chrome window. Sidebar's trigger button signals open via title-IPC;
-  // the overlay subscribes to the bento-workspace-switcher-bus
-  // BroadcastChannel for the trigger's anchor coords.
-  //
-  // Visibility is opacity-driven (NOT display) — see the prewarm note
-  // at the host registration above. No transition timeout to track,
-  // because we never flip display.
-
-  function isWorkspaceSwitcherVisible(host) {
-    // Visibility is opacity-driven (NOT display) for this overlay so the
-    // frame stays laid out from chrome init — see the pre-warm comment
-    // at the host registration above.
-    return host.style.opacity === '1';
+  function showWorkspaceSwitcher(requestId) {
+    showWorkspaceLayer('workspace-switcher', requestId);
   }
 
-  function showWorkspaceSwitcher() {
-    const host = document.getElementById('bento-workspace-switcher-host');
-    if (!host) {
-      console.warn('[bento-shell-mount] showWorkspaceSwitcher: host missing');
+  // A focused switcher gives the focus back at hide-start: to the sidebar, or to the selected
+  // page when the sidebar is unavailable or fully hidden. Not when another layer takes the frame
+  // over (it is requested before the switcher is hidden) and keeps the focus there.
+  function hideWorkspaceSwitcher() {
+    const shown = activeWorkspaceLayer === 'workspace-switcher';
+    hideWorkspaceLayer('workspace-switcher');
+    const frame = document.getElementById('bento-workspace-layers-frame');
+    if (
+      !shown ||
+      !frame ||
+      document.activeElement !== frame ||
+      activeWorkspaceLayer !== null ||
+      overlays.hasPendingOpen('workspace-layers')
+    ) {
       return;
     }
-    openOverlay('workspace-switcher', () => {
-      cancelMotion(host, 'hide');
-      // Display stays 'flex' from the init prewarm — only opacity +
-      // pointer-events toggle here. Restoring display:flex would defeat
-      // the prewarm's purpose (the frame has to stay laid out so its
-      // window.screenLeft is accurate when the React app re-renders).
-      host.style.pointerEvents = 'auto';
-      host.removeAttribute('hidden');
-      void host.getBoundingClientRect();
-      host.style.opacity = '1';
-      const frame = document.getElementById('bento-workspace-switcher-frame');
-      focusOverlayFrame(frame);
-    });
-  }
-
-  function hideWorkspaceSwitcher() {
-    overlays.cancel('workspace-switcher');
-    const host = document.getElementById('bento-workspace-switcher-host');
-    if (!host) return;
-    host.style.opacity = '0';
-    host.style.pointerEvents = 'none';
-    const frame = document.getElementById('bento-workspace-switcher-frame');
-    if (frame && document.activeElement === frame) {
-      const sidebar = document.getElementById('bento-shell-frame');
-      const sidebarHost = document.getElementById('bento-shell-host');
-      const fullyHidden = !sidebarHost || sidebarHost.hasAttribute('hidden') ||
-        sidebarHost.style.display === 'none' ||
-        (sidebarHost.classList.contains('bento-sidebar-hidden') &&
-         !sidebarHost.classList.contains('bento-sidebar-hidden-revealed'));
-      if (sidebar && !fullyHidden) sidebar.focus();
-      else focusSelectedMainAfterPanelRemoval();
-    }
-    hideOverlayHostAfterFade(host, null, true);
-    // No display:none after the transition — see prewarm comment.
+    const sidebar = document.getElementById('bento-shell-frame');
+    const sidebarHost = document.getElementById('bento-shell-host');
+    const fullyHidden = !sidebarHost || sidebarHost.hasAttribute('hidden') ||
+      sidebarHost.style.display === 'none' ||
+      (sidebarHost.classList.contains('bento-sidebar-hidden') &&
+       !sidebarHost.classList.contains('bento-sidebar-hidden-revealed'));
+    if (sidebar && !fullyHidden) sidebar.focus();
+    else focusSelectedMainAfterPanelRemoval();
   }
 
   // ─── Welcome overlay (first-run) ───────────────────────────────────────
@@ -5001,6 +5061,12 @@
   // visibility signal.
   const WORKSPACE_SWITCHER_OPEN_PREFIX = 'BENTO_OPEN_WORKSPACE_SWITCHER';
   const WORKSPACE_SWITCHER_CLOSE_PREFIX = 'BENTO_CLOSE_WORKSPACE_SWITCHER';
+  // Every title of the workspace layers document names the layer that wrote it:
+  // BENTO_LAYER:<layer>:<title> (the shell side is workspace-layers/layers.ts). Its frame's
+  // handler routes by layer, as the other handlers route by frame.
+  const WORKSPACE_LAYER_TITLE_PREFIX = 'BENTO_LAYER:';
+  // The document rendered a presented request: BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<uuid>:<generation>.
+  const WORKSPACE_LAYER_RENDERED_PREFIX = 'BENTO_LAYER_RENDERED';
   // Generic chrome-menu overlay. Items, anchor, and a routing contextId
   // travel from chrome into the menu page via a 'menu/open' shell-bus
   // action; the menu page reports back via these title prefixes which
@@ -10202,7 +10268,7 @@
 
   // ESC inside a panel returns focus to the panel container itself,
   // letting the user resume keyboard shortcut cycling. Skipped while any of
-  // the chrome overlays (palette / confirm / edit-workspace) is open
+  // the chrome overlays (palette, workspace layers, ...) is open
   // — those have their own ESC dismiss handlers (see
   // attachPaletteEscListener) which run earlier in capture phase
   // and stopPropagation, so we only see ESC when no overlay is
@@ -18837,10 +18903,17 @@
         handleSidebarAddressCopyTitle(title);
       } else if (title.startsWith(SIDEBAR_ADDRESS_READY_PREFIX)) {
         handleSidebarAddressReadyTitle();
-      } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) showConfirm();
-      else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) showEditWorkspace();
-      else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
-      else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) showWorkspaceSwitcher();
+      } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+        if (requestId) showConfirm(requestId);
+      } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, EDIT_WORKSPACE_OPEN_PREFIX);
+        if (requestId) showEditWorkspace(requestId);
+      } else if (title.startsWith(WELCOME_OPEN_PREFIX)) showWelcome();
+      else if (title.startsWith(WORKSPACE_SWITCHER_OPEN_PREFIX)) {
+        const requestId = parseLayerOpenTitle(title, WORKSPACE_SWITCHER_OPEN_PREFIX);
+        if (requestId) showWorkspaceSwitcher(requestId);
+      }
       else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
       else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
       else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
@@ -18850,6 +18923,50 @@
       else if (title.startsWith(COLOR_MODE_PREFIX)) handleColorModeTitle(title);
       else if (title.startsWith(THEME_PREFIX)) handleThemeTitle(title);
       else if (title.startsWith(PANELS_PREFIX)) handlePanelsTitle(title);
+    };
+
+    // The workspace layers document: each title names its layer. The switcher's opens of another
+    // layer or of the workspace palette replace the switcher. A layer requested before the
+    // switcher is hidden keeps the host (and the focus) for itself; Edit all workspaces opens the
+    // workspace palette, another host, so the switcher goes first there, as before.
+    const workspaceLayerTitleHandlers = new Map([
+      ['workspace-switcher', (title) => {
+        if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) hideWorkspaceSwitcher();
+        else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
+          const requestId = parseLayerOpenTitle(title, EDIT_WORKSPACE_OPEN_PREFIX);
+          if (!requestId) return;
+          showEditWorkspace(requestId);
+          hideWorkspaceSwitcher();
+        } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
+          // Delete with tabs: the destructive confirmation replaces the menu. The same title
+          // from the workspace palette leaves that palette open (its own frame's handler).
+          const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+          if (!requestId) return;
+          showConfirm(requestId);
+          hideWorkspaceSwitcher();
+        } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
+          hideWorkspaceSwitcher();
+          showWorkspacePalette();
+        }
+      }],
+      ['edit-workspace', (title) => {
+        if (title.startsWith(EDIT_WORKSPACE_CLOSE_PREFIX)) hideEditWorkspace();
+      }],
+      ['confirm', (title) => {
+        if (title.startsWith(CONFIRM_CLOSE_PREFIX)) hideConfirm();
+      }],
+    ]);
+    const handleWorkspaceLayersFrameTitle = (title) => {
+      if (!title.startsWith(WORKSPACE_LAYER_TITLE_PREFIX)) return;
+      const rest = title.slice(WORKSPACE_LAYER_TITLE_PREFIX.length);
+      const colon = rest.indexOf(':');
+      if (colon <= 0) return;
+      const layer = rest.slice(0, colon);
+      const handler = workspaceLayerTitleHandlers.get(layer);
+      if (!handler) return;
+      const inner = rest.slice(colon + 1);
+      if (inner.startsWith(WORKSPACE_LAYER_RENDERED_PREFIX)) handleWorkspaceLayerRendered(layer, inner);
+      else handler(inner);
     };
 
     const titleHandlerByFrameId = new Map([
@@ -18896,7 +19013,8 @@
           if (title.startsWith(WORKSPACE_PALETTE_CLOSE_PREFIX)) {
             hideWorkspacePalette();
           } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
-            showConfirm();
+            const requestId = parseLayerOpenTitle(title, CONFIRM_OPEN_PREFIX);
+            if (requestId) showConfirm(requestId);
           }
         },
       ],
@@ -18908,18 +19026,7 @@
           else if (title.startsWith(ADDRBAR_NAVIGATE_PREFIX)) handleAddrbarNavigateTitle(title);
         },
       ],
-      [
-        'bento-confirm-frame',
-        (title) => {
-          if (title.startsWith(CONFIRM_CLOSE_PREFIX)) hideConfirm();
-        },
-      ],
-      [
-        'bento-edit-workspace-frame',
-        (title) => {
-          if (title.startsWith(EDIT_WORKSPACE_CLOSE_PREFIX)) hideEditWorkspace();
-        },
-      ],
+      ['bento-workspace-layers-frame', handleWorkspaceLayersFrameTitle],
       [
         'bento-welcome-frame',
         (title) => {
@@ -18961,29 +19068,6 @@
         },
       ],
       ['bento-menu-frame', handleMenuFrameTitle],
-      [
-        'bento-workspace-switcher-frame',
-        (title) => {
-          if (title.startsWith(WORKSPACE_SWITCHER_CLOSE_PREFIX)) {
-            hideWorkspaceSwitcher();
-          } else if (title.startsWith(EDIT_WORKSPACE_OPEN_PREFIX)) {
-            // "Edit <workspace>" menu item: the overlay set this title
-            // when forwarding to the edit-workspace modal. The payload
-            // already reached the edit overlay via BroadcastChannel;
-            // we just need to swap the visible host here.
-            hideWorkspaceSwitcher();
-            showEditWorkspace();
-          } else if (title.startsWith(CONFIRM_OPEN_PREFIX)) {
-            // "Delete <workspace>" menu item with tabs: forwards to the
-            // destructive-confirm modal. Same swap as edit above.
-            hideWorkspaceSwitcher();
-            showConfirm();
-          } else if (title.startsWith(WORKSPACE_PALETTE_OPEN_PREFIX)) {
-            hideWorkspaceSwitcher();
-            showWorkspacePalette();
-          }
-        },
-      ],
       [
         'bento-panel-trailer-frame',
         (title) => {
@@ -19060,110 +19144,143 @@
     );
   }
 
-  // Chrome-side Esc handler — fires regardless of whether focus is in
-  // palette content or anywhere else in the chrome window. Capture phase
-  // so it wins over any default handler.
+  // The overlays Esc can reach, each with its host, its z-index, and whether it is shown (on
+  // screen: not hidden, not fading out) or open (shown, or its open waits for the document).
+  // The workspace layers are three entries on one host, each at its own z-index.
+  function escapeOverlayEntries() {
+    const onScreen = (host) =>
+      !!host && host.style.display !== 'none' && host.style.opacity !== '0' &&
+      !host.hasAttribute('hidden');
+    const entry = (id, shown, pending) => {
+      const host = document.getElementById('bento-' + id + '-host');
+      return { id, host, z: Number.parseInt(host?.style.zIndex, 10) || 0, shown, open: shown || pending };
+    };
+    const standard = (id) => {
+      const host = document.getElementById('bento-' + id + '-host');
+      return entry(id, onScreen(host), overlays.hasPendingOpen(id));
+    };
+    const layers = Object.keys(WORKSPACE_LAYER_Z_INDEX).map((layer) => ({
+      ...entry('workspace-layers', isWorkspaceLayerShown(layer), isWorkspaceLayerOpen(layer)),
+      id: layer,
+      z: WORKSPACE_LAYER_Z_INDEX[layer],
+    }));
+    const addrbar = standard('addrbar');
+    // The onboarding takes Esc for as long as its hosts are laid out, fading included.
+    const onboarding = (id) => {
+      const host = document.getElementById('bento-' + id + '-host');
+      return entry(id, !!host && host.style.display !== 'none', overlays.hasPendingOpen(id));
+    };
+    return [
+      standard('menu'),
+      standard('palette'),
+      standard('merge-palette'),
+      standard('workspace-palette'),
+      standard('settings-palette'),
+      // A Cmd+L still waiting for the sidebar row counts as an open address bar, and so does a
+      // delivered open whose host waits, invisible, for the document's BENTO_ADDRBAR_READY.
+      {
+        ...addrbar,
+        open: addrbar.open || pendingAddrbarOpenRequest !== null || pendingAddrbarReveal !== null,
+      },
+      onboarding('welcome'),
+      onboarding('embedded-import'),
+      ...layers,
+      entry(
+        'bookmarks-popup',
+        isBookmarkPopupOpen() && !overlays.hasPendingOpen('bookmarks-popup'),
+        isBookmarkPopupOpen() || pendingBookmarkPopupRequest !== null,
+      ),
+      standard('bookmarks'),
+    ];
+  }
+
+  // The overlay Esc belongs to: the top-most open one by stacking (z-index, then document order:
+  // at an equal z-index the later host paints above). An open still waiting for its document
+  // counts where it will appear. So a shown menu comes first, a palette above a confirmation
+  // takes Esc before it, and nothing under a shown overlay takes Esc from it.
+  function topEscapeOverlay() {
+    const following = typeof Node === 'undefined' ? 4 : Node.DOCUMENT_POSITION_FOLLOWING;
+    const above = (a, b) => {
+      if (a.z !== b.z) return a.z > b.z;
+      if (a.host === b.host || !a.host || !b.host) return false;
+      return (b.host.compareDocumentPosition(a.host) & following) !== 0;
+    };
+    let top = null;
+    for (const candidate of escapeOverlayEntries()) {
+      if (candidate.open && (!top || above(candidate, top))) top = candidate;
+    }
+    return top;
+  }
+
+  // Chrome-side Esc handler, for focus anywhere in the chrome window. Capture phase so it wins
+  // over any default handler. Esc follows what is on screen (topEscapeOverlay). Each overlay
+  // keeps what Esc does to it: the welcome and the import card take it without closing (the
+  // onboarding is mandatory); the menu, Settings, the bookmark popup and the Bookmarks view
+  // handle their own once shown and focused; the rest close.
   function attachPaletteEscListener() {
     window.addEventListener(
       'keydown',
       (e) => {
         if (e.key !== 'Escape') return;
-        // Stack precedence (top = highest): menu > confirm > edit-workspace >
-        // workspace palette / settings palette > welcome > workspace-switcher > address bar >
-        // merge palette > palette > bookmark popup > bookmarks view. An overlay whose open still waits for its
-        // document counts as open: Esc cancels that open instead of letting it
-        // appear afterwards. Welcome is mandatory onboarding: consume Esc there
-        // without hiding it. Other overlays keep their normal Esc dismissal.
         const consume = (hide) => {
           e.preventDefault();
           e.stopPropagation();
           hide();
         };
-        // The menu page handles its own Esc once shown; only a pending open needs this.
-        if (overlays.hasPendingOpen('menu')) return consume(hideChromeMenu);
-        if (isOverlayOpen('bento-confirm-host', isConfirmVisible, 'confirm')) {
-          return consume(hideConfirm);
-        }
-        if (isOverlayOpen('bento-edit-workspace-host', isEditWorkspaceVisible, 'edit-workspace')) {
-          return consume(hideEditWorkspace);
-        }
-        if (
-          isOverlayOpen(
-            'bento-workspace-palette-host',
-            isWorkspacePaletteVisible,
-            'workspace-palette',
-          )
-        ) {
-          return consume(hideWorkspacePalette);
-        }
-        // The Settings document handles its own Esc (clear the search, a stage back, then close)
-        // while its frame has focus. Chrome sees that key first, because the parent process gets
-        // the key events of a remote <browser> before the document does, so consuming it here
-        // would close Settings from every stage. Chrome takes Esc only for an open still waiting
-        // for its document, and when focus is somewhere else in the window.
-        if (
-          isOverlayOpen('bento-settings-palette-host', isSettingsPaletteVisible, 'settings-palette')
-        ) {
-          const inSettingsFrame = e.target?.id === 'bento-settings-palette-frame';
-          if (inSettingsFrame && !overlays.hasPendingOpen('settings-palette')) return;
-          return consume(hideSettingsPalette);
-        }
-        const embeddedImportHost = document.getElementById('bento-embedded-import-host');
-        if (embeddedImportHost && isEmbeddedImportVisible(embeddedImportHost)) {
+        const swallow = () => {
           e.preventDefault();
           e.stopImmediatePropagation();
-          return;
-        }
-        if (isOverlayOpen('bento-welcome-host', isWelcomeVisible, 'welcome')) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return;
-        }
-        if (
-          isOverlayOpen(
-            'bento-workspace-switcher-host',
-            isWorkspaceSwitcherVisible,
-            'workspace-switcher',
-          )
-        ) {
-          return consume(hideWorkspaceSwitcher);
-        }
-        if (isOverlayOpen('bento-addrbar-host', isAddrbarVisible, 'addrbar')) {
-          return consume(hideAddrbar);
-        }
-        if (isOverlayOpen('bento-merge-palette-host', isMergePaletteVisible, 'merge-palette')) {
-          return consume(hideMergePalette);
-        }
-        if (isOverlayOpen('bento-palette-host', isPaletteVisible, 'palette')) {
-          return consume(hidePalette);
-        }
-        // The bookmark popup handles its own Esc while its frame has focus (an unsaved name is
-        // put back before it closes). Chrome takes Esc for an open still waiting for its
-        // document, and for focus left elsewhere in the window; the focus then returns where it was.
-        // A Cmd+D still waiting for the sidebar star counts as open too: Esc ends it, whoever
-        // takes the key, so the popup does not appear after the dismissal.
-        const bookmarkRequestWaiting = pendingBookmarkPopupRequest !== null;
-        if (isBookmarkPopupOpen() || bookmarkRequestWaiting) {
-          cancelBookmarkPopupRequest();
-          const inPopupFrame = e.target?.id === 'bento-bookmarks-popup-frame';
-          if (
-            isBookmarkPopupOpen() &&
-            inPopupFrame &&
-            !overlays.hasPendingOpen('bookmarks-popup')
-          ) {
-            return;
-          }
-          return consume(() => hideBookmarkPopup({ restoreFocus: true }));
-        }
-        // Like Settings, the Bookmarks view handles its own Esc while its frame has focus (it
-        // leaves an inline editor before it closes, and sends BENTO_CLOSE_BOOKMARKS itself), and
-        // a menu above it handles its own. Chrome takes Esc for an open still waiting for its
-        // document, and for focus left elsewhere in the window.
-        if (isOverlayOpen('bento-bookmarks-host', isBookmarksViewVisible, 'bookmarks')) {
-          const targetId = e.target?.id;
-          const ownEsc = targetId === 'bento-bookmarks-frame' || targetId === 'bento-menu-frame';
-          if (ownEsc && !overlays.hasPendingOpen('bookmarks')) return;
-          return consume(hideBookmarksView);
+        };
+        const top = topEscapeOverlay();
+        if (!top) return;
+        const targetId = e.target?.id;
+        switch (top.id) {
+          case 'menu':
+            // The menu document handles its own Esc once shown and focused.
+            if (top.shown && targetId === 'bento-menu-frame') return;
+            return consume(hideChromeMenu);
+          case 'workspace-switcher':
+            return consume(hideWorkspaceSwitcher);
+          case 'edit-workspace':
+            return consume(hideEditWorkspace);
+          case 'confirm':
+            return consume(hideConfirm);
+          case 'workspace-palette':
+            return consume(hideWorkspacePalette);
+          case 'settings-palette':
+            // The Settings document handles its own Esc (clear the search, a stage back, then
+            // close) while its frame has focus. Chrome sees that key first, because the parent
+            // process gets the key events of a remote <browser> before the document does, so
+            // consuming it here would close Settings from every stage. Chrome takes Esc only for
+            // an open still waiting for its document, and when focus is somewhere else in the
+            // window.
+            if (top.shown && targetId === 'bento-settings-palette-frame') return;
+            return consume(hideSettingsPalette);
+          case 'embedded-import':
+          case 'welcome':
+            return swallow();
+          case 'addrbar':
+            return consume(hideAddrbar);
+          case 'merge-palette':
+            return consume(hideMergePalette);
+          case 'palette':
+            return consume(hidePalette);
+          case 'bookmarks-popup':
+            // The bookmark popup handles its own Esc while its frame has focus (an unsaved name is
+            // put back before it closes). Chrome takes Esc for an open still waiting for its
+            // document, and for focus left elsewhere in the window; the focus then returns where
+            // it was. A Cmd+D still waiting for the sidebar star counts as open too: Esc ends it,
+            // so the popup does not appear after the dismissal.
+            cancelBookmarkPopupRequest();
+            if (top.shown && targetId === 'bento-bookmarks-popup-frame') return;
+            return consume(() => hideBookmarkPopup({ restoreFocus: true }));
+          case 'bookmarks':
+            // Like Settings, the Bookmarks view handles its own Esc while its frame has focus (it
+            // leaves an inline editor before it closes, and sends BENTO_CLOSE_BOOKMARKS itself).
+            // Chrome takes Esc for an open still waiting for its document, and for focus left
+            // elsewhere in the window.
+            if (top.shown && targetId === 'bento-bookmarks-frame') return;
+            return consume(hideBookmarksView);
         }
       },
       true,
@@ -19955,10 +20072,8 @@
           'bento-bookmarks-frame',
           'bento-bookmarks-popup-frame',
           'bento-addrbar-frame',
-          'bento-confirm-frame',
-          'bento-edit-workspace-frame',
+          'bento-workspace-layers-frame',
           'bento-welcome-frame',
-          'bento-workspace-switcher-frame',
           'bento-menu-frame',
           'bento-panel-navigator-tooltip-frame',
           'bento-panel-trailer-frame',
@@ -19987,10 +20102,8 @@
             else if (id === 'bento-bookmarks-frame') setBentoBookmarksSrc();
             else if (id === 'bento-bookmarks-popup-frame') setBentoBookmarksPopupSrc();
             else if (id === 'bento-addrbar-frame') setBentoAddrbarSrc();
-            else if (id === 'bento-confirm-frame') setBentoConfirmSrc();
-            else if (id === 'bento-edit-workspace-frame') setBentoEditWorkspaceSrc();
+            else if (id === 'bento-workspace-layers-frame') setBentoWorkspaceLayersSrc();
             else if (id === 'bento-welcome-frame') setBentoWelcomeSrc();
-            else if (id === 'bento-workspace-switcher-frame') setBentoWorkspaceSwitcherSrc();
             else if (id === 'bento-menu-frame') setBentoMenuSrc();
             else if (id === 'bento-panel-navigator-tooltip-frame')
               setBentoPanelNavigatorTooltipSrc();
@@ -20008,8 +20121,8 @@
   // navigate that panel. The chrome's main URL bar always reflects the
   // active main tab as Firefox normally would.
 
-  // The sidebar shell and the eager overlays (confirm, edit workspace, workspace
-  // switcher) load at startup. The other overlay documents are created at idle
+  // The sidebar shell and the eager workspace layers overlay (switcher, edit
+  // workspace, confirm) load at startup. The other overlay documents are created at idle
   // once the launch veil lifts or on first use (createOverlayManager).
   setBentoShellSrc();
   overlays.startEager();

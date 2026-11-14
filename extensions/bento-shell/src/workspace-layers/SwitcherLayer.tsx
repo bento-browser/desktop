@@ -1,25 +1,14 @@
-// Workspace-switcher menu overlay entry. Mirrors the inline menu logic
-// from src/components/WorkspaceSwitcher/WorkspaceSwitcher.tsx but lifted
-// into a chrome-mounted <browser> so the popover can render outside the
-// sidebar's bounds — critical when the rail is collapsed and the inline
-// menu would otherwise be clipped at the iframe
-// boundary.
+// The workspace switcher layer: the menu of workspaces, anchored to the sidebar trigger. Lifted
+// out of the sidebar so the popover can render outside the sidebar's bounds, which matters when
+// the rail is collapsed and an inline menu would be clipped at the frame boundary.
 //
-// Lifecycle:
-//   - Sidebar trigger button calls requestWorkspaceSwitcher({triggerRect,
-//     sidebarScreenX, sidebarScreenY}) when clicked.
-//   - That helper (a) broadcasts the payload on the
-//     'bento-workspace-switcher-bus' BroadcastChannel and (b) sets
-//     document.title = BENTO_OPEN_WORKSPACE_SWITCHER_<ts>, which chrome's
-//     bento-shell-mount.js poll picks up and reveals this overlay frame.
-//   - This page's BroadcastChannel listener stores the payload + opens
-//     a Mux Menu anchored to an invisible trigger element positioned
-//     at the translated chrome-window coords.
-//   - On item action OR backdrop click: Menu's onOpenChange(false) fires
-//     close() which clears state and signals chrome to hide.
+// The sidebar trigger posts its rect and the sidebar's screen position (requestWorkspaceSwitcher);
+// the menu opens on an invisible trigger placed at those coordinates in this document. An item
+// that opens another layer (Edit this workspace, Delete with tabs) replaces this layer in this
+// document and writes the open title under this layer's name; chrome then shows the other layer
+// and hides this one. Edit all workspaces opens the workspace palette, another document.
 
-import { StrictMode, useEffect, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
+import { useRef } from 'react';
 import { useShallow } from 'zustand/shallow';
 import { Avatar, Menu, Text } from '@muxui/react';
 import Check from 'lucide-react/dist/esm/icons/check';
@@ -28,23 +17,15 @@ import Pencil from 'lucide-react/dist/esm/icons/pencil';
 import SlidersHorizontal from 'lucide-react/dist/esm/icons/sliders-horizontal';
 import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
-import '../theme/muxui.css';
-
-import '../theme/bento-tokens.css';
-import '../theme/presets/index.css';
-import '../theme/bento-fonts.css';
-import '../theme/document-base.css';
-import { useFirefoxTheme } from '../theme/useFirefoxTheme';
-import { useWorkspaceTheme } from '../theme/useWorkspaceTheme';
 import { getThemeScopeAttributes, useResolvedColorScheme } from '../theme/themeScope';
 import { useThemeSheets } from '../theme/themeSheets';
-import { initToolsPort, dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
-import { requestConfirm } from '../bridge/useConfirm';
-import { requestEditWorkspace } from '../bridge/useEditWorkspace';
-import { requestWorkspacePalette } from '../bridge/useWorkspacePalette';
+import { dispatch, useCurrentWindowId } from '../bridge/useToolsPort';
+import { layerOpenTitle, newLayerRequestId, type LayerRequestId } from '../bridge/layerRequest';
+import { CONFIRM_OPEN_PREFIX } from '../bridge/useConfirm';
+import { EDIT_WORKSPACE_OPEN_PREFIX } from '../bridge/useEditWorkspace';
+import { WORKSPACE_PALETTE_OPEN_PREFIX } from '../bridge/useWorkspacePalette';
 import {
   WORKSPACE_SWITCHER_CLOSE_PREFIX,
-  subscribeToWorkspaceSwitcherRequests,
   notifyWorkspaceSwitcherClosed,
   type WorkspaceSwitcherOpenPayload,
 } from '../bridge/useWorkspaceSwitcher';
@@ -53,14 +34,10 @@ import { useWorkspaceIdsWithPlayingAudio, useWorkspaceTabIds } from '../state/ta
 import { BENTO_THEMES, DEFAULT_THEME_ID } from '../theme/presets';
 import { WorkspaceAudioParticles } from '../components/WorkspaceSwitcher/WorkspaceAudioParticles';
 import { BentoIcon } from '../components/primitives/BentoIcon';
-// Reuse the inline menu's CSS — only the trigger styles in
-// WorkspaceSwitcher.css are unused here; the popover/avatar/item rules
-// all apply identically to this overlay's menu DOM.
+// Reuse the inline menu's CSS: only the trigger styles in WorkspaceSwitcher.css are unused here;
+// the popover, avatar and item rules apply to this menu's DOM.
 import '../components/WorkspaceSwitcher/WorkspaceSwitcher.css';
-import { sendChromeTitle } from '../bridge/chromeTitle';
-import { useOverlayReadySignal } from '../bridge/overlayReady';
-
-initToolsPort({ families: ['tabs', 'workspaces', 'settings', 'panels'] });
+import { clearWorkspaceLayer, sendWorkspaceLayerTitle, showWorkspaceLayer } from './layers';
 
 const NEW_WORKSPACE_KEY = '__new__';
 const EDIT_ALL_WORKSPACES_KEY = '__edit_all__';
@@ -98,15 +75,18 @@ function looksLikeEmojiValue(value: string): boolean {
   return /[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F]/u.test(value);
 }
 
-function WorkspaceSwitcherOverlayApp() {
-  useFirefoxTheme({ preferStoredSystemResolution: true });
-  useWorkspaceTheme();
+export function SwitcherLayer({
+  requestId,
+  payload: openPayload,
+}: {
+  requestId: LayerRequestId;
+  payload: WorkspaceSwitcherOpenPayload;
+}) {
   const colorScheme = useResolvedColorScheme();
   const workspaces = useWorkspacesStore(useShallow((s) => s.orderedIds.map((id) => s.byId[id]!)));
   // Each avatar renders in its own workspace's theme scope.
   useThemeSheets(workspaces.map((w) => w.themeId));
-  // Per-window active workspace (phase A.3). The chrome window that owns
-  // this overlay determines which workspace is highlighted as "current".
+  // The chrome window that owns this document decides which workspace is the current one.
   const windowId = useCurrentWindowId();
   const activeId = useActiveWorkspaceIdForWindow(windowId);
   const active = activeId ? workspaces.find((w) => w.id === activeId) : undefined;
@@ -116,43 +96,28 @@ function WorkspaceSwitcherOverlayApp() {
   const canDelete = workspaces.length > 1 && active !== undefined;
   const canEdit = active !== undefined;
 
-  const [openPayload, setOpenPayload] = useState<WorkspaceSwitcherOpenPayload | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // Set true when an item action forwards to another chrome overlay
-  // (edit-workspace, confirm). react-aria's Menu.Item fires onAction then
-  // closes the menu in the same JS tick, so close() would follow the
-  // OPEN_EDIT_WORKSPACE / OPEN_CONFIRM title the forwarding call just sent.
-  // Chrome handles the forward sentinel with the matching show*() +
-  // hideWorkspaceSwitcher() pair, so close() skips its redundant CLOSE title.
+  // Set when an item action opens another layer or overlay (edit workspace, confirm, workspace
+  // palette). React Aria's Menu.Item fires onAction and then closes the menu in the same tick, so
+  // close() would follow the open title the action just wrote. Chrome hides this layer as part of
+  // handling that open, so close() skips its CLOSE title. The layer remounts for every request
+  // (main.tsx keys it by request), so the flag starts clear.
   const forwardingRef = useRef(false);
 
-  useEffect(() => {
-    return subscribeToWorkspaceSwitcherRequests((payload) => {
-      // Defensive reset in case a prior forward bailed before close()
-      // ran (e.g. an exception in the forwarding call).
-      forwardingRef.current = false;
-      setOpenPayload(payload);
-    });
-  }, []);
-  // After the subscription: the sidebar posts the payload again once this is announced.
-  useOverlayReadySignal('workspace-switcher');
-
   function close() {
-    setOpenPayload(null);
+    // Tell the sidebar trigger to drop its open state: the sidebar's flag and chrome's host are
+    // independent channels.
+    notifyWorkspaceSwitcherClosed();
+    // The menu goes at once, as it did in its own document; a layer that replaced it stays.
+    clearWorkspaceLayer(requestId);
     if (forwardingRef.current) {
       forwardingRef.current = false;
-      // Sidebar trigger still needs to drop its "open" visual state;
-      // chrome will hide this overlay as part of handling the forward
-      // sentinel that the item action just wrote to document.title.
-      notifyWorkspaceSwitcherClosed();
       return;
     }
-    sendChromeTitle(`${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`);
-    // Tell the sidebar trigger to drop its "open" visual state. The
-    // chrome hide is signalled by the title above; this is purely for
-    // the React UI mirror — chrome IPC and the sidebar's Zustand-style
-    // open flag are independent channels.
-    notifyWorkspaceSwitcherClosed();
+    sendWorkspaceLayerTitle(
+      'workspace-switcher',
+      `${WORKSPACE_SWITCHER_CLOSE_PREFIX}_${Date.now()}`,
+    );
   }
 
   function onActivate(id: string) {
@@ -172,16 +137,22 @@ function WorkspaceSwitcherOverlayApp() {
   function onRequestEdit() {
     if (!canEdit || !active) return;
     forwardingRef.current = true;
-    requestEditWorkspace({
-      workspaceId: active.id,
-      name: active.name,
-      themeId: active.themeId,
-      icon: active.icon,
+    const id = newLayerRequestId();
+    showWorkspaceLayer({
+      layer: 'edit-workspace',
+      id,
+      payload: {
+        workspaceId: active.id,
+        name: active.name,
+        themeId: active.themeId,
+        icon: active.icon,
+      },
     });
+    sendWorkspaceLayerTitle('workspace-switcher', layerOpenTitle(EDIT_WORKSPACE_OPEN_PREFIX, id));
   }
   function onRequestEditAll() {
     forwardingRef.current = true;
-    requestWorkspacePalette();
+    sendWorkspaceLayerTitle('workspace-switcher', `${WORKSPACE_PALETTE_OPEN_PREFIX}_${Date.now()}`);
   }
   function onRequestDelete() {
     if (!canDelete || !active) return;
@@ -190,16 +161,20 @@ function WorkspaceSwitcherOverlayApp() {
       return;
     }
     forwardingRef.current = true;
-    requestConfirm({
-      title: `Delete "${active.name}"?`,
-      description: `This will close ${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'} in this workspace. This action cannot be undone.`,
-      confirmLabel: 'Delete workspace',
-      variant: 'danger',
-      action: { type: 'workspace/delete', id: active.id, closeTabs: true },
+    const id = newLayerRequestId();
+    showWorkspaceLayer({
+      layer: 'confirm',
+      id,
+      payload: {
+        title: `Delete "${active.name}"?`,
+        description: `This will close ${tabCount} ${tabCount === 1 ? 'tab' : 'tabs'} in this workspace. This action cannot be undone.`,
+        confirmLabel: 'Delete workspace',
+        variant: 'danger',
+        action: { type: 'workspace/delete', id: active.id, closeTabs: true },
+      },
     });
+    sendWorkspaceLayerTitle('workspace-switcher', layerOpenTitle(CONFIRM_OPEN_PREFIX, id));
   }
-
-  if (!openPayload) return null;
 
   // Translate sidebar-frame-local trigger coords into chrome-window coords.
   // window.screenLeft/screenTop is the OS-screen position of THIS window
@@ -319,12 +294,3 @@ function WorkspaceSwitcherOverlayApp() {
     </Menu.Root>
   );
 }
-
-const container = document.getElementById('root');
-if (!container) throw new Error('bento-shell workspace-switcher: #root not found');
-
-createRoot(container).render(
-  <StrictMode>
-    <WorkspaceSwitcherOverlayApp />
-  </StrictMode>,
-);

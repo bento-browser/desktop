@@ -32,7 +32,7 @@ Shell theme flow:
   theme scope other than the document's own registers that theme for as long as it
   renders it (`useThemeSheet` / `useThemeSheets`): `PinnedPanels` (each pin uses its
   own workspace's theme), `WorkspaceSwitcher` (the avatar), `WorkspaceThemePicker`
-  (the trigger and all 16 swatches) and the `workspace-switcher` overlay (one avatar
+  (the trigger and all 16 swatches) and the switcher layer of the `workspace-layers` overlay (one avatar
   per workspace), and `useInvertedThemeScope` (the floating sidebar cards, which
   render the sidebar's own theme in the opposite colour scheme).
   `themeScopeSheets.test.ts` fails when a file calls `getThemeScopeAttributes`
@@ -283,7 +283,10 @@ Native overlays retain their explicit host presentation contract: initial hidden
 ready, current-mode grant, acknowledged `presented=true`, then reveal/focus. The
 hash hints preserve other URL/hash data and browsing-context-group behaviour.
 False is committed only after exit opacity completes or an immediate hide. The
-workspace switcher disables input at hide-start and preserves owned focus return;
+workspace layers host (switcher, edit workspace, confirm) disables input at hide-start
+and preserves the switcher's owned focus return; its presentation names the shown
+layer, which is the one its document renders, and a layer swap keeps the document
+presented (one mode grant for the three layers);
 menu and null-tooltip hides are immediate. Reload-before-reveal replaces the
 address bar's pending reveal id and timers and resends its intended open payload.
 Sidebar visibility and docshell activity/priority remain unchanged.

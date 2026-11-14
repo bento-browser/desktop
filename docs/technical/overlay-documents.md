@@ -5,19 +5,19 @@ Part of the [technical notes index](../core-functionality-technical.md).
 Every overlay is a chrome-hosted `<browser>` that renders a full React and Mux
 document in the shared extension process. The sidebar shell
 (`#bento-shell-frame`) and the panel trailer (`#bento-panel-trailer-frame`, part
-of the panel strip layout) load at window startup, and so do three overlays whose
-payloads travel between documents: confirm, edit workspace, and the workspace
-switcher. The other overlay documents are created at idle after the launch veil
-lifts or on first use, so a window pays for the ones it opens instead of eleven
-documents at startup (audit findings R-03, R-13, R-14, M-03). The Bookmarks toolbar
+of the panel strip layout) load at window startup, and so does the workspace layers
+document, which hosts the three overlays whose payloads travel between documents:
+the workspace switcher, edit workspace, and confirm (see
+[Workspace layers document](#workspace-layers-document)). The other overlay documents
+are created at idle after the launch veil lifts or on first use, so a window pays for
+the ones it opens instead of eleven documents at startup (audit findings R-03, R-13,
+R-14, M-03). The Bookmarks toolbar
 document (`#bento-bookmarks-toolbar-frame`) is a frame in the toolbar like the trailer, not
 an overlay: see [Bookmark popup and toolbar](#bookmark-popup-and-toolbar).
 
 | Overlay (frame id `bento-<name>-frame`) | Document                                             | Opened by                                                                                                                 | Strategy                   | What the open depends on                                                                                                                                                               |
 | --------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `confirm`                               | `confirm.html`                                       | `BENTO_OPEN_CONFIRM` from sidebar, switcher, or workspace palette                                                         | eager (window startup)     | Payload on `bento-confirm-bus`, named for its window; the document exists before any user action can request it                                                                        |
-| `edit-workspace`                        | `edit-workspace.html`                                | `BENTO_OPEN_EDIT_WORKSPACE` from sidebar or switcher                                                                      | eager (window startup)     | Payload on `bento-edit-workspace-bus`, named for its window                                                                                                                            |
-| `workspace-switcher`                    | `workspace-switcher.html`                            | Sidebar trigger, `BENTO_OPEN_WORKSPACE_SWITCHER`                                                                          | eager (window startup)     | Payload on `bento-workspace-switcher-bus`, named for its window; the host stays laid out so `window.screenLeft` is right                                                               |
+| `workspace-layers`                      | `workspace-layers.html`                              | Layers: switcher (sidebar trigger, `BENTO_OPEN_WORKSPACE_SWITCHER`), edit workspace (`BENTO_OPEN_EDIT_WORKSPACE` from the sidebar), confirm (`BENTO_OPEN_CONFIRM` from the sidebar or workspace palette); the switcher opens the other two in its own document | eager (window startup)     | Payloads on `bento-workspace-switcher-bus`, `bento-edit-workspace-bus` and `bento-confirm-bus`, named for their window; the document exists before any user action can request it, and its host stays laid out so `window.screenLeft` is right |
 | `addrbar`                               | `address-bar.html`                                   | `Cmd/Ctrl+L/E/T`, native urlbar focus or click, `BentoKey:AddrbarOpen`, sidebar `BENTO_OPEN_ADDRBAR`                      | idle, 1st                  | Open message from chrome through the `BentoAddrbarOpen` frame script onto `bento-addrbar-bus`, named for its window; `BENTO_ADDRBAR_READY` reveals the host                            |
 | `palette`                               | `palette.html`                                       | `Cmd/Ctrl+Alt+P`, sidebar `BENTO_OPEN_PALETTE`                                                                            | idle, 2nd                  | Nothing: the dialog stays open inside the document, chrome only toggles the host                                                                                                       |
 | `menu`                                  | `menu.html`                                          | `showChromeMenu` (sidebar, trailer, panel and splitter menus)                                                             | idle, 3rd                  | `menu/open` on `bento-shell-bus` through the `BentoShellAction` frame script, with chrome's `__windowId`                                                                               |
@@ -60,11 +60,11 @@ talks to tools through the BentoShellBus relay, not the shell bus; see
 Source of truth: `bento-tools` and the shell mirrors are unchanged; overlay
 documents hold no persistent state. Chrome renderer path: the host `vbox`
 elements stay in the window from startup (they are cheap, and the workspace
-switcher and tooltip hosts must stay laid out); only the heavy part, the
+layers and tooltip hosts must stay laid out); only the heavy part, the
 `<browser>` and its document, is deferred. `patches/chrome-layout` still declares
-the palette, merge-palette, confirm, and menu `<browser>` elements, so the
-palette, merge palette, and menu only get their `src` later; the other hosts get
-their `<browser>` from `createOverlayFrame` when first needed. Persistence path:
+the palette, merge-palette, and menu `<browser>` elements, which only get their
+`src` later; the other hosts get their `<browser>` from `createOverlayFrame` when
+first needed (the workspace layers frame at window startup). Persistence path:
 none.
 
 ## Lifecycle and readiness contract
@@ -97,9 +97,10 @@ page with no handshake (`embedded-import`).
   The Escape handler consumes Esc for a pending open and cancels it through the
   overlay's `hide*` function; `togglePalette` and `toggleMergePalette` close a
   pending open instead of queueing a second one; a pointer-down outside cancels a
-  pending menu (and an address bar, as before). A menu that was delivered handles
-  its own Esc, as on main. The welcome and embedded import overlays consume Esc
-  without dismissing. Every `hide*` function calls `overlays.cancel(id)` first, so
+  pending menu (and an address bar, as before). Esc goes to the top-most open
+  overlay by stacking ([palettes-and-address-bar.md](palettes-and-address-bar.md#esc-follows-the-stacking-order));
+  a menu that was delivered handles its own Esc. The welcome and embedded import
+  overlays consume Esc without dismissing. Every `hide*` function calls `overlays.cancel(id)` first, so
   a hide that arrives while an open waits wins: the queue is dropped and a late
   announcement reveals and sends nothing. The queue lives until the announcement,
   `cancel`, or window teardown, and is keyed: a repeated open replaces the queued
@@ -110,9 +111,10 @@ page with no handshake (`embedded-import`).
   overlays at that moment, so the order in which cold documents finish loading
   cannot let an older request cancel a newer one.
 - **A hide waits for the fade the stylesheet configures.** The palette, workspace
-  palette, merge palette, address bar, confirm, edit-workspace, welcome and embedded
-  import hosts fade on the Mux `modal` role (inline for hosts `ensureOverlayHost`
-  creates, `bento-shell-mount.css` for the three the patch declares). Each `hide*`
+  palette, merge palette, address bar, welcome and embedded import hosts fade on the
+  Mux `modal` role (inline for hosts `ensureOverlayHost` creates,
+  `bento-shell-mount.css` for the two the patch declares); the workspace layers host
+  fades out on it from `bento-shell-mount.css` and appears at once. Each `hide*`
   sets opacity 0 and calls `hideOverlayHostAfterFade(host)`, which reads the host's
   computed opacity transition (`measureMotion`) and commits `display: none` and
   `hidden` on the `transitionend` or the measured time plus slack, only if the host
@@ -134,9 +136,9 @@ page with no handshake (`embedded-import`).
   title listener handles it for every overlay frame before the frame's own handler
   (it calls `overlays.markFrameReady`).
 - **Eager and idle creation.** `overlays.startEager()` runs at window startup
-  and creates confirm, edit workspace, and the workspace switcher, as before
-  documents were lazy: their payloads travel document to document with no queue,
-  and the documents exist before any user action can request them. `hideStartupVeil()`
+  and creates the workspace layers document, as before documents were lazy: its
+  layers' payloads travel document to document with no queue, and the document
+  exists before any user action can request them. `hideStartupVeil()`
   calls `overlays.onVeilLifted()` (first call only); the manager then creates the
   idle overlays (address bar, palette, menu) one at a time, in table order, each
   in a `requestIdleCallback` (timeout 1.5 s), and starts the next only after the
@@ -178,10 +180,12 @@ document rather than a possibly retargeted `contentWindow` proxy.
 
 The state stays presented throughout a native opacity exit. The completed hide
 commits false together with `hidden`/`display:none`; reduced motion commits at
-once. The workspace switcher keeps `display:flex` for coordinates, disables input
-at hide-start, and commits hidden/false at opacity completion. A focused switcher
-returns focus to the sidebar at hide-start (selected browser if the sidebar is
-unavailable or fully hidden); outside-click focus is retained. Deferred overlay
+once. The workspace layers host keeps `display:flex` for the switcher's coordinates,
+disables input at hide-start, and commits hidden/false at opacity completion. A
+focused switcher returns focus to the sidebar at hide-start (selected browser if the
+sidebar is unavailable or fully hidden), unless another layer took the frame over;
+outside-click focus is retained. The workspace layers query also names the layer and the
+request id it presents (see [Workspace layers document](#workspace-layers-document)). Deferred overlay
 focus checks the current generation. Menu hide and a
 null tooltip payload are immediate. Tooltip shows and replays use the same ready
 and presentation gate. An open that reloads is concealed until its replacement
@@ -199,6 +203,167 @@ active cover safely. These states remain separate from `document.hidden`, which
 can report visible under a hidden native host. Sidebar visibility and docshell
 activity are unchanged. See [Hosted overlay presentation](theming.md#hosted-overlay-presentation)
 for the shared presenter and remaining physical validation.
+
+## Workspace layers document
+
+The workspace switcher menu, the edit-workspace dialog and the confirmation dialog are
+three layers of one document, `workspace-layers.html` (`src/workspace-layers/`), in
+one host, `bento-workspace-layers-host` with `bento-workspace-layers-frame`, both made
+by the mount at window startup (`ensureOverlayHost` with `inlineFade: false`, then
+`createOverlayFrame` from the eager table row). A window keeps one resident document
+for them instead of three. The menu and the command palette keep their own documents:
+the menu must stay above the command palette and these layers below it. Source of
+truth: none (the payloads are snapshots; the document mirrors the `tabs`,
+`workspaces`, `settings` and `panels` families). Persistence path: none.
+
+- **One layer at a time.** The document mounts the presented request's layer and
+  unmounts the one it replaces (`layers.ts`, keyed by request id, so drafts, focus and the
+  Mux entrance start fresh). A dialog that stayed mounted would have React Aria hide and
+  trap everything outside it, the other layers included.
+- **Requests carry an id.** Whoever opens a layer makes a request id
+  (`newLayerRequestId`, `bridge/layerRequest.ts`: a lowercase random UUID, typed as the
+  branded `LayerRequestId`) and puts it in both the bus payload and the open title. The
+  sidebar and the workspace palette post
+  `{ kind: 'show', windowId, requestId, payload }` on the layer's bus
+  (`requestWorkspaceSwitcher`, `requestEditWorkspace`, `requestConfirm`) and write
+  `<OPEN PREFIX>:<requestId>:<ts>` (`layerOpenTitle`; `BENTO_OPEN_WORKSPACE_SWITCHER`,
+  `BENTO_OPEN_EDIT_WORKSPACE`, `BENTO_OPEN_CONFIRM`); the subscriptions drop a message
+  without a well-formed id. The switcher's Edit this workspace and Delete open their
+  layer in the document (`showWorkspaceLayer({ layer, id, payload })`) and write the same
+  open title under the switcher's layer tag: a `BroadcastChannel` never delivers to the
+  object that posted, and each bridge module keeps one channel, so a post from the
+  switcher would not reach its own document's subscription. Window scoping leaves the id
+  untouched; the layer buses are document-to-document `BroadcastChannel`s, which work
+  inside the private partition, so the private-window relay never carries them.
+- **Titles name their layer.** Every title of the document is
+  `BENTO_LAYER:<layer>:<title>` (`sendWorkspaceLayerTitle`). The frame's handler routes
+  by layer the way the other handlers route by frame, so `BENTO_OPEN_CONFIRM` from the
+  switcher layer replaces the switcher, and the same title from the workspace palette's
+  frame leaves that palette open. One `BENTO_OVERLAY_READY:workspace-layers` announces
+  the document; it is untagged and read before the frame's handler.
+- **Chrome state.** The overlay manager has one record (`workspace-layers`): readiness,
+  the one waiting open (a newer request replaces it, as for every overlay), the
+  presentation generation. The title handlers parse the open title strictly
+  (`parseLayerOpenTitle`: exactly `<prefix>:<uuid>:<digits>`, with the id matching
+  `WORKSPACE_LAYER_REQUEST_ID_PATTERN`); a missing or malformed id opens nothing and logs a
+  warning. `showWorkspaceLayer(layer, requestId, reveal)` records `{ layer, requestId }` of
+  the newest open (`requestedWorkspaceLayer`) and opens the record; the reveal sets
+  `activeWorkspaceLayer`. `isWorkspaceLayerOpen(layer)` is "shown, or the waiting open is
+  for it"; `hideWorkspaceLayer(layer)` cancels the record's open and generation only when
+  the newest open is that layer's, retires its request id, and fades the host out only
+  when no layer is shown or waiting, so a layer requested before the switcher is hidden
+  keeps the host and the focus (the title handlers show the new layer first, then hide the
+  switcher).
+- **Stacking.** The host's z-index follows the shown layer (`WORKSPACE_LAYER_Z_INDEX`):
+  switcher 99995 (below the welcome and the 99997 palettes), edit 99997, confirm 99998
+  (above the workspace, Settings and merge palettes, below the command palette 99999
+  and the menu 100000). The host is created before the welcome and embedded import
+  hosts, so at an equal z-index the import card (99998) stays above a confirmation and
+  the edit dialog above the palettes created before it, as with one host per layer.
+- **Motion.** The host appears at once (`[data-bento-layer]`, set with the opacity in
+  one style flush, has no transition) and fades out on the `modal` role
+  (`bento-shell-mount.css`, with a generated twin); `hideOverlayHostAfterFade` times
+  the hide. The layer's Mux component plays its own entrance in the document. A swap
+  inside a shown host (switcher to edit or confirm) keeps the host up: the switcher
+  menu goes at once in its document, as it did in its own host (the menu unmounted on
+  its own close, so its host faded out empty), and the incoming dialog plays its
+  entrance. Closing keeps the layer mounted until the host's fade-out has finished.
+- **Presentation names the request.** The reveal's host presentation query carries
+  `{ presented: true, generation, layer, requestId }` (`setOverlayPresentation`, from
+  `requestedWorkspaceLayer`); a hide carries `{ presented: false, generation }`.
+  `BentoShellBusChild` accepts the layer and the id only together (layer: lowercase
+  letters and hyphens, up to 40; id: the same UUID pattern) and writes them as
+  `data-bento-host-layer`, `data-bento-host-request` and `data-bento-host-generation`
+  next to `data-bento-host-presented`, removing all three with the hide. The document
+  renders only the kept payload whose id (and layer) chrome presents. What is guaranteed:
+  the document never renders a payload other than the presented one, and a presented
+  request renders as soon as both its presentation and its payload are in the document,
+  in either order, as long as its payload is still kept.
+- **Retention.** The document keeps payloads by request id until they are obsolete: an
+  id's presentation ended (a hide, or chrome presenting another id). Presenting one
+  request never drops another that has not been presented, so payloads A and B that both
+  arrive before chrome presents A and then B render in turn. A payload chrome never
+  presents (an open cancelled or replaced before its presentation, a title that never
+  reached chrome) is not retired by a hide; past 32 kept payloads the oldest that arrived
+  before the newest presented payload are evicted, and a payload that arrived after the
+  newest presented one is never evicted. Chrome handles an open title within a task of its
+  payload, so in normal use an evicted payload has been superseded. A presented layer that
+  hides reports the hide to the sidebar trigger (`notifyWorkspaceSwitcherClosed`), also
+  when its payload never came, unless the switcher closed itself and already did.
+- **Render gate.** The host is shown at the reveal with `pointer-events: none`. Once the
+  document has committed the presented request, it reports
+  `BENTO_LAYER:<layer>:BENTO_LAYER_RENDERED:<requestId>:<generation>` (`sendChromeTitle`
+  through `sendWorkspaceLayerTitle`, after React's commit, one report per presentation).
+  Chrome parses it strictly (`handleWorkspaceLayerRendered`: the id pattern and 1 to 15
+  digits, under a known layer tag) and sets `pointer-events: auto` only when the layer,
+  the id and the generation match the current presentation (`isWorkspaceLayerRendered`:
+  `activeWorkspaceLayer`, `requestedWorkspaceLayer` and the manager record's generation),
+  either at the reveal (a report that beat the acknowledgement) or when the report
+  arrives. A report for an older id or generation changes nothing. The frame takes the
+  focus at the reveal as before, so Esc dismisses a presented layer that has not rendered,
+  and clicks pass through to the page under it. Readiness and the presentation
+  acknowledgement are unchanged; nothing is timed.
+- **Layout.** The host is `display: flex` from startup and never resizes; while no
+  layer is shown it is `opacity: 0` and `pointer-events: none`. The switcher layer
+  translates the sidebar trigger's rect with `window.screenLeft`, which reads zeros in
+  a host that is not laid out.
+- **Outside click and focus.** Inside the document: a click outside the edit dialog
+  dismisses it (`dismissable`), a click on the confirmation's backdrop does not
+  (AlertDialog), the switcher menu closes on an outside click. The frame takes the
+  focus on each reveal; a focused switcher gives it back to the sidebar (or the page)
+  when it hides, unless a layer replaced it.
+
+Manual verification (macOS, regular and private window, `--jsdebugger`): open the
+switcher from the sidebar, also with the rail collapsed (the menu sits at the trigger);
+Edit this workspace and Delete (a workspace with tabs) from it: the dialog appears with
+its entrance, the toolbar dims, and the menu is gone at once; Edit all workspaces opens
+the workspace palette; Delete there opens the confirmation over the palette, which stays.
+`Cmd+Alt+P` with a confirmation open shows the command palette above it; Esc closes the
+palette, then the confirmation. Click outside the edit dialog (it closes) and outside the
+confirmation (it stays). Switch the colour mode with each layer open. In the Browser
+Toolbox Console, `document.getElementById('bento-workspace-layers-host').style.zIndex`
+reads 99995, 99997 and 99998 with the switcher, edit dialog and confirmation shown.
+
+Pitfalls:
+
+- Do not post a request from inside the document on the layer's bus: the module's one
+  channel never delivers to itself. Use `showWorkspaceLayer` and the tagged title.
+- Do not hide the outgoing layer before showing the incoming one in a handler: the
+  host would start its fade-out and the focus would go to the sidebar before the new
+  layer arrives. Show first, then hide.
+- Do not render a request before chrome presents its layer, and do not keep a layer
+  mounted after the hide: a payload arrives before chrome's reveal, and a mounted dialog
+  takes React Aria's focus trap with it.
+- Do not give the host an inline transition: it would lose to the colour-mode fade's
+  `!important` catch-all, and an inline one could not tell the instant entrance from the
+  modal exit.
+- A second hide during the fade-out must not end the record's generation, or the fade's
+  commit (`hidden`, presentation false) never comes and the host stays presented.
+- Every hide that leaves no layer ends in `hideOverlayHostAfterFade`, also for a host
+  already at opacity 0. A reopen requested during a fade and cancelled (Esc) before its
+  presentation was acknowledged ends the fade's generation, so the fade's own commit is
+  dropped; a cancelled first open was presented in the document without showing. An early
+  return at opacity 0 left both without `hidden` and without presentation false.
+- Correlate a presentation with its payload only by the request id chrome names, never by
+  layer or by arrival order. Binding a presentation to "the current request of that layer,
+  or the first of that layer to arrive after it" bound it to a stale payload in two orders:
+  a confirmation B presented while A was still fading, before B's payload arrived (bound to
+  the retained A), and a cancelled A whose payload arrived after B's presentation (bound to
+  A). Both left B requested while the document rendered nothing, so chrome revealed an
+  empty host that took the pointer. The same applies to the hide: it retires the presented
+  id, never every request of that layer, or a reopen whose payload beats the old hide is
+  dropped. `src/workspace-layers/layers.test.ts` covers these orders.
+- Do not drop other payloads of a layer when one is presented. Treating "chrome presents
+  only its newest open" as "every other payload of that layer is stale" deleted B's payload
+  when A was presented after both had arrived, so B's presentation rendered nothing and the
+  empty host took the pointer; Esc closed it but an outside click did not, because no layer
+  was mounted to receive it and chrome's outside-click handler does not cover these
+  layers. Retire a payload only when its own presentation ends, and keep the cap from
+  evicting anything newer than the newest presented payload.
+- Do not give the host pointer input at the reveal. A presentation can come before its
+  payload, and a payload can be lost (evicted, or a document reload replaying the open),
+  so the host waits for the document's rendered report for that id and generation; an
+  empty presented host must stay transparent to clicks.
 
 ## Bookmarks view
 
@@ -688,7 +853,7 @@ failed chrome-side lookup) accepts the message, as an unscoped bus always did.
 
 | Bus                                             | Sender                                                                 | Window id carried as                                  | Receiver filter                                    |
 | ----------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| `bento-confirm-bus` `show`                      | `requestConfirm` in a shell document                                   | `windowId` (sender's hash)                            | `subscribeToConfirmRequests`                       |
+| `bento-confirm-bus` `show` (with `requestId`)   | `requestConfirm` in a shell document                                   | `windowId` (sender's hash)                            | `subscribeToConfirmRequests`                       |
 | `bento-edit-workspace-bus` `show`               | `requestEditWorkspace` in a shell document                             | `windowId`                                            | `subscribeToEditWorkspaceRequests`                 |
 | `bento-workspace-switcher-bus` `show`, `closed` | `requestWorkspaceSwitcher`, `notifyWorkspaceSwitcherClosed`            | `windowId`                                            | `subscribeToWorkspaceSwitcherRequests`, `...Close` |
 | `bento-addrbar-bus` `open`                      | chrome, `BentoAddrbarOpen` frame script (`dispatchAddrbarOpen`)        | `windowId` from `getChromeWindowId()`                 | `subscribeToAddrbarOpenRequests`                   |
@@ -826,9 +991,10 @@ a getter: reading it costs one object, and nothing samples in the background.
 
 Manual verification: launch a fresh profile with `--jsdebugger`, and in the
 Browser Toolbox Console run `window.BentoOverlayStats`. Right after the window
-shows, `created` is `['confirm', 'edit-workspace', 'workspace-switcher']` plus
-later idle entries; within a few seconds it also lists `'addrbar'`, `'palette'`,
-and `'menu'`, all six report `state: 'ready'`, and the other overlays are `absent`. Open each on-demand overlay
+shows, `created` is `['workspace-layers']` plus later idle entries; within a few
+seconds it also lists `'addrbar'`, `'palette'`, `'menu'` and (regular windows with
+the Bookmarks manager on) `'bookmarks-popup'`, all report `state: 'ready'`, and the
+other overlays are `absent`. Open each on-demand overlay
 once and confirm its entry shows `reason: 'show'`, `readyBy: 'signal'`,
 `stalled: false`, and a `firstOpenWaitMs` well under the 5 s stall report.
 
@@ -897,7 +1063,9 @@ attribute, focus return, Esc, Library key and private-window refusal, and a guar
 stylesheet rules).
 `src/bridge/windowScope.test.ts` runs the real bridge modules for several windows
 on an in-memory channel, and runs the frame scripts read from the mount into them,
-including the two-window confirm case.
+including the two-window confirm case. `src/workspace-layers/layers.test.ts` runs the
+layer store against host presentations in both orders of payload and reveal; the
+surfaces suite also drives the Esc stack (`topEscapeOverlay`) and the layer titles.
 
 ## Chrome overlay transparency
 
@@ -911,9 +1079,9 @@ Load-bearing details:
 - `ensureOverlayHost` creates JS-owned overlay hosts with transparent XUL
   `vbox` and `<browser>` backgrounds. Static or theme-owned overlay hosts must
   also be listed as transparent in `bento-chrome-theme.css`.
-- Chrome overlay HTML entries, including `workspace-switcher.html`,
-  `workspace-palette.html`, `palette.html`, `edit-workspace.html`,
-  `confirm.html`, `welcome.html`, and `panel-trailer.html`, must force `html`,
+- Chrome overlay HTML entries, including `workspace-layers.html`,
+  `workspace-palette.html`, `palette.html`, `welcome.html`, and
+  `panel-trailer.html`, must force `html`,
   `body`, and `#root` to
   `background: transparent !important`. The shell build uses
   `cssCodeSplit: false`, so unrelated entry CSS such as

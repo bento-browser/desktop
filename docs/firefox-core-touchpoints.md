@@ -1077,7 +1077,42 @@ document`), then in a built app open the command palette, address bar, a sidebar
 ### Lazy Overlay Documents
 
 - Status: Active
-- Last updated: 2026-10-31
+- Last updated: 2026-11-14
+- Workspace layers document (2026-11-14): the workspace switcher, edit-workspace and
+  confirm overlays are one document (`workspace-layers.html`) in one host,
+  `#bento-workspace-layers-host` with `#bento-workspace-layers-frame`, both created by
+  the mount (`ensureOverlayHost`, `createOverlayFrame`) at window startup. Patch
+  `chrome-layout/01-bento-shell-mount.patch` no longer declares
+  `#bento-confirm-host` and `#bento-confirm-frame` (exported through the patch-stack
+  workflow; the other patches changed only in their commit ids and the `index` line of
+  `chrome-layout/02`, whose hunk moved up 8 lines). The host's z-index follows the
+  layer it shows (switcher 99995, edit 99997, confirm 99998), it is created before the
+  welcome and embedded import hosts so document order breaks z-index ties as before,
+  it stays `display: flex` and never resizes (the switcher's `window.screenLeft`
+  math), it appears at once (`[data-bento-layer]` has no transition) and fades out
+  on the modal role from `bento-shell-mount.css` with a generated twin. The host
+  presentation query carries the shown layer and the request id of its open (`layer`
+  and `requestId`, written by `BentoShellBusChild` as `data-bento-host-layer` and
+  `data-bento-host-request`); the layer open titles carry that id
+  (`<prefix>:<uuid>:<ts>`), and chrome rejects one without a valid id. The actor also
+  writes the generation (`data-bento-host-generation`), and the host takes pointer input
+  only after the document's `BENTO_LAYER_RENDERED:<uuid>:<generation>` report matches the
+  current presentation. Titles from the frame are
+  `BENTO_LAYER:<layer>:<title>`. The chrome Esc handler now picks the top-most open
+  overlay by z-index and document order (`topEscapeOverlay`) for every overlay; it
+  uses `Node.compareDocumentPosition` on the hosts, no Firefox-private member.
+  Regression checks: after `pnpm run build`, `BentoOverlayStats.created` starts
+  with `workspace-layers` (`eager`, `readyBy: 'signal'`) and lists no `confirm`,
+  `edit-workspace` or `workspace-switcher`; `document.getElementById('bento-confirm-host')`
+  is null; open the switcher from the sidebar (anchored to its trigger, also with
+  the rail collapsed), then Edit this workspace and Delete from it (the host stays
+  up, its z-index becomes 99997 and 99998, the frame keeps the focus), Edit all
+  workspaces (the workspace palette opens, the layers host fades out), Delete from
+  the workspace palette (the confirmation opens over it and the palette stays);
+  `Cmd+Alt+P` with the confirmation open shows the command palette above it, and
+  Esc closes the palette first; a click outside the edit dialog closes it, a click
+  outside the confirmation does not; repeat in a private window and a second
+  window, and switch the colour mode with each layer open.
 - Host presentation gate (2026-10-31): `setFrameSrc` merges a hosted-overlay hint
   into the existing hash; hidden shell overlays default to unpresented before
   module initialization. After readiness, the manager queries the current
@@ -1142,14 +1177,15 @@ document`), then in a built app open the command palette, address bar, a sidebar
     `overlays` table, `createOverlayFrame`, `openOverlay`, `isOverlayOpen`, the
     `BentoAddrbarOpen` and `BentoMergePaletteLifecycle` frame scripts)
   - `patches/chrome-layout/01-bento-shell-mount.patch` (the palette,
-    merge-palette, confirm, and menu `<browser>` elements it declares stay
-    in the window; palette, merge palette, and menu are navigated on first use or at
-    idle; the three fading hosts lost their inline `transition`, see above)
+    merge-palette, and menu `<browser>` elements it declares stay
+    in the window; they are navigated on first use or at idle; the fading hosts
+    lost their inline `transition`, see above; the confirm host left the patch on
+    2026-11-14)
   - `extensions/bento-shell/src/bridge/overlayReady.ts` (shell side of the
     handshake) and `windowId.ts` (the window id every overlay bus is scoped by)
   - No new Firefox patch.
-- Bento functionality: the sidebar shell, the panel trailer, and the confirm,
-  edit-workspace, and workspace-switcher overlays load at window startup, as before.
+- Bento functionality: the sidebar shell, the panel trailer, and the workspace
+  layers overlay (switcher, edit workspace, confirm) load at window startup.
   The address bar, command palette, menu, and (regular windows with the Bookmarks manager on)
   the bookmark popup are created at idle after the launch
   veil lifts. The workspace palette, merge palette, welcome, embedded import, and
@@ -1189,9 +1225,8 @@ document`), then in a built app open the command palette, address bar, a sidebar
   old unscoped behavior), so cross-window isolation is lost until it is fixed.
 - Regression checks for future updates: run `pnpm run build`, launch with
   `--jsdebugger`, and in the Browser Toolbox Console read
-  `window.BentoOverlayStats`: right after startup `created` lists `confirm`,
-  `edit-workspace`, `workspace-switcher`, and within a few seconds `addrbar`,
-  `palette`, `menu`. Open the workspace palette, merge palette, and a delete
+  `window.BentoOverlayStats`: right after startup `created` lists
+  `workspace-layers`, and within a few seconds `addrbar`, `palette`, `menu`. Open the workspace palette, merge palette, and a delete
   confirmation once each and confirm every entry reports `readyBy: 'signal'` and
   `stalled: false`. On a profile with `welcomeSeen` false confirm the welcome
   overlay appears on first run. Hover a panel navigator button and confirm the
@@ -1206,7 +1241,7 @@ document`), then in a built app open the command palette, address bar, a sidebar
   items of the last request). After the motion tokens change: in the Browser
   Toolbox Console `getComputedStyle(document.getElementById('bento-palette-host'))`
   reports `transitionProperty: 'opacity'` and the modal duration (`0.18s` with the
-  default Mux tokens) for the palette, merge palette and confirm hosts before
+  default Mux tokens) for the palette and merge palette hosts before
   their first show; open and close each overlay, the address bar and the welcome
   screen (the fade must not clip, and no host may stay at opacity 0 over the page
   and block input), reopen one during its fade-out (it stays open), and repeat

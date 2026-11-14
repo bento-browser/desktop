@@ -4,6 +4,7 @@
 // carry, like the documents chrome loads.
 
 import { vi } from 'vitest';
+import type { LayerRequestId } from './layerRequest';
 import type { ConfirmPayload } from './useConfirm';
 import type { EditWorkspacePayload } from './useEditWorkspace';
 import type { WorkspaceSwitcherOpenPayload } from './useWorkspaceSwitcher';
@@ -55,10 +56,12 @@ function stubWindow(windowId: number | null): void {
 
 export interface OverlayAdapter {
   busName: string;
-  /** A sender document asks for the overlay to open, with a payload named `label`. */
-  request(label: string): void;
-  /** An overlay document subscribes; the handler gets the label of each applied payload. */
-  subscribe(handler: (label: string) => void): () => void;
+  /** A sender document asks for the overlay to open, with a payload named `label`; returns the
+   * request id it made (null when the window is not known to chrome). */
+  request(label: string): LayerRequestId | null;
+  /** An overlay document subscribes; the handler gets the label and the request id of each
+   * applied payload. */
+  subscribe(handler: (label: string, requestId: LayerRequestId) => void): () => void;
 }
 
 export type OverlayKind = 'confirm' | 'edit-workspace' | 'workspace-switcher';
@@ -84,7 +87,7 @@ export async function loadDocument(
           action: { type: 'workspace/delete', id: label },
         } satisfies ConfirmPayload),
       subscribe: (handler) =>
-        bridge.subscribeToConfirmRequests((payload) => handler(payload.title)),
+        bridge.subscribeToConfirmRequests((payload, id) => handler(payload.title, id)),
     };
   }
   if (kind === 'edit-workspace') {
@@ -97,7 +100,7 @@ export async function loadDocument(
           name: label,
         } satisfies EditWorkspacePayload),
       subscribe: (handler) =>
-        bridge.subscribeToEditWorkspaceRequests((payload) => handler(payload.name)),
+        bridge.subscribeToEditWorkspaceRequests((payload, id) => handler(payload.name, id)),
     };
   }
   const bridge = await import('./useWorkspaceSwitcher');
@@ -111,8 +114,8 @@ export async function loadDocument(
         sidebarScreenY: 0,
       } satisfies WorkspaceSwitcherOpenPayload),
     subscribe: (handler) =>
-      bridge.subscribeToWorkspaceSwitcherRequests((payload) =>
-        handler(switcherLabels[payload.sidebarScreenX] ?? ''),
+      bridge.subscribeToWorkspaceSwitcherRequests((payload, id) =>
+        handler(switcherLabels[payload.sidebarScreenX] ?? '', id),
       ),
   };
 }

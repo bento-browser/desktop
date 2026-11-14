@@ -1,7 +1,7 @@
 // Welcome overlay entry. Lives in its OWN Vite chunk + chrome <browser>
 // frame so the modal scrim covers the entire browser window rather than
-// being clipped to the sidebar's bounds. Mirrors src/confirm/main.tsx and
-// src/edit-workspace/main.tsx.
+// being clipped to the sidebar's bounds, like the edit-workspace and confirm
+// layers of src/workspace-layers.
 //
 // Lifecycle:
 //   - App.tsx (sidebar) and this welcome frame both call requestWelcome()

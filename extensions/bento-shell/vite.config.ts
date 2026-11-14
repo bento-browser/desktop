@@ -131,9 +131,9 @@ const shellConfig = defineConfig(({ mode }) => ({
       // package.json `build:background` script. Vite emits ES modules
       // (correct for the index.html entry that loads via type=module)
       // but MV2 background.scripts requires classic-script format.
-      // Multi-entry: shell is the chrome-mounted sidebar; palette, confirm,
-      // and edit-workspace are chrome-mounted overlay <browser> elements
-      // covering the whole window.
+      // Multi-entry: shell is the chrome-mounted sidebar; the palettes and
+      // workspace-layers (switcher, edit workspace, confirm) are chrome-mounted
+      // overlay <browser> elements covering the whole window.
       input: {
         shell: resolve(__dirname, 'index.html'),
         palette: resolve(__dirname, 'palette.html'),
@@ -144,9 +144,7 @@ const shellConfig = defineConfig(({ mode }) => ({
         'bookmarks-popup': resolve(__dirname, 'bookmarks-popup.html'),
         'bookmarks-toolbar': resolve(__dirname, 'bookmarks-toolbar.html'),
         'address-bar': resolve(__dirname, 'address-bar.html'),
-        confirm: resolve(__dirname, 'confirm.html'),
-        'edit-workspace': resolve(__dirname, 'edit-workspace.html'),
-        'workspace-switcher': resolve(__dirname, 'workspace-switcher.html'),
+        'workspace-layers': resolve(__dirname, 'workspace-layers.html'),
         welcome: resolve(__dirname, 'welcome.html'),
         menu: resolve(__dirname, 'menu.html'),
         'panel-trailer': resolve(__dirname, 'panel-trailer.html'),

@@ -498,6 +498,11 @@ same amount as the content behind it. The floating address/search bar is not a
 modal scrim; it leaves the native toolbar visible and does not dim or blur the
 content behind it.
 
+When several of these are open at once, Esc goes to the one on top: an open menu
+first, then a command palette over a confirmation, then the confirmation over the
+workspace editor. Nothing under the top one closes. The onboarding dialog still
+ignores Esc while it is on top.
+
 Open the command palette from the footer or with `Cmd/Ctrl+Alt+P`. It separates
 normal tabs from side panels and lists the tabs and panels held by the current
 window; sidebar search finds them across regular workspaces, including those held by
