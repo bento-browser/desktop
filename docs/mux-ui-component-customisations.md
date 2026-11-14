@@ -22,13 +22,13 @@ icon/layout adaptation.
 
 ## Consumer migration status
 
-Bento consumes the exact published `@muxui/react@0.1.0-rc.4` npm release in
+Bento consumes the exact published `@muxui/react@0.1.0-rc.6` npm release in
 the single frozen dependency graph. All React documents, the Settings palette included,
 use public Mux controls, the shared stylesheet boundary, and Bento layout/icon
 primitives. Native chrome and the remaining Firefox pages consume the generated
 Mux token projection.
 
-RC4 states use `data-muxui-state-*`, variants `data-muxui-variant`, and sizes
+Mux states use `data-muxui-state-*`, variants `data-muxui-variant`, and sizes
 `data-muxui-size`; its public part classes use `__` (Button's label is
 `.muxui-button__label`). The old state and part selectors have no aliases.
 Bento-owned attributes on native elements keep their names. The Mux CSS reader
@@ -47,11 +47,12 @@ is bundled from two install paths, which is how the original
 published version and npm integrity and retains the approved shell runtime
 dependency policy.
 
-The RC4 release build measures shell cold-start JavaScript at 304.44 KB gzipped,
-the command palette at 254.56 KB, and shell CSS at 88.98 KB. The size baseline records
-the measured upgrade, including seven explicit growth entries; advisory ceilings
-remain unchanged. The shell decreases 81.88 KB while the palette increases 53.94 KB
-and CSS increases 14.37 KB relative to the prior baseline.
+The rc.6 release build measures shell cold-start JavaScript at 310.37 KB gzipped,
+the command palette at 257.32 KB, and shell CSS at 94.47 KB. The size baseline records
+the rc.4 to rc.6 upgrade with seven explicit growth entries (address bar, workspace
+layers, welcome, workspace palette, Settings palette, panel trailer and shell CSS, each
+2.6 to 4.2 KB); the other entries grew within the ratchet's tolerance, and advisory
+ceilings remain unchanged.
 
 For the prior RC1 migration, on 2026-10-05 isolated Node 24.21 validation passed both frozen installs,
 normal shell typecheck/lint/build, the Settings Ladle build and
@@ -232,7 +233,9 @@ flight, `data-switch` for a row that shows a switch, `data-separated`, `data-det
 `Thumb`, `size="sm"`) in an `aria-hidden`, `inert` wrapper: a picture of the state, the row
 is the control, and the row keeps On or Off in its text value. The root `Switch` was tried and
 dropped: it lives in the `fields` chunk, which added about 45 KB gzip to the Settings entry,
-where `SwitchField` is in the `supplemental` chunk the palette already loads. Static rows
+where `SwitchField` bundles into the Settings entry itself. Since rc.6 `SwitchField.Button`
+also carries Switch's `.muxui-switch` class, so the track width the palette reads is
+`--muxui-component-switch-track-width` and the hover tint it carries is Switch's rule. Static rows
 are `disabled` items, which keyboard navigation skips, restyled so they read as text.
 A list of four rows or fewer has no visible field row: the `SearchField` keeps `data-hidden`
 (`position: absolute`, 1px, `clip-path: inset(50%)`, the usual visually-hidden recipe) and the
@@ -272,7 +275,7 @@ no fill (focused, hovered, pressed and selected rows are transparent under
 `.bento-row-highlight`) and one slab, the list's `::before`, moves to the focused row. Its
 box is written into `--bento-row-highlight-*` properties by the hook; it transitions
 `transform`, block and inline size at half the Mux `state` duration with the same spring
-easing (125 ms in RC4). Colour and opacity retain the full state pair (250 ms in RC4),
+easing (125 ms in rc.6). Colour and opacity retain the full state pair (250 ms in rc.6),
 including during coordinated mode fades. First placement and a stage change are instant,
 and reduced motion disables the transition. Its colour is
 `--bento-palette-highlight-bg` (light neutral-30, pressed neutral-40; dark neutral-14,
@@ -1141,7 +1144,7 @@ Rules:
    the time from the element's computed style after the styles that start the motion
    are applied.
 
-Roles (values are the installed Mux RC4 defaults; they change with Mux, not in Bento):
+Roles (values are the installed Mux rc.6 defaults; they change with Mux, not in Bento):
 
 | Role             | Use in Bento                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Default                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |

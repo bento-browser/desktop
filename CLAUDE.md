@@ -186,7 +186,7 @@ Before creating or modifying a component:
    tools store keeps the original id.
    Mux-owned states use `data-muxui-state-*`, variants use `data-muxui-variant`,
    and sizes use `data-muxui-size`. Use the public BEM part classes from the
-   installed README; RC4 emits no aliases for the former selectors. Keep
+   installed README; Mux emits no aliases for the former selectors. Keep
    Bento-owned attributes on native elements separate.
 5. Build repeated layout and icon behavior with the Bento primitives. Mux
    owns its internal React Aria implementation; Bento composites consume the
@@ -257,7 +257,7 @@ Before creating or modifying a component:
 
 ## UI dependencies: development and release
 
-Bento consumes the published `@muxui/react@0.1.0-rc.4` npm package. Use its
+Bento consumes the published `@muxui/react@0.1.0-rc.6` npm package. Use its
 public `styles.css`, `themes.css`, and documented component exports. Pin the
 exact package version; do not use dist-tags, local archives, or working-tree
 links in manifests or locks.

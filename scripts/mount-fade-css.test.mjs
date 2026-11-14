@@ -315,7 +315,8 @@ test('the theme cards reproduce Mux\'s outlined hover and pressed tint over a ca
 // new mode at once while their fill fades. Bento renders some of them; each is carried or recorded here.
 const MUX_GRADIENT_HANDLED = {
   card: '--bento-card-tint (WorkspaceThemePicker.css)',
-  'switch-field': '--bento-switch-hover-tint (SettingsPalette.css)',
+  // SwitchField's Button carries Switch's .muxui-switch class, so its tint is Switch's rule.
+  switch: '--bento-switch-hover-tint (SettingsPalette.css, SwitchField)',
 };
 // Rendered, not carried: a hover or pressed tint for one pointer state. Welcome shows once per profile;
 // the icon picker's tabs only show these edge buttons when their row overflows.

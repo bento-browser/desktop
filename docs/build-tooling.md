@@ -827,7 +827,7 @@ Pitfalls:
 ## Reproducible release dependencies
 
 `pnpm-lock.yaml` is the only lockfile, for developer, CI, and release installs.
-It consumes the exact published npm package `@muxui/react@0.1.0-rc.4` and records
+It consumes the exact published npm package `@muxui/react@0.1.0-rc.6` and records
 its registry integrity. The package exposes public `./themes` and `./themes.css`
 entries alongside the root React renderer; consumers use those exports rather
 than generated-file paths. Bento has no committed Mux tarball or local
@@ -1354,7 +1354,7 @@ generated theme files, so none of them needs a separate step.
   `@muxui/react/themes` through one module,
   [`scripts/mux-css.mjs`](../scripts/mux-css.mjs) (tests in
   [`scripts/mux-css.test.mjs`](../scripts/mux-css.test.mjs)). It matches each
-  public block by its whole selector list inside the declared RC4 layer: root/mode
+  public block by its whole selector list inside the declared public layer: root/mode
   tokens in `muxui.tokens`, the compatibility closure in `muxui.components`.
   It checks the public layer order, rejects unexpected or duplicate layers, derives the theme list from the
   package instead of a fixed count, and stops the build with a message that names

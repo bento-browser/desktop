@@ -11,13 +11,13 @@
       [data-muxui-contrast='more']
     ) {
     --muxui-component-button-background: #25778d;
-    --muxui-component-button-foreground: #f2f9fb;
+    --muxui-component-button-foreground: #f7fbfc;
     --muxui-component-checkbox-indicator-background: #ecf6f9;
     --muxui-component-checkbox-indicator-border: #8cbbca;
-    --muxui-component-checkbox-indicator-border-hover: #629fb2;
+    --muxui-component-checkbox-indicator-border-hover: #5693a6;
     --muxui-component-checkbox-selected-background: #25778d;
-    --muxui-component-checkbox-selected-foreground: #f2f9fb;
-    --muxui-component-checkbox-selected-foreground-hover: #f2f9fb;
+    --muxui-component-checkbox-selected-foreground: #f7fbfc;
+    --muxui-component-checkbox-selected-foreground-hover: #f7fbfc;
     --muxui-component-datepicker-popover-shadow-color: color-mix(
       in srgb,
       var(--muxui-semantic-color-neutral-100) 10%,
@@ -45,16 +45,18 @@
       #00000000
     );
     --muxui-component-switch-label: #1f3b43;
-    --muxui-component-switch-selected-thumb: #f2f9fb;
+    --muxui-component-switch-selected-thumb: #f7fbfc;
     --muxui-component-switch-selected-track: #25778d;
-    --muxui-component-switch-selected-track-hover: #629fb2;
+    --muxui-component-switch-selected-track-hover: #5693a6;
     --muxui-component-tabs-panel-foreground: #1f3b43;
+    --muxui-component-tabs-selected-background: #f7fbfc;
+    --muxui-component-tabs-selected-foreground: #172225;
     --muxui-component-tabs-tab-foreground: #236274;
     --muxui-component-tabs-vertical-list-border: #cfe5ec;
-    --muxui-component-taggroup-brand-dot: #629fb2;
+    --muxui-component-taggroup-brand-dot: #5693a6;
     --muxui-component-taggroup-brand-foreground: #1f3b43;
     --muxui-component-taggroup-brand-selected-background: #25778d;
-    --muxui-component-taggroup-brand-selected-foreground: #f2f9fb;
+    --muxui-component-taggroup-brand-selected-foreground: #f7fbfc;
     --muxui-component-taggroup-brand-strong-foreground: #1f3b43;
     --muxui-component-taggroup-brand-tint-heavy: color-mix(
       in srgb,
@@ -69,8 +71,8 @@
     --muxui-component-taggroup-label: #1f3b43;
     --muxui-component-taggroup-neutral-dot: #236274;
     --muxui-component-taggroup-neutral-selected-background: #1f3b43;
-    --muxui-component-taggroup-neutral-selected-foreground: #f2f9fb;
-    --muxui-component-taggroup-selected-overlay-light: #f2f9fb;
+    --muxui-component-taggroup-neutral-selected-foreground: #f7fbfc;
+    --muxui-component-taggroup-selected-overlay-light: #f7fbfc;
     --muxui-component-taggroup-selected-overlay-scheme: #1f3b43;
     --muxui-component-taggroup-tag-background: color-mix(
       in srgb,
@@ -80,18 +82,18 @@
     --muxui-component-taggroup-tag-foreground: #1f3b43;
     --muxui-component-textfield-label: #1f3b43;
     --muxui-reference-color-brand-10: #ecf6f9;
-    --muxui-reference-color-brand-100: #1d282c;
+    --muxui-reference-color-brand-100: #172225;
     --muxui-reference-color-brand-20: #cfe5ec;
     --muxui-reference-color-brand-30: #afd2dd;
     --muxui-reference-color-brand-40: #8cbbca;
-    --muxui-reference-color-brand-5: #f2f9fb;
-    --muxui-reference-color-brand-50: #629fb2;
+    --muxui-reference-color-brand-5: #f7fbfc;
+    --muxui-reference-color-brand-50: #5693a6;
     --muxui-reference-color-brand-60: #25778d;
     --muxui-reference-color-brand-70: #236274;
     --muxui-reference-color-brand-80: #1f4f5c;
     --muxui-reference-color-brand-90: #1f3b43;
     --muxui-reference-color-neutral-10: #ecf6f9;
-    --muxui-reference-color-neutral-100: #1d282c;
+    --muxui-reference-color-neutral-100: #172225;
     --muxui-reference-color-neutral-12: #e7f3f7;
     --muxui-reference-color-neutral-14: #e1eff4;
     --muxui-reference-color-neutral-16: #dbecf2;
@@ -103,8 +105,8 @@
     --muxui-reference-color-neutral-28: #b6d6e0;
     --muxui-reference-color-neutral-30: #afd2dd;
     --muxui-reference-color-neutral-40: #8cbbca;
-    --muxui-reference-color-neutral-5: #f2f9fb;
-    --muxui-reference-color-neutral-50: #629fb2;
+    --muxui-reference-color-neutral-5: #f7fbfc;
+    --muxui-reference-color-neutral-50: #5693a6;
     --muxui-reference-color-neutral-60: #25778d;
     --muxui-reference-color-neutral-70: #236274;
     --muxui-reference-color-neutral-80: #1f4f5c;
@@ -120,9 +122,9 @@
     --muxui-semantic-action-background: #25778d;
     --muxui-semantic-action-background-hover: #236274;
     --muxui-semantic-action-background-pressed: #1f4f5c;
-    --muxui-semantic-action-foreground: #f2f9fb;
-    --muxui-semantic-action-foreground-hover: #f2f9fb;
-    --muxui-semantic-action-foreground-pressed: #f2f9fb;
+    --muxui-semantic-action-foreground: #f7fbfc;
+    --muxui-semantic-action-foreground-hover: #f7fbfc;
+    --muxui-semantic-action-foreground-pressed: #f7fbfc;
     --muxui-semantic-action-neutral-background: color-mix(
       in srgb,
       var(--muxui-semantic-surface-strong) 8%,
@@ -139,99 +141,99 @@
       #00000000
     );
     --muxui-semantic-action-selection-background: #8cbbca;
-    --muxui-semantic-action-selection-background-hover: #629fb2;
+    --muxui-semantic-action-selection-background-hover: #5693a6;
     --muxui-semantic-action-selection-background-pressed: #25778d;
-    --muxui-semantic-action-selection-foreground: #1d282c;
+    --muxui-semantic-action-selection-foreground: #172225;
     --muxui-semantic-action-selection-indicator: #cfe5ec;
-    --muxui-semantic-border-contrast: #1d282c;
+    --muxui-semantic-border-contrast: #172225;
     --muxui-semantic-border-default: #c9e1ea;
     --muxui-semantic-border-dragging: #1f4f5c;
     --muxui-semantic-border-emphasis: #1f3b43;
     --muxui-semantic-border-faint: #e1eff4;
     --muxui-semantic-border-indicator: #8cbbca;
-    --muxui-semantic-border-indicator-hover: #629fb2;
+    --muxui-semantic-border-indicator-hover: #5693a6;
     --muxui-semantic-border-popup: #cfe5ec;
     --muxui-semantic-border-strong: #bcdae4;
     --muxui-semantic-border-subtle: #cfe5ec;
     --muxui-semantic-color-color-10: #ecf6f9;
-    --muxui-semantic-color-color-10-fg: #1d282c;
-    --muxui-semantic-color-color-100: #1d282c;
-    --muxui-semantic-color-color-100-fg: #f2f9fb;
+    --muxui-semantic-color-color-10-fg: #172225;
+    --muxui-semantic-color-color-100: #172225;
+    --muxui-semantic-color-color-100-fg: #f7fbfc;
     --muxui-semantic-color-color-20: #cfe5ec;
-    --muxui-semantic-color-color-20-fg: #1d282c;
+    --muxui-semantic-color-color-20-fg: #172225;
     --muxui-semantic-color-color-30: #afd2dd;
-    --muxui-semantic-color-color-30-fg: #1d282c;
+    --muxui-semantic-color-color-30-fg: #172225;
     --muxui-semantic-color-color-40: #8cbbca;
-    --muxui-semantic-color-color-40-fg: #1d282c;
-    --muxui-semantic-color-color-5: #f2f9fb;
-    --muxui-semantic-color-color-5-fg: #1d282c;
-    --muxui-semantic-color-color-50: #629fb2;
-    --muxui-semantic-color-color-50-fg: #1d282c;
+    --muxui-semantic-color-color-40-fg: #172225;
+    --muxui-semantic-color-color-5: #f7fbfc;
+    --muxui-semantic-color-color-5-fg: #172225;
+    --muxui-semantic-color-color-50: #5693a6;
+    --muxui-semantic-color-color-50-fg: #172225;
     --muxui-semantic-color-color-60: #25778d;
-    --muxui-semantic-color-color-60-fg: #f2f9fb;
+    --muxui-semantic-color-color-60-fg: #f7fbfc;
     --muxui-semantic-color-color-70: #236274;
-    --muxui-semantic-color-color-70-fg: #f2f9fb;
+    --muxui-semantic-color-color-70-fg: #f7fbfc;
     --muxui-semantic-color-color-80: #1f4f5c;
-    --muxui-semantic-color-color-80-fg: #f2f9fb;
+    --muxui-semantic-color-color-80-fg: #f7fbfc;
     --muxui-semantic-color-color-90: #1f3b43;
-    --muxui-semantic-color-color-90-fg: #f2f9fb;
+    --muxui-semantic-color-color-90-fg: #f7fbfc;
     --muxui-semantic-color-neutral-10: #ecf6f9;
-    --muxui-semantic-color-neutral-10-fg: #1d282c;
-    --muxui-semantic-color-neutral-100: #1d282c;
-    --muxui-semantic-color-neutral-100-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-10-fg: #172225;
+    --muxui-semantic-color-neutral-100: #172225;
+    --muxui-semantic-color-neutral-100-fg: #f7fbfc;
     --muxui-semantic-color-neutral-12: #e7f3f7;
-    --muxui-semantic-color-neutral-12-fg: #1d282c;
+    --muxui-semantic-color-neutral-12-fg: #172225;
     --muxui-semantic-color-neutral-14: #e1eff4;
-    --muxui-semantic-color-neutral-14-fg: #1d282c;
+    --muxui-semantic-color-neutral-14-fg: #172225;
     --muxui-semantic-color-neutral-16: #dbecf2;
-    --muxui-semantic-color-neutral-16-fg: #1d282c;
+    --muxui-semantic-color-neutral-16-fg: #172225;
     --muxui-semantic-color-neutral-18: #d5e9ef;
-    --muxui-semantic-color-neutral-18-fg: #1d282c;
+    --muxui-semantic-color-neutral-18-fg: #172225;
     --muxui-semantic-color-neutral-20: #cfe5ec;
-    --muxui-semantic-color-neutral-20-fg: #1d282c;
+    --muxui-semantic-color-neutral-20-fg: #172225;
     --muxui-semantic-color-neutral-22: #c9e1ea;
-    --muxui-semantic-color-neutral-22-fg: #1d282c;
+    --muxui-semantic-color-neutral-22-fg: #172225;
     --muxui-semantic-color-neutral-24: #c3dee7;
-    --muxui-semantic-color-neutral-24-fg: #1d282c;
+    --muxui-semantic-color-neutral-24-fg: #172225;
     --muxui-semantic-color-neutral-26: #bcdae4;
-    --muxui-semantic-color-neutral-26-fg: #1d282c;
+    --muxui-semantic-color-neutral-26-fg: #172225;
     --muxui-semantic-color-neutral-28: #b6d6e0;
-    --muxui-semantic-color-neutral-28-fg: #1d282c;
+    --muxui-semantic-color-neutral-28-fg: #172225;
     --muxui-semantic-color-neutral-30: #afd2dd;
-    --muxui-semantic-color-neutral-30-fg: #1d282c;
+    --muxui-semantic-color-neutral-30-fg: #172225;
     --muxui-semantic-color-neutral-40: #8cbbca;
-    --muxui-semantic-color-neutral-40-fg: #1d282c;
-    --muxui-semantic-color-neutral-5: #f2f9fb;
-    --muxui-semantic-color-neutral-5-fg: #1d282c;
-    --muxui-semantic-color-neutral-50: #629fb2;
-    --muxui-semantic-color-neutral-50-fg: #1d282c;
+    --muxui-semantic-color-neutral-40-fg: #172225;
+    --muxui-semantic-color-neutral-5: #f7fbfc;
+    --muxui-semantic-color-neutral-5-fg: #172225;
+    --muxui-semantic-color-neutral-50: #5693a6;
+    --muxui-semantic-color-neutral-50-fg: #172225;
     --muxui-semantic-color-neutral-60: #25778d;
-    --muxui-semantic-color-neutral-60-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-60-fg: #f7fbfc;
     --muxui-semantic-color-neutral-70: #236274;
-    --muxui-semantic-color-neutral-70-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-70-fg: #f7fbfc;
     --muxui-semantic-color-neutral-80: #1f4f5c;
-    --muxui-semantic-color-neutral-80-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-80-fg: #f7fbfc;
     --muxui-semantic-color-neutral-82: #1e4a57;
-    --muxui-semantic-color-neutral-82-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-82-fg: #f7fbfc;
     --muxui-semantic-color-neutral-84: #1f4753;
-    --muxui-semantic-color-neutral-84-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-84-fg: #f7fbfc;
     --muxui-semantic-color-neutral-86: #1f424d;
-    --muxui-semantic-color-neutral-86-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-86-fg: #f7fbfc;
     --muxui-semantic-color-neutral-88: #203f49;
-    --muxui-semantic-color-neutral-88-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-88-fg: #f7fbfc;
     --muxui-semantic-color-neutral-90: #1f3b43;
-    --muxui-semantic-color-neutral-90-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-90-fg: #f7fbfc;
     --muxui-semantic-color-neutral-92: #1f373e;
-    --muxui-semantic-color-neutral-92-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-92-fg: #f7fbfc;
     --muxui-semantic-color-neutral-94: #1f333a;
-    --muxui-semantic-color-neutral-94-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-94-fg: #f7fbfc;
     --muxui-semantic-color-neutral-96: #1e2f35;
-    --muxui-semantic-color-neutral-96-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-96-fg: #f7fbfc;
     --muxui-semantic-color-neutral-98: #1d2b30;
-    --muxui-semantic-color-neutral-98-fg: #f2f9fb;
+    --muxui-semantic-color-neutral-98-fg: #f7fbfc;
     --muxui-semantic-color-neutral-default: #25778d;
     --muxui-semantic-color-neutral-default-10: #ecf6f9;
-    --muxui-semantic-color-neutral-default-100: #1d282c;
+    --muxui-semantic-color-neutral-default-100: #172225;
     --muxui-semantic-color-neutral-default-12: #e7f3f7;
     --muxui-semantic-color-neutral-default-14: #e1eff4;
     --muxui-semantic-color-neutral-default-16: #dbecf2;
@@ -243,8 +245,8 @@
     --muxui-semantic-color-neutral-default-28: #b6d6e0;
     --muxui-semantic-color-neutral-default-30: #afd2dd;
     --muxui-semantic-color-neutral-default-40: #8cbbca;
-    --muxui-semantic-color-neutral-default-5: #f2f9fb;
-    --muxui-semantic-color-neutral-default-50: #629fb2;
+    --muxui-semantic-color-neutral-default-5: #f7fbfc;
+    --muxui-semantic-color-neutral-default-50: #5693a6;
     --muxui-semantic-color-neutral-default-60: #25778d;
     --muxui-semantic-color-neutral-default-70: #236274;
     --muxui-semantic-color-neutral-default-80: #1f4f5c;
@@ -260,12 +262,12 @@
     --muxui-semantic-color-primary: #25778d;
     --muxui-semantic-content-default: #1f3b43;
     --muxui-semantic-content-faint: #25778d;
-    --muxui-semantic-content-inverse: #1d282c;
+    --muxui-semantic-content-inverse: #172225;
     --muxui-semantic-content-link: #236274;
-    --muxui-semantic-content-link-hover: #1d282c;
+    --muxui-semantic-content-link-hover: #172225;
     --muxui-semantic-content-link-pressed: #1f3b43;
     --muxui-semantic-content-muted: #236274;
-    --muxui-semantic-content-on-solid: #f2f9fb;
+    --muxui-semantic-content-on-solid: #f7fbfc;
     --muxui-semantic-content-on-strong: #cfe5ec;
     --muxui-semantic-content-secondary: #25778d;
     --muxui-semantic-content-strong: #1f3b43;
@@ -274,17 +276,17 @@
       var(--muxui-semantic-color-neutral-default-100) 48%,
       #00000000
     );
-    --muxui-semantic-field-background: #f2f9fb;
+    --muxui-semantic-field-background: #f7fbfc;
     --muxui-semantic-field-border: #bcdae4;
     --muxui-semantic-field-content: #1f3b43;
     --muxui-semantic-field-description: #236274;
     --muxui-semantic-field-label: #236274;
-    --muxui-semantic-field-placeholder: #629fb2;
-    --muxui-semantic-focus-inner: #1d282c;
+    --muxui-semantic-field-placeholder: #5693a6;
+    --muxui-semantic-focus-inner: #172225;
     --muxui-semantic-focus-neutral-glow: #25778d;
-    --muxui-semantic-focus-neutral-ring: #629fb2;
+    --muxui-semantic-focus-neutral-ring: #5693a6;
     --muxui-semantic-focus-ring: #25778d;
-    --muxui-semantic-overlay-background: #f2f9fb;
+    --muxui-semantic-overlay-background: #f7fbfc;
     --muxui-semantic-overlay-scrim: color-mix(
       in srgb,
       var(--muxui-semantic-color-neutral-default-100) 48%,
@@ -296,15 +298,15 @@
       #00000000
     );
     --muxui-semantic-selection-background-strong: #236274;
-    --muxui-semantic-selection-indicator: #1d282c;
+    --muxui-semantic-selection-indicator: #172225;
     --muxui-semantic-selection-track: #25778d;
-    --muxui-semantic-surface-background: #f2f9fb;
+    --muxui-semantic-surface-background: #f7fbfc;
     --muxui-semantic-surface-canvas: #ecf6f9;
-    --muxui-semantic-surface-contrast: #1d282c;
+    --muxui-semantic-surface-contrast: #172225;
     --muxui-semantic-surface-disabled: #8cbbca;
     --muxui-semantic-surface-emphasis: #1f4f5c;
     --muxui-semantic-surface-hover: #e1eff4;
-    --muxui-semantic-surface-muted: #629fb2;
+    --muxui-semantic-surface-muted: #5693a6;
     --muxui-semantic-surface-pressed: #cfe5ec;
     --muxui-semantic-surface-raised: #ecf6f9;
     --muxui-semantic-surface-strong: #1f3b43;
@@ -319,13 +321,13 @@
       [data-muxui-contrast='more']
     ) {
     --muxui-component-button-background: #8cbbca;
-    --muxui-component-button-foreground: #1d282c;
+    --muxui-component-button-foreground: #172225;
     --muxui-component-checkbox-indicator-background: #1d2b30;
     --muxui-component-checkbox-indicator-border: #25778d;
     --muxui-component-checkbox-indicator-border-hover: #8cbbca;
     --muxui-component-checkbox-selected-background: #8cbbca;
-    --muxui-component-checkbox-selected-foreground: #1d282c;
-    --muxui-component-checkbox-selected-foreground-hover: #1d282c;
+    --muxui-component-checkbox-selected-foreground: #172225;
+    --muxui-component-checkbox-selected-foreground-hover: #172225;
     --muxui-component-datepicker-popover-shadow-color: color-mix(
       in srgb,
       var(--muxui-semantic-color-neutral-100) 10%,
@@ -353,17 +355,23 @@
       #00000000
     );
     --muxui-component-switch-label: #afd2dd;
-    --muxui-component-switch-selected-thumb: #1d282c;
+    --muxui-component-switch-selected-thumb: #172225;
     --muxui-component-switch-selected-track: #8cbbca;
-    --muxui-component-switch-selected-track-hover: #629fb2;
+    --muxui-component-switch-selected-track-hover: #5693a6;
     --muxui-component-tabs-panel-foreground: #afd2dd;
-    --muxui-component-tabs-tab-foreground: #629fb2;
+    --muxui-component-tabs-selected-background: #ecf6f9;
+    --muxui-component-tabs-selected-foreground: color-mix(
+      in srgb,
+      var(--muxui-semantic-color-neutral-10) 85%,
+      #000000
+    );
+    --muxui-component-tabs-tab-foreground: #8cbbca;
     --muxui-component-tabs-vertical-list-border: #1f373e;
     --muxui-component-taggroup-brand-dot: #8cbbca;
     --muxui-component-taggroup-brand-foreground: #cfe5ec;
     --muxui-component-taggroup-brand-selected-background: #8cbbca;
-    --muxui-component-taggroup-brand-selected-foreground: #1d282c;
-    --muxui-component-taggroup-brand-strong-foreground: #f2f9fb;
+    --muxui-component-taggroup-brand-selected-foreground: #172225;
+    --muxui-component-taggroup-brand-strong-foreground: #f7fbfc;
     --muxui-component-taggroup-brand-tint-heavy: color-mix(
       in srgb,
       var(--muxui-semantic-color-color-50) 50%,
@@ -382,7 +390,7 @@
       var(--muxui-semantic-color-neutral-10) 85%,
       #000000
     );
-    --muxui-component-taggroup-selected-overlay-light: #f2f9fb;
+    --muxui-component-taggroup-selected-overlay-light: #f7fbfc;
     --muxui-component-taggroup-selected-overlay-scheme: #cfe5ec;
     --muxui-component-taggroup-tag-background: color-mix(
       in srgb,
@@ -392,18 +400,18 @@
     --muxui-component-taggroup-tag-foreground: #b6d6e0;
     --muxui-component-textfield-label: #8cbbca;
     --muxui-reference-color-brand-10: #ecf6f9;
-    --muxui-reference-color-brand-100: #1d282c;
+    --muxui-reference-color-brand-100: #172225;
     --muxui-reference-color-brand-20: #cfe5ec;
     --muxui-reference-color-brand-30: #afd2dd;
     --muxui-reference-color-brand-40: #8cbbca;
-    --muxui-reference-color-brand-5: #f2f9fb;
-    --muxui-reference-color-brand-50: #629fb2;
+    --muxui-reference-color-brand-5: #f7fbfc;
+    --muxui-reference-color-brand-50: #5693a6;
     --muxui-reference-color-brand-60: #25778d;
     --muxui-reference-color-brand-70: #236274;
     --muxui-reference-color-brand-80: #1f4f5c;
     --muxui-reference-color-brand-90: #1f3b43;
     --muxui-reference-color-neutral-10: #ecf6f9;
-    --muxui-reference-color-neutral-100: #1d282c;
+    --muxui-reference-color-neutral-100: #172225;
     --muxui-reference-color-neutral-12: #e7f3f7;
     --muxui-reference-color-neutral-14: #e1eff4;
     --muxui-reference-color-neutral-16: #dbecf2;
@@ -415,8 +423,8 @@
     --muxui-reference-color-neutral-28: #b6d6e0;
     --muxui-reference-color-neutral-30: #afd2dd;
     --muxui-reference-color-neutral-40: #8cbbca;
-    --muxui-reference-color-neutral-5: #f2f9fb;
-    --muxui-reference-color-neutral-50: #629fb2;
+    --muxui-reference-color-neutral-5: #f7fbfc;
+    --muxui-reference-color-neutral-50: #5693a6;
     --muxui-reference-color-neutral-60: #25778d;
     --muxui-reference-color-neutral-70: #236274;
     --muxui-reference-color-neutral-80: #1f4f5c;
@@ -432,9 +440,9 @@
     --muxui-semantic-action-background: #8cbbca;
     --muxui-semantic-action-background-hover: #afd2dd;
     --muxui-semantic-action-background-pressed: #cfe5ec;
-    --muxui-semantic-action-foreground: #1d282c;
-    --muxui-semantic-action-foreground-hover: #1d282c;
-    --muxui-semantic-action-foreground-pressed: #1d282c;
+    --muxui-semantic-action-foreground: #172225;
+    --muxui-semantic-action-foreground-hover: #172225;
+    --muxui-semantic-action-foreground-pressed: #172225;
     --muxui-semantic-action-neutral-background: color-mix(
       in srgb,
       var(--muxui-semantic-surface-strong) 8%,
@@ -451,9 +459,9 @@
       #00000000
     );
     --muxui-semantic-action-selection-background: #8cbbca;
-    --muxui-semantic-action-selection-background-hover: #629fb2;
+    --muxui-semantic-action-selection-background-hover: #5693a6;
     --muxui-semantic-action-selection-background-pressed: #25778d;
-    --muxui-semantic-action-selection-foreground: #1d282c;
+    --muxui-semantic-action-selection-foreground: #172225;
     --muxui-semantic-action-selection-indicator: #cfe5ec;
     --muxui-semantic-border-contrast: #ecf6f9;
     --muxui-semantic-border-default: #25778d;
@@ -463,31 +471,31 @@
     --muxui-semantic-border-indicator: #236274;
     --muxui-semantic-border-indicator-hover: #25778d;
     --muxui-semantic-border-popup: #1f3b43;
-    --muxui-semantic-border-strong: #629fb2;
+    --muxui-semantic-border-strong: #5693a6;
     --muxui-semantic-border-subtle: #236274;
     --muxui-semantic-color-color-10: #1f3b43;
-    --muxui-semantic-color-color-10-fg: #f2f9fb;
-    --muxui-semantic-color-color-100: #f2f9fb;
-    --muxui-semantic-color-color-100-fg: #1d282c;
+    --muxui-semantic-color-color-10-fg: #f7fbfc;
+    --muxui-semantic-color-color-100: #f7fbfc;
+    --muxui-semantic-color-color-100-fg: #172225;
     --muxui-semantic-color-color-20: #1f4f5c;
-    --muxui-semantic-color-color-20-fg: #f2f9fb;
+    --muxui-semantic-color-color-20-fg: #f7fbfc;
     --muxui-semantic-color-color-30: #236274;
-    --muxui-semantic-color-color-30-fg: #f2f9fb;
+    --muxui-semantic-color-color-30-fg: #f7fbfc;
     --muxui-semantic-color-color-40: #25778d;
-    --muxui-semantic-color-color-40-fg: #f2f9fb;
-    --muxui-semantic-color-color-5: #1d282c;
-    --muxui-semantic-color-color-5-fg: #f2f9fb;
-    --muxui-semantic-color-color-50: #629fb2;
-    --muxui-semantic-color-color-50-fg: #1d282c;
+    --muxui-semantic-color-color-40-fg: #f7fbfc;
+    --muxui-semantic-color-color-5: #172225;
+    --muxui-semantic-color-color-5-fg: #f7fbfc;
+    --muxui-semantic-color-color-50: #5693a6;
+    --muxui-semantic-color-color-50-fg: #172225;
     --muxui-semantic-color-color-60: #8cbbca;
-    --muxui-semantic-color-color-60-fg: #1d282c;
+    --muxui-semantic-color-color-60-fg: #172225;
     --muxui-semantic-color-color-70: #afd2dd;
-    --muxui-semantic-color-color-70-fg: #1d282c;
+    --muxui-semantic-color-color-70-fg: #172225;
     --muxui-semantic-color-color-80: #cfe5ec;
-    --muxui-semantic-color-color-80-fg: #1d282c;
+    --muxui-semantic-color-color-80-fg: #172225;
     --muxui-semantic-color-color-90: #ecf6f9;
-    --muxui-semantic-color-color-90-fg: #1d282c;
-    --muxui-semantic-color-neutral-10: #1d282c;
+    --muxui-semantic-color-color-90-fg: #172225;
+    --muxui-semantic-color-neutral-10: #172225;
     --muxui-semantic-color-neutral-10-fg: #ecf6f9;
     --muxui-semantic-color-neutral-100: #ecf6f9;
     --muxui-semantic-color-neutral-100-fg: color-mix(
@@ -525,7 +533,7 @@
     --muxui-semantic-color-neutral-5-fg: #ecf6f9;
     --muxui-semantic-color-neutral-50: #25778d;
     --muxui-semantic-color-neutral-50-fg: #ecf6f9;
-    --muxui-semantic-color-neutral-60: #629fb2;
+    --muxui-semantic-color-neutral-60: #5693a6;
     --muxui-semantic-color-neutral-60-fg: color-mix(
       in srgb,
       var(--muxui-semantic-color-neutral-10) 85%,
@@ -599,7 +607,7 @@
     );
     --muxui-semantic-color-neutral-default: #25778d;
     --muxui-semantic-color-neutral-default-10: #ecf6f9;
-    --muxui-semantic-color-neutral-default-100: #1d282c;
+    --muxui-semantic-color-neutral-default-100: #172225;
     --muxui-semantic-color-neutral-default-12: #e7f3f7;
     --muxui-semantic-color-neutral-default-14: #e1eff4;
     --muxui-semantic-color-neutral-default-16: #dbecf2;
@@ -611,8 +619,8 @@
     --muxui-semantic-color-neutral-default-28: #b6d6e0;
     --muxui-semantic-color-neutral-default-30: #afd2dd;
     --muxui-semantic-color-neutral-default-40: #8cbbca;
-    --muxui-semantic-color-neutral-default-5: #f2f9fb;
-    --muxui-semantic-color-neutral-default-50: #629fb2;
+    --muxui-semantic-color-neutral-default-5: #f7fbfc;
+    --muxui-semantic-color-neutral-default-50: #5693a6;
     --muxui-semantic-color-neutral-default-60: #25778d;
     --muxui-semantic-color-neutral-default-70: #236274;
     --muxui-semantic-color-neutral-default-80: #1f4f5c;
@@ -627,10 +635,10 @@
     --muxui-semantic-color-neutral-default-98: #1d2b30;
     --muxui-semantic-color-primary: #8cbbca;
     --muxui-semantic-content-default: #cfe5ec;
-    --muxui-semantic-content-faint: #629fb2;
+    --muxui-semantic-content-faint: #5693a6;
     --muxui-semantic-content-inverse: #ecf6f9;
     --muxui-semantic-content-link: #afd2dd;
-    --muxui-semantic-content-link-hover: #f2f9fb;
+    --muxui-semantic-content-link-hover: #f7fbfc;
     --muxui-semantic-content-link-pressed: #ecf6f9;
     --muxui-semantic-content-muted: #8cbbca;
     --muxui-semantic-content-on-solid: color-mix(
@@ -639,7 +647,7 @@
       #000000
     );
     --muxui-semantic-content-on-strong: #236274;
-    --muxui-semantic-content-secondary: #629fb2;
+    --muxui-semantic-content-secondary: #5693a6;
     --muxui-semantic-content-strong: #cfe5ec;
     --muxui-semantic-effect-scrim: color-mix(
       in srgb,
@@ -657,7 +665,7 @@
     --muxui-semantic-field-label: #8cbbca;
     --muxui-semantic-field-placeholder: #25778d;
     --muxui-semantic-focus-inner: #ecf6f9;
-    --muxui-semantic-focus-neutral-glow: #629fb2;
+    --muxui-semantic-focus-neutral-glow: #5693a6;
     --muxui-semantic-focus-neutral-ring: #25778d;
     --muxui-semantic-focus-ring: #8cbbca;
     --muxui-semantic-overlay-background: color-mix(
@@ -676,21 +684,21 @@
       #00000000
     );
     --muxui-semantic-selection-background-strong: #afd2dd;
-    --muxui-semantic-selection-indicator: #f2f9fb;
+    --muxui-semantic-selection-indicator: #f7fbfc;
     --muxui-semantic-selection-track: #8cbbca;
     --muxui-semantic-surface-background: color-mix(
       in srgb,
       var(--muxui-semantic-color-neutral-10) 85%,
       #000000
     );
-    --muxui-semantic-surface-canvas: #1d282c;
+    --muxui-semantic-surface-canvas: #172225;
     --muxui-semantic-surface-contrast: #ecf6f9;
     --muxui-semantic-surface-disabled: #236274;
     --muxui-semantic-surface-emphasis: #afd2dd;
     --muxui-semantic-surface-hover: #1e2f35;
     --muxui-semantic-surface-muted: #25778d;
     --muxui-semantic-surface-pressed: #236274;
-    --muxui-semantic-surface-raised: #1d282c;
+    --muxui-semantic-surface-raised: #172225;
     --muxui-semantic-surface-strong: #cfe5ec;
     --muxui-semantic-surface-subtle: #1d2b30;
     --muxui-semantic-surface-track: #25778d;
