@@ -780,12 +780,12 @@ excluded. `TabList` mirrors it to chrome as
 `BENTO_TAB_ORDER:<ts>:<base64-json { workspaceId, tabIds }>` through
 `sendChromeTitle`, only when the encoded payload changes and not for the empty
 list before hydration. In `bento-shell-mount.js`, `handleTabOrderTitle` keeps the
-last order per window (`currentSidebarTabOrder`), and `workspaceTabsInOrder()`
-rebuilds the eligible set from `gBrowser.tabs` as before (not hidden or closing,
-`bento.workspaceId` session value equal to `currentWorkspaceId`, not in
-`currentPanelTabIds`), then sorts it by the order when its `workspaceId` equals
-`currentWorkspaceId`. Eligible tabs the order does not list, and every tab before
-the first order arrives, follow in `gBrowser.tabs` order. The persistence path is
+last order per window (`currentSidebarTabOrder`). When that order's `workspaceId`
+equals `currentWorkspaceId`, `workspaceTabsInOrder()` maps its ids to this window's
+live tabs (not hidden or closing, not in `currentPanelTabIds`) and uses them in that
+order, then appends tabs whose `bento.workspaceId` session value matches but that
+the order does not list yet. Without a matching order it falls back to the session
+value filter in `gBrowser.tabs` order. The persistence path is
 unchanged (no new stored state). Manual check: put a tab in the second folder
 and collapse the first folder; Cmd/Ctrl+1 must select the first tab of the first
 folder, not the second folder's tab.
@@ -1418,9 +1418,14 @@ workspaces.
   folder's tabs and get Cmd/Ctrl+1. Chrome sorts by the sidebar's
   `BENTO_TAB_ORDER` mirror, which must include collapsed folder members (use
   `sidebarTabOrder()`, not `visualTabOrder`, which only has the active member's
-  peek row). The order only sorts tabs chrome already found eligible, and is
-  ignored when its `workspaceId` is not the window's current workspace, so a
-  late or stale order cannot select a tab in another workspace.
+  peek row). Take membership from the order, not from the `bento.workspaceId`
+  session value: bento-tools backfills a tab found at boot without that value in
+  memory only (`setWorkspaceInMemory`), so the sidebar shows it while the session
+  value stays empty, and a session-value filter skipped it (the first tab of a
+  fresh profile, once pinned, lost Cmd/Ctrl+1). The order is ignored when its
+  `workspaceId` is not the window's current workspace, and only matches this
+  window's live tabs, so a late or stale order cannot select a tab in another
+  workspace.
 
 - A tab row title, a folder label and a search result title ellipsize with
   `overflow: hidden` at `line-height: 1`, which cuts the descenders of g, j, p, q and y

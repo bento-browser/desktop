@@ -19905,18 +19905,24 @@
   }
 
   // The current workspace's tabs in sidebar order (BENTO_TAB_ORDER), side
-  // panels excluded. The eligible set is always rebuilt from gBrowser.tabs
-  // and the workspace session value, so a stale or foreign order can only
-  // reorder this workspace's tabs, never add one. Eligible tabs the order
-  // does not list yet (a tab the sidebar has not mirrored), and every tab
-  // before the first order arrives, follow in gBrowser order.
+  // panels excluded. Membership comes from the order itself: it mirrors
+  // bento-tools' in-memory workspace, while the workspace session value
+  // can be missing (tools backfills a boot tab with no value in memory
+  // only), so a filter on it would skip a tab the sidebar shows. Only this
+  // window's live tabs can match, and only an order for the current
+  // workspace is used. Session-value tabs the order does not list yet (a tab
+  // the sidebar has not mirrored), and every tab before the first order
+  // arrives, follow in gBrowser order.
   function workspaceTabsInOrder() {
     const tabs = workspaceTabsInBrowserOrder();
     const order = currentSidebarTabOrder;
     const tabTracker = getTabTracker();
-    if (!order || order.workspaceId !== currentWorkspaceId || !tabTracker) return tabs;
+    if (!window.gBrowser || !order || order.workspaceId !== currentWorkspaceId || !tabTracker) {
+      return tabs;
+    }
     const byId = new Map();
-    for (const tab of tabs) {
+    for (const tab of window.gBrowser.tabs) {
+      if (tab.hidden || tab.closing) continue;
       try {
         byId.set(tabTracker.getId(tab), tab);
       } catch {
@@ -19926,7 +19932,7 @@
     const listed = new Set();
     for (const id of order.tabIds) {
       const tab = byId.get(id);
-      if (tab) listed.add(tab);
+      if (tab && !currentPanelTabIds.has(id)) listed.add(tab);
     }
     for (const tab of tabs) listed.add(tab);
     return Array.from(listed);
