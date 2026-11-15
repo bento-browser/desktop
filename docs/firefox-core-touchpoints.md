@@ -681,16 +681,9 @@ The source review covered every active touchpoint:
   panel-strip start edge without pushing Bento or Firefox-native sidebar content
   down, maps Firefox's native Customize Toolbar screen surfaces, buttons, links,
   palette items, and overflow-panel preview through the same generated Mux UI/Bento
-  chrome tokens, themes Firefox's Passwords `about:logins` documents,
-  shared shadow-component stylesheet, and sidebar megalist surface through the
-  generated Mux UI/Bento chrome tokens (Passwords `about:logins` and the megalist sidebar are
-  written with `data-bento-theme="default"`, `data-color-mode="light"` and `color-scheme` light
-  in patches 13 and 14, so they show the Default theme like Settings, and
-  stay light in dark mode and do not fade; making them follow the mode needs a hook in the
-  pages' own scripts like patch 12's `syncColorMode` block, which the patches do not carry
-  context for, and for `about:logins`, a content-process page without `topChromeWindow`, a
-  source of the window's mode (a `matchMedia` of Bento's content override if it tracks the
-  mode, otherwise an actor message); not done),
+  chrome tokens, themes Firefox's Passwords `about:logins` documents, the sidebar
+  megalist and the other in-scope about: pages with the window's workspace theme and UI
+  mode (see About: Page Theming below; patches 13 and 14 keep only shapes and elevation),
   opens Firefox DevTools toolboxes in trusted Bento panels from content
   context-menu inspect commands, renders panel-scoped
   Back/Forward session-history popups from panel headers, preserves DOM
@@ -807,9 +800,9 @@ The source review covered every active touchpoint:
   native identity/app-menu popup anchoring, bookmark state, native URL-bar and
   toolbar app-menu hiding, native toolbar surface/separator/sidebar-divider styling,
   native Customize Toolbar markup and token variable names, Passwords
-  `about:logins` and megalist stylesheet load order, root `<html>` attributes
-  (`data-bento-theme`, `data-color-mode`) and semantic color variable
-  names, native navigation-button alignment, or visibility. A rename or
+  `about:logins` and megalist stylesheet load order, native navigation-button
+  alignment, or visibility (the about: pages' colour tokens and root attributes are
+  covered under About: Page Theming). A rename or
   semantic change to AddonManager listener removal, `PlacesObservers.removeListener`,
   or the chrome window `unload` event silently brings back per-window leaks:
   closed Bento windows stay alive until quit. If `moveBefore` stops preserving a
@@ -2031,7 +2024,19 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Core UI And Window Sync Patch Stack
 
 - Status: Active
-- Last updated: 2026-11-10
+- Last updated: 2026-11-15
+- About: page theming (2026-11-15): core-ui/13 and core-ui/14 lose their colour
+  blocks, `color-scheme: light`, the `<meta name="color-scheme" content="light">`
+  changes and the static `data-bento-theme`/`data-color-mode`/`data-theme` root
+  attributes (see About: Page Theming). What stays: the `bento-chrome-tokens.css` link in
+  `aboutLogins.html`, `aboutLoginsImportReport.html` and `megalist.html`, a `:root,
+  :host` block of shape and elevation tokens (`--border-radius-*`, `--border-width`,
+  and in about:logins `--box-shadow-level-2` and `--popup-box-shadow`), and
+  `login-message-popup.css`'s `box-shadow: var(--shadow-l)`. The unused
+  `--input-text-*` lines are gone (no Firefox 160 file reads them). chrome-layout/01
+  adds the sheet's `jar.mn` line and chrome-layout/04 the actor; core-ui/20's index
+  line follows the new `moz.build` blob. The series replays on the 160.0 base
+  (`replaySeries`, 30 patches) and every touched blob matches its patch's index line.
 - Native no-scroll root capture (2026-10-31): patch 18 adds the scoped
   ViewTransition producer documented below. Patch 19 adds the explicit native
   theme-only capture-stage input contract; 26 patches are in the series.
@@ -2313,6 +2318,110 @@ rel="stylesheet">` load and error events on chrome documents, and the
 - Rollback or migration notes: removing the wildcard line and the mount
   function, and folding the theme sheets back into the base sheet in
   `generate-chrome-tokens.mjs`, restores the single-sheet layout.
+
+### About: Page Theming
+
+- Status: Active
+- Last updated: 2026-11-15
+- Files or patches:
+  - `scripts/about-page-themes.mjs` (the page list and the Firefox-token map, in Mux
+    token terms) and `scripts/token-resolver.mjs`
+  - `scripts/generate-chrome-tokens.mjs` (writes
+    `src/browser/base/content/bento-about-themes.css`, generated and ignored)
+  - `src/browser/actors/BentoAboutThemeChild.sys.mjs`
+  - `src/browser/base/content/bento-shell-mount.js` (`registerAboutThemes`,
+    `publishAboutTheme`, `releaseAboutThemeIds`, `syncAboutThemeSidebar`,
+    `attachAboutThemePublisher`)
+  - `patches/chrome-layout/01-bento-shell-mount.patch` (one `browser/base/jar.mn` line:
+    `content/browser/bento-about-themes.css`) and
+    `patches/chrome-layout/04-bento-key-actors.patch` (`BentoAboutThemeChild.sys.mjs` in
+    the second `FINAL_TARGET_FILES.actors` block)
+  - `patches/core-ui/13-theme-about-logins.patch` and
+    `patches/core-ui/14-theme-megalist-passwords.patch` (shapes and elevation only)
+  - `scripts/sync-builtin-addon-symlinks.sh` (`copy_content_files`)
+- Bento functionality: `about:logins`, `about:loginsimportreport`, the Passwords
+  sidebar (megalist), `about:addons`, the error pages (`about:neterror`,
+  `about:certerror`, `about:httpsonlyerror`), `about:privatebrowsing`,
+  `about:downloads`, `about:config`, `about:support`, `about:profiles`,
+  `about:processes` and `about:policies` show the workspace theme and UI mode of the
+  window they are in, with neutral surfaces and the theme colour on accents only
+  (primary buttons, the selected nav item, links, focus, toggles). Settings is not one
+  of them: patch 12 themes it. One USER sheet holds every theme and mode as literal
+  values inside `@-moz-document` (exact URLs plus their `?` and `#` forms, and prefixes
+  for the error pages) and `@media not ((forced-colors) or (prefers-contrast: more))`,
+  so Firefox's high-contrast styling stays under macOS Increase Contrast too. The mount
+  script registers it once per process and publishes `{ [browserId]: [theme, mode] }`
+  through `Services.ppmm.sharedData` on theme show, mode write, `TabOpen`,
+  `TabBrowserInserted` and `SwapDocShells`, removing entries on `TabBrowserDiscarded`,
+  `TabClose` and window unload (it keeps the last id per browser, since a discarded
+  browser reads id 0). The child-only `BentoAboutTheme` actor sets `data-bento-theme` and
+  `data-color-mode` on the page root at `DOMDocElementInserted`, before the first style
+  flush, and again on every shared-map change. The megalist is a chrome document in the
+  sidebar's chrome `<browser>`, which the actor does not reach (window actors with
+  `messageManagerGroups` match content browsers only), so the mount script sets its
+  root from the window on the same `DOMDocElementInserted` (it reaches the chrome
+  window in capture) and on each publish.
+- Vanilla Firefox surface touched or depended on: `nsIStyleSheetService` USER sheets
+  (registered in the parent, sent to every content process, and applied in shadow
+  trees, which AUTHOR sheets are not); `@-moz-document` in a USER sheet; USER
+  `!important` winning over the pages' own author tokens; the design-system token
+  names in `toolkit/themes/shared/design-system/dist/tokens-*.css`, the component
+  token files `moz-page-nav.tokens.css` and `moz-toggle.tokens.css` (they redeclare on
+  `:host`, so the sheet also sets them on `moz-page-nav` and `moz-toggle`),
+  `browser/components/sidebar/sidebar.css` and the page rules under
+  `prefers-color-scheme` that follow the content mode instead of the UI mode
+  (`aboutNetError.css` `--warning-color`, `aboutaddons.css` badge borders,
+  `aboutSupport.css` `--codec-bg-header`, `progressmeter.css`, `login-item.css`
+  `:host`), and the private window's surfaces and search field tokens in
+  `browser/themes/shared/privatebrowsing/aboutPrivateBrowsing.css`, all listed in
+  `scripts/about-page-themes.mjs`; that file's `.wordmark` `fill: currentColor` with
+  `-moz-context-properties: fill`, which colours Bento's
+  `branding/bento/content/firefox-wordmark.svg` (`context-fill #ffffff`); `Services.ppmm.sharedData`
+  `set`/`flush` and `Services.cpmm.sharedData` `change` events;
+  `ChromeUtils.registerWindowActor` with `allFrames`, `safeForUntrustedWebProcess`
+  (the error pages load in web processes) and about: `matches` with `?*` and `#*`
+  patterns; `JSWindowActorChild.browsingContext.top.browserId`; the
+  `DOMDocElementInserted` chrome event (`dom/base/nsContentSink.cpp`); `TabClose`
+  `detail.adoptedBy` and `SwapDocShells` for tabs Bento's close handover moves;
+  `TabBrowserDiscarded` and `browserId` reading 0 without a frame loader; the
+  megalist URL `chrome://global/content/megalist/megalist.html` and the `#sidebar`
+  `<browser>`.
+- Why this cannot stay extension-only: extension code cannot style privileged about:
+  pages or Firefox's chrome sidebar, and the pages need the theme before their first
+  paint, which only a process-wide sheet and an actor event can give.
+- Firefox update risk: a renamed design-system or component token silently drops that
+  colour back to Firefox's; a new `:host` redeclaration in a component token file
+  stops the root value from reaching that component; a new `prefers-color-scheme`
+  page rule shows the content mode's colour on a UI-mode page; a change to the
+  `DOMDocElementInserted` timing or to USER sheets in shadow trees shows Firefox's look
+  on first paint or inside the shadow trees. The sheet never reaches a web page or
+  Settings (exact URLs; measured below).
+- Regression checks for future updates: with the new tree in the primary checkout's
+  `engine/` (or `BENTO_FIREFOX_SOURCE=<tree>`), `node --test
+  scripts/theme-sheets.test.mjs` checks every mapped token and page rule against its
+  owner file (`every Firefox token the about: page map sets still exists`; CI's
+  source-import job runs it against its Firefox source); grep the
+  in-scope pages' CSS for new `prefers-color-scheme` rules and component token files
+  for `:host` redeclarations of mapped tokens. In a running build, two windows on
+  different themes and modes: open each in-scope page and the Passwords sidebar in
+  both, switch theme and mode in one, and check `data-bento-theme`/`data-color-mode`
+  on the page root and `--background-color-canvas`; `about:blank`, a web page and
+  `about:preferences` must compute no `--bento-about-*` variable. In `about:logins`
+  and `about:addons`, the mapped tokens must compute the same in shadow trees as on
+  the root, apart from `login-list` (its own surface) and the remove-logins dialogs
+  (their primary button is destructive).
+- Measured (2026-11-15, headless primary-checkout `obj-bento` built from main, with
+  this branch's sheet, actor and publisher loaded through a `resource://` mapping and
+  patches 13 and 14 stood in for by chrome overrides): first paint themed on all 26
+  page loads (13 pages in two windows on Default light and Violet Dusk dark; parent,
+  privilegedabout, web and webIsolated processes), live switches in every process type
+  with no stale paint, the megalist themed at `DOMDocElementInserted`, `about:blank`
+  and `https://example.com` empty of `--bento-about-*` even with the attributes set by
+  the page, an unknown theme id showing Default, moved tabs following the adopting
+  window, and no mapped-token mismatch in `about:addons` shadow trees.
+- Rollback or migration notes: unregistering the sheet and actor and restoring the
+  colour blocks of patches 13 and 14 returns the password pages to the forced-light
+  Default look; the other pages fall back to Firefox's own.
 
 ### Chrome Layout Stylesheet
 
@@ -4020,7 +4129,7 @@ below is generated; edit the registry, then run
 | `search-box` | source (engine only) | Native bookmarks sidebar search input that Bento replaces. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:52` |
 | `browser` | element (runtime) | Root hbox that holds the Bento host elements added by patch chrome-layout/01. | `attachSidebarChromeDivider` | `browser/base/content/browser-box.inc.xhtml:5` |
 | `tabbrowser-tabbox` | element (runtime) | Tabbox that holds tabpanels; Bento tags it as the main panel when no side panels exist. | `unifyMainWithStrip`, `configureSidePanelOnce` | `browser/base/content/browser-box.inc.xhtml:29` |
-| `sidebar` | element (runtime) | Native sidebar <browser>; Bento themes the documents loaded in it. | `syncNativeSidebarChromeTheme`, `attachNativeSidebarChromeThemeSync` | `browser/base/content/browser-box.inc.xhtml:25` |
+| `sidebar` | element (runtime) | Native sidebar <browser>; Bento themes the documents loaded in it. | `syncNativeSidebarChromeTheme`, `attachNativeSidebarChromeThemeSync`, `syncAboutThemeSidebar` | `browser/base/content/browser-box.inc.xhtml:25` |
 | `sidebar-box` | element (runtime) | Native Bookmarks/History sidebar container; Bento drives its width, persistence and splitter feedback. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:12` |
 | `sidebar-splitter` | element (runtime) | Native sidebar splitter whose resize behavior Bento replaces. | `attachNativeSidebarSplitterFeedback` | `browser/base/content/browser-box.inc.xhtml:28` |
 | `navigator-toolbox` | element (runtime) | Native toolbox whose separators and offsets Bento adjusts. | `attachSidebarChromeDivider` | `browser/base/content/navigator-toolbox.inc.xhtml:5` |
@@ -4144,6 +4253,12 @@ below is generated; edit the registry, then run
 | `TabSelect` | source (engine only) | Reconciles panels, refreshes the panel navigator, and snapshots the sidebar address when the selected tab changes. The Bookmarks view also closes if the tab now selected has a showing dialog: updateCurrentBrowser sets the selected browser before it fires the event, and Firefox focuses that dialog right after. | `attachTabSelectListener`, `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners`, `attachBookmarksViewDialogListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2149` |
 | `TabSplitViewActivate` | source (engine only) | Window event that Bento's panel reconcile and Firefox's split view both dispatch when a split view becomes the shown one; Tabbrowser's own window listener (on_TabSplitViewActivate) stores it, which is what gBrowser.selectedBrowsers lists. The Bookmarks view looks for a showing tab dialog among the new browsers (on a timer, so the order of the listeners does not matter). | `attachBookmarksViewDialogListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:266` |
 | `TabOpen` | source (engine only) | Reconciles panels when a tab opens (new-tab flows where TabSelect does not reach the listener). | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:5671` |
+| `TabBrowserInserted` | source (engine only) | Publishes the window's about: page theme for a browser inserted after its tab opened (a lazy tab), before that browser's first load reads it. | `attachAboutThemePublisher` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3488` |
+| `TabBrowserDiscarded` | source (engine only) | Removes a discarded tab's about: page theme entry: discarding destroys the browser's frame loader, so its browserId reads 0 until a restore inserts it with a new id. | `attachAboutThemePublisher` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3615` |
+| `TabClose detail.adoptedBy` | source (engine only) | Removes a closed browser's about: page theme entry, but keeps the entry of a tab another window adopted (detail.adoptedBy, as in Bento's close handover); that window republishes it. | `attachAboutThemePublisher` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:6872` |
+| `SwapDocShells` | source (engine only) | Republishes the about: page theme after a tab moves into this window: the adopting browser carries the moved browser id once the docshell swap is done. | `attachAboutThemePublisher` | `toolkit/content/widgets/browser-custom-element.mjs:1650` |
+| `DOMDocElementInserted` | source (engine only) | Chrome-only event the content sink fires when a document's root element is inserted, before the first style flush. The BentoAboutTheme actor sets data-bento-theme and data-color-mode on in-scope about: pages then, and the mount script does the same for the Passwords sidebar (it reaches the chrome window in capture), so their first paint is themed. | `attachAboutThemePublisher`, `registerAboutThemes`, `src/browser/actors/BentoAboutThemeChild.sys.mjs#DOMDocElementInserted` | `dom/base/nsContentSink.cpp:805` |
+| `chrome://global/content/megalist/megalist.html` | source (engine only) | The Passwords sidebar document. The about: page sheet scopes to this URL and syncAboutThemeSidebar puts the window's theme and mode on its root. | `BENTO_ABOUT_THEME_CHROME_DOCUMENTS`, `scripts/about-page-themes.mjs#megalist` | `toolkit/components/satchel/jar.mn:8` |
 | `TabAttrModified` | source (engine only) | Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes. | `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2456` |
 | `SSTabRestored` | source (engine only) | Refreshes the sidebar address snapshot after session restore fills a tab. | `attachSidebarAddressSnapshotListeners` | `browser/components/sessionstore/SessionStore.sys.mjs:8369` |
 | `SSTabRestoring` | source (engine only) | Fires on a restored tab as the last step of SessionStore's history restore (#restoreHistoryComplete), also in a window restored without SSWindowRestored. A browser discarded before it is re-inserted by that restore, so Bento unloads a pending pinned tab one task after its event, or loads it when the window renders it as a panel. | `attachRestoredPinnedTabUnload` | `browser/components/sessionstore/SessionStore.sys.mjs:8842` |
@@ -4207,7 +4322,7 @@ below is generated; edit the registry, then run
 | `migration-wizard .resource-progress` | source (engine only) | Progress list the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress` | `browser/components/migration/content/migration-wizard.mjs:129` |
 | `migration-wizard .resource-progress-group` | source (engine only) | Progress rows the host restyles. | `src/browser/base/content/bento-migration-host.js#resource-progress-group` | `browser/components/migration/content/migration-wizard.mjs:130` |
 | `IOUtils::Encryption::MAGIC_NUMBER` | source (engine only) | The header IOUtils writes before an encrypted file. SessionWriter encrypts session files only when browser.sessionstore.encryption.available and .enabled are both true. The session merge reader reads no keys, so when a snapshot fails to decode and starts with 'mozEnc' it reports the source as encrypted instead of importing an older plaintext backup. A changed header makes it fall back silently again. | `extensions/bento-tools/experiments/bento-external-sessions/api.js#ENCRYPTED_SESSION_MAGIC` | `xpcom/ioutils/IOUtils.h:820` |
-| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild` | `browser/actors/moz.build:92` |
+| `FINAL_TARGET_FILES.actors` | source (engine only) | Bento actors ship through browser/actors/moz.build and load from resource:///actors/. The shell bus relay actors (BentoShellBus) sit in a second FINAL_TARGET_FILES.actors block beside the sorted list; the parent module is imported by the chrome-bridge experiment and the actor registration under the same resource:///actors/ URL, because resource:// and resource://app/ spellings load separate module instances. | `registerContentKeyActor`, `registerShellBusActor`, `patches/chrome-layout/04-bento-key-actors.patch#BentoKeyChild`, `patches/chrome-layout/04-bento-key-actors.patch#BentoShellBusChild`, `registerAboutThemes`, `patches/chrome-layout/04-bento-key-actors.patch#BentoAboutThemeChild` | `browser/actors/moz.build:92` |
 | `Animatable.getAnimations pseudoElement option` | source (engine only) | Selects only the owned native panel ::after animations so preparation can finish its running border-color CSSTransitions before mask collection, without scanning descendants or finishing other motion. | `src/browser/actors/BentoModePresentation.sys.mjs#settleNativeFocusRings` | `dom/webidl/Animatable.webidl:27` |
 | `Window.windowUtils` | source (engine only) | Submits current native/child style state through privileged window utilities before releasing the shared opaque UI hold. | `src/browser/actors/BentoModePresentation.sys.mjs#windowUtils`, `src/browser/actors/BentoShellBusChild.sys.mjs#windowUtils` | `dom/webidl/Window.webidl:602` |
 | `nsIDOMWindowUtils.updateLayerTree` | source (engine only) | Each child submits once before its actor ACK; the parent submits after those ACKs. Upgrades must preserve synchronous display-list receipt fencing. | `src/browser/actors/BentoModePresentation.sys.mjs#updateLayerTree`, `src/browser/actors/BentoShellBusChild.sys.mjs#updateLayerTree` | `dom/interfaces/base/nsIDOMWindowUtils.idl:116` |

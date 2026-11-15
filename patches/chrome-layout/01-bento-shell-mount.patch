@@ -5,8 +5,8 @@ Subject: [PATCH] Add Bento shell mount to browser chrome
 
 ---
  browser/base/content/browser-box.inc.xhtml | 46 +++++++++++++++++++++-
- browser/base/jar.mn                        |  9 +++++
- 2 files changed, 54 insertions(+), 1 deletion(-)
+ browser/base/jar.mn                        | 10 +++++
+ 2 files changed, 55 insertions(+), 1 deletion(-)
 
 diff --git a/browser/base/content/browser-box.inc.xhtml b/browser/base/content/browser-box.inc.xhtml
 index 29a9fb72447a3459d546093af1d8d72f089d9055..bcbae8ad5a71266b9081b7feb8961ada1a17b50f 100644
@@ -66,10 +66,10 @@ index 29a9fb72447a3459d546093af1d8d72f089d9055..bcbae8ad5a71266b9081b7feb8961ada
      <html:sidebar-main flex="1">
        <box id="vertical-tabs" slot="tabstrip" customizable="true" contextmenu="toolbar-context-menu"></box>
 diff --git a/browser/base/jar.mn b/browser/base/jar.mn
-index b2b5db6040bfa4b0a6923b49669238191fcee1c4..3fe35d8a0dcddcaf469caed0e0c86aa64204ee4b 100644
+index b2b5db6040bfa4b0a6923b49669238191fcee1c4..2f03049d3ec452545083bd5bc95a16a87335dbf2 100644
 --- a/browser/base/jar.mn
 +++ b/browser/base/jar.mn
-@@ -47,6 +47,15 @@ browser.jar:
+@@ -47,6 +47,16 @@ browser.jar:
          content/browser/browser-fullScreenAndPointerLock.js (content/browser-fullScreenAndPointerLock.js)
          content/browser/browser-gestureSupport.js           (content/browser-gestureSupport.js)
          content/browser/browser-init.js                     (content/browser-init.js)
@@ -78,6 +78,7 @@ index b2b5db6040bfa4b0a6923b49669238191fcee1c4..3fe35d8a0dcddcaf469caed0e0c86aa6
 +        content/browser/bento-chrome-tokens.css             (content/bento-chrome-tokens.css)
 +        content/browser/bento-chrome-theme.css              (content/bento-chrome-theme.css)
 +        content/browser/bento-chrome-themes/                (content/bento-chrome-themes/*.css)
++        content/browser/bento-about-themes.css              (content/bento-about-themes.css)
 +        content/browser/bento-migration-host.css            (content/bento-migration-host.css)
 +        content/browser/bento-migration-host.html           (content/bento-migration-host.html)
 +        content/browser/bento-migration-host.js             (content/bento-migration-host.js)

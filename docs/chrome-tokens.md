@@ -16,11 +16,14 @@ public Mux token surface and Bento's compatibility aliases.
    - `src/browser/base/content/bento-chrome-tokens.css`,
      the shared tokens plus the Default theme;
    - `src/browser/base/content/bento-chrome-themes/<id>.css`, one native sheet
-     per other theme (15 today, each about 28 kB, 3 kB gzipped).
+     per other theme (15 today, each about 28 kB, 3 kB gzipped);
+   - `src/browser/base/content/bento-about-themes.css`, the about: page sheet
+     (about 84 kB; see [About: page sheet](#about-page-sheet)).
      Use `--output <path>` for an isolated package or proof run; the theme sheets
      then go to a `bento-chrome-themes/` directory beside that path, or wherever
-     `--themes-dir <path>` says. This is required for checks that must not write
-     the engine source tree. Sheets for removed themes are deleted.
+     `--themes-dir <path>` says, and the about: page sheet beside it. This is
+     required for checks that must not write the engine source tree. Sheets for
+     removed themes are deleted.
 3. [scripts/import.sh](../scripts/import.sh) invokes the generator during the
    normal source import workflow. After writing the default path, the generator
    runs `scripts/sync-builtin-addon-symlinks.sh --content-files` to refresh the
@@ -33,8 +36,9 @@ public Mux token surface and Bento's compatibility aliases.
    bundle, because the build lists wildcard files once. It copies the base sheet
    instead, as a real file in `dist/bin` and `Bento.app`, because `about:logins`
    reads it in a sandboxed content process that cannot follow a link back into
-   the checkout. The theme sheets stay linked: only parent-process chrome
-   documents attach them.
+   the checkout. The about: page sheet and the `BentoAboutThemeChild` actor are
+   copied the same way: every content process loads them. The theme sheets stay
+   linked: only parent-process chrome documents attach them.
 5. [src/browser/base/content/bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
    links the base sheet, `bento-chrome-theme.css`, and then the chrome layout
    sheet [bento-shell-mount.css](../src/browser/base/content/bento-shell-mount.css)
@@ -69,18 +73,20 @@ dark blocks, adapted from the shell sheet (`data-muxui-*` to the native
 attributes, the `muxui` layer wrapper removed because native chrome is
 unlayered). Base plus all theme sheets contains exactly the rules the single
 sheet used to. Documents that link `bento-chrome-tokens.css` statically
-(preferences, about:logins, megalist, the migration host) never carry a
-non-Default `data-bento-theme`, so they need only the base sheet.
-Every such document must put `data-bento-theme` and `data-color-mode` on its
+(preferences, about:logins, megalist, the migration host) need only the base
+sheet: preferences and the migration host never carry a non-Default
+`data-bento-theme`, and about:logins and megalist take only shapes and elevation
+from it (their colours come from the about: page sheet).
+Every such document must have `data-bento-theme` and `data-color-mode` on its
 root: the legacy alias bridge (`--neutral-*`, `--radius-*`, `--space-2xs`, ...) and
 the mode blocks apply only to elements that carry Bento attributes, and without
 them each alias computes to nothing. `data-color-mode` alone is not enough: the
 Default theme's ladders and APCA text colours select on `data-bento-theme='default'`.
-about:logins and megalist set `data-bento-theme="default"` and `data-color-mode="light"`
-statically, the migration host sets them from its query, and about:preferences sets
+The migration host sets them from its query, about:preferences sets
 `data-bento-theme` statically and copies its host window's `data-color-mode` in
 `preferences.js` (on the mount script's `bento-ui-color-mode` notification, and when the
-page becomes visible or focused).
+page becomes visible or focused), and about:logins, its import report and megalist
+get the window's theme and mode at runtime (below), so their markup carries neither.
 
 The Bento token layer supplies product-specific dimensions and surfaces. The
 generated preset index supplies the old short aliases used by existing Bento
@@ -168,6 +174,48 @@ Custom Scale imports remain supported by
 foreground overrides and rewrites them to the Bento theme and mode attributes.
 Run the theme sync before generating an isolated chrome stylesheet.
 
+## About: page sheet
+
+`bento-about-themes.css` themes the in-scope Firefox about: pages (the password
+pages and the Passwords sidebar, about:addons, the error pages, about:privatebrowsing,
+about:downloads, about:config, about:support, about:profiles, about:processes and
+about:policies; not Settings) with the workspace theme and UI mode of their window.
+[scripts/about-page-themes.mjs](../scripts/about-page-themes.mjs) is its only source:
+the page list, and the map from Firefox tokens to Mux tokens (look A, Neutral: neutral
+surfaces, the theme colour on accents only, text on a fill from that fill's `*-fg` or
+action-foreground token).
+
+The generator resolves every Mux token the map references to a literal, for each
+theme and mode, with the selector-aware resolver in
+[scripts/token-resolver.mjs](../scripts/token-resolver.mjs): it applies the rules of
+the base sheet plus that theme's sheet whose selectors match a root carrying
+`data-bento-theme` and `data-color-mode` (no contrast attribute), in cascade order,
+and follows `var()`, which is what a chrome window showing that theme computes. The
+shell-sized lengths use the same module. The sheet then holds, inside one
+`@-moz-document` (exact URLs plus their `?` and `#` forms, prefixes for the error
+pages, and the megalist URL) and `@media not ((forced-colors) or (prefers-contrast:
+more))`, so Firefox's own high-contrast styling stays under forced colours and under
+macOS Increase Contrast, which turns on `prefers-contrast: more` without them:
+
+- one block per theme and mode (32) of private `--bento-about-*` literals. Default's
+  blocks come first and select any `data-bento-theme`, so an unknown theme id shows
+  Default;
+- `color-scheme` per mode, so the pages' own `light-dark()` tokens follow the UI mode;
+- one map block on `:root[data-bento-theme][data-color-mode]` that points the Firefox
+  tokens at the aliases with `!important`, plus the same values on `moz-page-nav` and
+  `moz-toggle`, whose shadow stylesheets redeclare their tokens on `:host`;
+- page rules, each in its own `@-moz-document` for the pages that have it, including
+  replacements for the pages' `prefers-color-scheme` rules, which follow the content
+  mode rather than the UI mode, and neutral surfaces for about:privatebrowsing in a
+  private window (with Nova off, Firefox paints it a purple gradient with purple
+  panels and search field).
+
+It is a USER sheet so it reaches shadow trees and its `!important` wins over the
+pages' own tokens; `@-moz-document` needs that origin too. Inheritance from `:root`
+reaches the shadow content once nothing redeclares a token on `:host` (patch 13's old
+`:root, :host` block did). See
+[docs/technical/theming.md](technical/theming.md#about-pages) for the delivery.
+
 ## Focused verification
 
 Use the repository Node 24.19 runtime (`.nvmrc`) and an isolated output path:
@@ -184,7 +232,12 @@ The base file should contain `--shadow-l`, `--font-size-root`, and
 should hold one file per other theme (for example `standard-harbour.css`), each
 free of `@layer`, `data-muxui-*`, and any selector that requires
 `[data-bento-contrast='more']` (only `:not(...)` negations). `node --test
-scripts/theme-sheets.test.mjs` checks all of this.
+scripts/theme-sheets.test.mjs` checks all of this, and the about: page sheet's
+scope, its block for every theme and mode, that no `var()` is left unresolved and that
+everything sits under the high-contrast wrapper. With a Firefox tree in `engine/` (or
+`BENTO_FIREFOX_SOURCE=<tree>`), it also checks that every Firefox token the map sets
+is still declared there. CI's source-import job runs that check against its Firefox
+source with `BENTO_FIREFOX_SOURCE` set, where a missing tree fails instead of skipping.
 
 In a running build, set a non-Default workspace theme and confirm the window root
 has that `data-bento-theme` plus one `<link data-bento-chrome-theme-sheet>`;

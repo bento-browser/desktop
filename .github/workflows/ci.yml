@@ -310,6 +310,13 @@ jobs:
         id: engine-source
         uses: ./.github/actions/engine-source
 
+      # The about: page sheet maps Firefox tokens by name; a Firefox upgrade that renames
+      # one would silently leave it unthemed. Checked against the pristine source.
+      - name: Firefox tokens the about page sheet maps
+        env:
+          BENTO_FIREFOX_SOURCE: ${{ github.workspace }}/engine
+        run: node --test --test-name-pattern='still exists in the Firefox tree' scripts/theme-sheets.test.mjs
+
       - name: Wait for extension bundle
         shell: bash
         run: |

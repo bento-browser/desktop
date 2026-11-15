@@ -35,6 +35,14 @@ import {
   MUX_THEMES_CSS,
   PUBLIC_CLOSURE_SELECTOR,
 } from './mux-css.mjs';
+import {
+  documentConditions,
+  FIREFOX_TOKEN_MAP,
+  PAGE_RULES,
+  referencedTokens,
+  ROOT_DECLARATIONS,
+} from './about-page-themes.mjs';
+import { createShellPxResolver, createTokenResolver } from './token-resolver.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -42,6 +50,8 @@ const SHELL_DIR = resolve(REPO_ROOT, 'extensions/bento-shell');
 const DEFAULT_OUT_PATH = resolve(REPO_ROOT, 'src/browser/base/content/bento-chrome-tokens.css');
 const THEME_SHEETS_DIR = resolve(SHELL_DIR, 'public/themes');
 const THEMES_DIR_NAME = 'bento-chrome-themes';
+const ABOUT_THEMES_NAME = 'bento-about-themes.css';
+const DEFAULT_THEME_ID = 'default';
 const MUX_REQUIRE = createRequire(resolve(SHELL_DIR, 'package.json'));
 
 function usageError(message) {
@@ -149,38 +159,6 @@ const SHELL_SIZED_TOKENS = [
   '--bento-sidebar-top-inset',
 ];
 
-// A resolver for the custom properties declared in `css`: each token's value with its
-// var() references followed and its rem lengths converted to px at --font-size-root.
-// Throws for a token that is missing, declared with different values, or not plain
-// (a var() fallback), because the pinned value must equal what the shell computes.
-function createShellPxResolver(css) {
-  const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  const declared = (name) => {
-    const values = new Set(
-      Array.from(bare.matchAll(new RegExp(`(?<![\\w-])${name}\\s*:\\s*([^;{}]+);`, 'g')), (match) =>
-        match[1].trim().replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')'),
-      ),
-    );
-    if (values.size !== 1) {
-      throw new Error(
-        `${name} is ${values.size ? 'declared with different values' : 'not declared'}`,
-      );
-    }
-    return [...values][0];
-  };
-  const rootPx = Number.parseFloat(declared('--font-size-root'));
-  if (!(rootPx > 0)) throw new Error('--font-size-root is not a px length');
-  const resolve = (name, trail = []) => {
-    if (trail.includes(name)) throw new Error(`${name} refers to itself`);
-    const value = declared(name)
-      .replace(/var\(\s*(--[\w-]+)\s*\)/g, (_match, ref) => resolve(ref, [...trail, name]))
-      .replace(/(\d*\.?\d+)rem\b/g, (_match, rem) => `${Number((rem * rootPx).toFixed(4))}px`);
-    if (value.includes('var(')) throw new Error(`${name} has a var() fallback`);
-    return value;
-  };
-  return { rootPx, resolve };
-}
-
 const { outputPath, themesDir } = parseArgs(process.argv.slice(2));
 const {
   stylesDigest: muxStylesDigest,
@@ -276,6 +254,122 @@ ${declarations.join('\n')}
 
 const output = tokenSheets + renderShellSizedSection(tokenSheets);
 
+// ─── About: page sheet ────────────────────────────────────────────────
+// One USER sheet for every in-scope about: page and every theme and UI mode. Each theme and
+// mode block holds the literal value of each Mux token the map references, under a private
+// --bento-about-* name; the map block then points Firefox's tokens at those names. Literals
+// come from resolving this run's chrome sheets for a root carrying that theme and mode,
+// which is what a chrome window showing it computes.
+const ABOUT_ROOT = ':root[data-bento-theme][data-color-mode]';
+const ABOUT_MODES = ['light', 'dark'];
+const aboutAlias = (token) => `--bento-about-${token.slice(2)}`;
+const toAliases = (value) => value.replace(/var\(\s*--([\w-]+)/g, 'var(--bento-about-$1');
+
+function aboutRule(selector, declarations, important = true) {
+  const lines = Object.entries(declarations).map(
+    ([name, value]) => `  ${name}: ${toAliases(value)}${important ? ' !important' : ''};`,
+  );
+  return `${selector} {\n${lines.join('\n')}\n}`;
+}
+
+// `html` in a page rule is the root itself; anything else is below it.
+const underRoot = (root, selector) =>
+  selector
+    .split(',')
+    .map((part) => (part.trim() === 'html' ? root : `${root} ${part.trim()}`))
+    .join(',\n');
+
+// Firefox's own high-contrast styling wins under forced colours and under prefers-contrast:
+// more (macOS Increase Contrast turns that on without forced colours), so the sheet steps
+// aside for both. `not (a) and not (b)` is not valid media query syntax.
+const ABOUT_MEDIA = '@media not ((forced-colors) or (prefers-contrast: more))';
+
+function documentBlock(conditions, rules) {
+  return `@-moz-document ${conditions.join(',\n  ')} {\n${ABOUT_MEDIA} {\n\n${rules.join('\n\n')}\n\n}\n}`;
+}
+
+function renderAboutThemesSheet(baseCss) {
+  const tokens = referencedTokens();
+  const themes = [
+    [DEFAULT_THEME_ID, baseCss],
+    ...[...themeSheets].map(([id, css]) => [id, `${baseCss}\n${css}`]),
+  ];
+  // Default comes first and selects any theme id, so a theme without a block of its own
+  // shows Default; every later block is as specific and wins by order.
+  const themeBlocks = themes.flatMap(([id, css]) =>
+    ABOUT_MODES.map((mode) => {
+      const { resolve } = createTokenResolver(css, {
+        attributes: { 'data-bento-theme': id, 'data-color-mode': mode },
+      });
+      const lines = tokens.map((token) => {
+        let value;
+        try {
+          value = resolve(token);
+        } catch (error) {
+          throw new Error(`about: page sheet, theme ${id} ${mode}: ${error.message}`);
+        }
+        return `  ${aboutAlias(token)}: ${value};`;
+      });
+      const theme = id === DEFAULT_THEME_ID ? '' : `='${id}'`;
+      return `:root[data-bento-theme${theme}][data-color-mode='${mode}'] {\n${lines.join('\n')}\n}`;
+    }),
+  );
+  const modeBlocks = ABOUT_MODES.map(
+    (mode) =>
+      `:root[data-bento-theme][data-color-mode='${mode}'] {\n  color-scheme: ${mode} !important;\n}`,
+  );
+  const mapBlocks = [
+    aboutRule(ABOUT_ROOT, {
+      ...Object.assign({}, ...FIREFOX_TOKEN_MAP.map((group) => group.tokens)),
+      ...ROOT_DECLARATIONS,
+    }),
+    ...FIREFOX_TOKEN_MAP.filter((group) => group.hosts).map((group) =>
+      aboutRule(underRoot(ABOUT_ROOT, group.hosts.join(', ')), group.tokens),
+    ),
+  ];
+  // Page rules, grouped by the documents they apply to.
+  const pageGroups = new Map();
+  for (const rule of PAGE_RULES) {
+    const conditions = documentConditions(rule.pages === 'all' ? undefined : rule.pages);
+    const key = conditions.join(',');
+    if (!pageGroups.has(key)) pageGroups.set(key, { conditions, rules: [] });
+    const { rules } = pageGroups.get(key);
+    if (rule.declarations)
+      rules.push(aboutRule(underRoot(ABOUT_ROOT, rule.selector), rule.declarations));
+    for (const mode of ABOUT_MODES) {
+      if (!rule[mode]) continue;
+      const root = `:root[data-bento-theme][data-color-mode='${mode}']`;
+      rules.push(aboutRule(underRoot(root, rule.selector), rule[mode]));
+    }
+  }
+  const [everything, ...pages] = [...pageGroups.values()];
+  const allConditions = documentConditions();
+  if (everything.conditions.join(',') !== allConditions.join(',')) {
+    throw new Error('about: page sheet: the first page rule must apply to every page');
+  }
+  return `${mplHeader}/*
+ * AUTO-GENERATED — do not edit.
+ * Regenerated by scripts/generate-chrome-tokens.mjs from scripts/about-page-themes.mjs
+ * (the page list and the Firefox-token map) and this run's chrome token sheets.
+ *
+ * @muxui/react/styles.css sha256:${muxStylesDigest}
+ * ${MUX_THEMES_CSS} sha256:${muxThemesDigest}
+ *
+ * bento-shell-mount.js registers it once per process as a USER sheet, so it reaches the
+ * pages' shadow trees, and its declarations are !important to win over the pages' own
+ * tokens. A page is themed once its root carries data-bento-theme and data-color-mode,
+ * which the BentoAboutTheme actor (and, for the Passwords sidebar, the mount script) sets
+ * from the window's workspace theme and UI mode.
+ */
+
+${documentBlock(allConditions, [...themeBlocks, ...modeBlocks, ...mapBlocks, ...everything.rules])}
+
+${pages.map(({ conditions, rules }) => documentBlock(conditions, rules)).join('\n\n')}
+`;
+}
+
+const aboutThemesOutput = renderAboutThemesSheet(output);
+
 function writeIfChanged(path, content) {
   let previous;
   try {
@@ -290,6 +384,9 @@ function writeIfChanged(path, content) {
 
 mkdirSync(dirname(outputPath), { recursive: true });
 const baseChanged = writeIfChanged(outputPath, output);
+// The about: page sheet sits beside the base sheet, as jar.mn registers it.
+const aboutThemesPath = resolve(dirname(outputPath), ABOUT_THEMES_NAME);
+const aboutChanged = writeIfChanged(aboutThemesPath, aboutThemesOutput);
 
 // A removed theme must not leave its sheet behind in the engine tree.
 mkdirSync(themesDir, { recursive: true });
@@ -316,7 +413,9 @@ ${css}
 const sizeKb = (Buffer.byteLength(output) / 1024).toFixed(1);
 console.log(
   `generate-chrome-tokens: ${baseChanged ? 'wrote' : 'unchanged'} ${outputPath} (${sizeKb} kB)` +
-    `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)`,
+    `; ${themeSheets.size} theme sheets in ${themesDir} (${themesChanged} changed)` +
+    `; ${aboutChanged ? 'wrote' : 'unchanged'} ${aboutThemesPath}` +
+    ` (${(Buffer.byteLength(aboutThemesOutput) / 1024).toFixed(1)} kB)`,
 );
 
 // Refreshes the built app's copy of the sheet. A checkout whose engine/ or .bento/ is

@@ -1028,6 +1028,12 @@ The theme system should support:
   surfaces together without playing a fade. Web pages keep live
   visuals, execution and input; native OS menus and window controls remain
   system-owned;
+- Firefox's built-in pages follow the window's workspace theme and UI mode with
+  neutral surfaces and the theme colour on accents: Passwords (the page, its import
+  report and the Passwords sidebar), Add-ons, the connection and certificate error
+  pages, the private browsing page, Downloads, and the `about:config`,
+  `about:support`, `about:profiles`, `about:processes` and `about:policies`
+  pages. Settings keeps its own Bento layout and look;
 - UI colour mode is separate from website colour preference. Fresh profiles
   request light website colours; Bento Settings currently has no separate
   website-colour control;

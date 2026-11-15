@@ -4,32 +4,16 @@ Date: Tue, 7 Jul 2026 16:00:00 +1000
 Subject: [PATCH] Theme about logins with Bento tokens
 
 ---
- .../aboutlogins/content/aboutLogins.html      |  5 +-
- .../content/aboutLoginsImportReport.html      |  8 ++-
- .../components/aboutlogins/content/common.css | 49 +++++++++++++++++++
- .../components/import-error-dialog.css        |  2 +-
- .../content/components/login-item.css         |  2 +-
- .../components/login-message-popup.css        |  2 +-
- 6 files changed, 61 insertions(+), 7 deletions(-)
+ .../components/aboutlogins/content/aboutLogins.html  |  1 +
+ .../aboutlogins/content/aboutLoginsImportReport.html |  4 ++++
+ browser/components/aboutlogins/content/common.css    | 12 ++++++++++++
+ .../content/components/login-message-popup.css       |  2 +-
+ 4 files changed, 18 insertions(+), 1 deletion(-)
 
 diff --git a/browser/components/aboutlogins/content/aboutLogins.html b/browser/components/aboutlogins/content/aboutLogins.html
-index 9bbf5e69b17139d5063977334a869db090af3de1..7d8278436ed3b227bc97efeb26717540d4b17293 100644
+index 9bbf5e69b17139d5063977334a869db090af3de1..bad0025440d249cf9aa1a16a7bbaab285c061a44 100644
 --- a/browser/components/aboutlogins/content/aboutLogins.html
 +++ b/browser/components/aboutlogins/content/aboutLogins.html
-@@ -3,11 +3,11 @@
-    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
- 
- <!DOCTYPE html>
--<html>
-+<html data-bento-theme="default" data-color-mode="light" data-theme="light">
-   <head>
-     <meta charset="utf-8">
-     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; object-src 'none'; script-src resource: chrome:; img-src data: blob: https://firefoxusercontent.com https://profile.accounts.firefox.com;">
--    <meta name="color-scheme" content="light dark">
-+    <meta name="color-scheme" content="light">
-     <title data-l10n-id="about-logins-page-title-name"></title>
-     <link rel="localization" href="branding/brand.ftl">
-     <link rel="localization" href="browser/aboutLogins.ftl">
 @@ -29,6 +29,7 @@
      <script type="module" src="chrome://browser/content/aboutlogins/aboutLogins.mjs"></script>
      <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
@@ -39,26 +23,9 @@ index 9bbf5e69b17139d5063977334a869db090af3de1..7d8278436ed3b227bc97efeb26717540
      <link rel="icon" href="chrome://branding/content/icon32.png">
    </head>
 diff --git a/browser/components/aboutlogins/content/aboutLoginsImportReport.html b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
-index 6a6932502d8eb82c70e6aea039580f489224ee60..7488f76fbccef36d1938d5388105a9e6073e6c75 100644
+index 6a6932502d8eb82c70e6aea039580f489224ee60..638704664537eee21d5eee494f7610af1f425e31 100644
 --- a/browser/components/aboutlogins/content/aboutLoginsImportReport.html
 +++ b/browser/components/aboutlogins/content/aboutLoginsImportReport.html
-@@ -3,14 +3,14 @@
-    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
- 
- <!doctype html>
--<html>
-+<html data-bento-theme="default" data-color-mode="light" data-theme="light">
-   <head>
-     <meta charset="utf-8" />
-     <meta
-       http-equiv="Content-Security-Policy"
-       content="default-src 'none'; object-src 'none'; script-src resource: chrome:; img-src data: blob: https://firefoxusercontent.com;"
-     />
--    <meta name="color-scheme" content="light dark" />
-+    <meta name="color-scheme" content="light" />
-     <title data-l10n-id="about-logins-import-report-page-title"></title>
-     <link rel="localization" href="branding/brand.ftl" />
-     <link rel="localization" href="browser/aboutLogins.ftl" />
 @@ -28,6 +28,10 @@
        rel="stylesheet"
        href="chrome://browser/content/aboutlogins/aboutLoginsImportReport.css"
@@ -71,89 +38,28 @@ index 6a6932502d8eb82c70e6aea039580f489224ee60..7488f76fbccef36d1938d5388105a9e6
        rel="stylesheet"
        href="chrome://browser/content/aboutlogins/common.css"
 diff --git a/browser/components/aboutlogins/content/common.css b/browser/components/aboutlogins/content/common.css
-index 2771a6b03e0cd4605190c9f33678c346f1e7a52b..65d014190b3b8d3c610690cc211dd54a1e341d2a 100644
+index 2771a6b03e0cd4605190c9f33678c346f1e7a52b..7e8de6111612cd07df79dd4b7454de19e7f9d8e8 100644
 --- a/browser/components/aboutlogins/content/common.css
 +++ b/browser/components/aboutlogins/content/common.css
-@@ -2,6 +2,55 @@
+@@ -2,6 +2,18 @@
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
++/* Bento: shapes and elevation from bento-chrome-tokens.css. Colours come from
++ * the registered bento-about-themes.css sheet. */
 +:root,
 +:host {
-+  color-scheme: light !important;
-+  --background-color-canvas: var(--neutral-default-5, var(--neutral-5)) !important;
-+  --background-color-box: var(--neutral-default-10, var(--neutral-10)) !important;
-+  --background-color-overlay: color-mix(
-+    in srgb,
-+    var(--neutral-default-100, var(--neutral-100)) 40%,
-+    transparent
-+  ) !important;
-+  --background-color-critical: var(--red-10) !important;
-+  --background-color-warning: var(--warning-10) !important;
-+  --border-color: var(--neutral-default-20, var(--neutral-20)) !important;
-+  --border-color-selected: var(--color-60) !important;
 +  --border-radius-small: var(--radius-s) !important;
 +  --border-radius-medium: var(--radius-m) !important;
 +  --border-radius-circle: var(--radius-full) !important;
 +  --border-width: 1px !important;
 +  --box-shadow-level-2: var(--shadow-l) !important;
-+  --button-background-color-hover: var(--neutral-default-16, var(--neutral-16)) !important;
-+  --button-background-color-active: var(--neutral-default-22, var(--neutral-22)) !important;
-+  --button-background-color-ghost-hover: var(--neutral-default-16, var(--neutral-16)) !important;
-+  --button-text-color-hover: var(--neutral-default-90, var(--neutral-90)) !important;
-+  --button-text-color-active: var(--neutral-default-90, var(--neutral-90)) !important;
-+  --button-text-color-ghost: var(--neutral-default-80, var(--neutral-80)) !important;
-+  --button-text-color-ghost-hover: var(--neutral-default-90, var(--neutral-90)) !important;
-+  --card-border-color: var(--neutral-default-20, var(--neutral-20)) !important;
-+  --dialog-warning-text-color: var(--warning-90) !important;
-+  --focus-outline-color: var(--color-60) !important;
-+  --icon-color-success: var(--success-60) !important;
-+  --link-color: var(--neutral-default-80, var(--neutral-80)) !important;
 +  --popup-box-shadow: var(--shadow-l) !important;
-+  --table-row-background-color-alternate: var(--neutral-default-12, var(--neutral-12)) !important;
-+  --text-color: var(--neutral-default-90, var(--neutral-90)) !important;
-+  --text-color-deemphasized: var(--neutral-default-70, var(--neutral-70)) !important;
-+  --input-text-background-color: var(--neutral-default-5, var(--neutral-5)) !important;
-+  --input-text-color: var(--neutral-default-90, var(--neutral-90)) !important;
-+  --input-text-border-color: var(--neutral-default-18, var(--neutral-18)) !important;
-+  --input-text-border: 1px solid var(--input-text-border-color) !important;
-+  --input-text-border-radius: var(--radius-s) !important;
-+  --input-text-min-height: var(
-+    --bento-sidebar-address-row-height-px,
-+    32px
-+  ) !important;
-+  --input-text-icon-size: var(--bento-icon-size-sm, 1rem) !important;
-+  background-color: var(--background-color-canvas) !important;
-+  color: var(--text-color) !important;
 +}
 +
  /* [hidden] isn't applying to elements in Shadow DOM. */
  :host([hidden]),
  [hidden] {
-diff --git a/browser/components/aboutlogins/content/components/import-error-dialog.css b/browser/components/aboutlogins/content/components/import-error-dialog.css
-index b85504de524a8e2b17565acaa15249805f3c66b0..469342e94783cbfd594b9fa2b1b9eee4db095662 100644
---- a/browser/components/aboutlogins/content/components/import-error-dialog.css
-+++ b/browser/components/aboutlogins/content/components/import-error-dialog.css
-@@ -24,5 +24,5 @@
- 
- .warning-icon {
-   -moz-context-properties: fill;
--  fill: #ffbf00;
-+  fill: var(--warning-60);
- }
-diff --git a/browser/components/aboutlogins/content/components/login-item.css b/browser/components/aboutlogins/content/components/login-item.css
-index 501dfc6d536ae062a45347a6b358bfbfa3f014b3..6969b6aa0250f56d15762ce615f7268439204727 100644
---- a/browser/components/aboutlogins/content/components/login-item.css
-+++ b/browser/components/aboutlogins/content/components/login-item.css
-@@ -13,7 +13,7 @@
- /* Only overwrite the deemphasized text color in non-dark mode. */
- @media not (prefers-color-scheme: dark) {
-   :host {
--    --text-color-deemphasized: #737373;
-+    --text-color-deemphasized: var(--neutral-70);
-   }
- }
- 
 diff --git a/browser/components/aboutlogins/content/components/login-message-popup.css b/browser/components/aboutlogins/content/components/login-message-popup.css
 index c443a1e3acdec651882bac0a6297bfe74893837a..4e62961d0626bd92a6edd5d3493c23e7f5f04503 100644
 --- a/browser/components/aboutlogins/content/components/login-message-popup.css

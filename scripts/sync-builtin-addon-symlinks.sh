@@ -197,19 +197,22 @@ copy_content_file() {
   return 0
 }
 
-# Content-process actors and the token sheet are real files, never symlinks: the
-# content sandbox cannot follow a link out of the app bundle into src/. One line
-# per file in src/browser/actors.
+# Content-process actors, the token sheet and the about: page sheet are real files,
+# never symlinks: the content sandbox cannot follow a link out of the app bundle into
+# src/. One line per file in src/browser/actors.
 copy_content_files() {
   local actors_root="$REPO_ROOT/src/browser/actors"
   local actor
-  for actor in BentoKeyChild.sys.mjs BentoKeyParent.sys.mjs BentoModePresentation.sys.mjs \
-    BentoShellBusChild.sys.mjs BentoShellBusParent.sys.mjs; do
+  for actor in BentoAboutThemeChild.sys.mjs BentoKeyChild.sys.mjs BentoKeyParent.sys.mjs \
+    BentoModePresentation.sys.mjs BentoShellBusChild.sys.mjs BentoShellBusParent.sys.mjs; do
     copy_content_file "$actors_root/$actor" "actor/$actor" "$BIN_ACTORS_ROOT" "$APP_ACTORS_ROOT"
   done
   # about:logins and its import report run in a content process and link this sheet.
   copy_content_file "$REPO_ROOT/src/browser/base/content/bento-chrome-tokens.css" \
     chrome/bento-chrome-tokens.css "$BIN_CHROME_ROOT" "$APP_CHROME_ROOT"
+  # The registered about: page sheet, which every content process loads.
+  copy_content_file "$REPO_ROOT/src/browser/base/content/bento-about-themes.css" \
+    chrome/bento-about-themes.css "$BIN_CHROME_ROOT" "$APP_CHROME_ROOT"
 }
 
 # The object directory mach builds into (engine/obj-bento unless BENTO_OBJDIR chose
