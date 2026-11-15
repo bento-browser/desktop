@@ -18,8 +18,6 @@ runs:
         # runner tool cache. The exact .nvmrc pin is never cached, so reading it
         # would download Node in every job.
         node-version-file: package.json
-        # Restore the pnpm store only when this job installs from it.
-        cache: ${{ inputs.install == 'true' && 'pnpm' || '' }}
     - name: Install dependencies
       if: inputs.install == 'true'
       shell: bash

@@ -274,7 +274,7 @@ pull requests, on the free `ubuntu-24.04` runner only.
 | ------------------------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `security-gate` (Security gate)                                    | none                       | `pnpm run security:check`, `pnpm run release:security-check`, `pnpm audit --audit-level high`. Installs no dependencies.                                                                                                                                                                                                     |
 | `changes` (Detect import inputs)                                   | none                       | Decides whether `source-import` runs. On a pull request it pipes the changed paths (merge commit against its first parent) into `scripts/import-inputs.mjs`; any other event, a failed job, diff or script, or an unexpected answer means run. Installs no dependencies (the script runs on the runner's preinstalled Node). |
-| `static-checks` (JSON, shell, prefs sanity)                        | none                       | Syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs` and `scripts/import-inputs.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`.                                                                               |
+| `static-checks` (JSON, shell, prefs sanity)                        | none                       | ShellCheck on `scripts/*.sh`, syntax, lint, generated-file and test suites outside the extensions (including `scripts/release-security.test.mjs` and `scripts/import-inputs.test.mjs`), the competitor-reference boundary, the build driver config check, and `pnpm run lc`.                                                 |
 | `extensions-checks` (Extensions — typecheck, lint, test)           | none                       | Typecheck, lint, `pnpm run lint:aliases`, `pnpm run lint:tokens`, `pnpm run lint:motion`, Vitest. The two typecheck steps are CI's only type gate, because `ext:bundle` skips `tsc`.                                                                                                                                         |
 | `extensions-build` (Extensions — bundle, release gate, size-limit) | none                       | `BENTO_RELEASE=1 pnpm run ext:bundle` (`ext:build` without the `tsc` gate), `pnpm run release:security-check:shell`, `pnpm run size:check`, `pnpm run check:product-identity:built` (the forbidden-identity scan the import check also runs on the installed add-ons).                                                       |
 | `source-import` (Source import (linux-x64))                        | `security-gate`, `changes` | Skipped when `changes` says `false`. Pristine Firefox source, `ext:bundle` (started in the background during the cache restore), `import` twice with a snapshot comparison, `check-import-output`, `pnpm run release:security-check:shell`. Stops there: no bootstrap, build, or package.                                    |
@@ -319,8 +319,10 @@ minutes: downloading and committing the source takes about three minutes and
 packing its objects before the save another three. Compare new runs with these
 figures before accepting a workflow change that slows them.
 
-Each job installs its own dependencies, because each job is a separate machine.
-Node comes from the `engines.node` range in `package.json` (`>=24.19.0 <25`),
+Each job that needs dependencies installs its own, because each job is a separate
+machine; the security gate, the change detector, and the scheduled engine cache
+run on the runner's own tools and install none. The setup action restores no pnpm
+store, so a frozen install downloads from the registry. Node comes from the `engines.node` range in `package.json` (`>=24.19.0 <25`),
 which matches the Node 24.x already in the runner tool cache. The exact `.nvmrc`
 pin is never cached on the runner, so reading it would download Node in every
 job.
@@ -838,7 +840,7 @@ CI and release builds run `pnpm install --frozen-lockfile` (the
 it does nothing when `node_modules` is current). Manifest or transitive-resolution
 drift fails the install. The install is the full graph, dev tooling included,
 because the extension build needs it. pnpm owns the lockfile's format, so it is
-excluded from Prettier (`.prettierignore`, `.lintstagedrc.json`). The release
+excluded from Prettier (`.prettierignore`). The release
 SBOM reads the same file and requires the approved shell runtime dependency set,
 exact published Mux version, and verified npm integrity; it rejects a substituted
 tarball or digest. Mux is reported like other npm components with its registry
@@ -1144,19 +1146,6 @@ changes something other than `docs/` or Markdown.
 The CI `pnpm audit --audit-level high` step audits `pnpm-lock.yaml`, the same
 lock that release builds install. Fix vulnerable transitive packages with
 `pnpm.overrides` in `package.json`, then refresh the lock.
-
-Audit exceptions live in `pnpm.auditConfig.ignoreGhsas` in `package.json`. Each
-entry needs a reason here and must be removed once a patched release is
-reachable:
-
-- `GHSA-vfj7-8cjw-p6xm` (`braces` <= 3.0.3, stack exhaustion on deeply nested
-  brace patterns; no patched `braces` release exists). Dev-only: it is reached
-  through `lint-staged` and `@ladle/react` (via `globby` and `fast-glob`),
-  both devDependencies, and does not appear in the built extension bundles.
-  The only patterns it expands come from repository-owned config
-  (`.lintstagedrc.json` and the Ladle `stories` glob), never from untrusted
-  input. Upgrading `lint-staged` would not remove the path, because the latest
-  `@ladle/react` still depends on `globby` and `fast-glob`.
 
 ## Pull request checks
 

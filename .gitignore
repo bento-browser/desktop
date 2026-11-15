@@ -54,8 +54,6 @@ release-out/
 # Plans
 plans/
 
-# Bugs
-# bugs/
 
 # Auto-generated chrome design-token stylesheet, per-theme sheets and the about: page
 # sheet — regenerated from public Mux CSS source on every `pnpm run import`. See

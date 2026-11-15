@@ -19,7 +19,7 @@ mutating `verify` that adopts an engine, `import`, `install`, `download`,
 For an implementation request:
 
 1. Work from the repository root; every command below uses repo-relative paths.
-2. Read the canonical `CLAUDE.md` completely (`agents.md` points to it).
+2. Read the canonical `CLAUDE.md` completely (`AGENTS.md` points to it).
 3. Read these current sources before changing the engine:
    - `bento.json`
    - `docs/firefox-patches.md`

@@ -91,14 +91,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
 
-      - name: Validate JSON syntax
-        run: |
-          set -e
-          for f in bento.json package.json config/firefox-versions.json config/allowed-zen-references.json .size-limit.json; do
-            echo "checking $f"
-            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))"
-          done
-
       - name: Validate bento.json schema
         run: |
           node -e "
@@ -115,18 +107,10 @@ jobs:
             console.log('bento.json schema OK');
           "
 
-      - name: Shell script syntax (bash -n)
-        run: |
-          set -e
-          for f in scripts/*.sh; do
-            echo "bash -n $f"
-            bash -n "$f"
-          done
-
       - name: ShellCheck
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: ./scripts
+        # The ubuntu-24.04 image ships ShellCheck. It parses every script, so a
+        # separate bash -n pass would only repeat its syntax errors.
+        run: shellcheck scripts/*.sh
 
       - name: Verify prefs/bento.js parses as JS
         # Default-pref files are evaluated by Firefox at startup. Catch syntax
