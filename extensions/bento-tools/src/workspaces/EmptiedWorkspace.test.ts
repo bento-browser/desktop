@@ -424,6 +424,7 @@ describe('batched tab close against the tab-removal handler, with the real regis
         onActivated: noEvent,
         onMoved: noEvent,
         onAttached: noEvent,
+        onDetached: noEvent,
         onRemoved: {
           addListener: (listener: typeof fireRemoved) => {
             fireRemoved = listener;

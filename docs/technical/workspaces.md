@@ -1486,6 +1486,30 @@ workspaces.
   session write first left a window in which a background restart kept a created tab out of the
   import journal, so recovery could not remove it.
 
+- Do not count sibling positions event by event. The sidebar orders rows by the `index`
+  `TabRegistry` stores, and the tabs events report only the tab they are about. With only
+  `tabs.onMoved` shifting siblings, after three closes above a tab a link opened from it drew
+  two rows above it, and a middle insert left every later tab one row low, until a relaunch
+  re-queried. Shifting siblings on every create, remove, detach and attach was tried and
+  reverted: Firefox emits `tabs.onCreated` a microtask after `TabOpen` while SessionStore moves
+  existing tabs behind the ones it restores first, so a moved tab was counted twice; updates
+  that arrived during `init()` (before it records the queried tabs) counted as insertions; and
+  closing 250 of 500 tabs queued about 94,000 deltas. `onCreated`, `onRemoved` (except with
+  `isWindowClosing`), `onDetached`, `onAttached` and `onMoved` each call `#resyncIndexes` for
+  their window, which runs `browser.tabs.query({ windowId })`, drops tabs the registry records
+  in another window, numbers the rest by rank, and sends one `updated { index }` per tab whose
+  stored index differs; `init()` resyncs every window once its records are in. Rank, not
+  Firefox's `index`: on a tear-out to a new window Firefox fires detach and attach when the
+  window opens but moves the tab out of the old strip only at the new window's first paint,
+  with no further event, so the old window's answer can still list it.
+  The query starts synchronously in the handler, so its answer usually lands in the same flush
+  as the event's own delta. One query per window runs at a time: events during it bump the
+  window's count, and an answer read before the latest event is dropped and the window queried
+  again, so a burst costs two queries and at most one index delta per remaining tab.
+  `#onMoved` keeps its local shift for immediate drag feedback; the resync corrects it. Manual
+  check: open eight tabs, open a link from the sixth, close three tabs above the sixth, open a
+  link from it again: both link rows sit right below it, in the native order. Found 2026-11-16.
+
 - Do not index Cmd/Ctrl+1 to 9 by `gBrowser.tabs` alone. Folders do not move
   native tabs, so a tab in the second folder could come before the first
   folder's tabs and get Cmd/Ctrl+1. Chrome sorts by the sidebar's
