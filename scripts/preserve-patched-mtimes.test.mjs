@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -208,4 +209,16 @@ test('a symlinked patches directory is not entered, like find without -L', (t) =
   fs.renameSync(path.join(root, 'patches'), path.join(root, 'patches-real'));
   fs.symlinkSync(path.join(root, 'patches-real'), path.join(root, 'patches'));
   assert.deepEqual(patchTouchedPaths(root), []);
+});
+
+test('a FIFO at a patched path is skipped without blocking', (t) => {
+  const { root, at } = bareFixture(t, ['pipe', 'kept.cpp']);
+  fs.writeFileSync(at('kept.cpp'), 'same\n');
+  fs.utimesSync(at('kept.cpp'), OLD, OLD);
+  execFileSync('mkfifo', [at('pipe')]);
+  const recorded = mtimeNs(at('kept.cpp'));
+  assert.equal(snapshotPatchedMtimes({ repoRoot: root, run: 'fifo' }), 1);
+  fs.writeFileSync(at('kept.cpp'), 'same\n');
+  assert.equal(restorePatchedMtimes({ repoRoot: root, run: 'fifo' }), 1);
+  assertRestored(at('kept.cpp'), recorded);
 });

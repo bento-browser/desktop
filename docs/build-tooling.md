@@ -814,8 +814,12 @@ synchronization validation are recorded in [theming.md](technical/theming.md#nat
   current time. Patch files are found the way `find patches -name '*.patch'`
   finds them: symlinked `.patch` files are read through the link (a dangling one is
   skipped), and symlinked directories, `patches/` itself included, are not entered.
-  A patch path whose parent is now a file, or that is now a directory, counts as
-  missing (`ENOENT`, `ENOTDIR`, `ELOOP`) in both the snapshot and the restore.
+  Each file is opened once without following a symlink or blocking on a FIFO, and
+  everything is decided through that descriptor: the type check, the hash and, in
+  `restore`, setting the times (`futimes`), so a file swapped in between cannot
+  be checked as one file and changed as another. Anything that opens as other than
+  a regular file is skipped, and a patch path whose parent is now a file, or that
+  is now a symlink, counts as missing (`ENOENT`, `ENOTDIR`, `ELOOP`).
 - **Regenerated files in verification.** `engine/mozconfig` and the two version
   files are rewritten from `bento.json` and `configs/` by every build, in
   whichever mode that build uses. Recorded-state verification therefore

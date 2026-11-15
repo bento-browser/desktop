@@ -77,29 +77,40 @@ export function patchTouchedPaths(repoRoot = DEFAULT_ROOT) {
 }
 
 // A path that is missing, sits under a file where the series now has a directory
-// (or the reverse), or became a symlink between lstat and open.
+// (or the reverse), or is a symlink (O_NOFOLLOW).
 const NOT_A_FILE = new Set(['ENOENT', 'ENOTDIR', 'ELOOP']);
 
-// Reads type, mode, mtime and bytes through one descriptor. Undefined for
-// anything that is not a regular file (missing, symlink, directory).
-function fileState(file) {
+// Opens a regular file without following a symlink or blocking on a FIFO, and
+// decides from the open descriptor alone, so the file checked is the file used.
+// Undefined for anything else (missing, symlink, directory, device).
+function openRegular(file) {
   let fd;
   try {
-    if (!fs.lstatSync(file, { bigint: true }).isFile()) return undefined;
-    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   } catch (error) {
     if (NOT_A_FILE.has(error.code)) return undefined;
     throw error;
   }
+  if (fs.fstatSync(fd).isFile()) return fd;
+  fs.closeSync(fd);
+  return undefined;
+}
+
+function stateOf(fd) {
+  const stat = fs.fstatSync(fd, { bigint: true });
+  return {
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(fd)).digest('hex'),
+    mode: Number(stat.mode & 0o7777n),
+    atimeNs: stat.atimeNs.toString(),
+    mtimeNs: stat.mtimeNs.toString(),
+  };
+}
+
+function fileState(file) {
+  const fd = openRegular(file);
+  if (fd === undefined) return undefined;
   try {
-    const stat = fs.fstatSync(fd, { bigint: true });
-    if (!stat.isFile()) return undefined;
-    return {
-      sha256: crypto.createHash('sha256').update(fs.readFileSync(fd)).digest('hex'),
-      mode: Number(stat.mode & 0o7777n),
-      atimeNs: stat.atimeNs.toString(),
-      mtimeNs: stat.mtimeNs.toString(),
-    };
+    return stateOf(fd);
   } finally {
     fs.closeSync(fd);
   }
@@ -147,16 +158,16 @@ function nextUp(value) {
 // input, so an earlier mtime could skip a needed reconfigure or rebuild. Stepping up
 // one double at a time can land up to one step later, which at worst costs a
 // rebuild. If no step reaches the recorded time, the file gets the current time.
-function setMtimeNotEarlier(file, atimeNs, mtimeNs) {
+function setMtimeNotEarlier(fd, atimeNs, mtimeNs) {
   const wanted = BigInt(mtimeNs);
   let candidate = seconds(mtimeNs);
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    fs.utimesSync(file, seconds(atimeNs), candidate);
-    if (fs.statSync(file, { bigint: true }).mtimeNs >= wanted) return true;
+    fs.futimesSync(fd, seconds(atimeNs), candidate);
+    if (fs.fstatSync(fd, { bigint: true }).mtimeNs >= wanted) return true;
     candidate = nextUp(candidate);
   }
   const now = new Date();
-  fs.utimesSync(file, now, now);
+  fs.futimesSync(fd, now, now);
   return false;
 }
 
@@ -173,11 +184,17 @@ export function restorePatchedMtimes({ repoRoot = DEFAULT_ROOT, run }) {
   const engine = path.join(repoRoot, 'engine');
   let restored = 0;
   for (const entry of snapshot.entries) {
-    const file = path.join(engine, entry.path);
-    const current = fileState(file);
-    if (!current || current.sha256 !== entry.sha256 || current.mode !== entry.mode) continue;
-    if (current.mtimeNs === entry.mtimeNs) continue;
-    if (setMtimeNotEarlier(file, entry.atimeNs, entry.mtimeNs)) restored += 1;
+    // Compare and set through one descriptor, so the times land on the bytes checked.
+    const fd = openRegular(path.join(engine, entry.path));
+    if (fd === undefined) continue;
+    try {
+      const current = stateOf(fd);
+      if (current.sha256 !== entry.sha256 || current.mode !== entry.mode) continue;
+      if (current.mtimeNs === entry.mtimeNs) continue;
+      if (setMtimeNotEarlier(fd, entry.atimeNs, entry.mtimeNs)) restored += 1;
+    } finally {
+      fs.closeSync(fd);
+    }
   }
   return restored;
 }
