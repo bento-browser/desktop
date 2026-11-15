@@ -5260,6 +5260,10 @@
   // capture listener performs the batch close before Firefox closes only
   // the active tab.
   const SELECTED_TABS_PREFIX = 'BENTO_SELECTED_TABS:';
+  // Sidebar tab order for Cmd/Ctrl+1..9. Folders do not move native tabs,
+  // so gBrowser.tabs order differs from the sidebar's; the sidebar mirrors
+  // its full order (collapsed folder members included) here.
+  const TAB_ORDER_PREFIX = 'BENTO_TAB_ORDER:';
   // Panel-trailer context menu request. Same title-IPC pattern as the
   // sidebar because the trailer is its own remote extension frame.
   const PANEL_TRAILER_CONTEXT_MENU_PREFIX = 'BENTO_PANEL_TRAILER_CONTEXT_MENU:';
@@ -5289,6 +5293,9 @@
   // identity, so dragging the currently-active (panel-marked) tab works.
   const TAB_MOVE_PREFIX = 'BENTO_TAB_MOVE:';
   let currentSidebarSelectedTabIds = [];
+  // { workspaceId, tabIds } from the last BENTO_TAB_ORDER, or null before
+  // the shell has sent one.
+  let currentSidebarTabOrder = null;
 
   // Drive the public Mux color-mode cascade in chrome by setting explicit
   // data-color-mode on the chrome window's <window> root.
@@ -15995,6 +16002,27 @@
     }
   }
 
+  function handleTabOrderTitle(rawTitle) {
+    // Format: BENTO_TAB_ORDER:<ts>:<base64-json { workspaceId, tabIds }>
+    const tail = rawTitle.slice(TAB_ORDER_PREFIX.length);
+    const colon = tail.indexOf(':');
+    if (colon < 0) return;
+    try {
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(tail.slice(colon + 1)))));
+      if (typeof decoded?.workspaceId !== 'string' || !Array.isArray(decoded.tabIds)) {
+        currentSidebarTabOrder = null;
+        return;
+      }
+      currentSidebarTabOrder = {
+        workspaceId: decoded.workspaceId,
+        tabIds: decoded.tabIds.filter((id) => Number.isInteger(id)),
+      };
+    } catch (err) {
+      console.warn('[bento-shell-mount] tab order payload parse failed:', err);
+      currentSidebarTabOrder = null;
+    }
+  }
+
   function handleSidebarContextMenuTitle(rawTitle) {
     // Format: BENTO_SIDEBAR_CONTEXT_MENU:<ts>:<base64-json>
     const tail = rawTitle.slice(SIDEBAR_CONTEXT_MENU_PREFIX.length);
@@ -18930,6 +18958,7 @@
       }
       else if (title.startsWith(SCROLL_TO_MAIN_PREFIX)) handleScrollToMainTitle();
       else if (title.startsWith(SELECTED_TABS_PREFIX)) handleSelectedTabsTitle(title);
+      else if (title.startsWith(TAB_ORDER_PREFIX)) handleTabOrderTitle(title);
       else if (title.startsWith(SIDEBAR_CONTEXT_MENU_PREFIX)) {
         handleSidebarContextMenuTitle(title);
       } else if (title.startsWith(FOCUS_PANEL_PREFIX)) handleFocusPanelTitle(title);
@@ -19875,7 +19904,41 @@
     }
   }
 
+  // The current workspace's tabs in sidebar order (BENTO_TAB_ORDER), side
+  // panels excluded. Membership comes from the order itself: it mirrors
+  // bento-tools' in-memory workspace, while the workspace session value
+  // can be missing (tools backfills a boot tab with no value in memory
+  // only), so a filter on it would skip a tab the sidebar shows. Only this
+  // window's live tabs can match, and only an order for the current
+  // workspace is used. Session-value tabs the order does not list yet (a tab
+  // the sidebar has not mirrored), and every tab before the first order
+  // arrives, follow in gBrowser order.
   function workspaceTabsInOrder() {
+    const tabs = workspaceTabsInBrowserOrder();
+    const order = currentSidebarTabOrder;
+    const tabTracker = getTabTracker();
+    if (!window.gBrowser || !order || order.workspaceId !== currentWorkspaceId || !tabTracker) {
+      return tabs;
+    }
+    const byId = new Map();
+    for (const tab of window.gBrowser.tabs) {
+      if (tab.hidden || tab.closing) continue;
+      try {
+        byId.set(tabTracker.getId(tab), tab);
+      } catch {
+        /* tabTracker may transiently not know about a tab; it keeps its gBrowser slot */
+      }
+    }
+    const listed = new Set();
+    for (const id of order.tabIds) {
+      const tab = byId.get(id);
+      if (tab && !currentPanelTabIds.has(id)) listed.add(tab);
+    }
+    for (const tab of tabs) listed.add(tab);
+    return Array.from(listed);
+  }
+
+  function workspaceTabsInBrowserOrder() {
     if (!window.gBrowser || !currentWorkspaceId) return [];
     const SessionStore = getSessionStore();
     if (!SessionStore) return [];

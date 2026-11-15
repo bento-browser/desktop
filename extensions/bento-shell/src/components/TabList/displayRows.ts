@@ -7,6 +7,8 @@ export type DisplayRow =
 
 interface BuildOptions {
   forceCollapsedFolders?: boolean;
+  /** Lists every folder's members as if expanded (wins over the collapse flags). */
+  expandAllFolders?: boolean;
 }
 
 export function buildDisplayRows(
@@ -40,7 +42,8 @@ export function buildDisplayRows(
   for (const folder of folders) {
     rows.push({ kind: 'folder', folderId: folder.id });
     const members = folderMembers.get(folder.id) ?? [];
-    const collapsed = options.forceCollapsedFolders || folder.collapsed;
+    const collapsed =
+      !options.expandAllFolders && (options.forceCollapsedFolders || folder.collapsed);
     if (collapsed) {
       const activeMember = activeId !== null && members.includes(activeId) ? activeId : null;
       if (activeMember !== null) rows.push({ kind: 'peek', id: activeMember, folderId: folder.id });
@@ -59,6 +62,19 @@ export function flattenTabOrder(rows: DisplayRow[]): number[] {
     if (row.kind === 'tab' || row.kind === 'peek') out.push(row.id);
   }
   return out;
+}
+
+/** Every tab in sidebar order, members of collapsed folders included at their
+ * folder's position: pinned, folder members, then regular tabs. Cmd/Ctrl+1-9
+ * index this order (mirrored to chrome as BENTO_TAB_ORDER). */
+export function sidebarTabOrder(
+  displayedIds: number[],
+  tabsById: Record<number, TabSnapshot>,
+  folders: TabFolder[],
+): number[] {
+  return flattenTabOrder(
+    buildDisplayRows(displayedIds, tabsById, folders, null, { expandAllFolders: true }),
+  );
 }
 
 export function rowKey(row: DisplayRow): string {

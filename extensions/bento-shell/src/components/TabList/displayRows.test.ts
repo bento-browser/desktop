@@ -5,6 +5,7 @@ import {
   displayRowsLayoutKey,
   flattenTabOrder,
   pruneSelection,
+  sidebarTabOrder,
 } from './displayRows';
 
 function tab(partial: Partial<TabSnapshot> & Pick<TabSnapshot, 'id' | 'index'>): TabSnapshot {
@@ -121,5 +122,32 @@ describe('buildDisplayRows', () => {
         ),
       ),
     ).not.toBe(displayRowsLayoutKey(sleepingRows));
+  });
+});
+
+describe('sidebarTabOrder', () => {
+  it('orders pinned, folder members (collapsed included), then regular tabs', () => {
+    const tabs = {
+      1: tab({ id: 1, index: 0 }),
+      2: tab({ id: 2, index: 1, folderId: 'f-2' }),
+      3: tab({ id: 3, index: 2, folderId: 'f-1' }),
+      4: tab({ id: 4, index: 3, pinned: true }),
+      5: tab({ id: 5, index: 4, folderId: 'f-1', active: true }),
+    };
+    const folders = [
+      folder({ id: 'f-1', order: 0, collapsed: true }),
+      folder({ id: 'f-2', order: 1 }),
+    ];
+
+    expect(sidebarTabOrder([1, 2, 3, 4, 5], tabs, folders)).toEqual([4, 3, 5, 2, 1]);
+  });
+
+  it('treats a stale folder id as a regular tab', () => {
+    const tabs = {
+      1: tab({ id: 1, index: 0, folderId: 'gone' }),
+      2: tab({ id: 2, index: 1, folderId: 'f-1' }),
+    };
+
+    expect(sidebarTabOrder([1, 2], tabs, [folder({ id: 'f-1', order: 0 })])).toEqual([2, 1]);
   });
 });

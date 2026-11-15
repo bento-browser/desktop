@@ -845,6 +845,11 @@ Verify (built app, tools background console or the sidebar): see the checks in
   before chrome's `pagetitlechanged` handler read it, leaving the main content
   visible but hiding all side panels. The writer now delivers both, but every
   extra title still costs a chrome handler run and a queued task.
+- `BENTO_TAB_ORDER` (the Cmd/Ctrl+1 to 9 order, see
+  [workspaces.md](workspaces.md#workspace-pitfalls)) is sent from `TabList`
+  only when its encoded `{ workspaceId, tabIds }` payload changes. Tab metadata
+  updates rebuild the order array on every render, so compare the payload, not
+  the array reference, or every title or favicon change writes a title.
 - If a title channel needs a clear/reset signal, send that reset only after the
   channel previously sent a non-empty/non-default value. Do not continuously
   announce "nothing selected", "closed", "default", or similar no-op state.
