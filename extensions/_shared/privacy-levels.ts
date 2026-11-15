@@ -1,8 +1,4 @@
-import type {
-  PrivacyAdvancedKey,
-  PrivacyProtectionLevel,
-  SelectablePrivacyProtectionLevel,
-} from './protocol';
+import type { PrivacyAdvancedKey, SelectablePrivacyProtectionLevel } from './protocol';
 
 export type PrivacyPrefValue = boolean | number | string;
 export type PrivacyPrefMap = Record<string, PrivacyPrefValue>;
@@ -293,11 +289,3 @@ export function isLevelControlledAdvancedKey(key: PrivacyAdvancedKey): boolean {
   );
 }
 
-export function privacyLevelLabel(level: PrivacyProtectionLevel): string {
-  return PRIVACY_LEVELS.find((entry) => entry.id === level)?.label ?? 'Custom';
-}
-
-export function privacyLevelDetails(level: PrivacyProtectionLevel): PrivacyLevelDetails | null {
-  if (level === 'custom') return null;
-  return PRIVACY_LEVEL_DETAILS[level];
-}

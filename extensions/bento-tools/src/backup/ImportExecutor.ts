@@ -8,6 +8,7 @@ import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import { migrateLegacyEntriesToPersistence } from '../panels/PanelStore';
 import { PrivacyMutationService } from '../privacy/PrivacyMutationService';
 import { moveTabsToWindow } from '../tabs/AdoptedTab';
+import { deduplicateName } from '../workspaces/deduplicateName';
 import type { DurableOperationComponent } from '../settings-domain/OperationRegistry';
 
 export interface ImportContext {
@@ -29,15 +30,6 @@ export interface ImportContext {
     /** Privacy or search effects that did not stick; the rest of the import completed. */
     onLiveEffectFailures?(failed: DurableOperationComponent[]): void;
   };
-}
-
-function deduplicateName(name: string, existing: Set<string>): string {
-  if (!existing.has(name)) return name;
-  const suffixed = `${name} (imported)`;
-  if (!existing.has(suffixed)) return suffixed;
-  let i = 2;
-  while (existing.has(`${name} (${i})`)) i++;
-  return `${name} (${i})`;
 }
 
 async function removeWorkspacesAfterReplacement(

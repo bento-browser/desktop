@@ -339,14 +339,6 @@ export class WorkspaceStore {
     return w;
   }
 
-  rename(id: string, name: string): void {
-    const w = this.#workspaces.get(id);
-    if (!w || w.name === name) return;
-    w.name = name;
-    this.#enqueue({ kind: 'updated', id, changes: { name } });
-    this.#schedulePersist();
-  }
-
   /** Atomic multi-field update for the workspace edit dialog. Computes the
    * actual diff against the existing workspace and emits a single delta
    * containing only the fields that changed (so listeners can rely on

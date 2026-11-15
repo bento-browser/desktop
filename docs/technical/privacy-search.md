@@ -6,16 +6,17 @@ Privacy preset metadata, selectable level ids, browser privacy values, and
 allowlisted pref maps live in
 `extensions/_shared/privacy-levels.ts`. The wire contract lives in
 `extensions/_shared/protocol.ts`: `privacy/setProtectionLevel`,
-`privacy/setAdvanced`, `privacy/setDefaultSearchEngine`, and
-`privacy/snapshot`.
+`privacy/setDefaultSearchEngine`, and `privacy/snapshot`. Advanced settings
+and the reset are Settings overlay operations only (`privacy/setAdvanced` and
+`settings/reset` in `extensions/_shared/settings-client-protocol.ts`).
 
 `extensions/bento-tools/src/privacy/ProtectionLevels.ts` is the tools-side
 runtime implementation. It applies preset `browser.privacy.*` values through the
 standard WebExtension privacy API and applies non-WebExtension prefs through the
 privileged `browser.bentoPrivacy` experiment. It reads the live browser snapshot,
 compares it with the preset maps, and reports `custom` when any preset value
-differs. Advanced settings dispatch the same path and then emit a fresh
-`privacy/snapshot`.
+differs. Advanced settings apply through the same path and then broadcast a
+fresh `privacy/changed`.
 
 The stored choice and the shown level are separate. The level Settings shows is always
 detected from the live prefs (`detectPrivacyLevelFromSnapshot`); the stored
@@ -229,10 +230,11 @@ share it, so a change cannot behave differently by the way it arrived:
   port only, never through the broadcast set. The shell background sends these
   requests for the Settings palette (`bridge/settingsRelay.ts`, see
   [shell-chrome-bridge.md](shell-chrome-bridge.md#private-windows-the-bentoshellbus-relay)).
-- The ordinary shell-port handlers (`settings/update`, `settings/reset`,
-  `privacy/setProtectionLevel`, `privacy/setAdvanced`,
-  `privacy/setDefaultSearchEngine`) call the service's typed mutations. A reset
-  from that port gets a registry record owned by `shell-port`.
+- The ordinary shell-port handlers (`settings/update`,
+  `privacy/setProtectionLevel`, `privacy/setDefaultSearchEngine`) call the
+  service's typed mutations. The shell port has no reset or advanced-privacy
+  action; those run only as the overlay operations `settings/reset` and
+  `privacy/setAdvanced`, so every reset record is owned by an overlay window.
 
 Two entry points validate settings differently on purpose. The overlay
 `settings/update` accepts exactly the editable inventory
@@ -257,7 +259,10 @@ inside the effect, so a replay never reads them. The record ends `succeeded`,
 `partial` (a live effect failed: privacy or search for a reset, an import or a
 recovered import; `components` names the failed ones and `reconcileComponents`
 lists them) or `failed` (every component failed). `components` is final for
-every kind; `phase` is the progress indicator while it runs.
+every kind; `phase` is the progress indicator while it runs. Operations cannot be
+cancelled; a stored record from when they could may still carry `cancelRequested` and
+the state `cancelled`, which `OperationRegistry.init` drops and reads as `failed`, so
+it stays terminal and is pruned on schedule.
 
 Ownership of a durable operation is the caller's `ownerId`. For the overlay it is
 the browser session id and the window id (`window:<sessionId>:<windowId>`). Chrome
@@ -268,7 +273,7 @@ browser restarts. A reloaded Settings document, or a reloaded tools background, 
 the same window therefore reads its predecessor's status, and `snapshot/get` lists
 the window's running and recently finished operations (`pendingOperations`, ten
 minutes; `noticeAcknowledged: true` once a document reported the end) for it to
-resume polling. Records of another owner, such as the `shell-port` reset, are never
+resume polling. Records of another owner, such as another window's reset, are never
 readable through the overlay. Window ids repeat across browser sessions, which is why
 the session id is part of the key. `recoveredOperationNotices` lists only records
 recovery or startup settlement closed (`recovered: true`) and not yet acknowledged.

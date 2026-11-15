@@ -218,7 +218,7 @@ describe('writes', () => {
     expect(request).toHaveBeenLastCalledWith('settings/update', {
       changes: { panelShadowsEnabled: false },
     });
-    finish({ settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false }, durableRevision: 2 });
+    finish({ settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false } });
     await expect(write).resolves.toBe(true);
     expect(model().pending.size).toBe(0);
     expect(model().settings.panelShadowsEnabled).toBe(false);
@@ -241,7 +241,7 @@ describe('writes', () => {
     });
     expect(model().settings.panelShadowsEnabled).toBe(false);
     expect(shadows()).toBe(false);
-    finish({ settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false }, durableRevision: 2 });
+    finish({ settings: { ...FIXTURE_SETTINGS, panelShadowsEnabled: false } });
     await write;
     expect(model().pendingTargets.size).toBe(0);
     expect(shadows()).toBe(false);
@@ -277,7 +277,7 @@ describe('writes', () => {
     const number = palette.actions.update({ panelCornerRadiusPx: 20 });
     expect(model().pending.has('panelCornerRadiusPx')).toBe(true);
     expect(model().pendingTargets.size).toBe(0);
-    finish({ settings: { ...FIXTURE_SETTINGS, panelCornerRadiusPx: 20 }, durableRevision: 3 });
+    finish({ settings: { ...FIXTURE_SETTINGS, panelCornerRadiusPx: 20 } });
     await number;
   });
 
@@ -290,13 +290,11 @@ describe('writes', () => {
     const second = palette.actions.update({ panelCornerRadiusPx: 24 });
     finishers[0]!({
       settings: { ...FIXTURE_SETTINGS, panelCornerRadiusPx: 2 },
-      durableRevision: 2,
     });
     await first;
     expect(model().pending.has('panelCornerRadiusPx')).toBe(true);
     finishers[1]!({
       settings: { ...FIXTURE_SETTINGS, panelCornerRadiusPx: 24 },
-      durableRevision: 3,
     });
     await second;
     expect(model().pending.size).toBe(0);
@@ -310,7 +308,7 @@ describe('writes', () => {
     await expect(palette.actions.update({ panelShadowsEnabled: false })).resolves.toBe(false);
     expect(model().notice).toContain('busy');
     expect(model().settings.panelShadowsEnabled).toBe(true);
-    request.mockResolvedValueOnce({ settings: FIXTURE_SETTINGS, durableRevision: 3 });
+    request.mockResolvedValueOnce({ settings: FIXTURE_SETTINGS });
     await palette.actions.update({ panelShadowsEnabled: true });
     expect(model().notice).toBeNull();
   });
@@ -320,7 +318,6 @@ describe('writes', () => {
     await load();
     request.mockResolvedValueOnce({
       privacy: { ...FIXTURE_PRIVACY, protectionLevel: 'enhanced' },
-      durableRevision: 2,
       state: 'partial',
       component: { component: 'privacy', state: 'failed', retryable: true },
     });
@@ -330,7 +327,6 @@ describe('writes', () => {
     expect(model().notice).toContain('did not apply');
     request.mockResolvedValueOnce({
       search: { ...FIXTURE_SEARCH, defaultSearchEngine: 'google' },
-      durableRevision: 3,
       state: 'succeeded',
       component: { component: 'search', state: 'succeeded', retryable: false },
     });
@@ -344,7 +340,6 @@ describe('writes', () => {
     await load();
     request.mockResolvedValueOnce({
       privacy: FIXTURE_PRIVACY,
-      durableRevision: 2,
       state: 'succeeded',
       component: { component: 'privacy', state: 'succeeded', retryable: false },
     });
@@ -589,7 +584,7 @@ describe('older answers never replace newer values', () => {
     const late = deferred<SettingsSnapshot>();
     request.mockReturnValueOnce(late.promise);
     palette.actions.refresh();
-    request.mockResolvedValueOnce({ settings: radius(30), durableRevision: 2 });
+    request.mockResolvedValueOnce({ settings: radius(30) });
     await palette.actions.update({ panelCornerRadiusPx: 30 });
     late.resolve(snapshot({ settings: radius(6) }));
     await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
@@ -604,7 +599,7 @@ describe('older answers never replace newer values', () => {
     request.mockReturnValueOnce(answer.promise);
     const write = palette.actions.update({ panelCornerRadiusPx: 12 });
     emit({ type: 'settings/changed', settings: radius(40) as never });
-    answer.resolve({ settings: radius(12), durableRevision: 2 });
+    answer.resolve({ settings: radius(12) });
     await write;
     expect(model().settings.panelCornerRadiusPx).toBe(40);
   });
@@ -617,9 +612,9 @@ describe('older answers never replace newer values', () => {
     request.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     const one = palette.actions.update({ panelCornerRadiusPx: 10 });
     const two = palette.actions.update({ panelCornerRadiusPx: 20 });
-    second.resolve({ settings: radius(20), durableRevision: 3 });
+    second.resolve({ settings: radius(20) });
     await two;
-    first.resolve({ settings: radius(10), durableRevision: 2 });
+    first.resolve({ settings: radius(10) });
     await one;
     expect(model().settings.panelCornerRadiusPx).toBe(20);
   });
@@ -627,7 +622,7 @@ describe('older answers never replace newer values', () => {
   it('applies a snapshot collected after a write answered', async () => {
     const { palette, request, load, model } = setup();
     await load();
-    request.mockResolvedValueOnce({ settings: radius(30), durableRevision: 2 });
+    request.mockResolvedValueOnce({ settings: radius(30) });
     await palette.actions.update({ panelCornerRadiusPx: 30 });
     request.mockResolvedValueOnce(snapshot({ settings: radius(31) }));
     palette.actions.refresh();
@@ -721,7 +716,6 @@ describe('operations that ended out of sight', () => {
     errorCode: 'backend_restarted',
     components: [],
     reconcileComponents: [],
-    cancelRequested: false,
     createdAt: 1,
     updatedAt: 2,
     ...over,

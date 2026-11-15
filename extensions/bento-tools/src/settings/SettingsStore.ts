@@ -33,7 +33,6 @@ export const DEFAULT_SETTINGS: Readonly<BentoSettings> = Object.freeze({
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
-  commandPaletteEnabled: true,
   welcomeSeen: false,
   // Fresh profiles start light; UI can also follow the OS via 'system'
   // from onboarding or the sidebar footer. Content defaults light because
@@ -76,7 +75,6 @@ function settingValuesEqual(left: unknown, right: unknown): boolean {
 
 export interface SettingsCommit {
   settings: BentoSettings;
-  durableRevision: number;
 }
 
 async function load(): Promise<{
@@ -106,7 +104,6 @@ export class SettingsStore {
   #current: BentoSettings = { ...DEFAULT_SETTINGS };
   #listeners = new Set<Listener>();
   #overrideKeys = new Set<keyof BentoSettings>();
-  #durableRevision = 0;
   // Names this run of tools (a run is one lifetime of this store) and counts its colour changes.
   #colorRun = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   #colorSeq = 1;
@@ -162,10 +159,7 @@ export class SettingsStore {
   update(changes: Partial<BentoSettings>): Promise<SettingsCommit> {
     if (!isValidBentoSettingsPatch(changes)) {
       console.warn('[bento-tools] settings: rejected invalid changes');
-      return Promise.resolve({
-        settings: this.snapshot(),
-        durableRevision: this.#durableRevision,
-      });
+      return Promise.resolve({ settings: this.snapshot() });
     }
     return this.#enqueue(async () => {
       const next = { ...this.#current };
@@ -181,10 +175,7 @@ export class SettingsStore {
         dirty = true;
       }
       if (dirty) await this.#persistAndPublish(next);
-      return {
-        settings: this.snapshot(),
-        durableRevision: this.#durableRevision,
-      };
+      return { settings: this.snapshot() };
     });
   }
 
@@ -192,10 +183,7 @@ export class SettingsStore {
   reset(): Promise<SettingsCommit> {
     return this.#enqueue(async () => {
       await this.#persistAndPublish({ ...DEFAULT_SETTINGS });
-      return {
-        settings: this.snapshot(),
-        durableRevision: this.#durableRevision,
-      };
+      return { settings: this.snapshot() };
     });
   }
 
@@ -224,7 +212,6 @@ export class SettingsStore {
     }
     this.#current = next;
     this.#overrideKeys = new Set(Object.keys(overrides) as Array<keyof BentoSettings>);
-    this.#durableRevision += 1;
     this.#broadcast();
   }
 

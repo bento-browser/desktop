@@ -36,7 +36,7 @@ export async function seedBootPrivacyLevel(
   coordinator: Pick<BentoMutationCoordinator, 'runExclusive'>,
 ): Promise<void> {
   try {
-    await coordinator.runExclusive('privacy', async () => {
+    await coordinator.runExclusive(async () => {
       const level = bootPrivacyLevel(settings, firstLaunch);
       if (level === null) return;
       console.info(`[bento-tools] first launch, seeding protection level: ${level}`);

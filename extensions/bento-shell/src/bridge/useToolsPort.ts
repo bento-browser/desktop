@@ -99,8 +99,8 @@ export const TOOLS_FAMILIES = [
 ] as const;
 export type ToolsFamily = (typeof TOOLS_FAMILIES)[number];
 
-/** The family each store event feeds. Events not listed here ('tools/booted',
- * 'pong') reach every document. */
+/** The family each store event feeds. Events not listed here ('tools/booted')
+ * reach every document. */
 const FAMILY_BY_EVENT: Partial<Record<Event['type'], ToolsFamily>> = {
   'tabs/snapshot': 'tabs',
   'tabs/changed': 'tabs',
@@ -149,13 +149,13 @@ interface BusState {
   /** Private window only: the relay answered this document's hello. */
   acknowledged: boolean;
   ready: boolean;
-  /** Whether this shell entry should translate panel/show + panel/hide
-   * events into the chrome-script `BENTO_SIDE_PANEL:...` document.title
-   * IPC. The sidebar opts in via enableSidePanelTitleBridge(); other
-   * entries (confirm, palette, settings, privacy) MUST NOT — they share
-   * this bus to receive store snapshots, but they don't own the chrome
-   * side panel and writing the title would clobber their own title-IPC
-   * close signals (e.g. the confirm overlay's BENTO_CLOSE_CONFIRM_<ts>). */
+  /** Whether this shell entry should forward `panels/sync` events into the
+   * chrome-script `BENTO_PANELS:...` document.title IPC. The sidebar opts in
+   * via enableSidePanelTitleBridge(); other entries (confirm, palette,
+   * settings, privacy) MUST NOT — they share this bus to receive store
+   * snapshots, but they don't own the chrome panels and writing the title
+   * would clobber their own title-IPC close signals (e.g. the confirm
+   * overlay's BENTO_CLOSE_CONFIRM_<ts>). */
   sidePanelTitleBridge: boolean;
   /** WebExtension windowId of the chrome window hosting this shell
    * document. Read SYNCHRONOUSLY at module load from the
@@ -592,8 +592,6 @@ function ensureConnection(): void {
       case 'externalMerge/error':
         useExternalMergeStore.getState().applyError(event, state.windowId);
         return;
-      case 'pong':
-        return;
       default:
         return;
     }
@@ -671,11 +669,11 @@ export function useCurrentWindowId(): number | null {
   return useSyncExternalStore(subscribe, getWindowId, getWindowId);
 }
 
-/** Opt this entry into translating panel/show + panel/hide events into
- * the chrome `BENTO_SIDE_PANEL:...` document.title IPC. Called only by
- * the sidebar (src/main.tsx) — the sidebar is the canonical owner of
- * the chrome side-panel reveal/hide signal. Other entries (confirm,
- * palette, settings, privacy) intentionally do NOT call this. */
+/** Opt this entry into forwarding `panels/sync` events into the chrome
+ * `BENTO_PANELS:...` document.title IPC. Called only by the sidebar
+ * (src/main.tsx) — the sidebar is the canonical owner of that signal.
+ * Other entries (confirm, palette, settings, privacy) intentionally do
+ * NOT call this. */
 export function enableSidePanelTitleBridge(): void {
   state.sidePanelTitleBridge = true;
 }

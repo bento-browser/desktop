@@ -46,9 +46,7 @@ export function normalizeExternalSession(
 function pruneUnimportableWindows(session: NormalizedExternalSession): NormalizedExternalWindow[] {
   return session.windows
     .map((window) => {
-      const tabs = window.tabs.filter(
-        (tab) => normalizeExternalUrl(tab.url, session.kind) !== null,
-      );
+      const tabs = window.tabs.filter((tab) => normalizeExternalUrl(tab.url) !== null);
       const usedGroupIds = new Set(
         tabs.map((tab) => tab.groupId).filter((id): id is string => !!id),
       );
@@ -79,7 +77,7 @@ export function externalMergeSourceFromSession(
   };
 }
 
-export function externalMergeTargetsFromSession(
+function externalMergeTargetsFromSession(
   session: NormalizedExternalSession,
 ): ExternalMergeImportTarget[] {
   const nativeWorkspaces = new Map(

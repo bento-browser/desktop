@@ -7,16 +7,14 @@ import type {
   ZenExternalSessionSnapshot,
 } from '../sourceTypes';
 import { ExternalMergeError } from '../sourceTypes';
-
-type JsonRecord = Record<string, unknown>;
-
-function asRecord(value: unknown): JsonRecord | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : null;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
+import {
+  asNumber,
+  asRecord,
+  asString,
+  normalizeGroups,
+  selectedEntry,
+  type JsonRecord,
+} from './sessionJson';
 
 function asCollection(value: unknown): unknown[] {
   if (Array.isArray(value)) return value;
@@ -38,14 +36,6 @@ function asCollection(value: unknown): unknown[] {
   });
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 function asId(value: unknown): string | undefined {
   const text = asString(value);
   if (text) return text;
@@ -63,15 +53,6 @@ function asMaybeJsonRecord(value: unknown): JsonRecord | null {
   } catch {
     return null;
   }
-}
-
-function selectedEntry(tab: JsonRecord): JsonRecord | null {
-  const entries = asArray(tab.entries);
-  if (entries.length === 0) return null;
-  const index = asNumber(tab.index);
-  const selected =
-    index && index > 0 && index <= entries.length ? Math.floor(index) - 1 : entries.length - 1;
-  return asRecord(entries[selected]);
 }
 
 function isPrivateLike(record: JsonRecord | null): boolean {
@@ -256,26 +237,6 @@ function parseGroups(root: JsonRecord): {
     }
   });
   return { groups, groupIdByTabId };
-}
-
-function normalizeGroups(
-  groups: NormalizedExternalTabGroup[],
-  tabs: NormalizedExternalTab[],
-): NormalizedExternalTabGroup[] {
-  const used = new Set(tabs.map((tab) => tab.groupId).filter((id): id is string => !!id));
-  const byId = new Map(groups.map((group) => [group.id, group]));
-  for (const groupId of used) {
-    if (!byId.has(groupId)) {
-      byId.set(groupId, {
-        id: groupId,
-        name: `Group ${byId.size + 1}`,
-        index: byId.size,
-      });
-    }
-  }
-  return Array.from(byId.values())
-    .filter((group) => used.has(group.id))
-    .sort((a, b) => a.index - b.index);
 }
 
 export function parseZenSession(snapshot: ZenExternalSessionSnapshot): NormalizedExternalSession {

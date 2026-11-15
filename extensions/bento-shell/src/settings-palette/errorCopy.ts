@@ -31,7 +31,7 @@ export function describeSettingsError(error: unknown): string {
 
 /** Copy for a durable operation that ended without succeeding in full. */
 export function describeOutcome(
-  state: 'partial' | 'failed' | 'cancelled',
+  state: 'partial' | 'failed',
   errorCode: string | undefined,
   what: string,
 ): string {

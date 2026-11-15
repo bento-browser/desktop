@@ -135,15 +135,15 @@ export function cloneLayout(layout: WorkspacePanelLayout | undefined): Workspace
   return { root: (layout?.root ?? []).map((node) => cloneRootNode(node)) };
 }
 
-export function panelNode(tabId: number): PanelLeafNode {
+function panelNode(tabId: number): PanelLeafNode {
   return { kind: 'panel', tabId };
 }
 
-export function rootNodeId(node: RootNode): string {
+function rootNodeId(node: RootNode): string {
   return node.kind === 'panel' ? `panel:${node.tabId}` : node.id;
 }
 
-export function clampRatio(ratio: number): number {
+function clampRatio(ratio: number): number {
   return Number.isFinite(ratio) ? Math.max(0.2, Math.min(0.8, ratio)) : 0.5;
 }
 

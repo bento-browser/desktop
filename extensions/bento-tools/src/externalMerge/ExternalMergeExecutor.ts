@@ -13,6 +13,7 @@ import {
   externalWorkspaceTargetId,
 } from './sourceTypes';
 import { normalizeExternalUrl } from './urlNormalization';
+import { deduplicateName } from '../workspaces/deduplicateName';
 
 interface ImportableTab {
   source: NormalizedExternalTab;
@@ -39,15 +40,6 @@ interface ExecuteExternalMergeOptions {
 
 const TAB_CREATE_TIMEOUT_MS = 8000;
 const CANCELLED_MESSAGE = 'Browser session merge was cancelled.';
-
-function deduplicateName(name: string, existing: Set<string>): string {
-  if (!existing.has(name)) return name;
-  const suffixed = `${name} (imported)`;
-  if (!existing.has(suffixed)) return suffixed;
-  let i = 2;
-  while (existing.has(`${name} (${i})`)) i++;
-  return `${name} (${i})`;
-}
 
 function sourceWorkspaceName(
   session: NormalizedExternalSession,
@@ -133,7 +125,7 @@ function buildPlans(
         tabs: windows.flatMap((window) => window.tabs),
         groups: windows.flatMap((window) => window.groups),
       };
-      const tabs = filterImportableTabs(session, mergedWindow.tabs, seenUrls, summary);
+      const tabs = filterImportableTabs(mergedWindow.tabs, seenUrls, summary);
       if (tabs.length === 0) continue;
       const workspaceName = deduplicateName(sourceWorkspaceName(session, workspace), takenNames);
       takenNames.add(workspaceName);
@@ -150,7 +142,7 @@ function buildPlans(
   session.windows.forEach((window, index) => {
     const targetId = externalWindowTargetId(window.id);
     if (targetIds && !targetIds.has(targetId)) return;
-    const tabs = filterImportableTabs(session, window.tabs, seenUrls, summary);
+    const tabs = filterImportableTabs(window.tabs, seenUrls, summary);
     if (tabs.length === 0) return;
     const workspaceName = deduplicateName(fallbackWindowName(session, window, index), takenNames);
     takenNames.add(workspaceName);
@@ -166,14 +158,13 @@ function buildPlans(
 }
 
 function filterImportableTabs(
-  session: NormalizedExternalSession,
   tabs: NormalizedExternalTab[],
   seenUrls: Set<string>,
   summary: ExternalMergeSummary,
 ): ImportableTab[] {
   const out: ImportableTab[] = [];
   for (const tab of tabs) {
-    const normalizedUrl = normalizeExternalUrl(tab.url, session.kind);
+    const normalizedUrl = normalizeExternalUrl(tab.url);
     // Firefox rejects discarded creation for about:newtab/about:home. Empty
     // source new tabs carry no session content, so omit them instead of waking
     // a real new-tab page during a potentially large merge.

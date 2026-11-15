@@ -2,8 +2,6 @@ import type { PanelLayoutMoveTarget, PanelLayoutStatus } from '@shared/protocol'
 import {
   addPanel,
   breakOutPanel,
-  canBreakOut,
-  canSubdivide,
   canSplitBottomPanel,
   canSplitTopPanel,
   cloneLayout,
@@ -122,10 +120,6 @@ export class PanelStore {
     }
     this.#schedulePersist();
     return true;
-  }
-
-  takePersistedEntries(workspaceId: string): PersistedPanelEntry[] | undefined {
-    return this.takePersistedWorkspace(workspaceId)?.entries;
   }
 
   workspacesWithPersistedUrls(): string[] {
@@ -280,11 +274,6 @@ export class PanelStore {
     return getPanelStatusMap(this.#layoutByWorkspace.get(workspaceId));
   }
 
-  canSubdivide(workspaceId: string | null, tabId: number): boolean {
-    if (!workspaceId) return false;
-    return canSubdivide(this.#layoutByWorkspace.get(workspaceId), tabId);
-  }
-
   canSplitTopPanel(workspaceId: string | null, tabId: number): boolean {
     if (!workspaceId) return false;
     return canSplitTopPanel(this.#layoutByWorkspace.get(workspaceId), tabId);
@@ -293,11 +282,6 @@ export class PanelStore {
   canSplitBottomPanel(workspaceId: string | null, tabId: number): boolean {
     if (!workspaceId) return false;
     return canSplitBottomPanel(this.#layoutByWorkspace.get(workspaceId), tabId);
-  }
-
-  canBreakOut(workspaceId: string | null, tabId: number): boolean {
-    if (!workspaceId) return false;
-    return canBreakOut(this.#layoutByWorkspace.get(workspaceId), tabId);
   }
 
   getPanelRestoreLocation(workspaceId: string, tabId: number): PanelRestoreLocation {

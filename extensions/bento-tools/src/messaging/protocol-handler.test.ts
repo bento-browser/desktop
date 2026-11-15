@@ -98,31 +98,6 @@ describe('protocol handler panel close', () => {
     ]);
   });
 
-  it('removes pinned-panel bindings when a DevTools panel is removed', async () => {
-    const removeForTab = vi.fn();
-    const ctx = createCloseContext({
-      panels: {
-        isDevtoolsPanel: vi.fn().mockReturnValue(true),
-        remove: vi.fn().mockReturnValue(true),
-      } as unknown as HandlerContext['panels'],
-      pinnedPanels: {
-        removeForTab,
-      } as unknown as HandlerContext['pinnedPanels'],
-    });
-
-    handle({ type: 'panel/remove', id: 123 }, ctx);
-
-    await vi.waitFor(() => {
-      expect(browser.tabs.remove).toHaveBeenCalledWith(123);
-    });
-    expect(removeForTab).toHaveBeenCalledWith(123);
-    expect(ctx.panels.remove).toHaveBeenCalledWith('ws-1', 123);
-    expect(ctx.emitPanelsSync).toHaveBeenCalledWith('ws-1');
-    expect(ctx.tabs.markClosing).toHaveBeenCalledWith(123, {
-      preserveSessionMembership: undefined,
-    });
-  });
-
   it('promotes the leftmost panel before closing the active final sidebar tab', async () => {
     const ctx = createCloseContext({
       tabs: {
@@ -2168,9 +2143,7 @@ describe('protocol handler settings and privacy actions', () => {
   function domainContext() {
     const settingsDomain = {
       updateSettings: vi.fn().mockResolvedValue({}),
-      reset: vi.fn().mockResolvedValue({}),
       setProtectionLevel: vi.fn().mockResolvedValue({}),
-      setAdvanced: vi.fn().mockResolvedValue({}),
       setSearchEngine: vi.fn().mockResolvedValue({}),
     };
     // Snapshot reads fail without a browser.privacy API; the handlers must shrug that off.
@@ -2196,22 +2169,11 @@ describe('protocol handler settings and privacy actions', () => {
     });
   });
 
-  it('runs a reset as a retained operation owned by the shell port', async () => {
-    const { ctx, settingsDomain } = domainContext();
-    handle({ type: 'settings/reset' }, ctx);
-    await vi.waitFor(() => expect(settingsDomain.reset).toHaveBeenCalledTimes(1));
-    const [operationId, caller] = settingsDomain.reset.mock.calls[0]!;
-    expect(operationId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(caller).toMatchObject({ ownerId: 'shell-port', windowId: 6, isPrivate: false });
-  });
-
   it('applies privacy and search changes through the domain service', async () => {
     const { ctx, settingsDomain } = domainContext();
     handle({ type: 'privacy/setProtectionLevel', level: 'hardened' }, ctx);
-    handle({ type: 'privacy/setAdvanced', key: 'drmEnabled', value: false }, ctx);
     handle({ type: 'privacy/setDefaultSearchEngine', id: 'ddg' }, ctx);
     expect(settingsDomain.setProtectionLevel).toHaveBeenCalledWith('hardened');
-    expect(settingsDomain.setAdvanced).toHaveBeenCalledWith('drmEnabled', false);
     expect(settingsDomain.setSearchEngine).toHaveBeenCalledWith('ddg');
   });
 

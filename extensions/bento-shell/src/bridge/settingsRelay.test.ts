@@ -158,10 +158,10 @@ describe('SettingsRelay', () => {
       payload: { changes: { uiColorMode: 'light', panelCornerRadiusPx: 8 } },
     });
     expect(ctx.applyLocalSettings).not.toHaveBeenCalled(); // Only once tools has saved the rest.
-    ctx.relay.result(ok('wire-2', { settings: settings('system'), durableRevision: 3 }));
+    ctx.relay.result(ok('wire-2', { settings: settings('system') }));
     expect(ctx.applyLocalSettings).toHaveBeenCalledWith(7, { uiColorMode: 'light' });
     expect(resultsTo(ctx.posted, 'doc-p')[1]).toMatchObject({
-      result: { settings: { uiColorMode: 'light' }, durableRevision: 3 },
+      result: { settings: { uiColorMode: 'light' } },
     });
   });
 
@@ -187,7 +187,7 @@ describe('SettingsRelay', () => {
       operation: 'settings/update',
       payload: { changes: { uiColorMode: 'light' } },
     });
-    const answer = { settings: settings('light'), durableRevision: 3 };
+    const answer = { settings: settings('light') };
     ctx.relay.result(ok('wire-1', answer));
     expect(ctx.applyLocalSettings).not.toHaveBeenCalled();
     expect(resultsTo(ctx.posted, 'doc-r')[0]).toMatchObject({ result: answer });

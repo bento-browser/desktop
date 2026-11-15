@@ -184,8 +184,6 @@ Core panel actions are handled in
 - `panel/openAt`: creates a background tab and inserts it as a panel. With
   `position` set to `'end'`, it appends from the panel trailer; default or
   `'after'` inserts relative to a source panel or the main slot.
-- `panel/remove`: removes the panel binding and closes descendant sub-panels
-  when needed.
 - `panels/clear`: removes all panels in the active workspace.
 - `panelLayout/reorderRoot`: reorders top-level root nodes.
 - `panelLayout/movePanel`: moves one visible panel leaf to a root slot, an
@@ -275,7 +273,7 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   needs that tab session value to survive into the closed-tab entry so
   `Cmd+Shift+T` can route the restored tab through
   `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
-  as a normal tab, such as `panel/remove` or explicit panel promotion.
+  as a normal tab, such as `panels/clear` or explicit panel promotion.
 - A close that Firefox does not commit (beforeunload "Stay") must put the tab
   back. The close paths capture a `CloseUndo` before `markClosing` and
   `PanelStore.remove` drop the workspace, folder, panel layout slot, width and

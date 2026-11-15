@@ -1,5 +1,3 @@
-import type { ExternalMergeSourceKind } from '@shared/protocol';
-
 const NEW_TAB_URLS = new Set([
   'about:home',
   'about:newtab',
@@ -37,14 +35,12 @@ function trimUrl(raw: string): string {
   return stripControlCharacters(raw).trim();
 }
 
-export function isSourceNewTabUrl(raw: string, kind?: ExternalMergeSourceKind): boolean;
-export function isSourceNewTabUrl(raw: string): boolean {
+function isSourceNewTabUrl(raw: string): boolean {
   const value = trimUrl(raw).toLowerCase();
   if (NEW_TAB_URLS.has(value)) return true;
   return CHROMIUM_NEW_TAB_PREFIXES.some((prefix) => value.startsWith(prefix));
 }
 
-export function normalizeExternalUrl(raw: string, kind?: ExternalMergeSourceKind): string | null;
 export function normalizeExternalUrl(raw: string): string | null {
   const value = trimUrl(raw);
   if (!value) return null;

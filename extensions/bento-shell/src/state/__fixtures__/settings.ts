@@ -1,6 +1,5 @@
-// Fake settings data for Ladle stories — seeds useSettingsStore so the
-// Settings layer-3 feature can be exercised in isolation without a live
-// bento-tools connection.
+// Fake settings data for Ladle stories and tests, applied to useSettingsStore
+// so components can be exercised without a live bento-tools connection.
 
 import type { BentoSettings } from '@shared/protocol';
 import { useSettingsStore } from '../settings';
@@ -11,9 +10,7 @@ export const DEFAULT_FIXTURE: BentoSettings = {
   tabSleepEnabled: true,
   tabSleepAfterMinutes: 30,
   tabSleepKeepAlivePerWorkspace: 3,
-  commandPaletteEnabled: true,
-  // Default to seen=true so existing stories aren't covered by the
-  // welcome banner. The WelcomeBanner stories provide their own state.
+  // Default to seen=true so stories aren't covered by the welcome flow.
   welcomeSeen: true,
   uiColorMode: 'light',
   uiScale: '1',
@@ -37,12 +34,4 @@ export const DEFAULT_FIXTURE: BentoSettings = {
 
 export function seedDefault(): void {
   useSettingsStore.getState().apply(DEFAULT_FIXTURE);
-}
-
-export function seedDisabledSleep(): void {
-  useSettingsStore.getState().apply({ ...DEFAULT_FIXTURE, tabSleepEnabled: false });
-}
-
-export function seedLoading(): void {
-  useSettingsStore.setState({ current: null });
 }

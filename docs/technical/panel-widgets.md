@@ -193,8 +193,9 @@ side panels are open.
   Creating from URL immediately after activation duplicates both the panel strip
   entry and the pinned rail entry.
 - `pinnedPanel/close` marks the backing tab as closing before removing the panel
-  binding, then closes that tab. It must not use the normal `panel/remove`
-  demotion path, because that exposes the closed pinned panel as a sidebar tab.
+  binding, then closes that tab. It must not demote the panel to a normal tab
+  first (as `panels/clear` does), because that exposes the closed pinned panel
+  as a sidebar tab.
 - Ordinary panel and tab closure must not remove pins; pinned rail entries are
   removed only by `pinnedPanel/remove` from the rail context menu.
 - Keep backing Firefox tab pinning coupled to `PinnedPanelsStore` deltas, not

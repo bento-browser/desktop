@@ -647,6 +647,23 @@ describe('workspace backup import/export', () => {
     expect(backup.settings).toEqual({ autoBackupMaxCount: 5, defaultWorkspaceName: 'Work' });
   });
 
+  it.each([1, 2])(
+    'still accepts a schema %i backup that carries the retired palette switch, and drops it',
+    (schemaVersion) => {
+      const validated = validateExportSchema({
+        schemaVersion,
+        bentoVersion: '0.0.0',
+        exportedAt: 1,
+        workspaces: [],
+        settings: { commandPaletteEnabled: false, tabSleepEnabled: false, autoBackupMaxCount: 5 },
+        savedPanels: [],
+      });
+
+      expect(validated).not.toBeNull();
+      expect(validated?.settings).toEqual({ tabSleepEnabled: false, autoBackupMaxCount: 5 });
+    },
+  );
+
   it('accepts tab URLs up to the Firefox standard-URL length', () => {
     const backupWithTabUrl = (url: string): BentoExportSchema => ({
       schemaVersion: 2,

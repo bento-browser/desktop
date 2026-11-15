@@ -1,18 +1,4 @@
-export type MutationKind =
-  | 'settings'
-  | 'privacy'
-  | 'search'
-  | 'backup-read'
-  | 'backup-write'
-  | 'graph-additive'
-  | 'graph-replacement'
-  | 'recovery';
-
 export interface MutationContext {
-  readonly id: string;
-  readonly kind: MutationKind;
-  readonly graphEpochAtStart: number;
-  readonly startedAt: number;
   markGraphChanged(): number;
 }
 
@@ -26,39 +12,15 @@ export interface MutationContext {
 export class BentoMutationCoordinator {
   #tail: Promise<void> = Promise.resolve();
   #graphEpoch = 0;
-  #active: { id: string; kind: MutationKind; startedAt: number } | null = null;
-
-  get graphEpoch(): number {
-    return this.#graphEpoch;
-  }
-
-  get active(): Readonly<{ id: string; kind: MutationKind; startedAt: number }> | null {
-    return this.#active;
-  }
 
   noteExternalGraphChange(): number {
     this.#graphEpoch += 1;
     return this.#graphEpoch;
   }
 
-  runExclusive<T>(kind: MutationKind, task: (context: MutationContext) => Promise<T>): Promise<T> {
-    const run = async (): Promise<T> => {
-      const id = crypto.randomUUID();
-      const startedAt = Date.now();
-      this.#active = { id, kind, startedAt };
-      const context: MutationContext = {
-        id,
-        kind,
-        startedAt,
-        graphEpochAtStart: this.#graphEpoch,
-        markGraphChanged: () => this.noteExternalGraphChange(),
-      };
-      try {
-        return await task(context);
-      } finally {
-        if (this.#active?.id === id) this.#active = null;
-      }
-    };
+  runExclusive<T>(task: (context: MutationContext) => Promise<T>): Promise<T> {
+    const context: MutationContext = { markGraphChanged: () => this.noteExternalGraphChange() };
+    const run = () => task(context);
 
     const result = this.#tail.then(run, run);
     this.#tail = result.then(

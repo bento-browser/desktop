@@ -259,8 +259,8 @@ one family per tools-fed store: `tabs`, `workspaces`, `settings`, `panels`
 (`panel/focusedChanged`) and `externalMerge`. `FAMILY_BY_EVENT` maps each
 handled event type to its family; the bus handler drops an event of a family
 the document did not name before any store sees it, and the replayed-boot
-snapshot requests cover only named families. `tools/booted` and `pong` reach
-every document.
+snapshot requests cover only named families. `tools/booted` reaches every
+document.
 
 `initToolsPort` is one call per document, made before the first render and the
 first `dispatch`, and its families are fixed for the document's lifetime: the

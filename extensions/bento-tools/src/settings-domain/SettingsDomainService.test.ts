@@ -10,7 +10,6 @@ import { GraphOperationJournal } from '../replacement/GraphOperationJournal';
 import { SettingsStore } from '../settings/SettingsStore';
 import {
   SettingsDomainService,
-  shellPortCaller,
   type SettingsCaller,
   type SettingsDomainContext,
 } from './SettingsDomainService';
@@ -263,7 +262,6 @@ describe('SettingsDomainService', () => {
       ['privacy/setAdvanced', { key: 'httpsOnlyMode', value: 'maybe' }],
       ['privacy/setDefaultSearchEngine', { id: '' }],
       ['privacy/setDefaultSearchEngine', { id: 'x'.repeat(SETTINGS_LIMITS.idCodeUnits + 1) }],
-      ['backup/getContext', { unexpected: 1 }],
       ['backup/export', { workspaceIds: 'ws-1' }],
       ['backup/export', { workspaceIds: [1] }],
       [
@@ -393,7 +391,7 @@ describe('SettingsDomainService', () => {
     it('serializes ordinary updates with the other mutations', async () => {
       const h = await createHarness();
       const order: string[] = [];
-      const gate = h.ctx.coordinator.runExclusive('graph-additive', async () => {
+      const gate = h.ctx.coordinator.runExclusive(async () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
         order.push('graph');
       });
@@ -407,7 +405,6 @@ describe('SettingsDomainService', () => {
 
   describe('private window policy', () => {
     const forbidden: Array<[SettingsOperation, unknown]> = [
-      ['backup/getContext', {}],
       ['backup/export', {}],
       ['backup/validateImport', { json: '{}' }],
       ['backup/importValidated', { validationToken: 'abc', options: ADDITIVE }],
@@ -864,7 +861,7 @@ describe('SettingsDomainService', () => {
       const h = await createHarness();
       const caller = await overlay(h);
       vi.mocked(executeImport).mockImplementationOnce(
-        async (data, _options, ctx: ImportContext) => {
+        async (_data, _options, ctx: ImportContext) => {
           await ctx.operation?.onPhase('graph-published');
           ctx.operation?.onLiveEffectFailures?.([{ ...FAILED_PRIVACY }]);
           return { workspacesCreated: 1, tabsOpened: 0, panelsRestored: 0, settingsApplied: false };
@@ -928,17 +925,6 @@ describe('SettingsDomainService', () => {
       await run(h, 'backup/restore', { backupId: 'b1' }, caller, uuid());
       expect(seen).toEqual({ target: 7, owner: caller.ownerId });
       expect(h.journal.current()).toBeNull();
-    });
-
-    it('gives an ordinary reset a registry record too', async () => {
-      const h = await createHarness();
-      const operationId = uuid();
-      const result = await h.service.reset(operationId, shellPortCaller(3));
-      expect(result).toMatchObject({ kind: 'settings/reset', state: 'succeeded' });
-      expect(h.operations.getOwned(operationId, 'shell-port')).toMatchObject({
-        state: 'succeeded',
-        targetWindowId: 3,
-      });
     });
   });
 
@@ -1010,7 +996,12 @@ describe('SettingsDomainService', () => {
         }),
       });
       const operationId = uuid();
-      const reset = early.reset(operationId, shellPortCaller(1));
+      const reset = early.reset(operationId, {
+        clientId: 'doc',
+        ownerId: 'owner',
+        windowId: 1,
+        isPrivate: false,
+      });
       const update = early.updateSettings({ sidebarHidden: true });
       await new Promise((resolve) => setTimeout(resolve, 5));
       expect(h.operations.peek(operationId)).toBeNull();
@@ -1155,7 +1146,6 @@ describe('SettingsDomainService', () => {
       // A delete that has not finished: its effect waits on the coordinator.
       let release!: () => void;
       const gate = h.ctx.coordinator.runExclusive(
-        'graph-additive',
         () =>
           new Promise<void>((resolve) => {
             release = resolve;
@@ -1226,8 +1216,11 @@ describe('SettingsDomainService', () => {
       });
 
       h.broadcast.mockClear();
+      const before = h.service.revision;
       await run(h, 'privacy/setAdvanced', { key: 'drmEnabled', value: false }, caller);
       expect(noticeTypes(h)).toEqual(['privacy/changed', 'searchEngines/changed']);
+      // A privacy write need not change SettingsStore, so the service advances the revision itself.
+      expect(h.service.revision).toBe(before + 1);
 
       h.broadcast.mockClear();
       await run(h, 'privacy/setDefaultSearchEngine', { id: 'ddg' }, caller);
@@ -1306,10 +1299,12 @@ describe('SettingsDomainService', () => {
     it('describes the backup context for a regular caller', async () => {
       const h = await createHarness();
       const caller = await overlay(h);
-      await expect(run(h, 'backup/getContext', {}, caller)).resolves.toMatchObject({
-        workspaces: [{ id: 'ws-1', name: 'One', normalTabCount: 0 }],
-        backups: [],
-        savedPanelCount: 0,
+      await expect(run(h, 'snapshot/get', { domains: ['backup'] }, caller)).resolves.toMatchObject({
+        backup: {
+          workspaces: [{ id: 'ws-1', name: 'One', normalTabCount: 0 }],
+          backups: [],
+          savedPanelCount: 0,
+        },
       });
     });
   });

@@ -6,8 +6,7 @@ const TOMBSTONE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export type DurableOperationKind =
   'settings/reset' | 'backup/importValidated' | 'backup/restore' | 'backup/delete';
 
-export type DurableOperationState =
-  'reserved' | 'running' | 'partial' | 'succeeded' | 'failed' | 'cancelled';
+export type DurableOperationState = 'reserved' | 'running' | 'partial' | 'succeeded' | 'failed';
 
 export interface DurableOperationComponent {
   component: string;
@@ -29,7 +28,6 @@ export interface DurableOperationRecord {
   reconcileComponents: string[];
   result?: unknown;
   errorCode?: string;
-  cancelRequested: boolean;
   createdAt: number;
   updatedAt: number;
   terminalAt?: number;
@@ -63,6 +61,19 @@ function isRecord(value: unknown): value is DurableOperationRecord {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+/**
+ * Records written while operations could be cancelled may carry a `cancelRequested` flag and the
+ * terminal state `cancelled`. The flag is dropped and the state reads as `failed`, which keeps
+ * the record terminal (pruned by `terminalAt`) and the shell's "did not finish" copy unchanged.
+ */
+function normalizeStoredRecord(candidate: DurableOperationRecord): DurableOperationRecord {
+  const record = clone(candidate);
+  Reflect.deleteProperty(record, 'cancelRequested');
+  const state: string = record.state;
+  if (state === 'cancelled') record.state = 'failed';
+  return record;
 }
 
 /**
@@ -119,7 +130,9 @@ export class OperationRegistry {
     const stored = raw[STORAGE_KEY] as Partial<StoredOperations> | undefined;
     if (stored?.version === STORAGE_VERSION && Array.isArray(stored.records)) {
       for (const candidate of stored.records) {
-        if (isRecord(candidate)) this.#records.set(candidate.operationId, clone(candidate));
+        if (isRecord(candidate)) {
+          this.#records.set(candidate.operationId, normalizeStoredRecord(candidate));
+        }
       }
     }
     await this.prune();
@@ -160,7 +173,6 @@ export class OperationRegistry {
         retryable: false,
       })),
       reconcileComponents: [],
-      cancelRequested: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -245,30 +257,9 @@ export class OperationRegistry {
     const record = this.#records.get(operationId);
     if (!record) throw new Error('operation_unknown');
     Object.assign(record, clone(changes), { updatedAt: this.#now() });
-    if (['partial', 'succeeded', 'failed', 'cancelled'].includes(record.state)) {
+    if (['partial', 'succeeded', 'failed'].includes(record.state)) {
       record.terminalAt ??= record.updatedAt;
     }
-    await this.#persist();
-    return clone(record);
-  }
-
-  async requestCancel(
-    operationId: string,
-    clientInstanceId: string,
-  ): Promise<DurableOperationRecord> {
-    const record = this.#records.get(operationId);
-    if (!record) throw new Error('operation_unknown');
-    if (record.ownerClientInstanceId !== clientInstanceId) {
-      throw new OperationOwnershipError('operation_not_owned');
-    }
-    if (record.state === 'reserved') {
-      record.state = 'cancelled';
-      record.phase = 'terminal';
-      record.terminalAt = this.#now();
-    } else if (record.state === 'running') {
-      record.cancelRequested = true;
-    }
-    record.updatedAt = this.#now();
     await this.#persist();
     return clone(record);
   }
