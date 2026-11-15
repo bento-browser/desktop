@@ -619,11 +619,15 @@ const documentBlocks = (css) =>
     };
   });
 
-/** The style rules inside one @-moz-document block, after its forced-colors wrapper. */
+// Firefox keeps its own high-contrast styling under forced colours and under macOS Increase
+// Contrast, which sets prefers-contrast: more without forced colours.
+const ABOUT_MEDIA = '@media not ((forced-colors) or (prefers-contrast: more))';
+
+/** The style rules inside one @-moz-document block, after its high-contrast wrapper. */
 function aboutRules(body) {
   const inner = splitTopLevelBlocks(body);
   assert.equal(inner.length, 1, 'one block inside @-moz-document');
-  assert.equal(inner[0].prelude, '@media not (forced-colors)');
+  assert.equal(inner[0].prelude, ABOUT_MEDIA);
   return splitTopLevelBlocks(inner[0].body).map(({ prelude, body: rule }) => ({
     selector: squashSelector(prelude),
     declarations: parseDeclarations(rule),
@@ -712,7 +716,7 @@ test('the about: page sheet has a literal block for every theme and mode', () =>
   }
 });
 
-test('the about: page sheet leaves no var() unresolved and wraps everything for forced colors', () => {
+test('the about: page sheet leaves no var() unresolved and steps aside for high contrast', () => {
   const { directory, about } = generate();
   try {
     const bare = about.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -724,8 +728,13 @@ test('the about: page sheet leaves no var() unresolved and wraps everything for 
       assert.match(name, /^--bento-about-/, `${name} is one of the sheet's own aliases`);
     }
     assert.doesNotMatch(bare, /var\([^)]*,/, 'no var() fallback');
-    // Every rule sits inside @-moz-document and @media not (forced-colors) (aboutRules
-    // asserts the wrapper), and outside the literal blocks every declaration is !important.
+    // Every rule sits inside @-moz-document and the high-contrast wrapper (aboutRules asserts
+    // it), and outside the literal blocks every declaration is !important.
+    assert.equal(
+      bare.match(/@media [^{]*/g).length,
+      documentBlocks(bare).length,
+      'no other @media rule, so nothing applies under forced colours or prefers-contrast: more',
+    );
     for (const { body } of documentBlocks(bare)) {
       for (const { selector, body: rule } of aboutRules(body)) {
         if (/^:root\[data-bento-theme[^\]]*\]\[data-color-mode='(?:light|dark)'\]$/.test(selector) &&

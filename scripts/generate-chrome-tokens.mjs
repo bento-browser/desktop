@@ -279,8 +279,13 @@ const underRoot = (root, selector) =>
     .map((part) => (part.trim() === 'html' ? root : `${root} ${part.trim()}`))
     .join(',\n');
 
+// Firefox's own high-contrast styling wins under forced colours and under prefers-contrast:
+// more (macOS Increase Contrast turns that on without forced colours), so the sheet steps
+// aside for both. `not (a) and not (b)` is not valid media query syntax.
+const ABOUT_MEDIA = '@media not ((forced-colors) or (prefers-contrast: more))';
+
 function documentBlock(conditions, rules) {
-  return `@-moz-document ${conditions.join(',\n  ')} {\n@media not (forced-colors) {\n\n${rules.join('\n\n')}\n\n}\n}`;
+  return `@-moz-document ${conditions.join(',\n  ')} {\n${ABOUT_MEDIA} {\n\n${rules.join('\n\n')}\n\n}\n}`;
 }
 
 function renderAboutThemesSheet(baseCss) {
