@@ -542,7 +542,12 @@ What follows the scope and what does not:
 - The `[data-bento-theme]` re-link rule in `bento-tokens.css` re-declares the legacy
   aliases (`--neutral-*`, `--color-*`) and `--bento-workspace-accent(-fg)` and
   `--bento-brand-bg` on every element that carries `data-bento-theme`, which the scope
-  attributes include, so those follow as well.
+  attributes include, so those follow as well. Only the aliases the shell reads are
+  re-declared: `--color-10`, `--neutral-26/28/82/84/86/88/92/94/96/98`, `--display-color` and
+  `--mono-color` were dropped on 2026-11-15 because nothing read them (`--neutral-40` stays: the
+  about: page theme and patch 12 read it). A new read of one of
+  them inside a `[data-bento-theme]` element must add its line back, or it inherits the value
+  resolved at the document root.
 - A token declared on `:root` that reads a colour is computed at the root and inherits
   as that value, so it keeps the page's mode inside the scope (measured: a
   `:root { --x: var(--muxui-semantic-surface-raised) }` read inside the inverted card
@@ -943,9 +948,20 @@ Calendar base class is built that way, but its parts (`muxui-calendar-grid`,
 `-cell`, `-header`) are literal in the same code, which the prefix check sees.
 Check an entry against the Mux source (`grep -n "muxui-<family>"
 node_modules/@muxui/react/generated/*.mjs`) and keep it only if the component
-writes its class names literally. The 28 families listed cut the shipped
-`style.css` by 118 kB raw and 12.6 kB gzipped. Unit tests check that every entry
-matches the public stylesheet, so a Mux rename shows up as a failure.
+writes its class names literally. The first 28 families listed cut the shipped
+`style.css` by 118 kB raw and 12.6 kB gzipped. On 2026-11-15 the list grew to 47
+(Activity, Button group, Code block, Color area, Color field, Color mode toggle, Color
+picker, Color swatch picker, Data diff, Header nav, Input tags, Message, Payment input,
+Prompt composer, Sidebar, Table, Tag group, Token field, Virtualizer), which cut a
+further 119 kB raw and 13.1 kB gzipped from the `@muxui/react@0.1.0-rc.6` package
+stylesheet (the shipped `style.css` went from 94.48 KB to 83.45 KB gzipped with the dead
+shell CSS removed in the same change). Grid list stays off the list: its class is
+composed at runtime. Text area stays off it too: the bookmarks inline editor renders
+`TextArea`. The prefix match is whole-token, so `muxui-button-group` and
+`muxui-color-swatch-picker` do not touch `muxui-button` or `muxui-color-swatch`. A rule
+whose only Mux class sits inside `:where()` (for example `:where(.muxui-sidebar__nav-toggle)`)
+is not pruned, because the pruner reads that class as optional. Unit tests check that every
+entry matches the public stylesheet, so a Mux rename shows up as a failure.
 
 ## CSS and tokens
 
@@ -981,7 +997,9 @@ shell's hand-written CSS (`var(--neutral-*)`, `--color-*`, `--space-*`,
 `--radius-*`, `--shadow-*` in `extensions/bento-shell/src/**/*.css`; the generated
 `theme/presets/` define the aliases and are skipped) and fails when a file, or the
 total, is above the committed `.legacy-alias-cap.json`. On 2026-10-12 that was 402
-uses of 90 aliases in 20 files. The cap is a ratchet like `.size-baseline.json`:
+uses of 90 aliases in 20 files; on 2026-11-15 it was 322 uses in 19 files (the cap stood
+at 350 until the dead WorkspaceSwitcher rules and unread alias re-links were removed). The
+cap is a ratchet like `.size-baseline.json`:
 `node scripts/check-legacy-aliases.mjs --write-cap` lowers it to the current counts
 and refuses to raise any file unless the change names it with
 `--accept-growth <file>`, so intended growth shows in the committed diff. A new file

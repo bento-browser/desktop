@@ -140,13 +140,6 @@
     background-color: color-mix(in srgb, var(--neutral-90) 38%, transparent);
   }
 
-  /* Empty-state version of the pane uses Column flex semantics so the
-     "No tabs yet" message centers without an extra wrapper. */
-  .bento-tab-list-pane--empty {
-    justify-content: center;
-    padding-block: var(--space-l);
-  }
-
   .bento-tab-list__viewport {
     position: relative;
     width: 100%;

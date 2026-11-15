@@ -234,8 +234,6 @@
     --bento-workspace-theme-picker-swatch-size: 1.125rem;
     --bento-address-bar-width: 40rem;
     --bento-address-bar-height: 26.25rem;
-    --bento-address-bar-max-inline: 92vw;
-    --bento-address-bar-max-block: 74vh;
     --bento-address-bar-favicon-size: 1.125rem;
     /* The room the anchored address bar popup leaves at the window's right and bottom. Must equal
        ADDRBAR_ANCHOR_MARGIN_PX in bento-shell-mount.js (12px at the 16px root); a test keeps them
@@ -245,15 +243,9 @@
     /* How far the address bar folds up while the list rises over it in a collapse
        or expand (sidebar/railTransition.css). */
     --bento-sidebar-rail-fold: 0.75rem;
-    --bento-sidebar-address-icon-size: 1rem;
     --bento-sidebar-address-chevron-size: 0.75rem;
     --bento-sidebar-address-button-size: 1.5rem;
     --bento-sidebar-address-field-radius: var(--radius-s);
-    --bento-sidebar-address-field-min-width: 0;
-    --bento-settings-grid-max-width: 82.5rem;
-    --bento-settings-grid-gap: var(--space-s);
-    --bento-settings-header-max-width: 45rem;
-    --bento-settings-number-field-max-width: 8.75rem;
 
     /* Welcome overlay (src/welcome). Dialog: the frame, then the gap kept to the
        viewport edge (-compact is the narrow-window gap). Inside: the text
@@ -486,7 +478,6 @@
      the active workspace's colour instead of its own. */
   [data-bento-theme] {
     --color-5: var(--brand-5);
-    --color-10: var(--brand-10);
     --color-20: var(--brand-20);
     --color-30: var(--brand-30);
     --color-40: var(--brand-40);
@@ -505,27 +496,15 @@
     --neutral-20: var(--neutral-default-20);
     --neutral-22: var(--neutral-default-22);
     --neutral-24: var(--neutral-default-24);
-    --neutral-26: var(--neutral-default-26);
-    --neutral-28: var(--neutral-default-28);
     --neutral-30: var(--neutral-default-30);
     --neutral-40: var(--neutral-default-40);
     --neutral-50: var(--neutral-default-50);
     --neutral-60: var(--neutral-default-60);
     --neutral-70: var(--neutral-default-70);
     --neutral-80: var(--neutral-default-80);
-    --neutral-82: var(--neutral-default-82);
-    --neutral-84: var(--neutral-default-84);
-    --neutral-86: var(--neutral-default-86);
-    --neutral-88: var(--neutral-default-88);
     --neutral-90: var(--neutral-default-90);
-    --neutral-92: var(--neutral-default-92);
-    --neutral-94: var(--neutral-default-94);
-    --neutral-96: var(--neutral-default-96);
-    --neutral-98: var(--neutral-default-98);
     --neutral-100: var(--neutral-default-100);
-    --display-color: var(--neutral-default-90);
     --text-color: var(--neutral-default-90);
-    --mono-color: var(--neutral-default-90);
     --bento-workspace-accent: var(--color-60);
     --bento-workspace-accent-fg: var(--color-60-fg);
     --bento-brand-bg: var(--neutral-5);

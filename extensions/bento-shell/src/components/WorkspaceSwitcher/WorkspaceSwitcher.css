@@ -2,44 +2,12 @@
  *
  * The avatar uses the workspace's theme set on its own element via
  * data-bento-theme="..." — that scopes the theme preset's --brand-*
- * overrides (theme/presets/<id>.css) to the avatar, which then derives
- * its accent through --bento-workspace-accent → --color-60 → --brand-60.
+ * overrides (theme/presets/<id>.css) to the avatar, whose background and
+ * foreground read the semantic color-60 / color-60-fg tokens below.
  * Each menu row tints its own avatar with that workspace's theme while
  * the active workspace's theme also propagates to <html data-bento-theme>
  * for the rest of the shell via useWorkspaceTheme; chrome receives it
  * through the active BENTO_PANELS payload. */
-
-/* Avatar accent override — Mux UI's .muxui-avatar { background-color }
- * rule is UNLAYERED, so a @layer-wrapped rule loses regardless of
- * specificity (CSS spec: any unlayered rule outranks any layered rule).
- * Keep these rules outside @layer so they can override Mux UI's defaults.
- *
- * Pair: --bento-workspace-accent (--color-60) for the saturated bg,
- * --bento-workspace-accent-fg (--color-60-fg) for the foreground: the
- * theme's own text colour for that step, which Mux chooses by APCA in light
- * and dark.
- *
- * The fallback (initial / icon) text needs its own selector — Mux UI
- * sets `color: var(--neutral-70)` directly on `.muxui-avatar__fallback`,
- * which beats inherited color from our wrapper rule. Compound selector
- * (3 classes) is more specific than Mux UI's `.muxui-avatar__fallback`
- * (1 class) so we win on specificity. */
-.muxui-avatar.bento-workspace-switcher__avatar {
-  background-color: var(--bento-workspace-accent);
-  color: var(--bento-workspace-accent-fg);
-}
-.muxui-avatar.bento-workspace-switcher__avatar .muxui-avatar__fallback {
-  color: var(--bento-workspace-accent-fg);
-}
-
-.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true'] {
-  background-color: #fff;
-  color: var(--neutral-90);
-}
-.muxui-avatar.bento-workspace-switcher__avatar[data-bento-emoji-icon='true']
-  .muxui-avatar__fallback {
-  color: var(--neutral-90);
-}
 
 /* Audio notes float from the workspace avatar instead of occupying a static
  * badge. The avatar clips its own contents, so the surrounding frame owns the
@@ -54,37 +22,6 @@
   inset: 0;
   pointer-events: none;
   overflow: visible;
-}
-.bento-icon.bento-workspace-switcher__audio-particle {
-  position: absolute;
-  inset-inline-end: calc(-1 * var(--space-3xs));
-  inset-block-start: var(--space-4xs);
-  width: var(--bento-icon-size-xs);
-  height: var(--bento-icon-size-xs);
-  color: var(--color-70);
-  opacity: 0;
-  animation: bento-workspace-switcher-audio-particle
-    var(--muxui-semantic-motion-progress-travel-duration)
-    var(--muxui-semantic-motion-constant-easing) forwards;
-}
-.bento-icon.bento-workspace-switcher__audio-particle--1 {
-  --bento-workspace-switcher-audio-x: calc(-1 * var(--space-2xs));
-  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-s));
-  --bento-workspace-switcher-audio-rotation: -12deg;
-}
-.bento-icon.bento-workspace-switcher__audio-particle--2 {
-  --bento-workspace-switcher-audio-x: var(--space-2xs);
-  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-m));
-  --bento-workspace-switcher-audio-rotation: 10deg;
-}
-.bento-icon.bento-workspace-switcher__audio-particle--3 {
-  --bento-workspace-switcher-audio-x: var(--space-s);
-  --bento-workspace-switcher-audio-y: calc(-1 * var(--space-xs));
-  --bento-workspace-switcher-audio-rotation: 16deg;
-}
-.bento-workspace-switcher__audio-particles--menu
-  .bento-icon.bento-workspace-switcher__audio-particle {
-  color: var(--neutral-30);
 }
 @keyframes bento-workspace-switcher-audio-particle {
   0% {
@@ -104,11 +41,6 @@
         var(--bento-workspace-switcher-audio-y)
       )
       scale(1) rotate(var(--bento-workspace-switcher-audio-rotation));
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bento-icon.bento-workspace-switcher__audio-particle {
-    animation-duration: var(--muxui-semantic-motion-progress-spin-duration);
   }
 }
 
@@ -141,36 +73,6 @@ html[data-bento-collapsed='true'] .muxui-text.bento-workspace-switcher__trigger-
   margin-block-end: calc(-1 * var(--bento-text-descender-room));
   position: relative;
   top: 1px;
-}
-
-/* Cap the menu popup so it sits exactly under the trigger's outer width.
- * Mux UI's .muxui-menu__popup defaults to `min-width: 10rem;
- * max-width: 20rem; width: max-content` — a long "Delete <very long
- * name>" item pushes it up to 320px regardless of the sidebar.
- *
- * react-aria anchors the popover at trigger-left (placement="bottom
- * start"), and the trigger sits inside .bento-shell-app__header which
- * has `padding-inline: var(--space-s)`. So popover-left = sidebar-left
- *   + space-s. To make the right margin match, cap the width at
- * `100vw - 2 * --space-s`: popover-right = sidebar-right - space-s.
- * Symmetric.
- *
- * Targets the popup (not the popover wrapper, which is unstyled) and
- * is unlayered because Mux UI's defaults are unlayered too — layered
- * rules lose to unlayered regardless of specificity. min-width:0
- * unlocks the 10rem floor for narrow sidebars (persist=width allows
- * down to 200px). */
-.bento-workspace-switcher__popover.muxui-menu__popup {
-  min-width: 0;
-  max-width: calc(100vw - 2 * var(--space-s));
-}
-
-/* Menu item labels must inherit the Menu.Item foreground. Mux UI's
- * typography utilities are unlayered and set their own color, so this
- * override must also stay unlayered; otherwise @layer bento.components
- * loses regardless of specificity. */
-.bento-workspace-switcher__popover .muxui-text.bento-workspace-switcher__item-name {
-  color: inherit;
 }
 
 /* Menu.Trigger renders a real button. It keeps Mux UI's neutral button class
@@ -304,7 +206,7 @@ html[data-bento-collapsed='true']
      row from refusing to shrink below its intrinsic content width, which
      is what lets the inner __item-name truncate via text-overflow once
      the popup itself is capped (see the unlayered .muxui-menu__popup rule
-     above). */
+     below). */
   .bento-workspace-switcher__popover .muxui-menu__item {
     min-width: 0;
   }
@@ -329,10 +231,16 @@ html[data-bento-collapsed='true']
   }
 }
 
-/* Mux overlay pilot. Keep the Mux selectors above for the inline trigger
- * and the other entry points that still render it. The overlay uses the
- * corresponding Mux class selectors below while sharing the same Bento
- * layout and token intent. */
+/* Avatar accent override. Mux UI's .muxui-avatar { background-color } rule sits in the
+ * low-precedence muxui layer (theme/muxui.css), so these unlayered rules win over it
+ * regardless of specificity.
+ *
+ * Pair: color-60 for the saturated background, color-60-fg for the foreground: the theme's
+ * own text colour for that step, which Mux chooses by APCA in light and dark.
+ *
+ * The fallback (initial / icon) text needs its own selector: Mux UI sets its color directly
+ * on .muxui-avatar__fallback, which beats the color inherited from the wrapper rule. The
+ * compound selector (3 classes) is more specific than Mux UI's .muxui-avatar__fallback. */
 .muxui-avatar.bento-workspace-switcher__avatar {
   background-color: var(--muxui-semantic-color-color-60);
   color: var(--muxui-semantic-color-color-60-fg);
@@ -386,6 +294,23 @@ html[data-bento-collapsed='true']
   }
 }
 
+/* Cap the menu popup so it sits exactly under the trigger's outer width.
+ * Mux UI's .muxui-menu__popup defaults to `min-width: 10rem;
+ * max-width: 20rem; width: max-content` — a long "Delete <very long
+ * name>" item pushes it up to 320px regardless of the sidebar.
+ *
+ * react-aria anchors the popover at trigger-left (placement="bottom
+ * start"), and the trigger sits inside .bento-shell-app__header which
+ * has `padding-inline: var(--space-s)`. So popover-left = sidebar-left
+ *   + space-s. To make the right margin match, cap the width at
+ * `100vw - 2 * --space-s`: popover-right = sidebar-right - space-s.
+ * Symmetric.
+ *
+ * Targets the popup (not the popover wrapper, which is unstyled). Mux UI's
+ * defaults sit in the low-precedence muxui layer, so this unlayered rule
+ * overrides them regardless of specificity. min-width:0
+ * unlocks the 10rem floor for narrow sidebars (persist=width allows
+ * down to 200px). */
 .bento-workspace-switcher__popover.muxui-menu__popup {
   min-width: 0;
   max-width: calc(100vw - 2 * var(--space-s));
@@ -393,6 +318,9 @@ html[data-bento-collapsed='true']
 .bento-workspace-switcher__popover .muxui-menu__item {
   min-width: 0;
 }
+/* Menu item labels must inherit the Menu.Item foreground. Mux UI's
+ * typography utilities set their own color from the low-precedence muxui
+ * layer, so this unlayered override wins regardless of specificity. */
 .bento-workspace-switcher__popover .muxui-text.bento-workspace-switcher__item-name {
   flex: 1;
   min-width: 0;
