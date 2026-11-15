@@ -2408,8 +2408,9 @@ rel="stylesheet">` load and error events on chrome documents, and the
   on the page root and `--background-color-canvas`; `about:blank`, a web page and
   `about:preferences` must compute no `--bento-about-*` variable. In `about:logins`
   and `about:addons`, the mapped tokens must compute the same in shadow trees as on
-  the root, apart from `login-list` (its own surface) and the remove-logins dialogs
-  (their primary button is destructive).
+  the root, apart from `login-list` and its search field (the list's own surface, with
+  the field on the page's box) and the remove-logins dialogs (their primary button is
+  destructive).
 - Measured (2026-11-15, headless primary-checkout `obj-bento` built from main, with
   this branch's sheet, actor and publisher loaded through a `resource://` mapping and
   patches 13 and 14 stood in for by chrome overrides): first paint themed on all 26

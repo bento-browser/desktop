@@ -334,6 +334,13 @@ function renderAboutThemesSheet(baseCss) {
     const key = conditions.join(',');
     if (!pageGroups.has(key)) pageGroups.set(key, { conditions, rules: [] });
     const { rules } = pageGroups.get(key);
+    if (rule.shadow) {
+      if (rule.light || rule.dark) {
+        throw new Error(`about: page sheet: ${rule.selector}: a shadow rule has no mode variants`);
+      }
+      rules.push(aboutRule(rule.selector, rule.declarations));
+      continue;
+    }
     if (rule.declarations)
       rules.push(aboutRule(underRoot(ABOUT_ROOT, rule.selector), rule.declarations));
     for (const mode of ABOUT_MODES) {

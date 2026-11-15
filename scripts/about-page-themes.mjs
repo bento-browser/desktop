@@ -228,6 +228,12 @@ const PANEL = {
 // whose rule each one replaces. `light` and `dark` declarations apply only in that UI mode:
 // they stand in for a page rule under prefers-color-scheme, which follows the content
 // colour mode rather than the UI mode.
+//
+// A rule is written under the themed root (`:root[data-bento-theme][data-color-mode] X`),
+// except a `shadow` rule, whose element sits in a shadow tree that a selector from the root
+// cannot reach. Its selector stands alone and its values are the sheet's aliases, which exist
+// only below a themed root: on an unthemed page they are invalid, so the property falls back
+// to what it inherits.
 export const PAGE_RULES = [
   {
     pages: 'all',
@@ -241,12 +247,23 @@ export const PAGE_RULES = [
     pages: { pages: ['logins'], errorPages: [], chrome: [] },
     owner: 'browser/components/aboutlogins/content/aboutLogins.css',
     selector: 'login-list',
+    // The list column is the sidebar surface; its sort bar and section headers paint
+    // --background-color-box. --background-color-canvas stays the page's, because the
+    // selected row paints it and stands out on the lighter canvas.
     declarations: {
       'background-color': 'var(--neutral-12)',
       'border-inline-end': '1px solid var(--neutral-20)',
       '--background-color-box': 'var(--neutral-12)',
-      '--background-color-canvas': 'var(--neutral-12)',
     },
+  },
+  {
+    // The list's search field, inside login-list's shadow tree, paints
+    // --background-color-box; it keeps the page's box value rather than the list's.
+    pages: { pages: ['logins'], errorPages: [], chrome: [] },
+    owner: 'browser/components/aboutlogins/content/aboutLogins.css',
+    selector: 'login-filter',
+    shadow: true,
+    declarations: { '--background-color-box': 'var(--neutral-10)' },
   },
   {
     // login-item.css redeclares these on :host under prefers-color-scheme.
