@@ -12,6 +12,8 @@ interface TabListeners {
   ) => void;
   removed?: (id: number, info: browser.tabs._OnRemovedRemoveInfo) => void;
   attached?: (id: number, info: browser.tabs._OnAttachedAttachInfo) => void;
+  detached?: (id: number, info: browser.tabs._OnDetachedDetachInfo) => void;
+  moved?: (id: number, info: browser.tabs._OnMovedMoveInfo) => void;
   activated?: (info: browser.tabs._OnActivatedActiveInfo) => void;
   pageErrorChanged?: (tabId: number, pageError: TabSnapshot['pageError'] | null) => void;
 }
@@ -49,8 +51,9 @@ function stubTabsBrowser(initialTabs: browser.tabs.Tab[] = []): TabListeners {
       onUpdated: { addListener: vi.fn((listener) => (listeners.updated = listener)) },
       onRemoved: { addListener: vi.fn((listener) => (listeners.removed = listener)) },
       onActivated: { addListener: vi.fn((listener) => (listeners.activated = listener)) },
-      onMoved: { addListener: vi.fn() },
+      onMoved: { addListener: vi.fn((listener) => (listeners.moved = listener)) },
       onAttached: { addListener: vi.fn((listener) => (listeners.attached = listener)) },
+      onDetached: { addListener: vi.fn((listener) => (listeners.detached = listener)) },
       get: vi.fn(),
     },
     bentoTabState: {
@@ -168,6 +171,7 @@ describe('TabRegistry closing markers', () => {
         onActivated: { addListener: vi.fn() },
         onMoved: { addListener: vi.fn() },
         onAttached: { addListener: vi.fn() },
+        onDetached: { addListener: vi.fn() },
       },
     });
 
@@ -221,6 +225,224 @@ describe('TabRegistry attach to another window', () => {
     expect(browser.tabs.get).toHaveBeenCalledWith(9);
     expect(tabs.snapshot()[0]?.active).toBe(true);
     expect(deltas).not.toContainEqual({ kind: 'updated', id: 9, changes: { active: true } });
+  });
+});
+
+// Firefox-like tab strips: `browser.tabs.query` answers from them, and the helpers change them
+// and fire the event Firefox would.
+function nativeStrips(listeners: TabListeners, windows: Record<number, number[]>) {
+  const strips = new Map(Object.entries(windows).map(([w, ids]) => [Number(w), [...ids]]));
+  const strip = (windowId: number) => {
+    const ids = strips.get(windowId) ?? [];
+    strips.set(windowId, ids);
+    return ids;
+  };
+  const live = (id: number) => {
+    for (const [windowId, ids] of strips) {
+      const index = ids.indexOf(id);
+      if (index >= 0) return makeTab({ id, windowId, index });
+    }
+    throw new Error(`no native tab ${id}`);
+  };
+  const tabs = () => [...strips.values()].flat().map(live);
+  const positions = (list: Array<{ id?: number; windowId?: number; index: number }>) =>
+    list.map(({ id, windowId, index }) => ({ id, windowId, index })).sort((a, b) => a.id! - b.id!);
+  vi.mocked(browser.tabs.query).mockImplementation(async (query) =>
+    tabs().filter((t) => query.windowId === undefined || t.windowId === query.windowId),
+  );
+  return {
+    strips,
+    live,
+    open(id: number, windowId: number, index: number) {
+      strip(windowId).splice(index, 0, id);
+      listeners.created?.(live(id));
+    },
+    close(id: number) {
+      const { windowId, index } = live(id);
+      strip(windowId!).splice(index, 1);
+      listeners.removed?.(id, { windowId: windowId!, isWindowClosing: false });
+    },
+    moveToWindow(id: number, newWindowId: number, newPosition: number) {
+      const { windowId, index } = live(id);
+      strip(windowId!).splice(index, 1);
+      listeners.detached?.(id, { oldWindowId: windowId!, oldPosition: index });
+      strip(newWindowId).splice(newPosition, 0, id);
+      listeners.attached?.(id, { newWindowId, newPosition });
+    },
+    /** Tear-out to a new window: Firefox fires detach and attach when the window opens, but moves
+     * the tab out of the old strip only at the new window's first paint, with no further event.
+     * Returns that paint. */
+    tearOut(id: number, newWindowId: number) {
+      const { windowId, index } = live(id);
+      listeners.detached?.(id, { oldWindowId: windowId!, oldPosition: index });
+      listeners.attached?.(id, { newWindowId, newPosition: 0 });
+      return () => {
+        strip(windowId!).splice(index, 1);
+        strip(newWindowId).push(id);
+      };
+    },
+    /** The registry's window and index for every tab, against Firefox's. */
+    expectMatches(registry: TabRegistry) {
+      expect(positions(registry.snapshot())).toEqual(positions(tabs()));
+    },
+  };
+}
+
+describe('TabRegistry index resync', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  async function setup(windows: Record<number, number[]>) {
+    const listeners = stubTabsBrowser();
+    const native = nativeStrips(listeners, windows);
+    const tabs = new TabRegistry();
+    const deltas: TabDelta[] = [];
+    tabs.onDeltas((batch) => deltas.push(...batch));
+    await tabs.init();
+    await settle();
+    deltas.length = 0;
+    vi.mocked(browser.tabs.query).mockClear();
+    return { tabs, listeners, native, deltas };
+  }
+
+  const indexUpdatesOf = (deltas: TabDelta[], ids?: number[]) =>
+    deltas.filter(
+      (d) => d.kind === 'updated' && 'index' in d.changes && (!ids || ids.includes(d.id)),
+    );
+
+  it('moves the later tabs down after a tab opens in the middle', async () => {
+    const { tabs, native, deltas } = await setup({ 1: [1, 2, 3, 4], 2: [11, 12] });
+
+    native.open(5, 1, 2);
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(deltas).toContainEqual({ kind: 'updated', id: 3, changes: { index: 3 } });
+    expect(indexUpdatesOf(deltas, [1, 2, 11, 12])).toEqual([]);
+  });
+
+  it('moves the later tabs up after a tab above them closes', async () => {
+    const { tabs, native, deltas } = await setup({ 1: [1, 2, 3, 4], 2: [11, 12] });
+
+    native.close(2);
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(indexUpdatesOf(deltas, [1, 11, 12])).toEqual([]);
+  });
+
+  it('does not count a restored tab twice when onCreated follows SessionStore moving a tab', async () => {
+    // SessionStore moves A behind the tabs it restores; their onCreated arrives a microtask
+    // after each insert, with the final index.
+    const { tabs, listeners, native } = await setup({ 1: [1] });
+    native.strips.set(1, [2, 3, 1]);
+
+    listeners.moved?.(1, { windowId: 1, fromIndex: 0, toIndex: 2 });
+    listeners.created?.(native.live(2));
+    listeners.created?.(native.live(3));
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(tabs.snapshot().map((t) => [t.id, t.index])).toEqual([
+      [2, 0],
+      [3, 1],
+      [1, 2],
+    ]);
+  });
+
+  it('does not count tabs updated during init as insertions', async () => {
+    const listeners = stubTabsBrowser();
+    nativeStrips(listeners, { 1: [1, 2, 3] });
+    const tabs = new TabRegistry();
+    const deltas: TabDelta[] = [];
+    tabs.onDeltas((batch) => deltas.push(...batch));
+
+    const init = tabs.init();
+    // The query listed these tabs, but init has not recorded them yet.
+    listeners.updated?.(3, {}, makeTab({ id: 3, index: 2 }));
+    listeners.updated?.(2, {}, makeTab({ id: 2, index: 1 }));
+    await init;
+    await settle();
+
+    expect(tabs.snapshot().map((t) => [t.id, t.index])).toEqual([
+      [1, 0],
+      [2, 1],
+      [3, 2],
+    ]);
+    expect(indexUpdatesOf(deltas)).toEqual([]);
+  });
+
+  it('keeps a burst of closes to a few queries and one index update per remaining tab', async () => {
+    const ids = Array.from({ length: 500 }, (_, i) => i + 1);
+    const { tabs, native, deltas } = await setup({ 1: ids });
+
+    for (const id of ids.slice(0, 250)) native.close(id);
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(vi.mocked(browser.tabs.query).mock.calls.length).toBeLessThanOrEqual(2);
+    const updates = indexUpdatesOf(deltas);
+    expect(updates).toHaveLength(250);
+    expect(new Set(updates.map((d) => (d.kind === 'updated' ? d.id : -1))).size).toBe(250);
+  });
+
+  it('drops a query answer read before a later event and asks again', async () => {
+    const { tabs, native, deltas } = await setup({ 1: [1, 2, 3] });
+    let answerStale: (value: browser.tabs.Tab[]) => void = () => undefined;
+    vi.mocked(browser.tabs.query).mockImplementationOnce(
+      () => new Promise((resolve) => (answerStale = resolve)),
+    );
+
+    native.open(4, 1, 0);
+    native.close(2);
+    // The first query answers with positions from before the close.
+    answerStale([1, 2, 3].map((id, i) => makeTab({ id, index: i + 7 })));
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(indexUpdatesOf(deltas).some((d) => d.kind === 'updated' && d.changes.index! >= 7)).toBe(
+      false,
+    );
+  });
+
+  it('resyncs both windows when a tab moves to another window', async () => {
+    const { tabs, native, deltas } = await setup({ 1: [1, 2, 3], 2: [11, 12], 3: [21] });
+
+    native.moveToWindow(2, 2, 1);
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(browser.tabs.query).not.toHaveBeenCalledWith({ windowId: 3 });
+    expect(indexUpdatesOf(deltas, [21])).toEqual([]);
+  });
+
+  it('drops a torn-out tab the old window still lists until the new window paints', async () => {
+    const { tabs, native } = await setup({ 1: [1, 2, 3] });
+
+    const paint = native.tearOut(2, 2);
+    await settle();
+
+    expect(tabs.snapshot().map((t) => [t.id, t.windowId, t.index])).toEqual([
+      [1, 1, 0],
+      [2, 2, 0],
+      [3, 1, 1],
+    ]);
+    paint();
+    native.expectMatches(tabs);
+  });
+
+  it('does not shift for a restored tab init already recorded', async () => {
+    // SessionStore can deliver onCreated after init's query listed the tab at its final place.
+    const { tabs, listeners, native, deltas } = await setup({ 1: [1, 2, 3] });
+
+    listeners.created?.(native.live(2));
+    await settle();
+
+    native.expectMatches(tabs);
+    expect(indexUpdatesOf(deltas)).toEqual([]);
   });
 });
 
@@ -623,7 +845,7 @@ describe('TabRegistry private windows', () => {
   // still being read) takes the create-on-unknown path. The delta's audience is fixed when
   // it is queued, so the tab's privacy has to be known by then.
   it('keeps the URL and title of a private tab off the regular audience when its update arrives during init', async () => {
-    const privateTab = makeTab({ id: 900, windowId: 9, incognito: true });
+    const privateTab = makeTab({ id: 900, windowId: 9, index: 0, incognito: true });
     const listeners = stubTabsBrowser([makeTab({ id: 1, windowId: 1 }), privateTab]);
     let release: () => void = () => {};
     const gate = new Promise<undefined>((resolve) => (release = () => resolve(undefined)));
@@ -1081,7 +1303,8 @@ describe('TabRegistry page errors', () => {
     it('does not let a state kept during init outlive the read that follows it', async () => {
       const listeners = stubTabsBrowser();
       // The event arrives while init waits for the tab list, before the registry knows the tab.
-      vi.mocked(browser.tabs.query).mockImplementation(async () => {
+      // Only init's query: the index resync that follows queries again.
+      vi.mocked(browser.tabs.query).mockImplementationOnce(async () => {
         listeners.pageErrorChanged?.(60, 'unavailable');
         return [makeTab({ id: 60, windowId: 1 })];
       });

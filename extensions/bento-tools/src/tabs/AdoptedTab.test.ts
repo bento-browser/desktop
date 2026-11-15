@@ -559,6 +559,7 @@ describe('startup ordering against a real registry', () => {
         onActivated: { addListener: vi.fn() },
         onMoved: { addListener: vi.fn() },
         onAttached: { addListener: vi.fn() },
+        onDetached: { addListener: vi.fn() },
       },
     });
   }

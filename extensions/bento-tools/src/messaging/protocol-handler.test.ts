@@ -308,9 +308,15 @@ describe('protocol handler close that Firefox does not commit', () => {
           { id: 123, windowId: 1, index: 0, title: 'Kept', active: false, pinned: false },
         ]),
         ...Object.fromEntries(
-          ['onCreated', 'onUpdated', 'onRemoved', 'onActivated', 'onMoved', 'onAttached'].map(
-            (event) => [event, { addListener: vi.fn() }],
-          ),
+          [
+            'onCreated',
+            'onUpdated',
+            'onRemoved',
+            'onActivated',
+            'onMoved',
+            'onAttached',
+            'onDetached',
+          ].map((event) => [event, { addListener: vi.fn() }]),
         ),
       });
       const tabs = new TabRegistry();
@@ -2499,9 +2505,15 @@ describe('actual tab/close DevTools policy with registry session values', () => 
           },
         ]),
         ...Object.fromEntries(
-          ['onCreated', 'onUpdated', 'onRemoved', 'onActivated', 'onMoved', 'onAttached'].map(
-            (event) => [event, { addListener: vi.fn() }],
-          ),
+          [
+            'onCreated',
+            'onUpdated',
+            'onRemoved',
+            'onActivated',
+            'onMoved',
+            'onAttached',
+            'onDetached',
+          ].map((event) => [event, { addListener: vi.fn() }]),
         ),
       });
       const tabs = new TabRegistry();

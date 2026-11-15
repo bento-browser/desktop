@@ -167,6 +167,9 @@ export class TabRegistry {
   #releasedTabIds = new Set<number>();
   // Per tab, the newest attach or activation that set its `active` flag; see #syncActive.
   #activeReads = new Map<number, number>();
+  // Windows with an index resync running, and the count of events seen for each since it began;
+  // see #resyncIndexes.
+  #indexResyncs = new Map<number, number>();
 
   async init(): Promise<void> {
     // Register listeners FIRST so we don't miss tabs created during the
@@ -185,6 +188,7 @@ export class TabRegistry {
     // post-move snapshot would still show the old windowId and would
     // re-move the tabs forever.
     browser.tabs.onAttached.addListener(this.#onAttached);
+    browser.tabs.onDetached.addListener(this.#onDetached);
     this.#watchPageErrors();
 
     const all = await browser.tabs.query({});
@@ -218,6 +222,10 @@ export class TabRegistry {
       if (snap.id === -1) continue;
       // Set only if a concurrent onCreated didn't already insert it.
       if (!this.#tabs.has(snap.id)) this.#tabs.set(snap.id, snap);
+    }
+    // Events that arrived during the reads above changed positions the query had already taken.
+    for (const windowId of new Set(hydrated.map((snap) => snap.windowId))) {
+      this.#resyncIndexes(windowId);
     }
     for (const tab of all) {
       if (typeof tab.id !== 'number') continue;
@@ -728,6 +736,7 @@ export class TabRegistry {
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
+    this.#resyncIndexes(snap.windowId);
     for (const listener of this.#createdListeners) {
       // Isolated like separate tabs.onCreated listeners, so a throw cannot skip the hydration below.
       try {
@@ -891,8 +900,12 @@ export class TabRegistry {
     this.#privateTabIds.delete(id);
     this.#releasedTabIds.delete(id);
     this.#activeReads.delete(id);
-    if (!this.#tabs.delete(id)) return;
+    const removed = this.#tabs.get(id);
+    if (!removed) return;
+    this.#tabs.delete(id);
     this.#enqueue({ kind: 'removed', id }, privateWindowId);
+    // A closing window takes all its tabs, so their positions no longer matter.
+    if (!removeInfo?.isWindowClosing) this.#resyncIndexes(removed.windowId);
   };
 
   // The tabs API says nothing about the page a tab shows. The bentoTabState experiment reports,
@@ -989,6 +1002,12 @@ export class TabRegistry {
     }
     t.index = toIndex;
     this.#enqueue({ kind: 'updated', id, changes: { index: toIndex } });
+    this.#resyncIndexes(windowId);
+  };
+
+  // A cross-window move fires onDetached, then onAttached; each resyncs its own window.
+  #onDetached = (_id: number, info: browser.tabs._OnDetachedDetachInfo) => {
+    this.#resyncIndexes(info.oldWindowId);
   };
 
   #onAttached = (id: number, info: browser.tabs._OnAttachedAttachInfo) => {
@@ -1010,9 +1029,59 @@ export class TabRegistry {
         changes: { windowId: info.newWindowId, index: info.newPosition },
       });
     }
+    this.#resyncIndexes(info.newWindowId);
     void this.#syncActive(id);
     void this.#readPageErrors();
   };
+
+  /**
+   * Re-reads the tab positions of `windowId` from Firefox and corrects the stored indexes, which
+   * the sidebar orders rows by. The tabs events report only the tab they are about, and
+   * SessionStore can move tabs before the (microtask-delayed) onCreated of the tabs it restores,
+   * so counting siblings event by event drifts; the query is authoritative. The query starts
+   * synchronously so its answer usually lands in the same flush as the event's own delta. One
+   * query per window runs at a time: an event during it marks the window dirty, and a result
+   * read before the latest event is dropped for a fresh query, so a stale answer never
+   * overwrites newer state.
+   */
+  #resyncIndexes(windowId: number): void {
+    if (windowId < 0 || this.#notifiedClosingWindows.has(windowId)) return;
+    const generation = this.#indexResyncs.get(windowId);
+    this.#indexResyncs.set(windowId, (generation ?? 0) + 1);
+    if (generation === undefined) void this.#runIndexResync(windowId);
+  }
+
+  async #runIndexResync(windowId: number): Promise<void> {
+    try {
+      for (;;) {
+        const generation = this.#indexResyncs.get(windowId);
+        const live = await browser.tabs.query({ windowId });
+        if (this.#indexResyncs.get(windowId) !== generation) continue;
+        // A tab torn out to a new window has had its detach and attach, but Firefox moves it out
+        // of this strip only at the new window's first paint, with no further event. Drop tabs
+        // recorded in another window and number the rest by rank, not by Firefox's index. A tab
+        // the registry does not know yet (its onCreated is pending) keeps its place.
+        const strip = live
+          .filter((liveTab) => {
+            if (liveTab.windowId !== windowId) return false;
+            const tab = typeof liveTab.id === 'number' ? this.#tabs.get(liveTab.id) : undefined;
+            return !tab || tab.windowId === windowId;
+          })
+          .sort((a, b) => a.index - b.index);
+        strip.forEach((liveTab, index) => {
+          const tab = typeof liveTab.id === 'number' ? this.#tabs.get(liveTab.id) : undefined;
+          if (!tab || tab.index === index) return;
+          tab.index = index;
+          this.#enqueue({ kind: 'updated', id: tab.id, changes: { index } });
+        });
+        return;
+      }
+    } catch {
+      // The window closed in the meantime.
+    } finally {
+      this.#indexResyncs.delete(windowId);
+    }
+  }
 
   // An adopted tab is not selected in its new window and no activation event follows, so a tab
   // that was active in its old window would keep `active: true` here. Activating its workspace
