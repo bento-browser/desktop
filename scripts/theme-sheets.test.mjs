@@ -759,8 +759,9 @@ test('the about: page sheet leaves no var() unresolved and steps aside for high 
 });
 
 // The map names Firefox tokens; a Firefox upgrade that renames one would silently drop it.
-// BENTO_FIREFOX_SOURCE (or this checkout's engine/) points at a Firefox tree; without one
-// the engine check is skipped and only the fixture runs.
+// BENTO_FIREFOX_SOURCE (or this checkout's engine/) points at a Firefox tree. CI's
+// source-import job sets it, so there a missing tree fails; elsewhere, without engine/, the
+// engine check is skipped and only the fixture runs.
 const fileReader = (root) => ({
   readFile: (relative) => {
     try {
@@ -813,8 +814,10 @@ test('the Firefox token check reports a token its owner no longer declares', () 
 });
 
 test('every Firefox token the about: page map sets still exists in the Firefox tree', (t) => {
-  const engine = process.env.BENTO_FIREFOX_SOURCE || join(REPO_ROOT, 'engine');
+  const required = process.env.BENTO_FIREFOX_SOURCE;
+  const engine = required || join(REPO_ROOT, 'engine');
   if (!existsSync(join(engine, 'toolkit/themes/shared/design-system'))) {
+    assert.ok(!required, `BENTO_FIREFOX_SOURCE=${required} is not a Firefox tree`);
     t.skip(`no Firefox tree at ${engine}; set BENTO_FIREFOX_SOURCE`);
     return;
   }
