@@ -80,7 +80,9 @@ Build, packaging, and release helper scripts.
 
 - Import pipeline (run by `pnpm run import`): `import.sh`, `import-sources.mjs`,
   `install-branding.mjs`, `install-builtin-addons.mjs`, `append-prefs.sh`,
-  `reset-engine-patches.sh`, `snapshot-import-output.mjs`, `regen-branding.sh`.
+  `reset-engine-patches.sh`, `preserve-patched-mtimes.mjs` (keeps the mtime of
+  patched files the import rewrites with unchanged bytes), `snapshot-import-output.mjs`,
+  `regen-branding.sh`.
 - Local dev loop: `dev-launch.sh`, `dev-profile-clean.sh`, `sync-shell.sh`,
   `sync-builtin-addon-symlinks.sh`; `mach-env.sh` and `mach-raw.sh` run `mach`
   with the Python chosen by `BENTO_MACH_PYTHON` (see `docs/build-tooling.md`).

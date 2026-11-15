@@ -785,8 +785,28 @@ synchronization validation are recorded in [theming.md](technical/theming.md#nat
   rewritten only when their bytes differ, and add-on and branding trees are
   synced in place (stale files are removed) instead of deleted and copied.
   Mach decides what to reconfigure and rebuild from mtimes, so inputs that are
-  not rewritten no longer look changed. The patch reset (`reset-engine-patches.sh`) and `apply` still
-  rewrite every patched file on each import.
+  not rewritten no longer look changed.
+- **Patched-file mtimes.** The patch reset (`reset-engine-patches.sh`) and `apply`
+  still rewrite every patch-touched file on each import, so
+  [`scripts/preserve-patched-mtimes.mjs`](../scripts/preserve-patched-mtimes.mjs)
+  puts the old mtime back where nothing changed. Before the reset, `snapshot`
+  records the SHA-256, permission bits and mtime of every patch-touched path that
+  is a regular file (the `diff --git` targets of every `.patch` under `patches/`
+  plus the `kind: "patch"` entries of `.bento/engine-state.json`; the reset reads
+  the same list from its `paths` command) in `.bento/patched-mtimes.json`. After
+  `append prefs`, the last step that can write those paths, `restore` sets the
+  recorded atime and mtime again on each file whose bytes and permission bits
+  match the snapshot. A file whose content changed keeps its new mtime, so mach
+  rebuilds it; symlinks and paths that were missing at the snapshot are left
+  alone. The restored pair of bytes and mtime is one the file had before this
+  import, so mach sees what it last saw, and nothing else reads these mtimes:
+  `verify`, `record`, the patch-check record, the native build receipt,
+  `check-import-output` and the CI idempotency snapshot all compare content.
+  The snapshot carries a per-run id from `import.sh`: `restore` applies it only
+  when the id matches and deletes the file either way, `snapshot` replaces any
+  earlier file, and the import's exit trap removes it, so a snapshot a failed
+  import left behind is never applied. `utimes` takes seconds as a double, so a
+  restored mtime can differ from the recorded one by under a microsecond.
 - **Regenerated files in verification.** `engine/mozconfig` and the two version
   files are rewritten from `bento.json` and `configs/` by every build, in
   whichever mode that build uses. Recorded-state verification therefore
