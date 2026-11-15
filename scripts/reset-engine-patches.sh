@@ -21,35 +21,18 @@ if [ ! -d "$ENGINE_DIR/.git" ]; then
   exit 0
 fi
 
-# List of files touched by any patch in patches/. Extracted by parsing patch
-# headers ("diff --git a/X b/Y") rather than maintained manually so adding a
-# new patch automatically updates this list. Using a tmp file instead of
-# bash 4's mapfile so this runs on macOS's stock bash 3.2.
+# Files touched by any patch in patches/ (parsed from the "diff --git a/X b/Y"
+# headers, so a new patch extends the list automatically), plus paths an earlier
+# import patched that the current series no longer names. The recorded state lists
+# those (edited files, symlinks, and deletions), and verify has matched every one
+# to the record by now, so resetting discards only Bento's own output.
+# preserve-patched-mtimes.mjs owns the list so its mtime snapshot covers the same
+# paths. A tmp file instead of bash 4's mapfile keeps macOS's stock bash 3.2 working.
 patch_files_list="$(mktemp)"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$patch_files_list" "$work_dir"' EXIT
 
-find "$REPO_ROOT/patches" -name '*.patch' -print0 \
-  | xargs -0 grep -h '^diff --git' 2>/dev/null \
-  | awk '{print $3}' \
-  | sed 's|^a/||' \
-  | sort -u \
-  > "$patch_files_list"
-
-# Also reset paths an earlier import patched that the current series no longer
-# names. The recorded state lists them (edited files, symlinks, and deletions), and
-# verify has matched every one to the record by now, so resetting discards only
-# Bento's own output.
-recorded_state="$REPO_ROOT/.bento/engine-state.json"
-if [ -f "$recorded_state" ]; then
-  node -e '
-    const state = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-    for (const entry of state.entries || []) {
-      if (entry.kind === "patch") console.log(entry.path);
-    }
-  ' "$recorded_state" >> "$patch_files_list"
-  sort -u -o "$patch_files_list" "$patch_files_list"
-fi
+node "$REPO_ROOT/scripts/preserve-patched-mtimes.mjs" paths > "$patch_files_list"
 
 if [ ! -s "$patch_files_list" ]; then
   echo "reset-engine-patches: no patched files found"
