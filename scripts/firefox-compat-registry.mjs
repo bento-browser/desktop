@@ -2439,6 +2439,15 @@ export const MEMBERS = [
     at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabBrowserInserted"', 3488],
   },
   {
+    id: 'TabBrowserDiscarded',
+    kind: 'source',
+    how: 'listens',
+    probe: 'E',
+    sites: ['attachAboutThemePublisher'],
+    use: "Removes a discarded tab's about: page theme entry: discarding destroys the browser's frame loader, so its browserId reads 0 until a restore inserts it with a new id.",
+    at: [FF.tabbrowser, 'new this\\.documentGlobal\\.CustomEvent\\("TabBrowserDiscarded"', 3615],
+  },
+  {
     id: 'TabClose detail.adoptedBy',
     kind: 'source',
     how: 'listens',

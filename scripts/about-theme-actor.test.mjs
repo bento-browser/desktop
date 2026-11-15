@@ -326,6 +326,35 @@ test('a tab another window adopts keeps its entry, and that window republishes i
   assert.deepEqual(entries(w), { 1: ['default', 'dark'], 7: ['default', 'dark'] });
 });
 
+test('a discarded tab drops its entry, a restored one publishes its new id, and close cleans up', () => {
+  const w = world();
+  const a = chromeWindow(w, { browsers: [1, 2, 3], theme: 'standard-fern', mode: 'dark' });
+  a.api.attachAboutThemePublisher();
+  a.fire('load');
+  const [, second, third] = a.window.gBrowser.browsers;
+  assert.deepEqual(Object.keys(entries(w)), ['1', '2', '3']);
+  // Discarding removes the frame loader: the same browser element now reads id 0.
+  second.browserId = 0;
+  a.fire('TabBrowserDiscarded');
+  assert.deepEqual(Object.keys(entries(w)), ['1', '3']);
+  // Restoring inserts it again with a new id.
+  second.browserId = 12;
+  a.fire('TabBrowserInserted');
+  assert.deepEqual(entries(w)[12], ['standard-fern', 'dark']);
+  assert.deepEqual(Object.keys(entries(w)), ['1', '3', '12']);
+  // A tab closed while discarded is found by the id it last had, even with no discard event.
+  third.browserId = 0;
+  a.fire('TabClose', { target: { linkedBrowser: third }, detail: {} });
+  assert.deepEqual(Object.keys(entries(w)), ['1', '12']);
+  a.fire('TabClose', { target: { linkedBrowser: second }, detail: {} });
+  assert.deepEqual(Object.keys(entries(w)), ['1']);
+  // A browser whose id changed without an event is reconciled on the next publish.
+  a.window.gBrowser.browsers = [a.window.gBrowser.browsers[0]];
+  a.window.gBrowser.browsers[0].browserId = 20;
+  a.api.publishAboutTheme();
+  assert.deepEqual(Object.keys(entries(w)), ['20']);
+});
+
 test('a release keeps an id that another open window shows', () => {
   const w = world();
   const a = chromeWindow(w, { browsers: [4], theme: 'default', mode: 'light' });

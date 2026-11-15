@@ -611,6 +611,10 @@
   const BENTO_ABOUT_THEME_CHROME_DOCUMENTS = ['chrome://global/content/megalist/megalist.html'];
   // Browser ids this window has published, so unload can remove them.
   const bentoAboutThemeIds = new Set();
+  // The id last published for each browser. A discarded tab's browser loses its frame loader
+  // and reads browserId 0, and a restored one comes back with a new id, so the entry to
+  // remove is found here.
+  const bentoAboutThemeBrowserIds = new WeakMap();
 
   function registerAboutThemes() {
     try {
@@ -660,23 +664,32 @@
     Services.ppmm.sharedData.flush();
   }
 
-  // Publishes this window's theme and mode for each of its browsers. Other windows' entries
-  // are kept (read-modify-write); nothing is written when nothing changed.
+  // Publishes this window's theme and mode for each of its browsers, and removes the entry of
+  // a browser whose id changed or went away (discarded, restored). Other windows' entries are
+  // kept (read-modify-write); nothing is written when nothing changed.
   function publishAboutTheme() {
     syncAboutThemeSidebar();
     const browsers = window.gBrowser?.browsers;
     if (!browsers) return;
     const [theme, mode] = aboutThemeOfWindow();
     const entries = { ...Services.ppmm.sharedData.get(BENTO_ABOUT_THEME_KEY) };
+    const stale = [];
     let changed = false;
     for (const browser of browsers) {
       const id = browser.browserId;
-      if (!id) continue;
+      const previous = bentoAboutThemeBrowserIds.get(browser);
+      if (previous && previous !== id) stale.push(previous);
+      if (!id) {
+        bentoAboutThemeBrowserIds.delete(browser);
+        continue;
+      }
+      bentoAboutThemeBrowserIds.set(browser, id);
       bentoAboutThemeIds.add(id);
       if (entries[id]?.[0] === theme && entries[id]?.[1] === mode) continue;
       entries[id] = [theme, mode];
       changed = true;
     }
+    if (dropAboutThemeEntries(entries, stale)) changed = true;
     if (changed) writeAboutThemeEntries(entries);
   }
 
@@ -689,17 +702,23 @@
     return false;
   }
 
-  // Removes the entries of closed browsers, except ids another window now shows.
-  function releaseAboutThemeIds(ids) {
-    const entries = { ...Services.ppmm.sharedData.get(BENTO_ABOUT_THEME_KEY) };
-    let changed = false;
+  // Deletes the entries of `ids` from `entries`, except ids another window now shows.
+  // Returns whether it deleted any.
+  function dropAboutThemeEntries(entries, ids) {
+    let dropped = false;
     for (const id of ids) {
       bentoAboutThemeIds.delete(id);
       if (!(id in entries) || aboutThemeIdOwnedElsewhere(id)) continue;
       delete entries[id];
-      changed = true;
+      dropped = true;
     }
-    if (changed) writeAboutThemeEntries(entries);
+    return dropped;
+  }
+
+  // Removes the entries of closed browsers.
+  function releaseAboutThemeIds(ids) {
+    const entries = { ...Services.ppmm.sharedData.get(BENTO_ABOUT_THEME_KEY) };
+    if (dropAboutThemeEntries(entries, ids)) writeAboutThemeEntries(entries);
   }
 
   // The sidebar's chrome document is in the parent process, outside the actor's reach.
@@ -722,12 +741,17 @@
     // Synchronous, so the entry is flushed before the new tab's first load reads it.
     window.addEventListener('TabOpen', publish, true);
     window.addEventListener('TabBrowserInserted', publish, true);
+    // A discarded tab's browser no longer has an id; its entry goes.
+    window.addEventListener('TabBrowserDiscarded', publish, true);
     // A tab moved into this window: its browser id is final once the swap is done.
     window.addEventListener('SwapDocShells', () => window.setTimeout(publish, 0), true);
     window.addEventListener(
       'TabClose',
       (event) => {
-        const id = event.target?.linkedBrowser?.browserId;
+        const browser = event.target?.linkedBrowser;
+        // A discarded tab's browser reads id 0; use the id it last had.
+        const id = browser?.browserId || bentoAboutThemeBrowserIds.get(browser);
+        if (browser) bentoAboutThemeBrowserIds.delete(browser);
         if (!id) return;
         // A tab moved to another window (Bento's close handover adopts them) keeps its
         // entry; that window publishes it on SwapDocShells.
