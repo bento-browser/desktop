@@ -25,6 +25,14 @@ import {
   themeIdsInSelector,
   unwrapTopLevelLayers,
 } from '../extensions/bento-shell/css-blocks.mjs';
+import {
+  ABOUT_THEME_ACTOR_MATCHES,
+  ABOUT_THEME_CHROME_DOCUMENTS,
+  checkFirefoxTokens,
+  documentConditions,
+  FIREFOX_TOKEN_MAP,
+  referencedTokens,
+} from './about-page-themes.mjs';
 import { MUX_THEMES_CSS, parseDeclarations } from './mux-css.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,6 +100,7 @@ function generate() {
   return {
     directory,
     base: readFileSync(output, 'utf8'),
+    about: readFileSync(join(directory, 'bento-about-themes.css'), 'utf8'),
     themesDir: join(directory, 'bento-chrome-themes'),
   };
 }
@@ -563,6 +572,11 @@ function tokenSheetDocuments() {
   return documents.filter(({ text }) => text.includes(TOKEN_SHEET_HREF));
 }
 
+// Documents in the about: page sheet's scope get both attributes at runtime, from the
+// BentoAboutTheme actor or (megalist) the mount script, so a static attribute there would only
+// force a theme or mode.
+const THEMED_AT_RUNTIME = ['/aboutLogins.html', '/aboutLoginsImportReport.html', '/megalist.html'];
+
 test('native documents that link the chrome token sheet carry the Default theme and a mode', () => {
   const documents = tokenSheetDocuments();
   for (const page of [
@@ -578,9 +592,258 @@ test('native documents that link the chrome token sheet carry the Default theme 
     );
   }
   for (const { label, text } of documents) {
+    if (THEMED_AT_RUNTIME.some((page) => label.endsWith(page))) {
+      assert.doesNotMatch(text, /\sdata-(?:bento-theme|color-mode|theme)=/, label);
+      assert.doesNotMatch(text, /<meta name="color-scheme" content="light"\s*\/?>/, label);
+      continue;
+    }
     const root = text.match(/<html\b[^>]*>/)?.[0];
     assert.ok(root, `${label} has its <html> root in view`);
     assert.match(root, /\sdata-bento-theme="default"/, `${label} root theme`);
     assert.match(root, /\sdata-color-mode="(?:light|dark)"/, `${label} root mode`);
   }
+});
+
+// ─── About: page sheet ───────────────────────────────────────────────
+
+/** The top-level @-moz-document blocks of the about: page sheet. */
+const documentBlocks = (css) =>
+  splitTopLevelBlocks(css).map(({ prelude, body }) => {
+    assert.match(prelude, /^@-moz-document /);
+    return {
+      conditions: prelude
+        .slice('@-moz-document '.length)
+        .split(/,\s*/)
+        .map((condition) => condition.trim()),
+      body,
+    };
+  });
+
+/** The style rules inside one @-moz-document block, after its forced-colors wrapper. */
+function aboutRules(body) {
+  const inner = splitTopLevelBlocks(body);
+  assert.equal(inner.length, 1, 'one block inside @-moz-document');
+  assert.equal(inner[0].prelude, '@media not (forced-colors)');
+  return splitTopLevelBlocks(inner[0].body).map(({ prelude, body: rule }) => ({
+    selector: squashSelector(prelude),
+    declarations: parseDeclarations(rule),
+    body: rule,
+  }));
+}
+
+test('the about: page sheet is scoped to exact in-scope URLs and never to Settings', () => {
+  const { directory, about } = generate();
+  try {
+    const blocks = documentBlocks(about.replace(/\/\*[\s\S]*?\*\//g, ''));
+    assert.deepEqual(blocks[0].conditions, documentConditions());
+    for (const page of ['logins', 'loginsimportreport', 'addons', 'privatebrowsing', 'downloads']) {
+      for (const condition of [
+        `url("about:${page}")`,
+        `url-prefix("about:${page}?")`,
+        `url-prefix("about:${page}#")`,
+      ]) {
+        assert.ok(blocks[0].conditions.includes(condition), condition);
+      }
+    }
+    for (const page of ['config', 'support', 'profiles', 'processes', 'policies']) {
+      assert.ok(blocks[0].conditions.includes(`url("about:${page}")`), page);
+    }
+    for (const page of ['neterror', 'certerror', 'httpsonlyerror']) {
+      assert.ok(blocks[0].conditions.includes(`url-prefix("about:${page}?")`), page);
+    }
+    assert.ok(blocks[0].conditions.includes('url("chrome://global/content/megalist/megalist.html")'));
+    for (const { conditions } of blocks) {
+      for (const condition of conditions) {
+        // A bare about: prefix would also match about:blank in web processes.
+        assert.match(
+          condition,
+          /^(?:url\("(?:about:[a-z]+|chrome:\/\/[^"]+)"\)|url-prefix\("about:[a-z]+[?#]"\))$/,
+          condition,
+        );
+        assert.ok(blocks[0].conditions.includes(condition), `${condition} is in scope`);
+      }
+    }
+    assert.doesNotMatch(about, /about:(?:preferences|settings|blank|newtab|home)\b/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the about: page sheet has a literal block for every theme and mode', () => {
+  const { directory, base, about } = generate();
+  try {
+    const rules = documentBlocks(about).flatMap(({ body }) => aboutRules(body));
+    const aliases = referencedTokens().map((token) => `--bento-about-${token.slice(2)}`);
+    const themeBlock = (id, mode) =>
+      rules.find(
+        ({ selector }) =>
+          selector ===
+          `:root[data-bento-theme${id === 'default' ? '' : `='${id}'`}][data-color-mode='${mode}']`,
+      );
+    const actions = new Set();
+    for (const id of ['default', ...shellThemeIds]) {
+      const values = {};
+      for (const mode of ['light', 'dark']) {
+        const block = themeBlock(id, mode);
+        assert.ok(block, `${id} ${mode}`);
+        assert.deepEqual([...block.declarations.keys()].sort(), [...aliases].sort(), `${id} ${mode}`);
+        for (const [alias, value] of block.declarations) {
+          assert.doesNotMatch(value, /var\(|rem\b/, `${id} ${mode} ${alias}`);
+        }
+        values[mode] = block.declarations;
+        actions.add(block.declarations.get('--bento-about-muxui-semantic-action-background'));
+      }
+      assert.notEqual(
+        values.light.get('--bento-about-neutral-5'),
+        values.dark.get('--bento-about-neutral-5'),
+        `${id}: light and dark canvases differ`,
+      );
+    }
+    assert.ok(actions.size >= shellThemeIds.length, 'the themes have their own accents');
+    // Default comes first: its blocks also select a theme id that has no block of its own.
+    assert.equal(rules.indexOf(themeBlock('default', 'light')), 0);
+    // Default's canvas is the Harbour ladder the base sheet declares for Default.
+    assert.equal(
+      themeBlock('default', 'light').declarations.get('--bento-about-neutral-5').toLowerCase(),
+      ruleDeclarations(base, "[data-bento-theme='default']").get('--neutral-default-5').toLowerCase(),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the about: page sheet leaves no var() unresolved and wraps everything for forced colors', () => {
+  const { directory, about } = generate();
+  try {
+    const bare = about.replace(/\/\*[\s\S]*?\*\//g, '');
+    const declared = new Set(Array.from(bare.matchAll(/(--[\w-]+)\s*:/g), (match) => match[1]));
+    const referenced = new Set(Array.from(bare.matchAll(/var\(\s*(--[\w-]+)/g), (match) => match[1]));
+    assert.ok(referenced.size > 20);
+    for (const name of referenced) {
+      assert.ok(declared.has(name), `${name} is declared in the sheet`);
+      assert.match(name, /^--bento-about-/, `${name} is one of the sheet's own aliases`);
+    }
+    assert.doesNotMatch(bare, /var\([^)]*,/, 'no var() fallback');
+    // Every rule sits inside @-moz-document and @media not (forced-colors) (aboutRules
+    // asserts the wrapper), and outside the literal blocks every declaration is !important.
+    for (const { body } of documentBlocks(bare)) {
+      for (const { selector, body: rule } of aboutRules(body)) {
+        if (/^:root\[data-bento-theme[^\]]*\]\[data-color-mode='(?:light|dark)'\]$/.test(selector) &&
+          /--bento-about-/.test(rule.split(':')[0])) {
+          continue;
+        }
+        for (const declaration of rule.split(';').map((part) => part.trim()).filter(Boolean)) {
+          assert.match(declaration, /!important$/, `${selector}: ${declaration}`);
+        }
+      }
+    }
+    // Every mapped Firefox token is set in the map block.
+    const map = documentBlocks(bare)
+      .flatMap(({ body }) => aboutRules(body))
+      .find(({ selector }) => selector === ':root[data-bento-theme][data-color-mode]');
+    for (const { tokens } of FIREFOX_TOKEN_MAP) {
+      for (const token of Object.keys(tokens)) assert.ok(map.declarations.has(token), token);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// The map names Firefox tokens; a Firefox upgrade that renames one would silently drop it.
+// BENTO_FIREFOX_SOURCE (or this checkout's engine/) points at a Firefox tree; without one
+// the engine check is skipped and only the fixture runs.
+const fileReader = (root) => ({
+  readFile: (relative) => {
+    try {
+      return readFileSync(join(root, relative), 'utf8');
+    } catch {
+      return null;
+    }
+  },
+  listCss: (relative) => {
+    try {
+      return readdirSync(join(root, relative))
+        .filter((name) => name.endsWith('.css'))
+        .map((name) => `${relative}/${name}`);
+    } catch {
+      return [];
+    }
+  },
+});
+
+test('the Firefox token check reports a token its owner no longer declares', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'bento-about-tokens-'));
+  try {
+    const owners = new Set(
+      FIREFOX_TOKEN_MAP.map(({ owner }) => owner).filter((owner) => owner.endsWith('.css')),
+    );
+    const write = (relative, text) => {
+      mkdirSync(dirname(join(directory, relative)), { recursive: true });
+      writeFileSync(join(directory, relative), text);
+    };
+    for (const { owner, tokens } of FIREFOX_TOKEN_MAP) {
+      const text = Object.keys(tokens)
+        .map((token) => `${token}: red;`)
+        .join('\n');
+      write(owner.endsWith('.css') ? owner : `${owner}/tokens-shared.css`, text);
+    }
+    assert.ok(owners.size > 0);
+    const problems = checkFirefoxTokens(fileReader(directory));
+    // The page rules' owner files are absent from the fixture.
+    assert.ok(problems.every((problem) => / missing$/.test(problem)), problems.join('\n'));
+    const designSystem = join(directory, FIREFOX_TOKEN_MAP[0].owner, 'tokens-shared.css');
+    writeFileSync(designSystem, readFileSync(designSystem, 'utf8').replace('--text-color:', '--text-colour:'));
+    assert.ok(
+      checkFirefoxTokens(fileReader(directory)).includes(
+        `${FIREFOX_TOKEN_MAP[0].owner}: --text-color is not declared`,
+      ),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('every Firefox token the about: page map sets still exists in the Firefox tree', (t) => {
+  const engine = process.env.BENTO_FIREFOX_SOURCE || join(REPO_ROOT, 'engine');
+  if (!existsSync(join(engine, 'toolkit/themes/shared/design-system'))) {
+    t.skip(`no Firefox tree at ${engine}; set BENTO_FIREFOX_SOURCE`);
+    return;
+  }
+  assert.deepEqual(checkFirefoxTokens(fileReader(engine)), []);
+});
+
+// bento-shell-mount.js registers the actor with these and syncs these chrome documents.
+const MOUNT_SOURCE = readFileSync(
+  resolve(REPO_ROOT, 'src/browser/base/content/bento-shell-mount.js'),
+  'utf8',
+);
+const mountStrings = (name) => {
+  const body = MOUNT_SOURCE.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`))?.[1];
+  assert.ok(body, `${name} is in the mount script`);
+  return Array.from(body.matchAll(/'([^']*)'/g), (match) => match[1]);
+};
+
+test('the mount script mirrors the about: page scope', () => {
+  assert.deepEqual(mountStrings('BENTO_ABOUT_THEME_MATCHES'), ABOUT_THEME_ACTOR_MATCHES);
+  assert.deepEqual(mountStrings('BENTO_ABOUT_THEME_CHROME_DOCUMENTS'), ABOUT_THEME_CHROME_DOCUMENTS);
+  // The actor matches what the sheet scopes to, minus the chrome documents.
+  const sheetPages = documentConditions({ chrome: [] }).map((condition) =>
+    condition.replace(/^url\("(.*)"\)$/, '$1').replace(/^url-prefix\("(.*)"\)$/, '$1*'),
+  );
+  assert.deepEqual(sheetPages, ABOUT_THEME_ACTOR_MATCHES);
+});
+
+test('the build ships the about: page sheet and actor', () => {
+  const patch = (name) => readFileSync(resolve(REPO_ROOT, 'patches', name), 'utf8');
+  assert.match(
+    patch('chrome-layout/01-bento-shell-mount.patch'),
+    /^\+ +content\/browser\/bento-about-themes\.css +\(content\/bento-about-themes\.css\)$/m,
+  );
+  assert.match(
+    patch('chrome-layout/04-bento-key-actors.patch'),
+    /^\+ +"BentoAboutThemeChild\.sys\.mjs",$/m,
+  );
+  assert.ok(MOUNT_SOURCE.includes("'chrome://browser/content/bento-about-themes.css'"));
+  assert.ok(MOUNT_SOURCE.includes("'resource:///actors/BentoAboutThemeChild.sys.mjs'"));
+  assert.ok(existsSync(resolve(REPO_ROOT, 'src/browser/actors/BentoAboutThemeChild.sys.mjs')));
 });

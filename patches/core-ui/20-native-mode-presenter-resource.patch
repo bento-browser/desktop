@@ -8,7 +8,7 @@ Subject: [PATCH] Package the shared native mode presenter actor resource
  1 file changed, 1 insertion(+)
 
 diff --git a/browser/actors/moz.build b/browser/actors/moz.build
-index 7678dfa4daf1b5600779a8107c26811aaf9c3182..a04a1a84234786346a22c486eec776d00d78d613 100644
+index 7f260484edafa41226f28e559a265cc0e0fefea3..9caa60161b407bb5ef6943a325c6b245aeae658d 100644
 --- a/browser/actors/moz.build
 +++ b/browser/actors/moz.build
 @@ -102,6 +102,7 @@ FINAL_TARGET_FILES.actors += [

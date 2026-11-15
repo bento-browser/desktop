@@ -520,6 +520,7 @@ test('the native final writer settles carriers before publishing its granted mod
     chromeColorModePref: null, chromeColorStamp: null,
     announceChromeColorMode: () => writes.push('publish'),
     bridgePreferenceDialogs: () => writes.push('dialogs'),
+    publishAboutTheme: () => writes.push('about-pages'),
   };
   vm.runInNewContext(`${mountFunction('writeGrantedChromeMode')}\nwriteGrantedChromeMode({pref:'system', resolved:'dark',stamp:{run:'owner',seq:2}})`, sandbox);
   assert.ok(writes.indexOf(COLOR_FADE) < writes.indexOf('data-color-mode'));
@@ -527,6 +528,9 @@ test('the native final writer settles carriers before publishing its granted mod
   // Preference dialogs in the window take the new mode inside the same settle.
   assert.ok(writes.indexOf('data-color-mode') < writes.indexOf('dialogs'));
   assert.ok(writes.indexOf('dialogs') < writes.indexOf('flush'));
+  // The window's about: pages are told the new mode with the same write.
+  assert.ok(writes.indexOf('data-color-mode') < writes.indexOf('about-pages'));
+  assert.ok(writes.indexOf('about-pages') < writes.indexOf('publish'));
   assert.equal(writes.at(-1), 'publish');
   assert.equal(attributes.get('data-bento-color-mode-pref'), 'system');
 });
