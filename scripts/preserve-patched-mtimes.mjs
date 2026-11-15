@@ -30,12 +30,26 @@ export function snapshotPath(repoRoot = DEFAULT_ROOT) {
   return path.join(repoRoot, '.bento', 'patched-mtimes.json');
 }
 
+// What `find patches -name '*.patch'` lists: entries so named that are regular
+// files or symlinks (read through the link later), found by descending only into
+// real directories. Like find's default -P, a symlinked directory (patches/ itself
+// included) is never entered.
 function patchFiles(directory) {
-  if (!fs.existsSync(directory)) return [];
-  return fs
-    .readdirSync(directory, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.patch'))
-    .map((entry) => path.join(entry.parentPath, entry.name));
+  if (!fs.lstatSync(directory, { throwIfNoEntry: false })?.isDirectory()) return [];
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) return patchFiles(absolute);
+    return entry.name.endsWith('.patch') && (entry.isFile() || entry.isSymbolicLink()) ? [absolute] : [];
+  });
+}
+
+// Like the reset's old `grep 2>/dev/null`: a dangling or unreadable link is skipped.
+function readPatch(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -46,9 +60,10 @@ function patchFiles(directory) {
 export function patchTouchedPaths(repoRoot = DEFAULT_ROOT) {
   const paths = new Set();
   for (const file of patchFiles(path.join(repoRoot, 'patches'))) {
-    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    for (const line of readPatch(file).split('\n')) {
       if (!line.startsWith('diff --git')) continue;
-      const target = line.split(/\s+/)[2];
+      // awk's default field split: runs of spaces and tabs.
+      const target = line.split(/[ \t]+/)[2];
       if (target) paths.add(target.replace(/^a\//, ''));
     }
   }
@@ -61,12 +76,21 @@ export function patchTouchedPaths(repoRoot = DEFAULT_ROOT) {
   return [...paths].sort();
 }
 
+// A path that is missing, sits under a file where the series now has a directory
+// (or the reverse), or became a symlink between lstat and open.
+const NOT_A_FILE = new Set(['ENOENT', 'ENOTDIR', 'ELOOP']);
+
 // Reads type, mode, mtime and bytes through one descriptor. Undefined for
 // anything that is not a regular file (missing, symlink, directory).
 function fileState(file) {
-  const link = fs.lstatSync(file, { bigint: true, throwIfNoEntry: false });
-  if (!link?.isFile()) return undefined;
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let fd;
+  try {
+    if (!fs.lstatSync(file, { bigint: true }).isFile()) return undefined;
+    fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  } catch (error) {
+    if (NOT_A_FILE.has(error.code)) return undefined;
+    throw error;
+  }
   try {
     const stat = fs.fstatSync(fd, { bigint: true });
     if (!stat.isFile()) return undefined;
@@ -108,9 +132,33 @@ function readSnapshot(file) {
   }
 }
 
-// utimes takes seconds as a double, so the restored time can differ from the
-// recorded one by a fraction of a microsecond.
 const seconds = (ns) => Number(BigInt(ns)) / 1e9;
+
+// The next double above a positive `value`.
+function nextUp(value) {
+  const bits = new BigUint64Array(new Float64Array([value]).buffer);
+  bits[0] += 1n;
+  return new Float64Array(bits.buffer)[0];
+}
+
+// Sets the recorded mtime, never an earlier one. utimes takes seconds as a double
+// (about 2.4e-7 s apart near 1.8e9 s), so the nearest double can land just below
+// the recorded nanoseconds; mozbuild rebuilds only what is strictly older than an
+// input, so an earlier mtime could skip a needed reconfigure or rebuild. Stepping up
+// one double at a time can land up to one step later, which at worst costs a
+// rebuild. If no step reaches the recorded time, the file gets the current time.
+function setMtimeNotEarlier(file, atimeNs, mtimeNs) {
+  const wanted = BigInt(mtimeNs);
+  let candidate = seconds(mtimeNs);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    fs.utimesSync(file, seconds(atimeNs), candidate);
+    if (fs.statSync(file, { bigint: true }).mtimeNs >= wanted) return true;
+    candidate = nextUp(candidate);
+  }
+  const now = new Date();
+  fs.utimesSync(file, now, now);
+  return false;
+}
 
 /** Returns how many files got their mtime back, or undefined when no snapshot of `run` applied. */
 export function restorePatchedMtimes({ repoRoot = DEFAULT_ROOT, run }) {
@@ -129,8 +177,7 @@ export function restorePatchedMtimes({ repoRoot = DEFAULT_ROOT, run }) {
     const current = fileState(file);
     if (!current || current.sha256 !== entry.sha256 || current.mode !== entry.mode) continue;
     if (current.mtimeNs === entry.mtimeNs) continue;
-    fs.utimesSync(file, seconds(entry.atimeNs), seconds(entry.mtimeNs));
-    restored += 1;
+    if (setMtimeNotEarlier(file, entry.atimeNs, entry.mtimeNs)) restored += 1;
   }
   return restored;
 }
