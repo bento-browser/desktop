@@ -1960,6 +1960,75 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `page-error events unavailable` once and report no page errors; nothing else depends on it.
   The experiment replaced an earlier `crashed` boolean API (manifest 0.1.13) before release.
 
+### Tab Creation Kind (bento-tab-state Experiment)
+
+- Status: Active
+- Last updated: 2026-11-16
+- Files or patches:
+  - `extensions/bento-tools/experiments/bento-tab-state/api.js` and `schema.json`
+    (`browser.bentoTabState.getCreationKind`)
+  - `extensions/bento-tools/manifest.json` (version 0.1.18: the experiment schema changed)
+  - `extensions/bento-tools/src/tabs/CreatedTab.ts`, `src/background.ts` (the caller)
+  - No Firefox patch and no mount script change.
+- Bento functionality: a tab opened from a link, a middle-click or a shortcut appears in the
+  sidebar at once instead of about 1.1 s later. bento-tools used to read every created tab's
+  SessionStore values for up to ~1 s before filing it in a workspace; it now skips that wait
+  for a tab the experiment calls `new`. See
+  [workspaces.md](technical/workspaces.md#new-tab-placement).
+- Vanilla Firefox surface touched or depended on:
+  - `TabOpen` on `gBrowser.tabContainer`, dispatched synchronously by `addTab` /
+    `createTabsForSessionRestore` (`#fireTabOpen`), so the listener's synchronous stack
+    (`Components.stack` and its `caller` chain) includes the code that created the tab.
+  - The SessionStore module URL `moz-src:///browser/components/sessionstore/SessionStore.sys.mjs`
+    as a stack frame filename: every SessionStore path that creates a tab (`undoCloseTab`,
+    `duplicateTab`, `#restoreWindow` through `createTabsForSessionRestore`) calls into
+    Tabbrowser itself.
+  - The `pending` attribute SessionStore sets on a tab it restores into (`#restoreTab`).
+  - `ext-browser.js` `TabTracker` emitting `tabs.onCreated` one microtask after `TabOpen`; the
+    synchronous restores attach the tab's custom values (`TAB_CUSTOM_VALUES` in `#restoreTab`)
+    in the same run, so they are readable by then.
+  - `SessionStore.duplicateTab`, which creates the tab synchronously but attaches the values
+    only after `TabStateFlusher.flush` resolves (after `tabs.onCreated`).
+  - `EveryWindow.registerCallback` and `extension.tabManager.get(tabId, null).nativeTab`.
+- Why this cannot stay extension-only: `tabs.onCreated` says nothing about who created the
+  tab, and the values a restore attaches can arrive after it. Only a parent-process listener
+  on `TabOpen` sees the creating stack. It needs no Firefox patch.
+- Firefox update risk: a SessionStore module URL change (`moz-src` to `resource`, a rename or a
+  split of SessionStore into several modules) or a path that creates a restored tab from an
+  async callback (a microtask or later, so SessionStore is not on the `TabOpen` stack) makes a
+  restored tab look `new`: it would join the window's workspace at once and a restored panel
+  would show as a sidebar tab, because the retries are skipped. The reverse (a new tab reported
+  `restoring`) only brings the old delay back. `TabOpen` dispatched asynchronously after
+  `addTab`, or `tabs.onCreated` emitted before `TabOpen`, makes every tab `unknown` (the old
+  delay).
+- Regression checks for future updates: run `pnpm run firefox:compat:engine`; then, in a built
+  app on a temporary profile, the creation-kind probe. In the Browser Toolbox Console paste:
+
+  ```js
+  const ssUrl = 'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs';
+  gBrowser.tabContainer.addEventListener('TabOpen', (e) => {
+    let onStack = false;
+    for (let f = Components.stack; f; f = f.caller) if (f.filename === ssUrl) onStack = true;
+    const tab = e.target;
+    const values = () => SessionStore.getCustomTabValue(tab, 'bento.probe');
+    const atOpen = values();
+    Promise.resolve().then(() => console.log('[bento-probe]', { onStack, pending: tab.hasAttribute('pending'), atOpen, atMicrotask: values() }));
+  });
+  SessionStore.setCustomTabValue(gBrowser.selectedTab, 'bento.probe', 'tagged');
+  ```
+
+  Then in the Bento window: click a `target=_blank` link, middle-click a link, press Cmd+T and
+  open an address, close the tagged tab and press Cmd+Shift+T, and duplicate the reopened tab.
+  Expected: `onStack` false for the first three and true for the last two; the reopened tab
+  has `atMicrotask: 'tagged'`, the duplicate has it only later. A local Marionette harness for
+  the same check was used on 2026-11-16 (`plans/new-tab-delay/runtime/probe_creation_kind.py`,
+  and `probe_experiment.py`, which runs the experiment's own `getCreationKind`; `plans/` is
+  untracked). By hand: open a link in a new tab and confirm its sidebar row appears with no
+  visible delay; close a panel, press Cmd+Shift+T and confirm it returns as a panel; duplicate
+  a tab and confirm the copy shows in the original's workspace.
+- Rollback or migration notes: without `getCreationKind` every tab takes the retry path (the
+  ~1 s delay) and nothing else changes.
+
 ### Interface Scale (bento-privacy Experiment)
 
 - Status: Active
@@ -4116,7 +4185,7 @@ below is generated; edit the registry, then run
 | `#tabbrowser-arrowscrollbox` | source (engine only) | The native tab strip's arrowscrollbox, whose shadow-tree overflow arrows take their icon fill from the inherited --toolbarbutton-icon-fill. Bento sets that property from the registered --bento-arrow-fill on this element so the arrows fade with the mode flip (a profile that shows the strip). | `src/browser/base/content/bento-chrome-theme.css#tabbrowser-arrowscrollbox` | `browser/base/content/navigator-toolbox.inc.xhtml:60` |
 | `.browserContainer panel structure` | source (engine only) | Bento finds a panel browser as :scope > .browserContainer browser inside the tab panel. | `reconcilePanelsSplitView`, `getLivePanelBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3258` |
 | `gBrowser.tabpanels` | member (runtime) | The #tabbrowser-tabpanels element hosting every panel; attachTabSelectListener waits for it. | `attachTabSelectListener`, `reconcilePanelsSplitView` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:242` |
-| `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. bento-tab-state observes its subtree for the crashed attribute. | `attachTabSelectListener`, `extensions/bento-tools/experiments/bento-tab-state/api.js#tabContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:238` |
+| `gBrowser.tabContainer` | member (runtime) | Receives TabSelect/TabOpen listeners; attachTabSelectListener waits for it. bento-tab-state observes its subtree for the crashed attribute and listens to its TabOpen to record each tab's creation kind. | `attachTabSelectListener`, `extensions/bento-tools/experiments/bento-tab-state/api.js#tabContainer` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:238` |
 | `MozTabbrowserTab.linkedPanel` | member (runtime) | Id of the tab panel (a get/set accessor on the MozTab prototype); Bento resolves it with getElementById to reach the panel DOM. It is empty on a lazy (discarded or not yet restored) tab, which bento-tab-state tests before it reads the tab browser, as Firefox's tabs API does for `discarded`. | `reconcilePanelsSplitView`, `getLivePanelBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#linkedPanel` | `toolkit/content/widgets/tabbox.js:851` |
 | `Element.prototype.moveBefore` | method (runtime) | Re-parents #tabbrowser-tabbox and #bento-side-panel-host at startup without recreating the frameloader of the first tab browser (no pref gate in 154); insertBefore is the fallback. | `moveNodeBefore` | `dom/webidl/ParentNode.webidl:34` |
 | `MozBrowser.connectedMoveCallback` | source (engine only) | moveBefore on a browser element ends in this no-op callback instead of destruct() and construct(). | `moveNodeBefore` | `toolkit/content/widgets/browser-custom-element.mjs:438` |
@@ -4276,8 +4345,15 @@ below is generated; edit the registry, then run
 | `tabTracker.getId` | source (engine only) | Resolves a chrome tab element to its WebExtension tab id. | `getTrackedTabById`, `getBentoTabId` | `browser/components/extensions/parent/ext-browser.js:365` |
 | `windowTracker.getId` | source (engine only) | Resolves a chrome window to its WebExtension window id. | `getChromeWindowId`, `src/browser/actors/BentoShellBusParent.sys.mjs#windowTracker` | `toolkit/components/extensions/parent/ext-tabs-base.js:1817` |
 | `extension.tabManager.getWrapper` | source (engine only) | Maps a chrome tab element to the WebExtension tab wrapper (its id), and to nothing for a tab the extension may not see, so bento-tab-state reports page errors by tab id. | `extensions/bento-tools/experiments/bento-tab-state/api.js#getWrapper` | `toolkit/components/extensions/parent/ext-tabs-base.js:2269` |
-| `EveryWindow.registerCallback` | source (engine only) | Runs the page-error observer and progress listener in every browser window once its startup is done, including windows opened later, and removes them when a window closes or the listener goes away. | `extensions/bento-tools/experiments/bento-tab-state/api.js#registerCallback` | `browser/modules/EveryWindow.sys.mjs:60` |
+| `EveryWindow.registerCallback` | source (engine only) | Runs the page-error observer and progress listener, and the creation-kind TabOpen listener, in every browser window once its startup is done, including windows opened later, and removes them when a window closes or the listener (or the extension context) goes away. A tab opened before its window finished delayed startup has no creation kind ("unknown"). | `extensions/bento-tools/experiments/bento-tab-state/api.js#registerCallback` | `browser/modules/EveryWindow.sys.mjs:60` |
 | `EveryWindow.readyWindows` | source (engine only) | Lists the browser windows whose startup is done when bento-tab-state reads which tabs show a failure page. | `extensions/bento-tools/experiments/bento-tab-state/api.js#readyWindows` | `browser/modules/EveryWindow.sys.mjs:43` |
+| `extension.tabManager.get` | source (engine only) | Resolves a WebExtension tab id to its tab element for getCreationKind; it throws for a tab the extension may not see, which bento-tab-state answers with "unknown". | `extensions/bento-tools/experiments/bento-tab-state/api.js#getCreationKind` | `browser/components/extensions/parent/ext-browser.js:1279` |
+| `TabOpen fires synchronously inside addTab` | source (engine only) | Tabbrowser dispatches TabOpen from addTab (and createTabsForSessionRestore) on the caller's stack, so the synchronous frames of a TabOpen listener (Components.stack and its caller chain) include whoever created the tab. bento-tab-state reads that stack. | `extensions/bento-tools/experiments/bento-tab-state/api.js#onTabOpen` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:4039` |
+| `tabs.onCreated a microtask after TabOpen` | source (engine only) | TabTracker emits tabs.onCreated one microtask after TabOpen, so the creation kind is recorded before bento-tools can ask for it, and the custom values a synchronous SessionStore restore attaches after TabOpen (undoCloseTab, window restores) are present by the time bento-tools reads them. | `extensions/bento-tools/src/tabs/CreatedTab.ts#getCreationKind` | `browser/components/extensions/parent/ext-browser.js:554` |
+| `SessionStore module URL on the TabOpen stack` | source (engine only) | bento-tab-state calls a tab "restoring" when a frame of its TabOpen stack has this filename. A module URL change (moz-src to resource, a rename or a split of SessionStore) would make every restored tab look new and take the no-wait path; rerun the creation-kind probe (Tab Creation Kind in docs/firefox-core-touchpoints.md). | `extensions/bento-tools/experiments/bento-tab-state/api.js#SESSION_STORE_URL` | `browser/base/content/browser.js:93` |
+| `SessionStore.undoCloseTab restores in the same run` | source (engine only) | undoCloseTab creates the tab with addTrustedTab and calls #restoreTab (which attaches its custom values) before returning, so the tab is "restoring" by its stack and its values are readable at tabs.onCreated. | `extensions/bento-tools/experiments/bento-tab-state/api.js#sessionStoreOnStack` | `browser/components/sessionstore/SessionStore.sys.mjs:4613` |
+| `SessionStore.duplicateTab restores after a flush` | source (engine only) | duplicateTab creates the tab synchronously (SessionStore on the TabOpen stack) but attaches its custom values only after TabStateFlusher.flush resolves, after tabs.onCreated. This is why the stack, not the presence of values, decides "restoring"; bento-tools keeps its retries for such a tab. | `extensions/bento-tools/experiments/bento-tab-state/api.js#sessionStoreOnStack` | `browser/components/sessionstore/SessionStore.sys.mjs:4093` |
+| `tab[pending] at TabOpen` | source (engine only) | SessionStore marks a tab it restores into with the pending attribute (#restoreTab); bento-tab-state counts a tab that already has it at TabOpen as "restoring". | `extensions/bento-tools/experiments/bento-tab-state/api.js#pending` | `browser/components/sessionstore/SessionStore.sys.mjs:6810` |
 | `moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs` | module (runtime) | Supplies the static isTab classifier for crashed-attribute records; Firefox 159 moved it off the gBrowser instance. | `extensions/bento-tools/experiments/bento-tab-state/api.js#Tabbrowser.sys.mjs` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:212` |
 | `Tabbrowser.isTab` | source (engine only) | Keeps only <tab> elements from the crashed-attribute records: a tab copies the attribute onto its icon children, which would otherwise be given tab ids. | `extensions/bento-tools/experiments/bento-tab-state/api.js#isTab` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8019` |
 | `tab[crashed] set` | source (engine only) | TabCrashHandler.sendToTabCrashedPage sets the crashed attribute on a tab element while its crashed-tab page shows (no tab event fires), before the page document exists; bento-tab-state reports it as pageError crashed. The attribute is not copied to the tab element an adopted tab gets, so the document counts first. | `extensions/bento-tools/experiments/bento-tab-state/api.js#CRASHED_ATTRIBUTE` | `browser/modules/ContentCrashHandlers.sys.mjs:554` |

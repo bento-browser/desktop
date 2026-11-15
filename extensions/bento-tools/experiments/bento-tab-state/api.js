@@ -1,6 +1,6 @@
 'use strict';
 
-/* globals ChromeUtils, ExtensionAPI, ExtensionCommon */
+/* globals ChromeUtils, Components, ExtensionAPI, ExtensionCommon */
 
 // The experiments of one add-on load into one shared scope, where top-level const and let names
 // collide, so this file keeps its names inside a function (as bento-external-sessions does).
@@ -43,6 +43,16 @@
   const CERTIFICATE_NET_ERRORS = new Set(['nssBadCert', 'nssFailure2']);
   const BLOCKED_NET_ERRORS = new Set(['blockedByPolicy']);
 
+  // How a tab came to exist, for tabs.onCreated: SessionStore attaches a restored tab's custom
+  // values (extData) after TabOpen, so a listener that sees a tab without them cannot tell a tab
+  // the user just opened from one SessionStore is still filling in. Every SessionStore path that
+  // creates a tab (undoCloseTab, duplicateTab, window and session restores) calls addTab itself,
+  // so its module is on the synchronous stack of TabOpen. A tab that is already [pending] (the
+  // mark #restoreTab sets, normally just after TabOpen) counts as restoring too. duplicateTab
+  // attaches the values only after a flush round-trip, which is why the stack, not the values,
+  // is the signal.
+  const SESSION_STORE_URL = 'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs';
+
   const { EveryWindow } = ChromeUtils.importESModule('resource:///modules/EveryWindow.sys.mjs');
   const { Tabbrowser } = ChromeUtils.importESModule(
     'moz-src:///browser/components/tabbrowser/Tabbrowser.sys.mjs',
@@ -59,9 +69,41 @@
     return BLOCKED_NET_ERRORS.has(error) ? 'blocked' : 'unavailable';
   }
 
+  function sessionStoreOnStack() {
+    for (let frame = Components.stack; frame; frame = frame.caller) {
+      if (frame.filename === SESSION_STORE_URL) return true;
+    }
+    return false;
+  }
+
   global.bentoTabState = class extends ExtensionAPI {
     getAPI(context) {
       const { tabManager } = context.extension;
+
+      // The creation kind of each tab element whose TabOpen this API heard. A tab opened before
+      // its window finished its delayed startup (when EveryWindow reaches it) has none.
+      const creationKinds = new WeakMap();
+      const onTabOpen = (event) => {
+        const nativeTab = event.target;
+        const restoring = nativeTab.hasAttribute('pending') || sessionStoreOnStack();
+        creationKinds.set(nativeTab, restoring ? 'restoring' : 'new');
+      };
+      const creationWatchId = `${WATCHER_ID_PREFIX}creation-${++watcherCount}`;
+      const creationWatched = new WeakSet();
+      EveryWindow.registerCallback(
+        creationWatchId,
+        (win) => {
+          if (creationWatched.has(win)) return;
+          creationWatched.add(win);
+          win.gBrowser.tabContainer.addEventListener('TabOpen', onTabOpen);
+        },
+        (win) => {
+          if (!creationWatched.has(win)) return;
+          creationWatched.delete(win);
+          win.gBrowser.tabContainer.removeEventListener('TabOpen', onTabOpen);
+        },
+      );
+      context.callOnClose({ close: () => EveryWindow.unregisterCallback(creationWatchId) });
 
       // The WebExtension tab id of a tab element, or null when this extension may not see the tab
       // (a private window without access, or a tab that is mid-adoption).
@@ -86,6 +128,19 @@
 
       return {
         bentoTabState: {
+          // "new" for a tab opened by a link, a shortcut or tabs.create, "restoring" for one
+          // SessionStore creates or restores into, and "unknown" for a tab this API did not see
+          // open (or cannot resolve). Only "new" means the tab will get no restored values.
+          async getCreationKind(tabId) {
+            let nativeTab = null;
+            try {
+              nativeTab = tabManager.get(tabId, null)?.nativeTab ?? null;
+            } catch {
+              // A tab this extension may not see.
+            }
+            return (nativeTab && creationKinds.get(nativeTab)) ?? 'unknown';
+          },
+
           // Every tab that shows one of those pages now, as { tabId, pageError }. It is the starting
           // state for `onPageErrorChanged`, which reports changes only, and the way to re-read
           // after a tab moved to another window. Tabs in a window that has not finished its

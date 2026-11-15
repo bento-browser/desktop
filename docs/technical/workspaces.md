@@ -816,6 +816,51 @@ used by single-tab moves after the batch finishes. Creating the workspace
 inactive prevents the activation orchestrator from seeing an empty workspace and
 opening an unwanted blank tab before the moved tabs arrive.
 
+## New tab placement
+
+The shell lists only tabs whose `workspaceId` matches the window's workspace
+(`extensions/bento-shell/src/state/tabs.ts`), so a tab is invisible in the sidebar until
+bento-tools gives it one. Tabs Bento's own handlers open (`tab/create`, `tab/openUrl`, panel
+adds, the panel restore's `openTabForUrl` in `background.ts`, the backup import's tabs,
+panels and fallback tab in `backup/ImportExecutor.ts`, external merge, parked restore) are
+assigned by the handler with `assignWorkspaceEagerly`, called right after `browser.tabs.create`
+resolves and before any other await. Every other tab created after startup (a link
+with `target=_blank`, a middle-click, a Firefox shortcut, Cmd+Shift+T, Duplicate Tab) is placed
+by `createCreatedTabs` in `extensions/bento-tools/src/tabs/CreatedTab.ts`, which
+`background.ts` drives from two places:
+
+- `TabRegistry.onTabCreated` (called synchronously from the registry's own `tabs.onCreated`
+  listener, right after it queues the `created` delta) calls `createdTabs.onCreated` before any
+  await. It captures the workspace
+  the tab's window shows at that moment (`WorkspaceStore.getActiveId(windowId)`) and starts the
+  tab's one placement: `browser.bentoTabState.getCreationKind(tabId)` (the bento-tab-state
+  experiment records, at `TabOpen`, `restoring` when SessionStore is on the synchronous stack
+  or the tab is `[pending]`, else `new`; a tab it did not see is `unknown`). A `new` tab with
+  no `bento.isPanel` marker and no `bento.workspaceId` value on one immediate read is fresh: it
+  skips `restorePanelFromMarkerOnce` (the marker retries and `hydrateRestoredTab`). Any other
+  tab runs that restore as before. Either way the panel-opener promotion
+  (`maybePromotePanelOpenerTab`) runs next, so a link opened from a panel becomes a panel
+  before anything can give it a sidebar row.
+- The registry's `created` delta, for a regular tab still without a workspace, calls
+  `createdTabs.placeUnassigned`, which waits for that same placement. A panel stops there. A
+  fresh tab is assigned at once with `assignWorkspaceEagerly` (memory and delta first, the
+  session value after) to the captured workspace, unless a handler assigned it meanwhile. Any
+  other tab reads `bento.workspaceId` with retries (8 x 50 ms), keeps a value it finds in memory
+  only (`setWorkspaceInMemory`), and otherwise joins the captured workspace through
+  `assignWorkspace`. A null capture (a window opened before `shell/hello` gave it a workspace)
+  is read again at assignment; if the window still shows none, even a fresh tab takes the
+  retry path and reads the window's workspace after the waits.
+
+Source of truth: `WorkspaceStore` for the captured workspace; SessionStore (parent process) for
+`bento.workspaceId` and `bento.isPanel`; the experiment's per-window `WeakMap` for the creation
+kind (lost with the tab element). Bridge: the `tabs` port deltas (`created`, then `updated`
+with `workspaceId`). Persistence: `browser.sessions.setTabValue(..., 'bento.workspaceId')`.
+Startup tabs (before the adoption gate settles) are not classified: startup hydrates them.
+Firefox contract and the probe that checks it: Tab Creation Kind in
+[firefox-core-touchpoints.md](../firefox-core-touchpoints.md). Manual check: open a link in a
+new tab (its row appears at once), Cmd+Shift+T a closed panel (it comes back as a panel), and
+duplicate a tab (the copy joins the original's workspace).
+
 ## Sidebar collapse and expand
 
 State and bridge: tools owns `BentoSettings.sidebarCollapsed` and `sidebarHidden`;
@@ -1412,6 +1457,34 @@ workspaces.
   workspace" rows; a regular window next to it is unchanged.
 
 ## Workspace pitfalls
+
+- Do not file a created tab in the workspace its window shows when its placement finishes.
+  Placement waits on the experiment and, for a restored or unknown tab, up to ~1 s of session
+  reads; a workspace switch in that time filed the tab in the newly shown workspace. Capture
+  the window's workspace synchronously in `tabs.onCreated` (`createdTabs.onCreated`) and use
+  that capture on every path. Do not reintroduce session-value retries for a tab the
+  experiment calls `new`: the shell hides a tab without a workspace, and those waits delayed
+  each link-opened tab's sidebar row by about 1.1 s (measured median 1096 ms, against 63 ms
+  for Cmd+T, whose handler assigns eagerly). Keep them for `restoring` and `unknown`:
+  `SessionStore.duplicateTab` attaches the copied values only after a flush round-trip, after
+  `tabs.onCreated`. Run the panel-opener promotion before the eager assignment, or a link
+  opened from a panel flashes a sidebar row first. A handler that creates a tab and gives it a
+  workspace must use `assignWorkspaceEagerly` straight after `browser.tabs.create`, before any
+  other await: `assignWorkspace` updates memory only after its session write, so the fast path
+  could file the tab in the shown workspace meanwhile, or, with the handler's write in flight,
+  leave memory and the session value naming different workspaces. Found 2026-11-16.
+
+- Do not start a created tab's placement from a second `browser.tabs.onCreated` listener.
+  Firefox delivers each listener its own message, and the registry's `created` delta can flush
+  between them; `placeUnassigned` then finds no record and takes the ~1.1 s path (about 1 link
+  tab in 5 in a 2026-11-16 run). Use `TabRegistry.onTabCreated`, which runs before that flush.
+  Do not keep a null workspace capture either: a link that opens a new window before
+  `shell/hello` captures null, and if the window then claims a workspace that has tabs,
+  activation does not adopt the unassigned tab, so it stays hidden. Re-read the window's
+  workspace at assignment. The import (`backup/ImportExecutor.ts`) starts
+  `assignWorkspaceEagerly` before `operation.onTabCreated` but awaits it after: awaiting the
+  session write first left a window in which a background restart kept a created tab out of the
+  import journal, so recovery could not remove it.
 
 - Do not index Cmd/Ctrl+1 to 9 by `gBrowser.tabs` alone. Folders do not move
   native tabs, so a tab in the second folder could come before the first

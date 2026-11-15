@@ -250,6 +250,11 @@ reaches another window some other way (with Firefox's native tab strip turned on
 through an extension) takes its page with it and joins the workspace shown in the
 destination window; a panel moved that way becomes a regular tab there, and a new
 window opens with only the moved tab or tabs, not an extra blank tab.
+A tab a page opens (a link that opens a new tab, a middle-click) appears in the sidebar
+at once, in the workspace its window showed when it opened, even if the window switches
+workspace right after; one opened from a panel becomes a panel next to it instead. A
+reopened closed tab returns to the workspace or panel slot it had, and a duplicated tab
+joins the workspace of the tab it copies.
 Closing a tab or panel whose page asks to stay (a leave-page prompt) and choosing
 to stay keeps it in its workspace, folder, and panel slot. A sub-panel or
 subdivision comes back as a regular panel at the top level of the layout. If the

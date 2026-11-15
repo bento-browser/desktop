@@ -147,8 +147,12 @@ export async function executeImport(
           windowId: ctx.targetWindowId,
         });
         if (typeof created.id !== 'number') continue;
+        // Assigned in memory before any await, or the tab is placed in the window's shown
+        // workspace (tabs/CreatedTab.ts); journaled before its persistence is awaited, so a
+        // restart in between still lets recovery remove it.
+        const assigned = ctx.tabs.assignWorkspaceEagerly(created.id, ws.id);
         await ctx.operation?.onTabCreated(created.id);
-        await ctx.tabs.assignWorkspace(created.id, ws.id);
+        await assigned;
         if (tabData.customTitle) {
           await ctx.tabs.rename(created.id, tabData.customTitle);
         }
@@ -191,8 +195,12 @@ export async function executeImport(
           windowId: ctx.targetWindowId,
         });
         if (typeof created.id !== 'number') continue;
+        // Assigned in memory before any await, or the tab is placed in the window's shown
+        // workspace (tabs/CreatedTab.ts); journaled before its persistence is awaited, so a
+        // restart in between still lets recovery remove it.
+        const assigned = ctx.tabs.assignWorkspaceEagerly(created.id, ws.id);
         await ctx.operation?.onTabCreated(created.id);
-        await ctx.tabs.assignWorkspace(created.id, ws.id);
+        await assigned;
         tabId = created.id;
         createdTabIdsByWorkspace.get(ws.id)!.push(created.id);
         summary.tabsOpened++;
@@ -289,8 +297,9 @@ export async function executeImport(
     if (ordinary.length === 0) {
       const guard = await browser.tabs.create({ url: 'about:blank', active: false, windowId });
       if (typeof guard.id !== 'number') throw new Error('target_window_unavailable');
+      const assigned = ctx.tabs.assignWorkspaceEagerly(guard.id, workspaceId);
       await ctx.operation?.onTabCreated(guard.id);
-      await ctx.tabs.assignWorkspace(guard.id, workspaceId);
+      await assigned;
       createdTabIdsByWorkspace.get(workspaceId)!.push(guard.id);
       ordinary = [guard.id];
       ordinaryTabIdsByWorkspace.set(workspaceId, ordinary);

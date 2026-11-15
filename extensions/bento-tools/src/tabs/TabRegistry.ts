@@ -17,7 +17,7 @@ export interface WindowClosingTabSnapshot extends TabSnapshot {
 
 type WindowClosingListener = (info: { windowId: number; tabs: WindowClosingTabSnapshot[] }) => void;
 
-const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
+export const WORKSPACE_SESSION_KEY = 'bento.workspaceId';
 const FOLDER_SESSION_KEY = 'bento.folderId';
 const CUSTOM_TITLE_SESSION_KEY = 'bento.customTitle';
 const CLOSING_TAB_SESSION_KEY = 'bento.closingTab';
@@ -140,6 +140,7 @@ export class TabRegistry {
   #flushScheduled = false;
   #listeners = new Set<Listener>();
   #windowClosingListeners = new Set<WindowClosingListener>();
+  #createdListeners = new Set<(tab: browser.tabs.Tab) => void>();
   #notifiedClosingWindows = new Set<number>();
   #urlByTabId = new Map<number, string>();
   #closingTabIds = new Set<number>();
@@ -665,6 +666,14 @@ export class TabRegistry {
     return () => this.#listeners.delete(listener);
   }
 
+  /** tabs.onCreated, delivered before the frame that flushes the tab's 'created' delta. Use it
+   * rather than a second tabs.onCreated listener: Firefox sends each listener its own message,
+   * and that flush can run between the two. */
+  onTabCreated(listener: (tab: browser.tabs.Tab) => void): () => void {
+    this.#createdListeners.add(listener);
+    return () => this.#createdListeners.delete(listener);
+  }
+
   onWindowClosing(listener: WindowClosingListener): () => void {
     this.#windowClosingListeners.add(listener);
     return () => this.#windowClosingListeners.delete(listener);
@@ -719,6 +728,14 @@ export class TabRegistry {
     if (url) this.#urlByTabId.set(snap.id, url);
     this.#tabs.set(snap.id, snap);
     this.#enqueue({ kind: 'created', tab: snap });
+    for (const listener of this.#createdListeners) {
+      // Isolated like separate tabs.onCreated listeners, so a throw cannot skip the hydration below.
+      try {
+        listener(tab);
+      } catch (err) {
+        console.warn('[bento-tools] onTabCreated listener failed:', snap.id, err);
+      }
+    }
     // For tabs that have NEVER been hydrated (no existing entry, or
     // the existing entry also lacked workspaceId), kick off an async
     // session-value read. If a value comes back, set it in-memory.

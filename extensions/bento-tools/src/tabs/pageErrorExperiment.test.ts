@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import apiSource from '../../experiments/bento-tab-state/api.js?raw';
 
 // Runs the experiment's real api.js against stand-ins for the Firefox objects it touches, to
-// check what it reports: the mapping from a tab's document to a pageError, and the events.
+// check what it reports: the mapping from a tab's document to a pageError, the events, and each
+// tab's creation kind.
+
+const SESSION_STORE_URL = 'moz-src:///browser/components/sessionstore/SessionStore.sys.mjs';
 
 type Fire = (tabId: number, pageError: string | null) => void;
 
@@ -76,8 +79,17 @@ function setup() {
     unregisterCallback: vi.fn((id: string) => callbacks.delete(id)),
   };
   const scope: Record<string, unknown> = {};
+  /** File names of the synchronous stack frames TabOpen runs under, innermost first. */
+  let stackFiles: string[] = [];
+  const frameAt = (i: number): { filename: string; caller: unknown } | null =>
+    i < stackFiles.length ? { filename: stackFiles[i]!, caller: frameAt(i + 1) } : null;
   const globals = {
     globalThis: scope,
+    Components: {
+      get stack() {
+        return frameAt(0);
+      },
+    },
     ChromeUtils: {
       importESModule: (url: string) => {
         if (url === 'resource:///modules/EveryWindow.sys.mjs') return { EveryWindow: everyWindow };
@@ -101,15 +113,27 @@ function setup() {
   const Api = scope.bentoTabState as new () => {
     getAPI(context: unknown): {
       bentoTabState: {
+        getCreationKind(tabId: number): Promise<string>;
         getPageErrors(): Promise<{ tabId: number; pageError: string }[]>;
         onPageErrorChanged: { register(fire: { async: Fire }): () => void };
       };
     };
   };
+  /** Every tab element a window holds, by id, for tabManager.get. */
+  const nativeTabs = new Map<number, FakeTab>();
+  const closers: { close(): void }[] = [];
   const { bentoTabState } = new Api().getAPI({
     extension: {
-      tabManager: { getWrapper: (t: FakeTab) => (hiddenIds.has(t.id) ? undefined : { id: t.id }) },
+      tabManager: {
+        getWrapper: (t: FakeTab) => (hiddenIds.has(t.id) ? undefined : { id: t.id }),
+        get: (tabId: number, fallback: unknown) => {
+          if (hiddenIds.has(tabId)) throw new Error(`Invalid tab ID: ${tabId}`);
+          const nativeTab = nativeTabs.get(tabId);
+          return nativeTab ? { nativeTab } : fallback;
+        },
+      },
     },
+    callOnClose: (closer: { close(): void }) => closers.push(closer),
   });
   const fired: [number, string | null][] = [];
   const stop = bentoTabState.onPageErrorChanged.register({
@@ -119,13 +143,22 @@ function setup() {
   const listeners = new Set<{
     onLocationChange(browser: unknown, webProgress: { isTopLevel: boolean }): void;
   }>();
+  const tabOpenListeners = new Set<(event: { target: FakeTab }) => void>();
   /** A window with `tabs`, started like EveryWindow does after its delayed startup. */
   const startWindow = (tabs: FakeTab[]) => {
+    for (const t of tabs) nativeTabs.set(t.id, t);
     const win = {
       MutationObserver: FakeObserver,
       gBrowser: {
         tabs,
-        tabContainer: {},
+        tabContainer: {
+          addEventListener: (type: string, l: (event: { target: FakeTab }) => void) => {
+            if (type === 'TabOpen') tabOpenListeners.add(l);
+          },
+          removeEventListener: (type: string, l: (event: { target: FakeTab }) => void) => {
+            if (type === 'TabOpen') tabOpenListeners.delete(l);
+          },
+        },
         getTabForBrowser: (browser: FakeTab['linkedBrowser']) =>
           tabs.find((t) => t.linkedBrowser === browser),
         addTabsProgressListener: (l: Parameters<typeof listeners.add>[0]) => listeners.add(l),
@@ -140,9 +173,19 @@ function setup() {
     t.linkedBrowser.documentURI = uri(spec);
     for (const l of listeners) l.onLocationChange(t.linkedBrowser, { isTopLevel });
   };
+  /** Dispatches TabOpen for a new tab element while `stack` is the synchronous call stack. */
+  const openTab = (t: FakeTab, stack: string[] = []) => {
+    nativeTabs.set(t.id, t);
+    stackFiles = ['resource:///modules/Tabbrowser.sys.mjs', ...stack];
+    for (const l of tabOpenListeners) l({ target: t });
+    stackFiles = [];
+  };
   return {
     bentoTabState,
     everyWindow,
+    openTab,
+    tabOpenListeners,
+    closers,
     callbacks,
     fired,
     listeners,
@@ -365,5 +408,42 @@ describe('bentoTabState events', () => {
 
     t.stop();
     expect(t.everyWindow.unregisterCallback).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('bentoTabState creation kind', () => {
+  it('calls a tab new unless SessionStore opened it or it is pending a restore', async () => {
+    const t = setup();
+    t.startWindow([tab(1, 'https://example.org/')]);
+    t.openTab(tab(2, null), ['chrome://browser/content/browser.js']);
+    t.openTab(tab(3, null), [SESSION_STORE_URL, 'chrome://browser/content/browser-sets.js']);
+    t.openTab(tab(4, null, ['pending']));
+
+    expect(await t.bentoTabState.getCreationKind(2)).toBe('new');
+    expect(await t.bentoTabState.getCreationKind(3)).toBe('restoring');
+    expect(await t.bentoTabState.getCreationKind(4)).toBe('restoring');
+  });
+
+  it('does not know tabs it did not see open, or may not see', async () => {
+    const t = setup();
+    t.startWindow([tab(1, 'https://example.org/')]);
+    t.hiddenIds.add(2);
+    t.openTab(tab(2, null));
+
+    expect(await t.bentoTabState.getCreationKind(1)).toBe('unknown');
+    expect(await t.bentoTabState.getCreationKind(2)).toBe('unknown');
+    expect(await t.bentoTabState.getCreationKind(99)).toBe('unknown');
+  });
+
+  it('stops listening when its window goes away or its context closes', () => {
+    const t = setup();
+    const win = t.startWindow([]);
+    expect(t.tabOpenListeners.size).toBe(1);
+
+    for (const { uninit } of t.callbacks.values()) uninit(win);
+    expect(t.tabOpenListeners.size).toBe(0);
+
+    for (const closer of t.closers) closer.close();
+    expect(t.everyWindow.unregisterCallback).toHaveBeenCalledWith('bento-tab-state-creation-1');
   });
 });

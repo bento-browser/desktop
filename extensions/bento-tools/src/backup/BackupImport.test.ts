@@ -167,7 +167,7 @@ describe('workspace backup import/export', () => {
         activate: vi.fn(() => 'activated'),
       },
       tabs: {
-        assignWorkspace: vi.fn(async () => undefined),
+        assignWorkspaceEagerly: vi.fn(async () => true),
       },
       panels: {
         setWidth,
@@ -279,7 +279,7 @@ describe('workspace backup import/export', () => {
       createdAt: 456,
     }));
     const deleteWorkspace = vi.fn();
-    const assignWorkspace = vi.fn(async () => undefined);
+    const assignWorkspaceEagerly = vi.fn(async () => true);
 
     const ctx = {
       workspaces: {
@@ -299,7 +299,7 @@ describe('workspace backup import/export', () => {
             pinned: false,
           },
         ],
-        assignWorkspace,
+        assignWorkspaceEagerly,
       },
       panels: {
         setWidth: vi.fn(),
@@ -362,7 +362,7 @@ describe('workspace backup import/export', () => {
       pinned: false,
       windowId: 42,
     });
-    expect(assignWorkspace).toHaveBeenCalledWith(200, 'imported-workspace');
+    expect(assignWorkspaceEagerly).toHaveBeenCalledWith(200, 'imported-workspace');
     expect(removeTabs).toHaveBeenCalledWith([10]);
     expect(deleteWorkspace).toHaveBeenCalledWith('old-workspace');
     expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
@@ -397,8 +397,28 @@ describe('workspace backup import/export', () => {
       },
     });
 
-    const assignWorkspace = vi.fn(async () => undefined);
+    // Persistence settles a task later, so a journal entry made after it would see true.
+    let persisted = false;
+    const assignWorkspaceEagerly = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) =>
+          setTimeout(() => {
+            persisted = true;
+            resolve(true);
+          }),
+        ),
+    );
+    const persistedAtJournal: boolean[] = [];
+    const onTabCreated = vi.fn(async () => {
+      persistedAtJournal.push(persisted);
+    });
     const ctx = {
+      operation: {
+        plannedWorkspaceIds: [],
+        onPhase: vi.fn(async () => undefined),
+        onWorkspaceCreated: vi.fn(async () => undefined),
+        onTabCreated,
+      },
       workspaces: {
         snapshot: () => ({
           workspaces: [{ id: 'old-workspace', name: 'Old', createdAt: 1 }],
@@ -409,7 +429,7 @@ describe('workspace backup import/export', () => {
       },
       tabs: {
         snapshot: () => [{ id: 10, workspaceId: 'old-workspace', title: 'Old', pinned: false }],
-        assignWorkspace,
+        assignWorkspaceEagerly,
       },
       panels: {
         setWidth: vi.fn(),
@@ -457,7 +477,14 @@ describe('workspace backup import/export', () => {
       active: false,
       windowId: 42,
     });
-    expect(assignWorkspace).toHaveBeenCalledWith(300, 'empty-workspace');
+    expect(assignWorkspaceEagerly).toHaveBeenCalledWith(300, 'empty-workspace');
+    // Started before the journal await, so the new tab never waits unassigned
+    // (tabs/CreatedTab.ts), and journaled without waiting for the session write.
+    expect(assignWorkspaceEagerly.mock.invocationCallOrder[0]).toBeLessThan(
+      onTabCreated.mock.invocationCallOrder[0]!,
+    );
+    expect(persistedAtJournal).toEqual([false]);
+    expect(persisted).toBe(true);
     expect(createTab.mock.invocationCallOrder[0]).toBeLessThan(
       removeTabs.mock.invocationCallOrder[0]!,
     );
@@ -495,7 +522,7 @@ describe('workspace backup import/export', () => {
         create: createWorkspace,
         activate: vi.fn(() => 'activated'),
       },
-      tabs: { snapshot: () => [], assignWorkspace: vi.fn(async () => undefined) },
+      tabs: { snapshot: () => [], assignWorkspaceEagerly: vi.fn(async () => true) },
       panels: {
         setWidth: vi.fn(),
         setMainWidth: vi.fn(),
