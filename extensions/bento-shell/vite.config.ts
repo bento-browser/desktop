@@ -78,7 +78,6 @@ const shellConfig = defineConfig(({ mode }) => ({
   resolve: {
     alias: [
       { find: '@shared', replacement: resolve(__dirname, '../_shared') },
-      { find: '@bento', replacement: resolve(__dirname, 'src') },
       // Force `react-aria-components` (and the helper umbrellas) to
       // resolve from bento-browser's node_modules, never a package's nested
       // dependency paths. If one entrypoint bundled a second copy of

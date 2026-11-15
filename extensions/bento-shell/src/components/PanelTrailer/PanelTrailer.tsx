@@ -123,7 +123,7 @@ function SavedPanelButton({ item, gridIndex, onOpen }: SavedPanelButtonProps) {
         <IconButton
           variant="neutral"
           size="sm"
-          className="bento-panel-trailer__btn bento-panel-trailer__btn--saved"
+          className="bento-panel-trailer__btn"
           style={{ gridArea: gridAreaForIndex(gridIndex) }}
           aria-label={labelText}
           onActivate={() => onOpen(item.url)}

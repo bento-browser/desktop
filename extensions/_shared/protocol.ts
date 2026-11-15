@@ -197,8 +197,6 @@ export interface BentoSettings {
   tabSleepAfterMinutes: number;
   /** Last-N most-recently-active tabs per workspace that stay warm. */
   tabSleepKeepAlivePerWorkspace: number;
-  /** Cmd+K command palette enabled (M2 future feature). */
-  commandPaletteEnabled: boolean;
   /** False until the user dismisses the first-run welcome banner. The banner
    * surfaces only when this is false; flipping it true hides the banner
    * everywhere (storage.local persists the choice across launches). */
@@ -432,7 +430,6 @@ export interface PanelLayoutExportChooserNode {
 }
 
 export type Action =
-  | { type: 'ping' }
   /** Sent once per shell-document connection so bento-tools learns which
    * chrome window this shell instance lives in. Per-window awareness is
    * the foundation for multi-window features (synced windows, per-window
@@ -494,7 +491,6 @@ export type Action =
   | { type: 'tab/toggleMuted'; id: number }
   | { type: 'workspaces/requestSnapshot' }
   | { type: 'workspace/create'; name: string; themeId?: string; icon?: string }
-  | { type: 'workspace/rename'; id: string; name: string }
   /** Atomic update for the editable workspace fields (name + themeId + icon).
    * The edit-workspace dialog dispatches a single `workspace/update` so the
    * sidebar mirror sees one delta instead of three flickering ones, and a
@@ -508,7 +504,6 @@ export type Action =
   | { type: 'workspace/activate'; id: string }
   | { type: 'settings/requestSnapshot' }
   | { type: 'settings/update'; changes: Partial<BentoSettings> }
-  | { type: 'settings/reset' }
   /** Add an existing tab to the active workspace's side panels. Appends
    * to the panel strip (rightmost slot). No-op if already a panel.
    * Multi-panel: each workspace can have arbitrary N panels, scrolled
@@ -537,9 +532,6 @@ export type Action =
       sourceTabId: number | null;
       position?: 'after' | 'end';
     }
-  /** Remove a tab from the active workspace's panels. Tab itself
-   * stays open in the sidebar list — only the panel binding goes away. */
-  | { type: 'panel/remove'; id: number }
   /** Chrome-side focused panel changed. Used by the sidebar rail to mirror
    * the focused panel state onto pinned-panel favicon buttons. `null`
    * means no side panel is focused. */
@@ -600,7 +592,6 @@ export type Action =
    * `privacy/changed` and `searchEngines/changed` after any mutation. */
   | { type: 'privacy/requestSnapshot' }
   | { type: 'privacy/setProtectionLevel'; level: SelectablePrivacyProtectionLevel }
-  | { type: 'privacy/setAdvanced'; key: PrivacyAdvancedKey; value: boolean | string }
   | { type: 'privacy/setDefaultSearchEngine'; id: SearchEngineId }
   | { type: 'searchEngines/requestSnapshot' }
   | { type: 'addrbar/query'; requestId: string; query: string; limit?: number }
@@ -622,9 +613,6 @@ export type Action =
    * removes the side-panel binding and backing tab without removing the
    * pinned rail entry. */
   | { type: 'pinnedPanel/close'; workspaceId: string; tabId: number }
-  /** Legacy focus action for callers that need to switch to the workspace
-   * that owns the pinned binding and focus the existing panel. */
-  | { type: 'pinnedPanel/activate'; workspaceId: string; tabId: number }
   /** Commit a global pinned-panel rail order after a sidebar drag. The full
    * ordered identity list prevents a stale client from moving only a subset. */
   | {
@@ -989,7 +977,6 @@ export interface ColorStamp {
 }
 
 export type Event =
-  | { type: 'pong'; ts: number }
   | { type: 'tools/booted'; version: string }
   | { type: 'tabs/snapshot'; tabs: TabSnapshot[] }
   | { type: 'tabs/changed'; deltas: TabDelta[] }
@@ -1021,7 +1008,7 @@ export type Event =
    * URL changed. Sent on:
    *   - workspace activation (active panel set may differ)
    *   - panel/add (and the new tab is in the active workspace)
-   *   - panel/remove / panels/clear
+   *   - panels/clear
    *   - tab removal (if removed tab was a panel in the active workspace)
    * Title-IPC is the only chrome-bound channel bento-tools has; chrome
    * has no extension-API access. */
@@ -1180,5 +1167,3 @@ export type Event =
  * effect. Discriminated-union narrowing on `type` keeps working
  * unchanged: TS allows extra optional properties on union variants. */
 export type WireAction = Action & { __windowId?: number };
-
-export type WireMessage = WireAction | Event;

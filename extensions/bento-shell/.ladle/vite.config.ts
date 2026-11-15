@@ -12,7 +12,6 @@ export default defineConfig(
       resolve: {
         alias: [
           { find: '@shared', replacement: resolve(__dirname, '../../_shared') },
-          { find: '@bento', replacement: resolve(__dirname, '../src') },
           {
             find: 'react-aria-components',
             replacement: resolve(__dirname, '../../../node_modules/react-aria-components'),

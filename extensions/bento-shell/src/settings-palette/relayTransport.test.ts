@@ -64,7 +64,7 @@ describe('relay transport', () => {
         },
       },
     ]);
-    transport.send({ requestId: 'r2', operation: 'backup/getContext', payload: {} });
+    transport.send({ requestId: 'r2', operation: 'backup/export', payload: {} });
     expect(up.filter((m) => m.kind === 'settings-request')).toHaveLength(2);
   });
 

@@ -11,7 +11,6 @@ const urlOfLength = (length: number) => 'https://example.com/'.padEnd(length, 'a
 
 /** One valid message per Action type; the mapped type fails to compile if a type is missing. */
 const VALID: { [T in ActionType]: ActionOf<T> } = {
-  ping: { type: 'ping' },
   'shell/hello': { type: 'shell/hello', windowId: 3 },
   'tabs/requestSnapshot': { type: 'tabs/requestSnapshot' },
   'tabFolders/requestSnapshot': { type: 'tabFolders/requestSnapshot' },
@@ -45,7 +44,6 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
   'tab/toggleMuted': { type: 'tab/toggleMuted', id: 12 },
   'workspaces/requestSnapshot': { type: 'workspaces/requestSnapshot' },
   'workspace/create': { type: 'workspace/create', name: 'Work', themeId: 'default' },
-  'workspace/rename': { type: 'workspace/rename', id: 'ws-1', name: 'Work' },
   'workspace/update': {
     type: 'workspace/update',
     id: 'ws-1',
@@ -55,12 +53,10 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
   'workspace/activate': { type: 'workspace/activate', id: 'ws-1' },
   'settings/requestSnapshot': { type: 'settings/requestSnapshot' },
   'settings/update': { type: 'settings/update', changes: { sidebarCollapsed: true } },
-  'settings/reset': { type: 'settings/reset' },
   'panel/add': { type: 'panel/add', id: 9 },
   'panel/addDevtools': { type: 'panel/addDevtools', tabId: 9, forTabId: null, inspectedTabId: 4 },
   'panel/focus': { type: 'panel/focus', workspaceId: 'ws-1', id: 9 },
   'panel/openAt': { type: 'panel/openAt', url: 'about:newtab', sourceTabId: null, position: 'end' },
-  'panel/remove': { type: 'panel/remove', id: 9 },
   'panel/focusedChanged': { type: 'panel/focusedChanged', tabId: null },
   'panels/clear': { type: 'panels/clear' },
   'panelLayout/reorderRoot': { type: 'panelLayout/reorderRoot', rootNodeIds: ['panel:9', 'g1'] },
@@ -95,7 +91,6 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
   'panelLayout/setGroupRatio': { type: 'panelLayout/setGroupRatio', groupId: 'g1', ratio: 0.4 },
   'privacy/requestSnapshot': { type: 'privacy/requestSnapshot' },
   'privacy/setProtectionLevel': { type: 'privacy/setProtectionLevel', level: 'enhanced' },
-  'privacy/setAdvanced': { type: 'privacy/setAdvanced', key: 'httpsOnlyMode', value: true },
   'privacy/setDefaultSearchEngine': { type: 'privacy/setDefaultSearchEngine', id: 'ddg' },
   'searchEngines/requestSnapshot': { type: 'searchEngines/requestSnapshot' },
   'addrbar/query': { type: 'addrbar/query', requestId: 'query-1', query: 'bento', limit: 8 },
@@ -108,7 +103,6 @@ const VALID: { [T in ActionType]: ActionOf<T> } = {
   'pinnedPanel/remove': { type: 'pinnedPanel/remove', workspaceId: 'ws-1', tabId: -2 },
   'pinnedPanel/open': { type: 'pinnedPanel/open', workspaceId: 'ws-1', tabId: -1 },
   'pinnedPanel/close': { type: 'pinnedPanel/close', workspaceId: 'ws-1', tabId: 9 },
-  'pinnedPanel/activate': { type: 'pinnedPanel/activate', workspaceId: 'ws-1', tabId: 9 },
   'pinnedPanels/reorder': {
     type: 'pinnedPanels/reorder',
     orderedKeys: [{ workspaceId: 'ws-1', tabId: -1 }],
@@ -210,8 +204,8 @@ describe('parseWireAction: malformed messages', () => {
       'ping',
       true,
       [],
-      [VALID.ping],
-      () => VALID.ping,
+      [VALID['tabs/requestSnapshot']],
+      () => VALID['tabs/requestSnapshot'],
       {},
       { type: 7 },
       { type: null },
@@ -228,11 +222,24 @@ describe('parseWireAction: malformed messages', () => {
     }
   });
 
+  it('rejects retired action types', () => {
+    for (const message of [
+      { type: 'ping' },
+      { type: 'workspace/rename', id: 'ws-1', name: 'Work' },
+      { type: 'settings/reset' },
+      { type: 'panel/remove', id: 9 },
+      { type: 'privacy/setAdvanced', key: 'httpsOnlyMode', value: true },
+      { type: 'pinnedPanel/activate', workspaceId: 'ws-1', tabId: 9 },
+    ]) {
+      expect(parse(message)).toBeNull();
+    }
+  });
+
   it('rejects unknown and inherited keys', () => {
     expect(parse(withFields('tab/close', { extra: 1 }))).toBeNull();
-    expect(parse(withFields('ping', { windowId: 3 }))).toBeNull();
-    expect(parse(JSON.parse('{"type":"ping","__proto__":{"x":1}}'))).toBeNull();
-    expect(parse(JSON.parse('{"type":"ping","constructor":1}'))).toBeNull();
+    expect(parse(withFields('tabs/requestSnapshot', { windowId: 3 }))).toBeNull();
+    expect(parse(JSON.parse('{"type":"tabs/requestSnapshot","__proto__":{"x":1}}'))).toBeNull();
+    expect(parse(JSON.parse('{"type":"tabs/requestSnapshot","constructor":1}'))).toBeNull();
   });
 
   it('rejects missing required fields', () => {
@@ -305,12 +312,11 @@ describe('parseWireAction: malformed messages', () => {
   });
 
   it('rejects oversized strings and empty ids', () => {
-    expect(parse(withFields('workspace/rename', { name: 'n'.repeat(1_025) }))).toBeNull();
+    expect(parse(withFields('workspace/create', { name: 'n'.repeat(1_025) }))).toBeNull();
     expect(parse(withFields('tab/rename', { title: 't'.repeat(4_097) }))).toBeNull();
     expect(parse(withFields('tab/assignWorkspace', { workspaceId: 'w'.repeat(257) }))).toBeNull();
     expect(parse(withFields('tab/assignWorkspace', { workspaceId: '' }))).toBeNull();
     expect(parse(withFields('addrbar/query', { query: 'q'.repeat(4_097) }))).toBeNull();
-    expect(parse(withFields('privacy/setAdvanced', { value: 'v'.repeat(65) }))).toBeNull();
     expect(
       parse(withFields('workspace/update', { changes: { icon: 'i'.repeat(257) } })),
     ).toBeNull();
@@ -520,12 +526,6 @@ describe('parseWireAction: malformed messages', () => {
     expect(parse(withFields('settings/update', { changes: 'x' }))).toBeNull();
     expect(parse(withFields('workspace/update', { changes: { id: 'other' } }))).toBeNull();
     expect(parse(withFields('workspace/update', { changes: { name: 5 } }))).toBeNull();
-    expect(parse(withFields('privacy/setAdvanced', { key: 'notAKey' }))).toBeNull();
-    expect(parse(withFields('privacy/setAdvanced', { key: 'constructor' }))).toBeNull();
-    expect(parse(withFields('privacy/setAdvanced', { value: {} }))).toBeNull();
-    expect(
-      parse(withFields('privacy/setAdvanced', { key: 'webRTCIPHandlingPolicy', value: 'default' })),
-    ).not.toBeNull();
     for (const target of [
       null,
       'root',
@@ -551,8 +551,8 @@ describe('parseWireAction: malformed messages', () => {
   it('never throws on hostile input', () => {
     const hostile = [
       Object.create(null),
-      Object.assign(Object.create(null), { type: 'ping' }),
-      new Map([['type', 'ping']]),
+      Object.assign(Object.create(null), { type: 'tabs/requestSnapshot' }),
+      new Map([['type', 'tabs/requestSnapshot']]),
       new Date(),
       Symbol('x'),
       10n,

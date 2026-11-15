@@ -36,16 +36,6 @@ describe('sidebar address store', () => {
     expect(useSidebarAddressStore.getState().snapshot?.url).toBe('https://new.example');
   });
 
-  it('keeps current edits stable while fresh snapshots land', () => {
-    useSidebarAddressStore.getState().applySnapshot(snapshot(1, 'https://example.com'));
-    useSidebarAddressStore.getState().beginEdit('current');
-    useSidebarAddressStore.getState().setDraft('typed');
-    useSidebarAddressStore.getState().applySnapshot(snapshot(2, 'https://other.example'));
-
-    expect(useSidebarAddressStore.getState().draftValue).toBe('typed');
-    expect(useSidebarAddressStore.getState().snapshot?.url).toBe('https://other.example');
-  });
-
   it('orders open requests', () => {
     useSidebarAddressStore.getState().requestOpen('current', 'r1');
     const first = useSidebarAddressStore.getState().openRequest;

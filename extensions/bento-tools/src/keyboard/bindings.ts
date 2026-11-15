@@ -1,17 +1,12 @@
 // Static keyboard binding map. Command names match manifest.json's `commands`
 // entries — keep them in sync. Each binding mutates a tools-side store
-// (which auto-broadcasts via existing delta listeners). Tools-initiated UI
-// events go through broadcastEvent; none currently in use after PR-2.5
-// (the command palette is now triggered by a chrome <key> in bento-shell-
-// mount.js, not via WebExt commands).
+// (which auto-broadcasts via existing delta listeners).
 
-import type { Event } from '@shared/protocol';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import { activateWorkspaceInWindow } from '../workspaces/activateInWindow';
 
 export interface BindingContext {
   workspaces: WorkspaceStore;
-  broadcastEvent: (event: Event) => void;
 }
 
 const WORKSPACE_INDEX_PREFIX = 'workspace-';

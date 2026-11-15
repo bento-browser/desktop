@@ -93,16 +93,6 @@ export interface SettingsCaller {
   isPrivate: boolean;
 }
 
-/** Ordinary shell-port handlers carry no document identity; their records are never read back. */
-export function shellPortCaller(windowId: number | null): SettingsCaller {
-  return {
-    clientId: 'shell-port',
-    ownerId: 'shell-port',
-    windowId: windowId ?? -1,
-    isPrivate: false,
-  };
-}
-
 export interface SettingsDomainContext {
   /** Resolves once startup recovery has run. */
   ready: Promise<unknown>;
@@ -206,7 +196,7 @@ function settingsSearch(snapshot: SearchEnginesSnapshot): SettingsSearch {
   };
 }
 
-export function toPublicOperation(record: DurableOperationRecord): OperationStatus {
+function toPublicOperation(record: DurableOperationRecord): OperationStatus {
   return {
     operationId: record.operationId,
     kind: record.kind,
@@ -214,7 +204,6 @@ export function toPublicOperation(record: DurableOperationRecord): OperationStat
     phase: record.phase,
     components: record.components,
     reconcileComponents: record.reconcileComponents,
-    cancelRequested: record.cancelRequested,
     result: record.result,
     errorCode: record.errorCode,
     createdAt: record.createdAt,
@@ -261,7 +250,6 @@ export class SettingsDomainService {
 
   editableSettings(): EditableSettings {
     const editable: Partial<BentoSettings> = { ...this.#ctx.settings.snapshot() };
-    delete editable.commandPaletteEnabled;
     delete editable.welcomeSeen;
     delete editable.contentColorMode;
     delete editable.sidebarCollapsed;
@@ -306,20 +294,20 @@ export class SettingsDomainService {
   /** Any shell setting (the editable subset is enforced by `execute`, not here). */
   async updateSettings(changes: Partial<BentoSettings>): Promise<SettingsUpdateResult> {
     await this.#ready;
-    return this.#ctx.coordinator.runExclusive('settings', () => this.#ctx.settings.update(changes));
+    return this.#ctx.coordinator.runExclusive(() => this.#ctx.settings.update(changes));
   }
 
   async setProtectionLevel(
     level: SelectablePrivacyProtectionLevel,
   ): Promise<PrivacyMutationResult> {
     await this.#ready;
-    const outcome = await this.#ctx.coordinator.runExclusive('privacy', () =>
+    const outcome = await this.#ctx.coordinator.runExclusive(() =>
       this.#ctx.privacyMutations.setProtectionLevel(level),
     );
     await this.#announce(outcome.value);
+    this.#revision += 1;
     return {
       privacy: settingsPrivacy(outcome.value),
-      durableRevision: ++this.#revision,
       state: outcome.state,
       component: outcome.component,
     };
@@ -330,13 +318,13 @@ export class SettingsDomainService {
     value: boolean | string,
   ): Promise<PrivacyMutationResult> {
     await this.#ready;
-    const outcome = await this.#ctx.coordinator.runExclusive('privacy', () =>
+    const outcome = await this.#ctx.coordinator.runExclusive(() =>
       this.#ctx.privacyMutations.setAdvanced(key, value),
     );
     await this.#announce(outcome.value);
+    this.#revision += 1;
     return {
       privacy: settingsPrivacy(outcome.value),
-      durableRevision: ++this.#revision,
       state: outcome.state,
       component: outcome.component,
     };
@@ -344,13 +332,13 @@ export class SettingsDomainService {
 
   async setSearchEngine(id: SearchEngineId): Promise<SearchMutationResult> {
     await this.#ready;
-    const outcome = await this.#ctx.coordinator.runExclusive('search', () =>
+    const outcome = await this.#ctx.coordinator.runExclusive(() =>
       this.#ctx.privacyMutations.setSearchEngine(id),
     );
     await this.#announce();
+    this.#revision += 1;
     return {
       search: settingsSearch(outcome.value),
-      durableRevision: ++this.#revision,
       state: outcome.state,
       component: outcome.component,
     };
@@ -368,20 +356,17 @@ export class SettingsDomainService {
         components: ['settings', 'privacy', 'search'],
       },
       async () => {
-        const { privacy, search } = await this.#ctx.coordinator.runExclusive(
-          'settings',
-          async () => {
-            const committed = await this.#ctx.settings.reset();
-            return {
-              privacy: await this.#ctx.privacyMutations.setProtectionLevel(
-                committed.settings.privacyProtectionLevel,
-              ),
-              search: await this.#ctx.privacyMutations.setSearchEngine(
-                committed.settings.defaultSearchEngine,
-              ),
-            };
-          },
-        );
+        const { privacy, search } = await this.#ctx.coordinator.runExclusive(async () => {
+          const committed = await this.#ctx.settings.reset();
+          return {
+            privacy: await this.#ctx.privacyMutations.setProtectionLevel(
+              committed.settings.privacyProtectionLevel,
+            ),
+            search: await this.#ctx.privacyMutations.setSearchEngine(
+              committed.settings.defaultSearchEngine,
+            ),
+          };
+        });
         await this.#announce();
         return {
           extra: {
@@ -446,9 +431,6 @@ export class SettingsDomainService {
       case 'privacy/setDefaultSearchEngine':
         if (!exactKeys(payload, ['id']) || !isBoundedId(payload.id)) throw invalidPayload();
         return this.setSearchEngine(payload.id);
-      case 'backup/getContext':
-        if (!exactKeys(payload, [])) throw invalidPayload();
-        return this.#backupContext();
       case 'backup/export':
         return this.#exportBackup(payload);
       case 'backup/validateImport':
@@ -515,7 +497,7 @@ export class SettingsDomainService {
             components: ['backupRecord'],
           },
           () =>
-            this.#ctx.coordinator.runExclusive('backup-write', async () => {
+            this.#ctx.coordinator.runExclusive(async () => {
               await this.#ctx.backup.deleteBackup(backupId);
               return { extra: { backups: await this.#ctx.backup.listBackups() } };
             }),
@@ -631,7 +613,7 @@ export class SettingsDomainService {
     ) {
       throw invalidPayload();
     }
-    const data = await this.#ctx.coordinator.runExclusive('backup-read', () =>
+    const data = await this.#ctx.coordinator.runExclusive(() =>
       this.#ctx.coordinator.readStableSnapshot(() =>
         this.#ctx.backup.collectSnapshot(ids as string[] | undefined),
       ),
@@ -819,77 +801,74 @@ export class SettingsDomainService {
     options: ImportOptions,
   ): Promise<EffectOutcome> {
     let failed: DurableOperationComponent[] = [];
-    const summary = await this.#ctx.coordinator.runExclusive(
-      options.replaceExisting ? 'graph-replacement' : 'graph-additive',
-      async (mutation) => {
-        const sourceJson = JSON.stringify(data);
-        const sourceHash = await digest(sourceJson);
-        const regularWindows = (await browser.windows.getAll()).filter(
-          (window) => window.type === 'normal' && window.incognito !== true,
-        ).length;
-        const plannedCount = Math.max(
-          1,
-          data.workspaces.length,
-          options.replaceExisting ? regularWindows : 1,
-        );
-        const plannedWorkspaceIds = Array.from({ length: plannedCount }, () => crypto.randomUUID());
-        await this.#ctx.journal.begin({
-          operationId,
-          kind,
-          mode: options.replaceExisting ? 'replace' : 'additive',
-          applySettings: options.importSettings,
-          applySavedPanels: options.importSavedPanels,
-          ownerClientInstanceId: caller.ownerId,
+    const summary = await this.#ctx.coordinator.runExclusive(async (mutation) => {
+      const sourceJson = JSON.stringify(data);
+      const sourceHash = await digest(sourceJson);
+      const regularWindows = (await browser.windows.getAll()).filter(
+        (window) => window.type === 'normal' && window.incognito !== true,
+      ).length;
+      const plannedCount = Math.max(
+        1,
+        data.workspaces.length,
+        options.replaceExisting ? regularWindows : 1,
+      );
+      const plannedWorkspaceIds = Array.from({ length: plannedCount }, () => crypto.randomUUID());
+      await this.#ctx.journal.begin({
+        operationId,
+        kind,
+        mode: options.replaceExisting ? 'replace' : 'additive',
+        applySettings: options.importSettings,
+        applySavedPanels: options.importSavedPanels,
+        ownerClientInstanceId: caller.ownerId,
+        targetWindowId: caller.windowId,
+        sourceHash,
+        sourceJson,
+        oldWorkspaceIds: options.replaceExisting
+          ? this.#ctx.workspaces.snapshot().workspaces.map((workspace) => workspace.id)
+          : [],
+      });
+      try {
+        const result = await executeImport(data, options, {
+          workspaces: this.#ctx.workspaces,
+          tabs: this.#ctx.tabs,
+          panels: this.#ctx.panels,
+          pinnedPanels: this.#ctx.pinnedPanels,
+          settings: this.#ctx.settings,
+          savedPanels: this.#ctx.savedPanels,
           targetWindowId: caller.windowId,
-          sourceHash,
-          sourceJson,
-          oldWorkspaceIds: options.replaceExisting
-            ? this.#ctx.workspaces.snapshot().workspaces.map((workspace) => workspace.id)
-            : [],
-        });
-        try {
-          const result = await executeImport(data, options, {
-            workspaces: this.#ctx.workspaces,
-            tabs: this.#ctx.tabs,
-            panels: this.#ctx.panels,
-            pinnedPanels: this.#ctx.pinnedPanels,
-            settings: this.#ctx.settings,
-            savedPanels: this.#ctx.savedPanels,
-            targetWindowId: caller.windowId,
-            operation: {
-              plannedWorkspaceIds,
-              onPhase: async (phase) => {
-                await this.#ctx.journal.update(operationId, { phase: phase as never });
-                await this.#ctx.operations.update(operationId, { phase });
-              },
-              onWorkspaceCreated: (workspaceId) =>
-                this.#ctx.journal.registerWorkspace(operationId, workspaceId),
-              onTabCreated: (tabId) => this.#ctx.journal.registerTab(operationId, tabId),
-              onOldTabRemoved: async (tabId) => {
-                const current = this.#ctx.journal.current();
-                await this.#ctx.journal.update(operationId, {
-                  removedOldTabIds: [...(current?.removedOldTabIds ?? []), tabId],
-                });
-              },
-              onWindowMap: async (mapping) => {
-                await this.#ctx.journal.update(operationId, {
-                  postReplacementWindowMap: Object.fromEntries(Object.entries(mapping)),
-                });
-              },
-              onLiveEffectFailures: (list) => {
-                failed = list;
-              },
+          operation: {
+            plannedWorkspaceIds,
+            onPhase: async (phase) => {
+              await this.#ctx.journal.update(operationId, { phase: phase as never });
+              await this.#ctx.operations.update(operationId, { phase });
             },
-          });
-          mutation.markGraphChanged();
-          await this.#ctx.journal.clear(operationId);
-          return result;
-        } catch (error) {
-          await this.#ctx.recovery.bootstrap();
-          throw error;
-        }
-      },
-    );
+            onWorkspaceCreated: (workspaceId) =>
+              this.#ctx.journal.registerWorkspace(operationId, workspaceId),
+            onTabCreated: (tabId) => this.#ctx.journal.registerTab(operationId, tabId),
+            onOldTabRemoved: async (tabId) => {
+              const current = this.#ctx.journal.current();
+              await this.#ctx.journal.update(operationId, {
+                removedOldTabIds: [...(current?.removedOldTabIds ?? []), tabId],
+              });
+            },
+            onWindowMap: async (mapping) => {
+              await this.#ctx.journal.update(operationId, {
+                postReplacementWindowMap: Object.fromEntries(Object.entries(mapping)),
+              });
+            },
+            onLiveEffectFailures: (list) => {
+              failed = list;
+            },
+          },
+        });
+        mutation.markGraphChanged();
+        await this.#ctx.journal.clear(operationId);
+        return result;
+      } catch (error) {
+        await this.#ctx.recovery.bootstrap();
+        throw error;
+      }
+    });
     if (options.importSettings) await this.#announce();
     return {
       extra: { summary },

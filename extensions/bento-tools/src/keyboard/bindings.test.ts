@@ -12,7 +12,7 @@ describe('workspace-N commands', () => {
   let third: string;
 
   const run = (command: string, tab?: browser.tabs.Tab) =>
-    handleCommand(command, { workspaces: store, broadcastEvent: vi.fn() }, tab);
+    handleCommand(command, { workspaces: store }, tab);
 
   beforeEach(async () => {
     vi.useFakeTimers();

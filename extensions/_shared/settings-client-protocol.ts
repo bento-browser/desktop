@@ -14,7 +14,6 @@ import type {
   ColorStamp,
   UiColorModePref,
   ImportOptions,
-  ImportSummary,
   BackupListEntry,
   PrivacyAdvancedKey,
   PrivacySettings,
@@ -30,7 +29,6 @@ export const SETTINGS_OPERATIONS = [
   'privacy/setProtectionLevel',
   'privacy/setAdvanced',
   'privacy/setDefaultSearchEngine',
-  'backup/getContext',
   'backup/export',
   'backup/validateImport',
   'backup/importValidated',
@@ -245,7 +243,6 @@ export type SettingsDomain = 'settings' | 'privacy' | 'search' | 'backup';
 /** The settings the Settings surface edits; the rest belong to welcome, the sidebar and the mount. */
 export type EditableSettings = Omit<
   BentoSettings,
-  | 'commandPaletteEnabled'
   | 'welcomeSeen'
   | 'contentColorMode'
   | 'sidebarCollapsed'
@@ -272,7 +269,6 @@ export interface SettingsPayloads {
   'privacy/setProtectionLevel': { level: SelectablePrivacyProtectionLevel };
   'privacy/setAdvanced': { key: PrivacyAdvancedKey; value: boolean | string };
   'privacy/setDefaultSearchEngine': { id: SearchEngineId };
-  'backup/getContext': Record<string, never>;
   'backup/export': { workspaceIds?: string[] };
   'backup/validateImport': { json: string };
   'backup/importValidated': { validationToken: string; options: ImportOptions };
@@ -282,8 +278,7 @@ export interface SettingsPayloads {
   'recovery/acknowledgeNotice': { operationId: string };
 }
 
-export type OperationState =
-  'reserved' | 'running' | 'partial' | 'succeeded' | 'failed' | 'cancelled';
+export type OperationState = 'reserved' | 'running' | 'partial' | 'succeeded' | 'failed';
 
 export interface OperationComponent {
   component: string;
@@ -300,7 +295,6 @@ export interface OperationStatus {
   phase: string;
   components: OperationComponent[];
   reconcileComponents: string[];
-  cancelRequested: boolean;
   result?: unknown;
   errorCode?: string;
   createdAt: number;
@@ -360,11 +354,9 @@ export type NativeModeStateReply =
 
 export interface SettingsUpdateResult {
   settings: BentoSettings;
-  durableRevision: number;
 }
 
 interface LiveMutationFields {
-  durableRevision: number;
   state: 'succeeded' | 'partial';
   component: OperationComponent;
 }
@@ -405,19 +397,3 @@ export interface ValidateImportResult {
   expiresAt: number;
   preview: ImportPreview;
 }
-
-/** Result of a durable operation, as returned and retained. */
-export interface DurableOperationResult {
-  kind: DurableSettingsOperation;
-  operationId: string;
-  /** `partial` when a component failed; see `components` and `reconcileComponents`. */
-  state: 'succeeded' | 'partial';
-  components: OperationComponent[];
-  reconcileComponents: string[];
-}
-
-export type SettingsResetResult = DurableOperationResult & {
-  result: { settings: EditableSettings; privacy: SettingsPrivacy; search: SettingsSearch };
-};
-export type BackupImportResult = DurableOperationResult & { summary: ImportSummary };
-export type BackupDeleteResult = DurableOperationResult & { backups: BackupListEntry[] };

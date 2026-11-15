@@ -122,7 +122,7 @@ describe('first-launch protection level', () => {
 
     const seed = seedBootPrivacyLevel(settings, workspaces.firstLaunch, coordinator);
     // The privacy step's pick goes through the same lane (SettingsDomainService.setProtectionLevel).
-    const pick = coordinator.runExclusive('privacy', async () => {
+    const pick = coordinator.runExclusive(async () => {
       await applyPrivacyLevel('hardened');
       await settings.update({ privacyProtectionLevel: 'hardened' });
     });
@@ -136,7 +136,7 @@ describe('first-launch protection level', () => {
     const { launch } = profile();
     const { settings, workspaces, coordinator } = await launch();
 
-    const earlier = coordinator.runExclusive('privacy', () =>
+    const earlier = coordinator.runExclusive(() =>
       settings.update({ privacyProtectionLevel: 'enhanced' }),
     );
     await Promise.all([

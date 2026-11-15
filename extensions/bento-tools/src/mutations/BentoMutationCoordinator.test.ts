@@ -10,12 +10,12 @@ describe('BentoMutationCoordinator', () => {
       release = resolve;
     });
 
-    const first = coordinator.runExclusive('settings', async () => {
+    const first = coordinator.runExclusive(async () => {
       order.push('first-start');
       await gate;
       order.push('first-end');
     });
-    const second = coordinator.runExclusive('backup-write', async () => {
+    const second = coordinator.runExclusive(async () => {
       order.push('second');
     });
     await Promise.resolve();

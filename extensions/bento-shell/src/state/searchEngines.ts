@@ -6,7 +6,6 @@ interface SearchEnginesState {
   availableSearchEngines: SearchEngineChoice[];
   hydrated: boolean;
   apply: (snapshot: SearchEnginesSnapshot) => void;
-  clear: () => void;
 }
 
 export const useSearchEnginesStore = create<SearchEnginesState>((set) => ({
@@ -18,11 +17,5 @@ export const useSearchEnginesStore = create<SearchEnginesState>((set) => ({
       defaultSearchEngine: snapshot.defaultSearchEngine || null,
       availableSearchEngines: snapshot.availableSearchEngines,
       hydrated: true,
-    }),
-  clear: () =>
-    set({
-      defaultSearchEngine: null,
-      availableSearchEngines: [],
-      hydrated: false,
     }),
 }));

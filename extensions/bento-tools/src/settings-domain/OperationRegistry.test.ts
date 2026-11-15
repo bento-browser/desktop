@@ -66,6 +66,45 @@ describe('OperationRegistry', () => {
       result: { done: true },
     });
   });
+
+  it('loads a stored cancelled record as terminal and prunes it', async () => {
+    let now = 1_000_000;
+    const operationId = crypto.randomUUID();
+    // Written by the retired cancel path: a cancel request flag and the `cancelled` state.
+    stored['bento.nativeOperations.v1'] = {
+      version: 1,
+      records: [
+        {
+          operationId,
+          kind: 'backup/delete',
+          ownerClientInstanceId: 'owner',
+          targetWindowId: 1,
+          isPrivate: false,
+          payloadHash: 'f'.repeat(64),
+          state: 'cancelled',
+          phase: 'terminal',
+          components: [],
+          reconcileComponents: [],
+          cancelRequested: true,
+          createdAt: now,
+          updatedAt: now,
+          terminalAt: now,
+        },
+      ],
+    };
+    const registry = new OperationRegistry({ now: () => now });
+    await registry.init();
+    const loaded = registry.getOwned(operationId, 'owner');
+    expect(loaded).toMatchObject({ state: 'failed', phase: 'terminal', terminalAt: now });
+    expect(loaded).not.toHaveProperty('cancelRequested');
+    await expect(registry.settleInterrupted()).resolves.toBe(0);
+    expect(registry.getOwned(operationId, 'owner')?.state).toBe('failed');
+
+    now += 8 * 24 * 60 * 60 * 1000;
+    await registry.prune();
+    expect(registry.peek(operationId)).toBeNull();
+  });
+
   describe('startup settlement', () => {
     async function reserve(
       registry: OperationRegistry,

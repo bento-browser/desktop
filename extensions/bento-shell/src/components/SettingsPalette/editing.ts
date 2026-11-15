@@ -2,7 +2,6 @@
 // are tested directly.
 
 import {
-  parseNumber,
   presetValues,
   type BooleanSettingKey,
   type EditorSpec,
@@ -55,5 +54,3 @@ export function moveEntry(list: readonly number[], index: number, delta: -1 | 1)
 export function removeAt(list: readonly number[], index: number): number[] {
   return list.filter((_, position) => position !== index);
 }
-
-export { parseNumber };

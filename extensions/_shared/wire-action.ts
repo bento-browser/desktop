@@ -20,7 +20,6 @@ import {
   isRecord,
   isValidBentoSettingsPatch,
 } from './export-schema';
-import { ADVANCED_KEY_TO_BROWSER_PRIVACY, ADVANCED_KEY_TO_PREF } from './privacy-levels';
 import {
   BOOKMARK_COLORS,
   BOOKMARK_LIMITS,
@@ -28,7 +27,6 @@ import {
   type BentoSettings,
   type BookmarkItemInput,
   type PanelLayoutMoveTarget,
-  type PrivacyAdvancedKey,
   type Workspace,
 } from './protocol';
 
@@ -181,14 +179,6 @@ const moveTarget: Guard<PanelLayoutMoveTarget> = (v): v is PanelLayoutMoveTarget
   Object.hasOwn(MOVE_TARGETS, v.type) &&
   MOVE_TARGETS[v.type as PanelLayoutMoveTarget['type']](v);
 
-// The two tables partition every PrivacyAdvancedKey the handler can apply.
-const advancedKey: Guard<PrivacyAdvancedKey> = (v): v is PrivacyAdvancedKey =>
-  typeof v === 'string' &&
-  (Object.hasOwn(ADVANCED_KEY_TO_PREF, v) || Object.hasOwn(ADVANCED_KEY_TO_BROWSER_PRIVACY, v));
-
-const advancedValue: Guard<boolean | string> = (v): v is boolean | string =>
-  typeof v === 'boolean' || isBoundedString(v, 64);
-
 const workspaceChanges = shape<Partial<Pick<Workspace, 'name' | 'themeId' | 'icon'>>>({
   name: optional(name),
   themeId: optional(text(MAX_ID_LENGTH)),
@@ -200,7 +190,6 @@ const settingsChanges: Guard<Partial<BentoSettings>> = (v): v is Partial<BentoSe
 
 /** One entry per Action type; adding a type or field without a guard fails to compile. */
 const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = {
-  ping: {},
   'shell/hello': { windowId: nat },
   'tabs/requestSnapshot': {},
   'tabFolders/requestSnapshot': {},
@@ -234,13 +223,11 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
     themeId: optional(text(MAX_ID_LENGTH)),
     icon: optional(text(MAX_ID_LENGTH)),
   },
-  'workspace/rename': { id, name },
   'workspace/update': { id, changes: workspaceChanges },
   'workspace/delete': { id, closeTabs: optional(bool) },
   'workspace/activate': { id },
   'settings/requestSnapshot': {},
   'settings/update': { changes: settingsChanges },
-  'settings/reset': {},
   'panel/add': { id: nat },
   'panel/addDevtools': { tabId: nat, forTabId: nullable(nat), inspectedTabId: nat },
   'panel/focus': { workspaceId: id, id: nat },
@@ -249,7 +236,6 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
     sourceTabId: nullable(nat),
     position: optional(oneOf('after', 'end')),
   },
-  'panel/remove': { id: nat },
   'panel/focusedChanged': { tabId: nullable(nat) },
   'panels/clear': {},
   'panelLayout/reorderRoot': { rootNodeIds: idStrings },
@@ -274,10 +260,6 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'panelLayout/setGroupRatio': { groupId: id, ratio: bounded(1, 0) },
   'privacy/requestSnapshot': {},
   'privacy/setProtectionLevel': { level: oneOf('standard', 'enhanced', 'hardened') },
-  'privacy/setAdvanced': {
-    key: advancedKey,
-    value: advancedValue,
-  },
   'privacy/setDefaultSearchEngine': { id },
   'searchEngines/requestSnapshot': {},
   'addrbar/query': {
@@ -290,7 +272,6 @@ const ACTION_FIELDS: { [T in ActionType]: Guards<Omit<ActionOf<T>, 'type'>> } = 
   'pinnedPanel/remove': pinKey,
   'pinnedPanel/open': pinKey,
   'pinnedPanel/close': pinKey,
-  'pinnedPanel/activate': pinKey,
   'pinnedPanels/reorder': { orderedKeys: list(pinned, MAX_ID_LIST) },
   'pinnedPanels/requestSnapshot': {},
   'savedPanels/save': { url: navUrl(), title, favIconUrl: optional(favIconUrl) },

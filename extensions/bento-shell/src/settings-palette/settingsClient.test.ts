@@ -71,7 +71,6 @@ const status = (state: string, result?: unknown) => ({
   phase: state === 'running' ? 'running' : 'terminal',
   components: [],
   reconcileComponents: [],
-  cancelRequested: false,
   result,
   createdAt: 1,
   updatedAt: 2,
@@ -93,7 +92,7 @@ describe('request correlation', () => {
     const fake = fakeTransport();
     const client = createSettingsClient(fake.transport, options);
     const first = client.request('snapshot/get', { domains: ['settings'] });
-    const second = client.request('backup/getContext', {});
+    const second = client.request('backup/export', {});
     const [a, b] = fake.sent;
     fake.ok(b!, { marker: 'second' });
     fake.ok(a!, { marker: 'first' });

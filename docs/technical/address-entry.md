@@ -126,7 +126,7 @@ value as C-tier. The popup does not fade in the document: chrome's host fade
 (`ADDRBAR_HOST_TRANSITION`, `modal`) is the open and the close, there is no
 reverse grow, and the anchored popup forces `opacity: 1 !important` so Mux's
 one-time entry fade cannot hide the start frame of the first open. Reduced
-motion (`prefers-reduced-motion`, `[data-muxui-motion='reduced']`) skips the hook
+motion (`prefers-reduced-motion`) skips the hook
 and opens at full size. The results list fades in on the `state` pair after the
 spring's visual duration. The row's background (`--bento-brand-bg`, the same
 `--neutral-5` as the popup surface) needs no fade, so there is none; its border does
@@ -241,8 +241,8 @@ and open centered at once. The previous `focus` message kind on this channel
 The persistent row intentionally has no `:focus-within` accent override: focus
 must not replace its neutral border with a workspace `--color-60` outline.
 
-Firefox remains the source of truth for address semantics. The sidebar submit
-path and the floating overlay submit path both call the same chrome helper,
+Firefox remains the source of truth for address semantics. The floating overlay
+submit path calls the chrome helper `navigateAddressEntry`,
 which resolves optional one-shot search engine submissions through Firefox
 `SearchService`, falls back to Firefox URI fixup, navigates the selected main
 browser in current-tab mode, dispatches `tab/openUrl` in new-tab mode for
@@ -457,8 +457,8 @@ neutral-5 toolbar. Keep the explicit gradient stamping on all three toolbar
 surfaces (`#navigator-toolbox`, `#TabsToolbar`, and `#nav-bar`) from the same
 divider measurement. The root `--bento-toolbar-divider-x` is also written from
 the same measured viewport coordinate so fallback surfaces can use the identical
-split: `body`, macOS's `body::after` titlebar pseudo-element, `#browser`, and
-`#appcontent` all paint the same split gradient. This prevents clipped or
+split: `body`, macOS's `body::after` titlebar pseudo-element, and `#browser`
+all paint the same split gradient. This prevents clipped or
 transparent toolbar pixels from leaking Firefox's neutral-5/native titlebar
 background above the panel strip. `#bento-toolbar-main-backdrop` is an explicit
 first child of `#navigator-toolbox`; it paints the main-side neutral-14 toolbar
@@ -470,7 +470,7 @@ navigator or extension buttons. The panel strip uses
 split scrollport backdrop, add-panel trailer, flat-layout extent, and split-view
 panel frame backplates. The core strip/tabbox/trailer overrides must stay inside
 the `bento.chrome-theme` cascade layer because `bento-chrome-theme.css` paints
-`#browser`, `#appcontent`, `#tabbrowser-tabbox`, and `#tabbrowser-tabpanels`
+`#browser`, `#tabbrowser-tabbox`, and `#tabbrowser-tabpanels`
 neutral-5 with layered `!important` declarations; unlayered runtime CSS can
 lose to those declarations on the panel path. Direct panel frame backplates
 also set `--bento-panel-strip-bg` with `!important`, but stay in the normal

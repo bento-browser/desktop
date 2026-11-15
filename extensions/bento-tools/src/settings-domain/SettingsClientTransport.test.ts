@@ -143,7 +143,7 @@ describe('settings client transport', () => {
   });
 
   it('leaves other messages alone', () => {
-    expect(transport.handle({ type: 'ping' }, reply)).toBe(false);
+    expect(transport.handle({ type: 'tabs/requestSnapshot' }, reply)).toBe(false);
     expect(transport.handle(null, reply)).toBe(false);
     expect(replies).toEqual([]);
   });

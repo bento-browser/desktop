@@ -314,7 +314,7 @@ validator re-exported by both shell and tools. Manual imports are limited to
 string sizes, validates the complete panel-layout tree and references, permits
 only supported navigation URL schemes, and rejects unknown or out-of-range
 settings. A key Bento retired is neither: `dropRetiredSettings` in `export-schema.ts`
-(`RETIRED_SETTING_KEYS`, today `defaultWorkspaceName`) removes it from a backup's
+(`RETIRED_SETTING_KEYS`, today `defaultWorkspaceName` and `commandPaletteEnabled`) removes it from a backup's
 `settings` before validation (the caller's object is not changed) and from a profile's stored
 overrides when `SettingsStore` loads, so older backups and profiles still load and the rest
 of their settings apply. `SettingsStore` also rejects invalid stored or runtime settings

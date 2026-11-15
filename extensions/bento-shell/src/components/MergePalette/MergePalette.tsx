@@ -332,7 +332,6 @@ export function MergePalette({ onClose }: MergePaletteProps) {
 
   return (
     <CommandPalette.Root
-      className="bento-merge-palette__popup"
       open={true}
       size="lg"
       closeOnSelect={false}
@@ -574,7 +573,7 @@ export function MergePalette({ onClose }: MergePaletteProps) {
                   ))
                 )}
               </Column>
-              <Row gap="s" justify="center" className="bento-merge-palette__overlay-actions">
+              <Row gap="s" justify="center">
                 <Button
                   variant="neutral"
                   size="sm"

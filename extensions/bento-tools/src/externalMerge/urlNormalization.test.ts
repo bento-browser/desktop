@@ -11,8 +11,8 @@ describe('external merge URL normalization', () => {
   });
 
   it('maps source new-tab URLs and skips unsupported schemes', () => {
-    expect(normalizeExternalUrl('chrome://newtab/', 'chrome')).toBe('about:newtab');
-    expect(normalizeExternalUrl('edge://newtab/', 'edge')).toBe('about:newtab');
+    expect(normalizeExternalUrl('chrome://newtab/')).toBe('about:newtab');
+    expect(normalizeExternalUrl('edge://newtab/')).toBe('about:newtab');
     expect(normalizeExternalUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeExternalUrl('data:text/plain,hi')).toBeNull();
     expect(normalizeExternalUrl('about:blank')).toBeNull();

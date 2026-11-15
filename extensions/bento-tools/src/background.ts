@@ -904,7 +904,7 @@ async function buildPanelsSync(
 // saves work in all documents of all windows.
 const emitPanelsSync = createPanelsSyncScheduler(emitPanelsSyncNow);
 
-const keys = new KeyRegistry({ workspaces, broadcastEvent });
+const keys = new KeyRegistry({ workspaces });
 
 function getActiveWorkspacePanelTabIds(): number[] {
   const tabIds = new Set<number>();
@@ -966,7 +966,7 @@ const activationGenerations = createActivationGenerations();
 
 const bootReady = storesReady.then(async () => {
   void removeRetiredSettingsStorage();
-  await mutationCoordinator.runExclusive('recovery', () => graphRecovery.bootstrap());
+  await mutationCoordinator.runExclusive(() => graphRecovery.bootstrap());
   sleep.init();
   // Push the persisted contentColorMode to Firefox's content
   // prefers-color-scheme override at boot. Subsequent changes flow
@@ -1279,7 +1279,7 @@ const bootReady = storesReady.then(async () => {
   // Sweep stale `bento.isPanel` markers on session-restored tabs. The
   // marker is supposed to track tabs that ARE panels (so Cmd+Shift+T
   // restoration can put a closed panel back in its slot). When a tab
-  // gets demoted from panel to sidebar via panel/remove the marker
+  // stops being a panel (`panels/clear`, or the tab closes) the marker
   // gets cleared correctly, but session-restored tabs can end up with
   // markers that don't match the current panel list (e.g., the panel
   // URL got reassigned to a different tab on restore, or a duplicate
@@ -1510,7 +1510,7 @@ tabs.onDeltas((deltas) => {
 // intentionally survive panel and tab closure; users remove pinned rail
 // entries explicitly from the rail context menu.
 const recentlyRemovedPanelTabIds = new Set<number>();
-panels.onPanelRemoved((workspaceId, tabId) => {
+panels.onPanelRemoved((_workspaceId, tabId) => {
   recentlyRemovedPanelTabIds.add(tabId);
   setTimeout(() => recentlyRemovedPanelTabIds.delete(tabId), 5000);
 });

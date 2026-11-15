@@ -151,7 +151,6 @@ describe('SettingsStore durable commits', () => {
 
     finishWrite?.();
     const commit = await pending;
-    expect(commit).toMatchObject({ durableRevision: 1 });
     expect(commit.settings.panelCornerRadiusPx).toBe(20);
     expect(listener).toHaveBeenCalledOnce();
   });
@@ -174,8 +173,8 @@ describe('SettingsStore durable commits', () => {
     const first = store.update({ panelCornerRadiusPx: 1 });
     const second = store.update({ panelCornerRadiusPx: 2 });
 
-    await expect(first).resolves.toMatchObject({ durableRevision: 1 });
-    await expect(second).resolves.toMatchObject({ durableRevision: 2 });
+    await expect(first).resolves.toMatchObject({ settings: { panelCornerRadiusPx: 1 } });
+    await expect(second).resolves.toMatchObject({ settings: { panelCornerRadiusPx: 2 } });
     expect(store.snapshot().panelCornerRadiusPx).toBe(2);
     expect(writes).toHaveLength(2);
 
@@ -186,7 +185,7 @@ describe('SettingsStore durable commits', () => {
     expect(store.snapshot()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('loads a profile that still stores the retired default workspace name and drops the key', async () => {
+  it('loads a profile that still stores retired settings and drops the keys', async () => {
     const writes: unknown[] = [];
     vi.stubGlobal('browser', {
       storage: {
@@ -194,7 +193,11 @@ describe('SettingsStore durable commits', () => {
           get: vi.fn(async () => ({
             'bento.settings': {
               version: 2,
-              overrides: { defaultWorkspaceName: 'Work', panelCornerRadiusPx: 20 },
+              overrides: {
+                defaultWorkspaceName: 'Work',
+                commandPaletteEnabled: false,
+                panelCornerRadiusPx: 20,
+              },
             },
           })),
           set: vi.fn(async (payload: unknown) => {
@@ -207,11 +210,13 @@ describe('SettingsStore durable commits', () => {
     const store = new SettingsStore();
     await store.init();
 
-    // The other override survives; the retired one is not a setting any more.
+    // The other override survives; the retired ones are not settings any more.
     expect(store.snapshot().panelCornerRadiusPx).toBe(20);
     expect(store.snapshot()).not.toHaveProperty('defaultWorkspaceName');
+    expect(store.snapshot()).not.toHaveProperty('commandPaletteEnabled');
     expect(store.hasOverride('panelCornerRadiusPx')).toBe(true);
     expect('defaultWorkspaceName' in DEFAULT_SETTINGS).toBe(false);
+    expect('commandPaletteEnabled' in DEFAULT_SETTINGS).toBe(false);
 
     await store.update({ panelShadowsEnabled: false });
     expect(writes.at(-1)).toEqual({

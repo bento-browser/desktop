@@ -57,7 +57,7 @@ The shared preset model lives in `extensions/_shared/privacy-levels.ts`.
 
 The low-level privileged privacy API is `browser.bentoPrivacy`, registered from
 `extensions/bento-tools/experiments/bento-privacy/`. It exposes allowlisted pref
-reads/writes/clears and default search engine operations. It rejects prefs
+reads and writes and default search engine operations. It rejects prefs
 outside the static allowlist. It also hosts `consumeAddPanelGrant`, the
 one-time check behind the Add panel button, and `applyUiScale`, which applies the
 interface scale; neither reads or writes privacy state.
@@ -68,10 +68,10 @@ with a window and privacy binding that chrome derived, not the page; private
 windows may change safe profile settings but cannot read or mutate backup
 storage.
 
-Settings dispatches these protocol actions:
+The shell port carries these privacy actions (Settings itself uses the matching
+settings-client operations, plus `privacy/setAdvanced`):
 
 - `privacy/setProtectionLevel`
-- `privacy/setAdvanced`
 - `privacy/setDefaultSearchEngine`
 - `privacy/requestSnapshot`
 

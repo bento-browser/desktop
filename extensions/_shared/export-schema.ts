@@ -9,8 +9,6 @@ import type {
 } from './protocol';
 import { isUiScale } from './ui-scale';
 
-export const MAX_BACKUP_FILE_BYTES = 10 * 1024 * 1024;
-
 const MAX_WORKSPACES = 256;
 const MAX_TABS_TOTAL = 20_000;
 const MAX_TABS_PER_WORKSPACE = 5_000;
@@ -144,7 +142,6 @@ const BOOLEAN_SETTING_KEYS = new Set<keyof BentoSettings>([
   'tabStateTintsEnabled',
   'customTabStateIconsEnabled',
   'tabSleepEnabled',
-  'commandPaletteEnabled',
   'welcomeSeen',
   'sidebarCollapsed',
   'sidebarHidden',
@@ -178,7 +175,7 @@ const ALL_SETTING_KEYS = new Set<keyof BentoSettings>([
 
 /** Settings that no longer exist. A stored profile or a backup file written by an older Bento
  * may still carry them: they are dropped, not rejected, so the rest still loads. */
-const RETIRED_SETTING_KEYS: readonly string[] = ['defaultWorkspaceName'];
+const RETIRED_SETTING_KEYS: readonly string[] = ['defaultWorkspaceName', 'commandPaletteEnabled'];
 
 /** `settings` without the retired keys (the same object when it has none). */
 export function dropRetiredSettings<T extends object>(settings: T): T {

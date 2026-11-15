@@ -16,7 +16,3 @@ export function makeFolder(
 export function seedTabFolders(folders: TabFolder[]): void {
   useTabFoldersStore.getState().applySnapshot(folders);
 }
-
-export function clearTabFolders(): void {
-  useTabFoldersStore.getState().applySnapshot([]);
-}

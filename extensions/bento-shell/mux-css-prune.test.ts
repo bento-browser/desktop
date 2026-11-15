@@ -121,4 +121,30 @@ describe('MUX_UNUSED_COMPONENT_CLASSES', () => {
     expect(stylesheet).toMatch(/^\.muxui-multi-select\s*\{/m);
     expect(pruned).not.toMatch(/^\.muxui-multi-select\s*\{/m);
   });
+
+  it('drops every rule that starts at a listed family and keeps components sharing a prefix', () => {
+    const pruned = pruneCssFamilies(stylesheet, MUX_UNUSED_COMPONENT_CLASSES);
+    for (const family of MUX_UNUSED_COMPONENT_CLASSES) {
+      expect(pruned, family).not.toMatch(new RegExp(`^\\.${family}(?![A-Za-z0-9])`, 'm'));
+    }
+    // Bento renders these; 'muxui-button-group' and 'muxui-color-swatch-picker' must not take them.
+    for (const kept of ['muxui-button', 'muxui-color-swatch', 'muxui-grid-list', 'muxui-input']) {
+      expect(pruned, kept).toMatch(new RegExp(`\\.${kept}(?![\\w-])`));
+    }
+  });
+
+  it('lists the 2026-11-15 additions and leaves out families a shell document renders', () => {
+    for (const family of [
+      'muxui-activity', 'muxui-button-group', 'muxui-code-block', 'muxui-color-area',
+      'muxui-color-field', 'muxui-color-mode-toggle', 'muxui-color-picker',
+      'muxui-color-swatch-picker', 'muxui-data-diff', 'muxui-header-nav', 'muxui-input-tags',
+      'muxui-message', 'muxui-payment-input', 'muxui-prompt-composer', 'muxui-sidebar',
+      'muxui-table', 'muxui-tag-group', 'muxui-token-field', 'muxui-virtualizer',
+    ]) {
+      expect(MUX_UNUSED_COMPONENT_CLASSES, family).toContain(family);
+    }
+    // The bookmarks InlineEditor renders TextArea.
+    expect(MUX_UNUSED_COMPONENT_CLASSES).not.toContain('muxui-text-area');
+    expect(pruneCssFamilies(stylesheet, MUX_UNUSED_COMPONENT_CLASSES)).toMatch(/^\.muxui-text-area\b/m);
+  });
 });

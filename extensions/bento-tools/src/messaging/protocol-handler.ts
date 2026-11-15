@@ -32,10 +32,7 @@ import type { TabFolderStore } from '../tabFolders/TabFolderStore';
 import type { SavedPanelsStore } from '../saved-panels/SavedPanelsStore';
 import type { BookmarksStore } from '../bookmarks/BookmarksStore';
 import { handleBookmarksAction, isBookmarksAction } from '../bookmarks/bookmarksActions';
-import {
-  shellPortCaller,
-  type SettingsDomainService,
-} from '../settings-domain/SettingsDomainService';
+import type { SettingsDomainService } from '../settings-domain/SettingsDomainService';
 import {
   clearDevtoolsPanelMarker,
   clearPanelMarker,
@@ -426,10 +423,6 @@ async function cleanupWorkspaceAfterTabMove(
 
 const TAB_REMOVE_RETRY_DELAYS_MS = [150, 500, 1200];
 
-function sleepMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function tabWindowId(tabId: number): Promise<number | null> {
   try {
     const { windowId } = await browser.tabs.get(tabId);
@@ -549,7 +542,7 @@ async function removeMarkedTab(tabId: number, label: string): Promise<'removed' 
       await browser.tabs.remove(tabId);
       return (await tabStillExists(tabId)) ? 'kept' : 'removed';
     } catch (err) {
-      await sleepMs(80);
+      await delay(80);
       if (!(await tabStillExists(tabId))) return 'removed';
       const retryDelayMs = TAB_REMOVE_RETRY_DELAYS_MS[attempt];
       if (retryDelayMs === undefined) {
@@ -558,7 +551,7 @@ async function removeMarkedTab(tabId: number, label: string): Promise<'removed' 
         }
         return 'kept';
       }
-      await sleepMs(retryDelayMs);
+      await delay(retryDelayMs);
     }
   }
 }
@@ -801,7 +794,7 @@ async function closeTabsFromSidebar(
           )
         : undefined,
       ...delayed.map(async ({ id, close }) => {
-        await sleepMs(PROMOTED_CHILD_REMOVE_DELAY_MS);
+        await delay(PROMOTED_CHILD_REMOVE_DELAY_MS);
         await removeMarkedTabAndRestoreIfKept(ctx, id, 'tabs/close', close.options.undo ?? null);
       }),
     ]);
@@ -1202,8 +1195,6 @@ const PRIVATE_WINDOW_REFUSED_TYPES = new Set<Action['type']>([
   'pinnedPanels/reorder',
   // Bookmarks are shared with the regular windows and backups.
   'savedPanels/save',
-  // Would reset the saved sidebar and colour mode the regular windows share.
-  'settings/reset',
 ]);
 
 /** The tab ids an action that mutates panels, pins or folders names. A tab belongs to
@@ -1212,7 +1203,6 @@ function namedTabIds(action: Action): number[] {
   switch (action.type) {
     case 'panel/add':
     case 'panel/focus':
-    case 'panel/remove':
     case 'panel/setWidth':
     case 'panel/setHeaderHidden':
       return [action.id];
@@ -1233,7 +1223,6 @@ function namedTabIds(action: Action): number[] {
     case 'pinnedPanel/remove':
     case 'pinnedPanel/open':
     case 'pinnedPanel/close':
-    case 'pinnedPanel/activate':
       return [action.tabId];
     case 'tabs/setFolder':
       return action.ids;
@@ -1297,9 +1286,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
     return;
   }
   switch (action.type) {
-    case 'ping':
-      ctx.send({ type: 'pong', ts: Date.now() });
-      return;
     case 'shell/hello': {
       // Auto-assign this window an active workspace if it doesn't already
       // own one. The "one workspace per window" invariant means we can't
@@ -1356,8 +1342,8 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       // Clear stale `bento.isPanel` marker if this tab isn't currently a
       // panel. The marker exists to let Cmd+Shift+T restore a closed
       // panel back to its slot, but it can stick around on tabs that
-      // were once panels and got demoted (panel/remove path was missed
-      // for some prior code path, or a session restore re-attached the
+      // were once panels and got demoted (a demotion path missed the
+      // marker, or a session restore re-attached the
       // marker to a tab whose workspace assignment changed). When that
       // happens, the onActivated revert in background.ts treats the
       // user's click as a Cmd+Shift+T-style restore and snaps the
@@ -1724,9 +1710,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         ctx.sourceWindowId,
       );
       return;
-    case 'workspace/rename':
-      ctx.workspaces.rename(action.id, action.name);
-      return;
     case 'workspace/update':
       ctx.workspaces.update(action.id, action.changes);
       if ('themeId' in action.changes) {
@@ -1763,16 +1746,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
         .catch((err) => console.warn('[bento-tools] settings/update persistence failed:', err));
       return;
     }
-    case 'settings/reset':
-      void (async () => {
-        try {
-          await ctx.settingsDomain.reset(crypto.randomUUID(), shellPortCaller(ctx.sourceWindowId));
-          await Promise.all([emitPrivacySnapshot(ctx), emitSearchEnginesSnapshot(ctx)]);
-        } catch (err) {
-          console.warn('[bento-tools] settings/reset persistence failed:', err);
-        }
-      })();
-      return;
     case 'panel/add': {
       const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
       if (!wsId) return;
@@ -1880,33 +1853,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
           console.warn('[bento-tools] panel/openAt failed:', err);
         }
       })();
-      return;
-    }
-    case 'panel/remove': {
-      const wsId = ctx.workspaces.getActiveId(ctx.sourceWindowId);
-      if (!wsId) return;
-      if (ctx.panels.isDevtoolsPanel(wsId, action.id)) {
-        if (ctx.panels.remove(wsId, action.id)) {
-          ctx.pinnedPanels.removeForTab(action.id);
-          void clearPanelMarker(action.id);
-          void closeTabAsRemoved(ctx, action.id, {
-            label: 'panel/remove devtools',
-            clearPanelMarker: true,
-            restoreIfKept: false,
-          });
-          ctx.syncPanelMarkers(wsId);
-          ctx.emitPanelsSync(wsId);
-        }
-        return;
-      }
-      const subVictims = ctx.panels.removeWithSubPanels(wsId, action.id);
-      for (const spId of subVictims) {
-        void closeTabAsRemoved(ctx, spId, { label: 'panel/remove sub-panel' });
-      }
-      closeDevtoolsTabs(ctx, ctx.panels.takeOrphanedDevtoolsTabs(wsId), 'panel/remove devtools');
-      void clearPanelMarker(action.id);
-      ctx.syncPanelMarkers(wsId);
-      ctx.emitPanelsSync(wsId);
       return;
     }
     case 'panel/focusedChanged':
@@ -2239,34 +2185,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       })();
       return;
     }
-    case 'pinnedPanel/activate': {
-      // Switch to the workspace that owns the pinned panel; the panel
-      // tab is NOT activated as the main tab. Activating it would
-      // relocate the panel's <browser> into the main content slot
-      // (chrome's reconciler routes the selected tab there), which is
-      // the opposite of what a pinned panel should do — the panel
-      // stays in its side slot.
-      //
-      // Scrolling the panel strip + focusing the panel's <browser> is
-      // handled chrome-side: the React caller writes a
-      // BENTO_FOCUS_PANEL:<ts>:<tabId> title alongside the dispatch,
-      // and chrome retries the scroll+focus until the workspace
-      // reconcile has materialized the panel element.
-      const owner = ctx.workspaces.findOwningWindow(action.workspaceId);
-      if (owner !== null && owner !== ctx.sourceWindowId) {
-        // Another window already owns the workspace. Focus that window
-        // and stop — its shell will see the pin row activate via its
-        // own user gesture if the user wants to focus the panel there.
-        browser.windows
-          .update(owner, { focused: true })
-          .catch((err) =>
-            console.warn('[bento-tools] pinnedPanel/activate: focus owner failed:', err),
-          );
-        return;
-      }
-      ctx.workspaces.activate(action.workspaceId, ctx.sourceWindowId);
-      return;
-    }
     case 'pinnedPanels/requestSnapshot':
       replyToSource(ctx, {
         type: 'pinnedPanels/snapshot',
@@ -2293,12 +2211,6 @@ export function handle(wireAction: WireAction, ctx: HandlerContext): void {
       void ctx.settingsDomain
         .setProtectionLevel(action.level)
         .catch((err) => console.warn('[bento-tools] privacy/setProtectionLevel failed:', err))
-        .finally(() => void emitPrivacySnapshot(ctx));
-      return;
-    case 'privacy/setAdvanced':
-      void ctx.settingsDomain
-        .setAdvanced(action.key, action.value)
-        .catch((err) => console.warn('[bento-tools] privacy/setAdvanced failed:', err))
         .finally(() => void emitPrivacySnapshot(ctx));
       return;
     case 'privacy/setDefaultSearchEngine':

@@ -37,9 +37,9 @@ troubleshoot.
   other theme; no Default rule reads `prefers-color-scheme`.
 - `useWorkspaceTheme()` mirrors the active workspace's `themeId` onto
   `<html data-bento-theme="…">` in every shell document. The sidebar
-  also pushes it to the Firefox chrome window via the `BENTO_THEME:`
-  document.title sentinel; `bento-shell-mount.js` picks it up and
-  copies it to the chrome `<window>` root.
+  also sends it to the Firefox chrome window in the `BENTO_PANELS`
+  payload; `bento-shell-mount.js` picks it up and copies it to the
+  chrome `<window>` root.
 - Each theme except Default is its own stylesheet, so a document loads only the
   theme it shows. `pnpm run theme:sync` writes `theme/presets/index.css` (Default
   and the shared token bridge, imported by every entry) and
@@ -292,9 +292,9 @@ A theme can override:
 | `--brand-N`           | 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100                                                                 | Accent palette. Mux UI aliases `--color-N` to `--brand-N`, so this also retunes Bento's workspace accent. |
 | `--neutral-default-N` | 5, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 40, 50, 60, 70, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100 | Neutral palette. Drives sidebar bg, text colour, dividers, etc.                                           |
 | `--color-N-fg`        | per-stop, light + dark                                                                                     | Foreground contrast pairs against brand backgrounds (e.g. text on `--color-60`-tinted buttons).           |
-| `--display-color`     | single                                                                                                     | Top-level heading colour alias.                                                                           |
+| `--display-color`     | single                                                                                                     | Declared by theme sheets for completeness; nothing in Bento or Mux reads it today.                        |
 | `--text-color`        | single                                                                                                     | Body text colour alias.                                                                                   |
-| `--mono-color`        | single                                                                                                     | Mono / code text colour alias.                                                                            |
+| `--mono-color`        | single                                                                                                     | Declared by theme sheets for completeness; nothing in Bento or Mux reads it today.                        |
 
 A theme does **not** need to override every token in a family — Scale
 emits the full ladder, but a hand-authored theme can supply only the
@@ -316,8 +316,9 @@ For maintainers — skip this if you're just adding themes.
   and calls `document.documentElement.setAttribute('data-bento-theme',
 themeId ?? 'default')`. Flipping that attribute swaps which scoped
   rules apply across the document.
-- The sidebar (`App.tsx`) passes `pushChrome: true` so the hook also
-  writes a `BENTO_THEME:<ts>:<themeId>` sentinel to `document.title`.
+- The hook writes no `document.title` sentinel of its own: the sidebar
+  sends the active theme to chrome in the `BENTO_PANELS` payload (title IPC
+  is last-write-wins, so a separate theme write could clobber a panel sync).
 - The workspace switcher menu avatars set `data-bento-theme` on each
   avatar element so even non-active workspaces' rows show their own
   theme colour (otherwise CSS inheritance bleeds the active theme
@@ -333,7 +334,7 @@ themeId ?? 'default')`. Flipping that attribute swaps which scoped
   so the chrome `<window>` element matches.
 - [bento-shell-mount.js](../src/browser/base/content/bento-shell-mount.js)
   injects the base stylesheet at boot, then polls the shell sidebar's
-  `document.title`. When it sees `BENTO_THEME:` (or a `BENTO_PANELS` payload),
+  `document.title`. When it sees a `BENTO_PANELS` payload,
   `applyChromeThemeToDocument` attaches the theme's chrome sheet and, once it has
   loaded, sets the `themeId` on chrome's `documentElement[data-bento-theme]`.
 
@@ -494,8 +495,6 @@ to hex and re-import.
   [`extensions/bento-shell/src/theme/presets/index.ts`](../extensions/bento-shell/src/theme/presets/index.ts)
 - Shell hook:
   [`extensions/bento-shell/src/theme/useWorkspaceTheme.ts`](../extensions/bento-shell/src/theme/useWorkspaceTheme.ts)
-- Chrome bridge:
-  [`extensions/bento-shell/src/theme/themeBridge.ts`](../extensions/bento-shell/src/theme/themeBridge.ts)
 - Shell theme sheet loader:
   [`extensions/bento-shell/src/theme/themeSheets.ts`](../extensions/bento-shell/src/theme/themeSheets.ts)
 - Chrome-tokens generator (shared tokens and Default into the base chrome
@@ -503,4 +502,4 @@ to hex and re-import.
   [`scripts/generate-chrome-tokens.mjs`](../scripts/generate-chrome-tokens.mjs)
 - Chrome title-IPC handler: search
   [`src/browser/base/content/bento-shell-mount.js`](../src/browser/base/content/bento-shell-mount.js)
-  for `THEME_PREFIX` and `handleThemeTitle`.
+  for `applyChromeThemeToDocument`.

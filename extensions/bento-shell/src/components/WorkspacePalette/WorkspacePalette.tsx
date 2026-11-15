@@ -247,7 +247,7 @@ export function WorkspacePalette({ onClose }: WorkspacePaletteProps) {
       titleClassName="bento-workspace-palette__title"
       actionsClassName="bento-workspace-palette__footer"
       actions={
-        <Row align="center" className="bento-workspace-palette__footer-content">
+        <Row align="center">
           <Text
             variant="body"
             size="sm"

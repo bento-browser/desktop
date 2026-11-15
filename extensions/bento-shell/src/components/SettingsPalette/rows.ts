@@ -103,10 +103,6 @@ export interface PaletteRow {
   intent: Intent;
 }
 
-export interface RowContext {
-  model: SettingsPaletteModel;
-}
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** `22 Oct 2026, 14:30` in local time, 24-hour, independent of the locale's month names. */

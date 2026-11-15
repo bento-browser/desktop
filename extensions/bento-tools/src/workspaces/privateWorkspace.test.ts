@@ -99,7 +99,7 @@ describe('WorkspaceStore Private workspace', () => {
     vi.mocked(browser.sessions.setWindowValue).mockClear();
 
     const workspace = store.ensurePrivate(9);
-    store.rename('x', 'y');
+    store.update('x', { name: 'y' });
     await store.persistCurrentState();
     await vi.advanceTimersByTimeAsync(1000);
 

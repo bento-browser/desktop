@@ -11,7 +11,9 @@ patches under `patches/`.
   tokens and theme sheets), and the embedded import host. A new file here also needs a
   `browser/base/jar.mn` line in `patches/chrome-layout/01-bento-shell-mount.patch`;
   `scripts/check-import-output.mjs` fails without it.
-- `browser/actors/`: the `BentoKey` JSWindowActor pair.
+- `browser/actors/`: the `BentoKey` and `BentoShellBus` JSWindowActor pairs,
+  `BentoAboutThemeChild` (child-only, themes in-scope about: pages), and
+  `BentoModePresentation.sys.mjs`, the native mode presenter the mount script imports.
 
 The supported chrome surfaces are listed in [CLAUDE.md](../CLAUDE.md), and each
 Firefox core touchpoint is logged in

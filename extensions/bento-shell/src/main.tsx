@@ -39,11 +39,11 @@ initToolsPort({
   ],
 });
 
-// The sidebar owns the chrome side-panel reveal/hide signal. Opt this
-// entry into translating panel/show + panel/hide bus events into the
-// chrome `BENTO_SIDE_PANEL:...` document.title IPC. Other shell entries
-// (confirm, palette, settings) deliberately don't enable this — they'd
-// stomp on their own title-IPC close signals if they did.
+// The sidebar owns the chrome panel strip signal. Opt this entry into
+// forwarding panels/sync bus events as the chrome `BENTO_PANELS:...`
+// document.title IPC. Other shell entries (confirm, palette, settings)
+// deliberately don't enable this — they'd stomp on their own title-IPC
+// close signals if they did.
 enableSidePanelTitleBridge();
 
 function Shell() {

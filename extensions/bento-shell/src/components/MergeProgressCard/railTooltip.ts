@@ -2,14 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { FocusEventHandler, PointerEventHandler } from 'react';
 import { encodeTitlePayload, sendChromeTitle } from '../../bridge/chromeTitle';
 
-/**
- * Asks chrome to show the panel navigator tooltip overlay beside the rail merge card
- * (`BENTO_RAIL_TOOLTIP` title IPC). The shell frame is the rail wide, so a tooltip drawn
- * in it would be clipped; the overlay is a full-window document that is not.
- * 'hover' waits the overlay's hover delay, 'focus' shows at once, 'hide' hides.
- */
-export type RailTooltipAction = 'hover' | 'focus' | 'hide';
-
 export interface RailTooltipText {
   label: string;
   detail: string | null;
@@ -22,6 +14,12 @@ export interface RailTooltipAnchor {
   height: number;
 }
 
+/**
+ * Asks chrome to show the panel navigator tooltip overlay beside the rail merge card
+ * (`BENTO_RAIL_TOOLTIP` title IPC). The shell frame is the rail wide, so a tooltip drawn
+ * in it would be clipped; the overlay is a full-window document that is not.
+ * 'hover' waits the overlay's hover delay, 'focus' shows at once, 'hide' hides.
+ */
 export function railTooltipTitle(
   message:
     | { action: 'hide' }

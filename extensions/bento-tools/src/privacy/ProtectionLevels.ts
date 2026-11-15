@@ -184,14 +184,6 @@ export function detectPrivacyLevelFromSnapshot(
   return 'custom';
 }
 
-export async function detectPrivacyLevel(): Promise<PrivacyProtectionLevel> {
-  const [browserPrivacy, prefs] = await Promise.all([
-    readBrowserPrivacySnapshot(),
-    readPrefSnapshot(),
-  ]);
-  return detectPrivacyLevelFromSnapshot(browserPrivacy, prefs);
-}
-
 export async function readSearchEnginesSnapshot(): Promise<SearchEnginesSnapshot> {
   const [engines, defaultSearchEngine] = await Promise.all([
     browser.bentoPrivacy.getSearchEngines(),

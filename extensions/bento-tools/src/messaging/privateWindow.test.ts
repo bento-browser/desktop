@@ -20,7 +20,6 @@ async function createContext(sourceWindowId: number | null) {
   const sendAudience = vi.fn();
   const settings = {
     update: vi.fn(async () => ({})),
-    reset: vi.fn(async () => ({ settings: {} })),
   };
   const ctx = {
     tabs: {
@@ -33,8 +32,8 @@ async function createContext(sourceWindowId: number | null) {
     },
     workspaces,
     settings,
-    // The handler saves settings through the domain service; these are its two calls.
-    settingsDomain: { updateSettings: settings.update, reset: settings.reset },
+    // The handler saves settings through the domain service.
+    settingsDomain: { updateSettings: settings.update },
     panels: { getVisiblePanelIds: vi.fn(() => []) },
     pinnedPanels: { entries: vi.fn(() => [{ tabId: 5 }]) },
     tabFolders: {
@@ -174,16 +173,6 @@ describe('private window protocol handling', () => {
       handle({ type: 'settings/update', changes }, ctx);
 
       expect(settings.update).toHaveBeenCalledExactlyOnceWith(changes);
-    });
-
-    it('does not let a private window reset the saved settings', async () => {
-      const { ctx, settings } = await createContext(PRIVATE_WINDOW);
-      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      handle({ type: 'settings/reset' }, ctx);
-      await vi.advanceTimersByTimeAsync(100);
-
-      expect(settings.reset).not.toHaveBeenCalled();
     });
   });
 

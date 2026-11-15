@@ -37,6 +37,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        # `pnpm run download` and the engine-source action use only Node
+        # built-ins and scripts/, so the job installs no dependencies.
+        with:
+          install: 'false'
 
       # Pristine source keyed by Firefox version and source digest, the same
       # entry the source-import job in ci.yml restores.

@@ -14,7 +14,6 @@ import {
   isDurableSettingsOperation,
   isSettingsErrorCode,
   isSettingsResult,
-  type BackupContext,
   type BackupExportResult,
   type DurableSettingsOperation,
   type OperationComponent,
@@ -71,7 +70,6 @@ export interface SettingsResults {
   'privacy/setProtectionLevel': PrivacyMutationResult;
   'privacy/setAdvanced': PrivacyMutationResult;
   'privacy/setDefaultSearchEngine': SearchMutationResult;
-  'backup/getContext': BackupContext;
   'backup/export': BackupExportResult;
   'backup/validateImport': ValidateImportResult;
   'operation/status': OperationStatus;
@@ -80,11 +78,11 @@ export interface SettingsResults {
 
 export type PlainOperation = keyof SettingsResults;
 
-/** How a durable operation ended. `failed` and `cancelled` carry the tools error code. */
+/** How a durable operation ended. `failed` carries the tools error code. */
 export interface DurableOutcome {
   operationId: string;
   kind: DurableSettingsOperation;
-  state: 'succeeded' | 'partial' | 'failed' | 'cancelled';
+  state: 'succeeded' | 'partial' | 'failed';
   components: OperationComponent[];
   reconcileComponents: string[];
   errorCode?: string;
@@ -152,12 +150,10 @@ function parseInbound(value: unknown): SettingsInbound | null {
   return isSettingsResult(value) || isSettingsChangeEvent(value) ? value : null;
 }
 
-type Terminal = 'succeeded' | 'partial' | 'failed' | 'cancelled';
+type Terminal = 'succeeded' | 'partial' | 'failed';
 
 function isTerminal(state: unknown): state is Terminal {
-  return (
-    state === 'succeeded' || state === 'partial' || state === 'failed' || state === 'cancelled'
-  );
+  return state === 'succeeded' || state === 'partial' || state === 'failed';
 }
 
 function components(value: unknown): OperationComponent[] {
