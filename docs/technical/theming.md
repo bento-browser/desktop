@@ -207,7 +207,7 @@ neutral Mux surfaces, the theme colour on accents only.
   the mount script registers it once per process as a USER sheet; the style sheet
   service gives it to every content process. It selects on `data-bento-theme` and
   `data-color-mode` on the page root, inside exact-URL `@-moz-document` scopes and
-  `@media not (forced-colors)`.
+  `@media not ((forced-colors) or (prefers-contrast: more))`.
 - Bridge: the mount script publishes `{ [browserId]: [theme, mode] }` under the
   `BentoAboutTheme` key of `Services.ppmm.sharedData` for each browser of its window
   (read-modify-write, so other windows' entries stay, then `flush()`). It publishes
@@ -215,14 +215,18 @@ neutral Mux surfaces, the theme colour on accents only.
   `TabBrowserInserted`, `SwapDocShells` (a tab moved in) and the window's `load`. It
   removes a closed tab's entry on `TabClose`, unless another window adopted the tab
   (`detail.adoptedBy`, as in Bento's close handover), and the window's entries on
-  `unload`, except ids another open window now shows. An id that is not lowercase
+  `unload`, except ids another open window now shows. It keeps the id it last published
+  for each browser, so a discarded tab's entry goes on `TabBrowserDiscarded` (the
+  browser reads id 0 without its frame loader), a restored one publishes its new id, and
+  a tab closed while discarded is still found. An id that is not lowercase
   kebab-case publishes as `default`.
 - Renderer: the child-only `BentoAboutTheme` actor
   (`src/browser/actors/BentoAboutThemeChild.sys.mjs`) handles `DOMDocElementInserted`
   in every in-scope page and frame, reads the entry of `browsingContext.top.browserId`
   and sets the two root attributes before the first style flush. A `change` event on
   `Services.cpmm.sharedData` re-applies them to every live page, writing only changed
-  attributes (no forced flush). A page whose browser no window published keeps
+  attributes (no forced flush). `get()` deserializes the whole map, so each process
+  reads it once per change and its pages share that copy. A page whose browser no window published keeps
   Firefox's own look. The Passwords sidebar is a chrome document in the sidebar's
   chrome `<browser>`, outside the actor's `messageManagerGroups`, so
   `syncAboutThemeSidebar()` sets its root from the window on `DOMDocElementInserted`
@@ -255,6 +259,15 @@ neutral Mux surfaces, the theme colour on accents only.
 - Without the copy rule, a dev build's sheet and actor are symlinks into the checkout
   that the content sandbox cannot read: the sheet loads empty in content processes and
   the actor module fails to load.
+- Firefox's high-contrast styling comes from `prefers-contrast` rules as well as forced
+  colours (the certificate warning colour, panel borders). macOS Increase Contrast sets
+  `prefers-contrast: more` without forced colours, so the sheet steps aside for both.
+- With Nova off, a private window's about:privatebrowsing paints a purple gradient
+  (`background` on `html.private`, which a `background-color` does not cover) and purple
+  panels; the global text colour on those was unreadable in light mode, so the page has
+  its own surface rules. Bento's `firefox-wordmark.svg` fills with `context-fill #ffffff`,
+  so the page's `fill: currentColor` colours it (white without a context fill, as before);
+  a plain white fill vanished on the light canvas.
 - Browser ids move with a tab between windows. Deleting an entry on every `TabClose`
   or at unload dropped the entries of tabs Bento's close handover moved into another
   window, so those pages kept the closed window's theme until the next publish.

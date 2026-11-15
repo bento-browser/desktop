@@ -193,7 +193,9 @@ the base sheet plus that theme's sheet whose selectors match a root carrying
 and follows `var()`, which is what a chrome window showing that theme computes. The
 shell-sized lengths use the same module. The sheet then holds, inside one
 `@-moz-document` (exact URLs plus their `?` and `#` forms, prefixes for the error
-pages, and the megalist URL) and `@media not (forced-colors)`:
+pages, and the megalist URL) and `@media not ((forced-colors) or (prefers-contrast:
+more))`, so Firefox's own high-contrast styling stays under forced colours and under
+macOS Increase Contrast, which turns on `prefers-contrast: more` without them:
 
 - one block per theme and mode (32) of private `--bento-about-*` literals. Default's
   blocks come first and select any `data-bento-theme`, so an unknown theme id shows
@@ -204,7 +206,9 @@ pages, and the megalist URL) and `@media not (forced-colors)`:
   `moz-toggle`, whose shadow stylesheets redeclare their tokens on `:host`;
 - page rules, each in its own `@-moz-document` for the pages that have it, including
   replacements for the pages' `prefers-color-scheme` rules, which follow the content
-  mode rather than the UI mode.
+  mode rather than the UI mode, and neutral surfaces for about:privatebrowsing in a
+  private window (with Nova off, Firefox paints it a purple gradient with purple
+  panels and search field).
 
 It is a USER sheet so it reaches shadow trees and its `!important` wins over the
 pages' own tokens; `@-moz-document` needs that origin too. Inheritance from `:root`
@@ -230,9 +234,10 @@ free of `@layer`, `data-muxui-*`, and any selector that requires
 `[data-bento-contrast='more']` (only `:not(...)` negations). `node --test
 scripts/theme-sheets.test.mjs` checks all of this, and the about: page sheet's
 scope, its block for every theme and mode, that no `var()` is left unresolved and that
-everything sits under `@media not (forced-colors)`. With a Firefox tree in `engine/` (or
+everything sits under the high-contrast wrapper. With a Firefox tree in `engine/` (or
 `BENTO_FIREFOX_SOURCE=<tree>`), it also checks that every Firefox token the map sets
-is still declared there.
+is still declared there. CI's source-import job runs that check against its Firefox
+source with `BENTO_FIREFOX_SOURCE` set, where a missing tree fails instead of skipping.
 
 In a running build, set a non-Default workspace theme and confirm the window root
 has that `data-bento-theme` plus one `<link data-bento-chrome-theme-sheet>`;

@@ -2348,11 +2348,13 @@ rel="stylesheet">` load and error events on chrome documents, and the
   (primary buttons, the selected nav item, links, focus, toggles). Settings is not one
   of them: patch 12 themes it. One USER sheet holds every theme and mode as literal
   values inside `@-moz-document` (exact URLs plus their `?` and `#` forms, and prefixes
-  for the error pages) and `@media not (forced-colors)`. The mount script registers it
-  once per process and publishes `{ [browserId]: [theme, mode] }` through
-  `Services.ppmm.sharedData` on theme show, mode write, `TabOpen`,
-  `TabBrowserInserted` and `SwapDocShells`, removing entries on `TabClose` and window
-  unload. The child-only `BentoAboutTheme` actor sets `data-bento-theme` and
+  for the error pages) and `@media not ((forced-colors) or (prefers-contrast: more))`,
+  so Firefox's high-contrast styling stays under macOS Increase Contrast too. The mount
+  script registers it once per process and publishes `{ [browserId]: [theme, mode] }`
+  through `Services.ppmm.sharedData` on theme show, mode write, `TabOpen`,
+  `TabBrowserInserted` and `SwapDocShells`, removing entries on `TabBrowserDiscarded`,
+  `TabClose` and window unload (it keeps the last id per browser, since a discarded
+  browser reads id 0). The child-only `BentoAboutTheme` actor sets `data-bento-theme` and
   `data-color-mode` on the page root at `DOMDocElementInserted`, before the first style
   flush, and again on every shared-map change. The megalist is a chrome document in the
   sidebar's chrome `<browser>`, which the actor does not reach (window actors with
@@ -2370,13 +2372,18 @@ rel="stylesheet">` load and error events on chrome documents, and the
   `prefers-color-scheme` that follow the content mode instead of the UI mode
   (`aboutNetError.css` `--warning-color`, `aboutaddons.css` badge borders,
   `aboutSupport.css` `--codec-bg-header`, `progressmeter.css`, `login-item.css`
-  `:host`), all listed in `scripts/about-page-themes.mjs`; `Services.ppmm.sharedData`
+  `:host`), and the private window's surfaces and search field tokens in
+  `browser/themes/shared/privatebrowsing/aboutPrivateBrowsing.css`, all listed in
+  `scripts/about-page-themes.mjs`; that file's `.wordmark` `fill: currentColor` with
+  `-moz-context-properties: fill`, which colours Bento's
+  `branding/bento/content/firefox-wordmark.svg` (`context-fill #ffffff`); `Services.ppmm.sharedData`
   `set`/`flush` and `Services.cpmm.sharedData` `change` events;
   `ChromeUtils.registerWindowActor` with `allFrames`, `safeForUntrustedWebProcess`
   (the error pages load in web processes) and about: `matches` with `?*` and `#*`
   patterns; `JSWindowActorChild.browsingContext.top.browserId`; the
   `DOMDocElementInserted` chrome event (`dom/base/nsContentSink.cpp`); `TabClose`
-  `detail.adoptedBy` and `SwapDocShells` for tabs Bento's close handover moves; the
+  `detail.adoptedBy` and `SwapDocShells` for tabs Bento's close handover moves;
+  `TabBrowserDiscarded` and `browserId` reading 0 without a frame loader; the
   megalist URL `chrome://global/content/megalist/megalist.html` and the `#sidebar`
   `<browser>`.
 - Why this cannot stay extension-only: extension code cannot style privileged about:
@@ -2392,7 +2399,8 @@ rel="stylesheet">` load and error events on chrome documents, and the
 - Regression checks for future updates: with the new tree in the primary checkout's
   `engine/` (or `BENTO_FIREFOX_SOURCE=<tree>`), `node --test
   scripts/theme-sheets.test.mjs` checks every mapped token and page rule against its
-  owner file (`every Firefox token the about: page map sets still exists`); grep the
+  owner file (`every Firefox token the about: page map sets still exists`; CI's
+  source-import job runs it against its Firefox source); grep the
   in-scope pages' CSS for new `prefers-color-scheme` rules and component token files
   for `:host` redeclarations of mapped tokens. In a running build, two windows on
   different themes and modes: open each in-scope page and the Passwords sidebar in
