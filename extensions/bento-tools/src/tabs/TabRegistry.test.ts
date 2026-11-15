@@ -1150,3 +1150,28 @@ describe('TabRegistry page errors', () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('TabRegistry onTabCreated', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it('reports a created tab before the frame that delivers its created delta', async () => {
+    const listeners = stubTabsBrowser();
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    const tabs = new TabRegistry();
+    await tabs.init();
+    const order: string[] = [];
+    tabs.onTabCreated((tab) => order.push(`hook:${tab.id}`));
+    tabs.onDeltas((batch) => {
+      for (const d of batch) if (d.kind === 'created') order.push(`delta:${d.tab.id}`);
+    });
+
+    listeners.created?.(makeTab({ id: 7, windowId: 1 }));
+    expect(order).toEqual(['hook:7']);
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(order).toEqual(['hook:7', 'delta:7']);
+  });
+});

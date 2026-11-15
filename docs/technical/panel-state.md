@@ -274,6 +274,14 @@ ids, saved-panel count, and optional `scrollToPanelTabId`, then broadcasts
   `Cmd+Shift+T` can route the restored tab through
   `maybeRestorePanelFromMarker`. Clear the marker only when the tab stays open
   as a normal tab, such as `panels/clear` or explicit panel promotion.
+- A created tab goes through `maybeRestorePanelFromMarker` only when it is not fresh
+  (`tabs/CreatedTab.ts`): a tab the bento-tab-state experiment calls `restoring` (SessionStore
+  on its `TabOpen` stack, which Cmd+Shift+T is) or `unknown`, or a `new` tab that already has a
+  `bento.isPanel` or `bento.workspaceId` value. If that classification ever calls a restored
+  panel `new`, the marker is never read and the panel comes back as a sidebar tab; check the
+  Tab Creation Kind probe in [firefox-core-touchpoints.md](../firefox-core-touchpoints.md)
+  first. The panel-opener promotion runs after the restore and before any workspace
+  assignment, for fresh and restored tabs alike.
 - A close that Firefox does not commit (beforeunload "Stay") must put the tab
   back. The close paths capture a `CloseUndo` before `markClosing` and
   `PanelStore.remove` drop the workspace, folder, panel layout slot, width and

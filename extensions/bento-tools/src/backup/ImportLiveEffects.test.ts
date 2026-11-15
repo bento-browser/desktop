@@ -63,7 +63,7 @@ describe('executeImport live effects', () => {
           activate: vi.fn(() => 'activated'),
           persistCurrentState: vi.fn(),
         },
-        tabs: { assignWorkspace: vi.fn(async () => undefined), snapshot: () => [] },
+        tabs: { assignWorkspaceEagerly: vi.fn(async () => true), snapshot: () => [] },
         panels: {
           persistCurrentState: vi.fn(),
           restorePersistedLayout: vi.fn(),

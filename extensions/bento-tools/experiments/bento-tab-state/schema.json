@@ -18,6 +18,12 @@
     ],
     "functions": [
       {
+        "name": "getCreationKind",
+        "type": "function",
+        "async": true,
+        "parameters": [{ "name": "tabId", "type": "integer", "minimum": 0 }]
+      },
+      {
         "name": "getPageErrors",
         "type": "function",
         "async": true,

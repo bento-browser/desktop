@@ -17,6 +17,7 @@ import {
   tabsToAdopt,
 } from './tabs/AdoptedTab';
 import { wasHandedOver } from './tabs/Handover';
+import { createCreatedTabs, readTabSessionValueWithRetries } from './tabs/CreatedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
 import {
   createActivationGenerations,
@@ -332,21 +333,6 @@ const SESSION_READ_RETRY_DELAY_MS = 50;
 
 let parkedWorkspaceTabs = new Map<string, ParkedWorkspaceTab[]>();
 
-async function readTabSessionValueWithRetries(
-  tabId: number,
-  key: string,
-  attempts = 8,
-): Promise<unknown> {
-  for (let i = 0; i < attempts; i++) {
-    const value = await browser.sessions.getTabValue(tabId, key).catch(() => undefined);
-    if (value !== undefined) return value;
-    if (i < attempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, SESSION_READ_RETRY_DELAY_MS));
-    }
-  }
-  return undefined;
-}
-
 async function loadParkedWorkspaceTabs(): Promise<void> {
   try {
     const raw = (await browser.storage.local.get(PARKED_WORKSPACE_TABS_STORAGE_KEY)) as Record<
@@ -570,7 +556,7 @@ async function restorePanelsForWorkspace(
         ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
       });
       if (typeof created.id === 'number') {
-        await tabs.assignWorkspace(created.id, workspaceId);
+        await tabs.assignWorkspaceEagerly(created.id, workspaceId);
         return created.id;
       }
     } catch (err) {
@@ -1377,47 +1363,18 @@ tabs.onDeltas((deltas) => {
       //     async; the workspaceId may have been set by the time this
       //     listener runs even though it wasn't in the delta.
       //   - restorePanelsForWorkspace: creates new tabs and immediately
-      //     calls assignWorkspace; if its writes land before this
+      //     calls assignWorkspaceEagerly; if its writes land before this
       //     listener, the live snapshot already has the right workspace.
       // Reading live state means we don't trample either of those.
+      //
+      // A tab still without one joins the workspace its own window showed
+      // when it opened (per window, so a Cmd+T in window A showing Personal
+      // creates a Personal tab while window B shows another workspace),
+      // unless it is a panel or SessionStore restores a workspace into it.
+      // See tabs/CreatedTab.ts.
       const live = tabs.snapshot().find((t) => t.id === d.tab.id);
       if (live && !live.workspaceId) {
-        // No workspace yet. Try sessions one more time before falling
-        // back to the active workspace — covers the "session value
-        // hydrated mid-listener" race where the in-memory snapshot
-        // hasn't been updated yet but the persistent value IS present.
-        // Only writes to sessions if there's truly no value AND we
-        // need to assign to active.
-        //
-        // Per-window assignment (phase A): the tab's `windowId` is the
-        // chrome window it was created in. Use that window's per-
-        // window active workspace so a Cmd+T in window A (showing
-        // Personal) creates a Personal tab even when window B is on a
-        // different workspace. Without this, the assignment falls back
-        // to `#lastGlobalActiveId`, which is whatever the last GLOBAL
-        // activation set it to — typically wrong in multi-window use.
-        const sourceWindowId =
-          typeof d.tab.windowId === 'number' && d.tab.windowId >= 0 ? d.tab.windowId : null;
-        void (async () => {
-          // Boot owns startup tabs, including sweeping retained closing marks.
-          if (!adoptionGate.isSettled()) return;
-          const bentoClosed = await restorePanelFromMarkerOnce(d.tab.id, lastActiveNonPanelTabId);
-          if (isPanelOrSubPanelTabId(d.tab.id)) return;
-          const sessionWs = await readTabSessionValueWithRetries(d.tab.id, 'bento.workspaceId');
-          if (sessionWs && typeof sessionWs === 'string') {
-            if (!bentoClosed && !workspaces.has(sessionWs)) {
-              await workspaces
-                .adoptImportedWorkspacesFromSession(sourceWindowId)
-                .catch((err) =>
-                  console.warn('[bento-tools] imported workspace adoption failed:', err),
-                );
-            }
-            tabs.setWorkspaceInMemory(d.tab.id, sessionWs);
-            return;
-          }
-          const wsId = workspaces.getActiveId(sourceWindowId);
-          if (wsId) void tabs.assignWorkspace(d.tab.id, wsId);
-        })();
+        void createdTabs.placeUnassigned(d.tab.id, d.tab.windowId, lastActiveNonPanelTabId);
       }
       // URL-marker check stays in a dedicated browser.tabs.onCreated listener
       // below. TabSnapshot carries url when available for shell mirrors, but
@@ -1444,6 +1401,7 @@ tabs.onDeltas((deltas) => {
       continue;
     }
     if (d.kind === 'removed') {
+      createdTabs.forget(d.id);
       dropRemovedTabFromPanels(
         {
           panels,
@@ -1754,6 +1712,23 @@ function findNonPanelTabForWorkspace(
   return candidate?.id ?? null;
 }
 
+// One placement per created tab, shared by tabs.onCreated and the 'created' delta below.
+const createdTabs = createCreatedTabs({
+  adoptionSettled: () => adoptionGate.isSettled(),
+  isPrivate: (tabId) => tabs.isPrivate(tabId),
+  activeWorkspaceId: (windowId) => workspaces.getActiveId(windowId),
+  restorePanel: (tabId, previousNonPanelTabId) =>
+    restorePanelFromMarkerOnce(tabId, previousNonPanelTabId),
+  // Its panel insertion runs before the first await.
+  promoteFromPanelOpener: (tab, previousNonPanelTabId) =>
+    void maybePromotePanelOpenerTab(tab, previousNonPanelTabId),
+  isPanel: isPanelOrSubPanelTabId,
+  workspaceOf: (tabId) => tabs.snapshot().find((t) => t.id === tabId)?.workspaceId,
+  hasWorkspace: (workspaceId) => workspaces.has(workspaceId),
+  adoptImportedWorkspaces: (windowId) => workspaces.adoptImportedWorkspacesFromSession(windowId),
+  tabs,
+});
+
 // The palette awaits the same classification as onCreated before choosing tab or panel focus.
 const panelRestoreTasks = new Map<number, Promise<boolean>>();
 function restorePanelFromMarkerOnce(
@@ -1915,7 +1890,8 @@ async function maybePromotePanelOpenerTab(
   }
 }
 
-browser.tabs.onCreated.addListener((tab) => {
+// Through the registry, so the tab's placement has started when its 'created' delta asks for it.
+tabs.onTabCreated((tab) => {
   if (typeof tab.id !== 'number') return;
   // Capture synchronously, BEFORE any await — the concurrent
   // tabs.onActivated handler awaits readPanelMarker and, on a miss,
@@ -1923,9 +1899,7 @@ browser.tabs.onCreated.addListener((tab) => {
   const previousNonPanelTabId = lastActiveNonPanelTabId;
   const windowId = typeof tab.windowId === 'number' && tab.windowId >= 0 ? tab.windowId : null;
   maybeHandleAddPanelMarker(tab.id, tab.url ?? '', 'onCreated', windowId);
-  void restorePanelFromMarkerOnce(tab.id, previousNonPanelTabId).then(() =>
-    maybePromotePanelOpenerTab(tab, previousNonPanelTabId),
-  );
+  createdTabs.onCreated(tab, previousNonPanelTabId);
 });
 
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
