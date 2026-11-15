@@ -21,7 +21,11 @@ function sharedData() {
   return {
     store,
     flushes: 0,
-    get: (key) => store.get(key),
+    gets: 0,
+    get(key) {
+      this.gets += 1;
+      return structuredClone(store.get(key));
+    },
     set(key, value) {
       store.set(key, structuredClone(value));
     },
@@ -73,19 +77,19 @@ function loadActor(data = sharedData()) {
 }
 
 test('the actor reads [theme, mode] for its browser; an unknown theme shows Default', () => {
-  const { lookupAboutTheme, data } = loadActor();
-  data.set(KEY, {
+  const { lookupAboutTheme } = loadActor();
+  const entries = {
     1: ['standard-fern', 'dark'],
     2: ['Not A Theme', 'light'],
     3: [null, 'dark'],
     4: ['standard-fern', 'sepia'],
-  });
-  assert.deepEqual(plain(lookupAboutTheme(data, 1)), ['standard-fern', 'dark']);
-  assert.deepEqual(plain(lookupAboutTheme(data, 2)), ['default', 'light']);
-  assert.deepEqual(plain(lookupAboutTheme(data, 3)), ['default', 'dark']);
-  assert.equal(lookupAboutTheme(data, 4), null, 'an invalid mode is no entry');
-  assert.equal(lookupAboutTheme(data, 5), null);
-  assert.equal(lookupAboutTheme({ get: () => undefined }, 1), null);
+  };
+  assert.deepEqual(plain(lookupAboutTheme(entries, 1)), ['standard-fern', 'dark']);
+  assert.deepEqual(plain(lookupAboutTheme(entries, 2)), ['default', 'light']);
+  assert.deepEqual(plain(lookupAboutTheme(entries, 3)), ['default', 'dark']);
+  assert.equal(lookupAboutTheme(entries, 4), null, 'an invalid mode is no entry');
+  assert.equal(lookupAboutTheme(entries, 5), null);
+  assert.equal(lookupAboutTheme(undefined, 1), null, 'nothing published yet');
 });
 
 test('the actor themes its page root when the root is inserted, and only its own document', () => {
@@ -125,6 +129,31 @@ test('a shared map change re-applies to live pages, writing only what changed', 
   data.set(KEY, { 1: ['default', 'dark'], 2: ['standard-lagoon', 'dark'] });
   data.flush();
   assert.equal(b.root.writes.length, 2, 'a destroyed actor no longer follows');
+});
+
+test('the process reads the shared map once per change, however many pages are live', () => {
+  const { data, page } = loadActor();
+  data.set(KEY, { 1: ['default', 'light'] });
+  const pages = [page(1), page(1), page(1)];
+  for (const each of pages) each.insert();
+  assert.equal(data.gets, 1, 'read once when the first page attached');
+  data.set(KEY, { 1: ['standard-fern', 'dark'] });
+  data.flush();
+  assert.equal(data.gets, 2, 'one read for the change');
+  for (const each of pages) {
+    assert.deepEqual(each.root.writes.slice(2), [
+      ['data-bento-theme', 'standard-fern'],
+      ['data-color-mode', 'dark'],
+    ]);
+  }
+  // A page that loads after the change reads the same copy.
+  const late = page(1);
+  late.insert();
+  assert.equal(data.gets, 2);
+  assert.deepEqual(late.root.writes, [
+    ['data-bento-theme', 'standard-fern'],
+    ['data-color-mode', 'dark'],
+  ]);
 });
 
 // ─── Publisher (bento-shell-mount.js) ────────────────────────────────
