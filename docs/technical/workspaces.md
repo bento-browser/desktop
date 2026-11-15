@@ -770,6 +770,25 @@ honors folder ids present in the active workspace's folder set. Collapsed
 folders hide members except for the active member peek row. Sidebar selection,
 Shift-range selection, close-selected, and the `BENTO_SELECTED_TABS` mirror use
 the flattened visible tab order so hidden folder members cannot be acted on.
+
+Cmd/Ctrl+1 to 9 use a different order: `sidebarTabOrder()` in `displayRows.ts`
+runs the same row builder with `expandAllFolders`, so members of collapsed
+folders keep their folder position (pinned tabs, every folder's members in
+folder order, then regular tabs). Its input is the panel-filtered
+`useWorkspaceTabIds(activeWorkspaceId, windowId)` list, so side panels are
+excluded. `TabList` mirrors it to chrome as
+`BENTO_TAB_ORDER:<ts>:<base64-json { workspaceId, tabIds }>` through
+`sendChromeTitle`, only when the encoded payload changes and not for the empty
+list before hydration. In `bento-shell-mount.js`, `handleTabOrderTitle` keeps the
+last order per window (`currentSidebarTabOrder`), and `workspaceTabsInOrder()`
+rebuilds the eligible set from `gBrowser.tabs` as before (not hidden or closing,
+`bento.workspaceId` session value equal to `currentWorkspaceId`, not in
+`currentPanelTabIds`), then sorts it by the order when its `workspaceId` equals
+`currentWorkspaceId`. Eligible tabs the order does not list, and every tab before
+the first order arrives, follow in `gBrowser.tabs` order. The persistence path is
+unchanged (no new stored state). Manual check: put a tab in the second folder
+and collapse the first folder; Cmd/Ctrl+1 must select the first tab of the first
+folder, not the second folder's tab.
 `TabListPane` derives each folder-row count from its workspace's panel-filtered
 tab IDs, so the count follows live folder membership and matches the tabs that
 can appear in the sidebar.
@@ -1393,6 +1412,15 @@ workspaces.
   workspace" rows; a regular window next to it is unchanged.
 
 ## Workspace pitfalls
+
+- Do not index Cmd/Ctrl+1 to 9 by `gBrowser.tabs` alone. Folders do not move
+  native tabs, so a tab in the second folder could come before the first
+  folder's tabs and get Cmd/Ctrl+1. Chrome sorts by the sidebar's
+  `BENTO_TAB_ORDER` mirror, which must include collapsed folder members (use
+  `sidebarTabOrder()`, not `visualTabOrder`, which only has the active member's
+  peek row). The order only sorts tabs chrome already found eligible, and is
+  ignored when its `workspaceId` is not the window's current workspace, so a
+  late or stale order cannot select a tab in another workspace.
 
 - A tab row title, a folder label and a search result title ellipsize with
   `overflow: hidden` at `line-height: 1`, which cuts the descenders of g, j, p, q and y

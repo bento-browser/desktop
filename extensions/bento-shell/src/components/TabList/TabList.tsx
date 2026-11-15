@@ -26,6 +26,7 @@ import {
   flattenTabOrder,
   pruneSelection,
   rowKey,
+  sidebarTabOrder,
 } from './displayRows';
 import { matchesTabSearch, searchResultDomain } from './tabSearch';
 import {
@@ -38,7 +39,7 @@ import {
 import { getThemeMeta } from '../../theme/presets';
 import { BentoIcon } from '../primitives';
 import './TabList.css';
-import { sendChromeTitle } from '../../bridge/chromeTitle';
+import { encodeTitlePayload, sendChromeTitle } from '../../bridge/chromeTitle';
 import { afterMotion } from '../../motion/afterMotion';
 import { useRailTransitioning } from '../../sidebar/railPhase';
 import { useRailViewport } from '../../sidebar/railViewport';
@@ -78,6 +79,8 @@ const WORKSPACE_SLIDE_EXIT_MOTION = {
   animations: ['bento-tab-list-exit-to-left', 'bento-tab-list-exit-to-right'],
 };
 const SELECTED_TABS_TITLE_PREFIX = 'BENTO_SELECTED_TABS:';
+// Cmd/Ctrl+1-9 order for chrome: BENTO_TAB_ORDER:<ts>:<base64 { workspaceId, tabIds }>.
+const TAB_ORDER_TITLE_PREFIX = 'BENTO_TAB_ORDER:';
 const SCROLLBAR_THUMB_MIN_HEIGHT = 24;
 const SCROLLBAR_SCROLL_VISIBLE_MS = 700;
 // The footer's collapse button (App.tsx). A pointer press on it folds an open search field into
@@ -1325,6 +1328,10 @@ export function TabList({
     [activeId, folders, orderedIds, tabsById],
   );
   const visualTabOrder = useMemo(() => flattenTabOrder(visualRows), [visualRows]);
+  const shortcutTabOrder = useMemo(
+    () => sidebarTabOrder(orderedIds, tabsById, folders),
+    [folders, orderedIds, tabsById],
+  );
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState(INITIAL_SEARCH);
   const { open: searchOpen, query: searchQuery } = search;
@@ -1347,6 +1354,7 @@ export function TabList({
   }, [railLayout]);
   const lastSelectedIdRef = useRef<number | null>(null);
   const mirroredSelectedTitleRef = useRef(false);
+  const mirroredTabOrderRef = useRef<string | null>(null);
 
   const searchResults = useMemo<TabListSearchResult[]>(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
@@ -1450,6 +1458,21 @@ export function TabList({
     sendChromeTitle(`${SELECTED_TABS_TITLE_PREFIX}${Date.now()}:${encodeSelectedTabIds(ids)}`);
     mirroredSelectedTitleRef.current = ids.length > 0;
   }, [selectedIds, visualTabOrder]);
+
+  // Sent only when the order or workspace changes (tab metadata updates
+  // rebuild the array but not the payload), and not for the empty
+  // pre-hydration list. Chrome ignores an order for another workspace.
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    if (shortcutTabOrder.length === 0 && mirroredTabOrderRef.current === null) return;
+    const payload = encodeTitlePayload({
+      workspaceId: activeWorkspaceId,
+      tabIds: shortcutTabOrder,
+    });
+    if (payload === mirroredTabOrderRef.current) return;
+    mirroredTabOrderRef.current = payload;
+    sendChromeTitle(`${TAB_ORDER_TITLE_PREFIX}${Date.now()}:${payload}`);
+  }, [activeWorkspaceId, shortcutTabOrder]);
 
   const handleSelectClick = useCallback(
     (id: number, event: React.MouseEvent<HTMLDivElement>) => {
