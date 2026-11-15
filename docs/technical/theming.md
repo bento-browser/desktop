@@ -256,6 +256,11 @@ neutral Mux surfaces, the theme colour on accents only.
   the UI mode.
 - `url-prefix("about:")` also matched about:blank in web processes, so the scope lists
   exact URLs.
+- about:logins paints the selected row with `--background-color-canvas` and the search
+  field (inside `login-list`'s shadow tree) with `--background-color-box`. Setting either
+  on `login-list` for the list surface took the row's fill and the field's lighter box
+  away, so the list sets only its box token and the field gets a `shadow` rule back to
+  the page's box (measured against mock A: every sampled surface within 3 of the mock).
 - Without the copy rule, a dev build's sheet and actor are symlinks into the checkout
   that the content sandbox cannot read: the sheet loads empty in content processes and
   the actor module fails to load.

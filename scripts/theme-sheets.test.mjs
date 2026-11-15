@@ -31,6 +31,7 @@ import {
   checkFirefoxTokens,
   documentConditions,
   FIREFOX_TOKEN_MAP,
+  PAGE_RULES,
   referencedTokens,
 } from './about-page-themes.mjs';
 import { MUX_THEMES_CSS, parseDeclarations } from './mux-css.mjs';
@@ -752,6 +753,80 @@ test('the about: page sheet leaves no var() unresolved and steps aside for high 
       .find(({ selector }) => selector === ':root[data-bento-theme][data-color-mode]');
     for (const { tokens } of FIREFOX_TOKEN_MAP) {
       for (const token of Object.keys(tokens)) assert.ok(map.declarations.has(token), token);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+// Mock A's sidebar surfaces: the about:logins list and the about:addons sidebar on neutral-12
+// with a neutral-20 edge, the selected login on the page canvas, and the list's search field
+// on the page's box surface.
+test('the about: page sheet gives the logins list and the add-ons sidebar their surfaces', () => {
+  const { directory, about } = generate();
+  try {
+    const blocks = documentBlocks(about.replace(/\/\*[\s\S]*?\*\//g, '')).map(({ conditions, body }) => ({
+      conditions,
+      rules: aboutRules(body),
+    }));
+    const only = (page) => documentConditions({ pages: [page], errorPages: [], chrome: [] });
+    const blockOf = (page) => {
+      const block = blocks.find(({ conditions }) => conditions.join() === only(page).join());
+      assert.ok(block, `a block scoped to about:${page} alone`);
+      return block;
+    };
+    const ROOT = ':root[data-bento-theme][data-color-mode]';
+    const declarationsOf = (block, selector) => {
+      const rule = block.rules.find((candidate) => candidate.selector === selector);
+      assert.ok(rule, `${selector} is in its page's block`);
+      // Every declaration, not only custom properties (parseDeclarations reads those).
+      return Object.fromEntries(
+        rule.body
+          .split(';')
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .map((part) => [part.slice(0, part.indexOf(':')).trim(), part.slice(part.indexOf(':') + 1).trim()]),
+      );
+    };
+    const alias = (token) => `var(--bento-about-${token}) !important`;
+
+    const logins = blockOf('logins');
+    assert.deepEqual(declarationsOf(logins, `${ROOT} login-list`), {
+      'background-color': alias('neutral-12'),
+      'border-inline-end': `1px solid ${alias('neutral-20')}`,
+      '--background-color-box': alias('neutral-12'),
+    });
+    // The selected row paints --background-color-canvas, so the list keeps the page's.
+    // The search field sits in login-list's shadow tree: its rule stands alone.
+    assert.deepEqual(declarationsOf(logins, 'login-filter'), {
+      '--background-color-box': alias('neutral-10'),
+    });
+
+    const addons = blockOf('addons');
+    assert.deepEqual(declarationsOf(addons, `${ROOT} #full > #sidebar`), {
+      'background-color': alias('neutral-12'),
+      'border-inline-end': `1px solid ${alias('neutral-20')}`,
+    });
+    assert.deepEqual(declarationsOf(addons, `${ROOT} .sticky-container`), {
+      'background-color': alias('neutral-5'),
+    });
+
+    // Each rule appears only in its own page's block.
+    for (const [selector, home] of [
+      [`${ROOT} login-list`, logins],
+      ['login-filter', logins],
+      [`${ROOT} #full > #sidebar`, addons],
+      [`${ROOT} .sticky-container`, addons],
+    ]) {
+      const holders = blocks.filter(({ rules }) => rules.some((rule) => rule.selector === selector));
+      assert.deepEqual(holders, [home], `${selector} is scoped to its page`);
+    }
+    // A rule outside the themed root is only ever a shadow-tree rule from the source.
+    const shadow = new Set(PAGE_RULES.filter((rule) => rule.shadow).map((rule) => rule.selector));
+    for (const { rules } of blocks) {
+      for (const { selector } of rules) {
+        if (!selector.startsWith(':root[data-bento-theme')) assert.ok(shadow.has(selector), selector);
+      }
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

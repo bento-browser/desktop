@@ -206,9 +206,13 @@ macOS Increase Contrast, which turns on `prefers-contrast: more` without them:
   `moz-toggle`, whose shadow stylesheets redeclare their tokens on `:host`;
 - page rules, each in its own `@-moz-document` for the pages that have it, including
   replacements for the pages' `prefers-color-scheme` rules, which follow the content
-  mode rather than the UI mode, and neutral surfaces for about:privatebrowsing in a
-  private window (with Nova off, Firefox paints it a purple gradient with purple
-  panels and search field).
+  mode rather than the UI mode, the sidebar surfaces (the about:logins list and the
+  about:addons sidebar on neutral-12 with a neutral-20 edge), and neutral surfaces for
+  about:privatebrowsing in a private window (with Nova off, Firefox paints it a purple
+  gradient with purple panels and search field). A page rule sits under the themed
+  root, except a `shadow` rule for an element in a shadow tree (the about:logins search
+  field), whose selector stands alone and whose alias values are invalid, so inherited,
+  on an unthemed page.
 
 It is a USER sheet so it reaches shadow trees and its `!important` wins over the
 pages' own tokens; `@-moz-document` needs that origin too. Inheritance from `:root`
