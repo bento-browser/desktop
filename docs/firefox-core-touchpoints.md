@@ -3263,7 +3263,19 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 ### Bento Prefs, Branding, And Build Integration
 
 - Status: Active
-- Last updated: 2026-11-10
+- Last updated: 2026-11-15
+- Web console paste guard (2026-11-15): `branding/bento/pref/firefox-branding.js`
+  sets `devtools.selfxss.count` to 0, as every Firefox branding does. The
+  console's paste handler (`onPaste` in `devtools/client/webconsole/components/App.js`)
+  reads it with `getIntPref` and no default (`usageCount` in
+  `devtools/client/webconsole/utils.js`). Bento removed the pref in July 2026
+  because it had been 5, which turns the guard off, but with no pref the read
+  threw `NS_ERROR_UNEXPECTED` before `preventDefault`, so pastes went through
+  with no warning. `pnpm run security:check` requires the 0 line, rejects a
+  nonzero value there, and rejects the pref in `prefs/bento.js`. Regression
+  check after a Firefox update: confirm the console still reads this pref, then
+  paste into a fresh profile's web console and expect the "allow pasting"
+  warning, with no `getIntPref` error in the terminal.
 - Firefox 159.0.1 build review (2026-11-10): Cargo flag generation moved to
   `python/mozbuild/mozbuild/rust_commands.py`. The ThinLTO patch adds
   `BENTO_RUST_LTO` to CARGO_CONFIG_KEYS and changes only the eligible target-library

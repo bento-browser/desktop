@@ -40,11 +40,20 @@ forbidText(
   /devtools\.debugger\.prompt-connection[^\n]*false/,
   'disabled debugger connection prompt',
 );
+// The web console's paste guard throws without this pref and lets the paste
+// through, and a value of 5 or more turns the guard off.
+requireText(
+  'branding/bento/pref/firefox-branding.js',
+  /^pref\("devtools\.selfxss\.count", 0\);$/m,
+  'self-XSS paste guard default',
+);
 forbidText(
   'branding/bento/pref/firefox-branding.js',
-  /devtools\.selfxss\.count/,
+  /devtools\.selfxss\.count", [1-9]/,
   'self-XSS bypass',
 );
+// prefs/bento.js loads after the branding prefs, so it must not override this.
+forbidText('prefs/bento.js', /devtools\.selfxss\.count/, 'self-XSS pref override');
 requireText(
   'configs/common/mozconfig',
   /export MOZ_REQUIRE_SIGNING=1/,

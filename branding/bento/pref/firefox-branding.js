@@ -19,3 +19,8 @@ pref("app.update.url.details", "https://bentobrowser.app/release-notes/latest/")
 pref("app.releaseNotesURL", "https://bentobrowser.app/whatsnew/");
 pref("app.releaseNotesURL.aboutDialog", "https://bentobrowser.app/release-notes/%VERSION%/");
 pref("app.releaseNotesURL.prompt", "https://bentobrowser.app/release-notes/%VERSION%/");
+
+// Firefox's default. The web console's paste guard reads this pref, and a
+// missing pref makes the guard throw and let the paste through unwarned.
+// Values of 5 or more turn the guard off, so it stays 0.
+pref("devtools.selfxss.count", 0);
