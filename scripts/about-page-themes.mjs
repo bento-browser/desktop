@@ -210,6 +210,20 @@ export const ROOT_DECLARATIONS = {
   'accent-color': 'var(--muxui-semantic-action-background)',
 };
 
+// about:privatebrowsing in a private window. With Nova off (prefs/bento.js), Firefox paints a
+// purple gradient, purple panels and a purple search field there; these put neutral surfaces in
+// their place, with each fill's own foreground.
+const PRIVATE_BROWSING = {
+  pages: { pages: ['privatebrowsing'], errorPages: [], chrome: [] },
+  owner: 'browser/themes/shared/privatebrowsing/aboutPrivateBrowsing.css',
+};
+const PANEL = {
+  background: 'var(--neutral-12)',
+  color: 'var(--muxui-semantic-color-neutral-12-fg)',
+  'border-color': 'var(--neutral-20)',
+  'box-shadow': 'none',
+};
+
 // Rules for page elements, scoped to the pages that have them. `owner` is the Firefox file
 // whose rule each one replaces. `light` and `dark` declarations apply only in that UI mode:
 // they stand in for a page rule under prefers-color-scheme, which follows the content
@@ -286,6 +300,58 @@ export const PAGE_RULES = [
     owner: 'browser/themes/shared/downloads/progressmeter.css',
     selector: '#contentAreaDownloadsView',
     declarations: { '--download-progress-fill-color': 'var(--muxui-semantic-action-background)' },
+  },
+  { ...PRIVATE_BROWSING, selector: 'html', declarations: { 'background-image': 'none' } },
+  {
+    ...PRIVATE_BROWSING,
+    selector: '.info-border',
+    declarations: { background: 'none', 'box-shadow': 'none' },
+  },
+  { ...PRIVATE_BROWSING, selector: '.info, .promo-visible, .promo.top', declarations: PANEL },
+  {
+    ...PRIVATE_BROWSING,
+    selector: '.promo-cta .primary',
+    declarations: {
+      'background-color': 'var(--muxui-semantic-action-background)',
+      color: 'var(--muxui-semantic-action-foreground)',
+    },
+  },
+  {
+    ...PRIVATE_BROWSING,
+    selector: '.promo-cta .primary:hover',
+    declarations: {
+      'background-color': 'var(--muxui-semantic-action-background-hover)',
+      color: 'var(--muxui-semantic-action-foreground-hover)',
+    },
+  },
+  {
+    ...PRIVATE_BROWSING,
+    selector: '.promo-cta .primary:hover:active',
+    declarations: {
+      'background-color': 'var(--muxui-semantic-action-background-pressed)',
+      color: 'var(--muxui-semantic-action-foreground-pressed)',
+    },
+  },
+  {
+    ...PRIVATE_BROWSING,
+    selector: '.promo-cta .primary:focus-visible',
+    declarations: { 'outline-color': 'var(--muxui-semantic-focus-ring)' },
+  },
+  {
+    // The search field: an input's neutral fill and border, the focus ring when focused.
+    ...PRIVATE_BROWSING,
+    selector: 'content-search-handoff-ui',
+    declarations: {
+      '--content-search-handoff-ui-background-color': 'var(--neutral-10)',
+      '--content-search-handoff-ui-color': 'var(--muxui-semantic-color-neutral-10-fg)',
+      '--content-search-handoff-ui-fill': 'var(--muxui-semantic-color-neutral-10-fg)',
+      '--content-search-handoff-ui-caret-color': 'var(--muxui-semantic-color-neutral-10-fg)',
+      '--content-search-handoff-ui-unfocused-border-color': 'var(--neutral-24)',
+      '--content-search-handoff-ui-fakefocus-border-color': 'var(--muxui-semantic-focus-ring)',
+      '--content-search-handoff-ui-fakefocus-box-shadow-inner': 'var(--muxui-semantic-focus-ring)',
+      '--content-search-handoff-ui-fakefocus-box-shadow-outer':
+        'color-mix(in srgb, var(--muxui-semantic-focus-ring) 30%, transparent)',
+    },
   },
 ];
 
