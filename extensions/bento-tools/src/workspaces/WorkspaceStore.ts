@@ -67,6 +67,7 @@ export class WorkspaceStore {
   #privateByWindow = new Map<number, Workspace>();
   #privateListeners = new Set<PrivateListener>();
   #firstLaunch = false;
+  #bootstrappedDefaultId: string | null = null;
 
   /** True when `init()` found no persisted workspaces: this is the profile's first launch. The
    * bootstrap persists a workspace, so no later launch reads true. */
@@ -74,8 +75,16 @@ export class WorkspaceStore {
     return this.#firstLaunch;
   }
 
+  /** The default workspace `init()` created because Bento never stored workspaces in this
+   * profile (both storage keys absent, `neverStored`) and the session offered none to import.
+   * Null on every other launch, including one that recreated the default because the stored
+   * value was unreadable, corrupt or an empty list (see `persistFirstLaunchWorkspace`). */
+  get bootstrappedDefaultId(): string | null {
+    return this.#bootstrappedDefaultId;
+  }
+
   async init(): Promise<void> {
-    const persisted = await load();
+    const { state: persisted, neverStored } = await load();
     if (persisted && persisted.workspaces.length > 0) {
       for (const w of persisted.workspaces) this.#workspaces.set(w.id, w);
       this.#lastGlobalActiveId =
@@ -95,6 +104,9 @@ export class WorkspaceStore {
       };
       this.#workspaces.set(w.id, w);
       this.#lastGlobalActiveId = w.id;
+      // A recovery (unreadable, corrupt or empty storage) also lands here; only a never-stored
+      // profile names the default.
+      if (neverStored) this.#bootstrappedDefaultId = w.id;
       this.#schedulePersist();
     }
   }

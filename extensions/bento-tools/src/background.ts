@@ -20,6 +20,7 @@ import { wasHandedOver } from './tabs/Handover';
 import { createCreatedTabs, readTabSessionValueWithRetries } from './tabs/CreatedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
 import { openWorkspaceFirstTab } from './workspaces/FirstTab';
+import { persistFirstLaunchWorkspace } from './workspaces/FirstLaunchMarkers';
 import {
   createActivationGenerations,
   hasSelectedWorkspaceTab,
@@ -1149,6 +1150,10 @@ const bootReady = storesReady.then(async () => {
   await tabs.hydrateWorkspaceIds();
   await tabs.closeMarkedTabs();
   adoptionGate.settle();
+  // Read before the pre-assignment and backfill below give tabs a workspace in memory.
+  const sessionHadMarkers = tabs
+    .snapshot()
+    .some((tab) => !tabs.isPrivate(tab.id) && tab.workspaceId !== undefined);
   // Before the backfill below gives unassigned tabs a workspace, so only tabs Firefox restored
   // with theirs count. A real browser start only: `runtime.onStartup` fires right after the
   // background script's first run, long before the settle wait above ends. If it has not
@@ -1211,14 +1216,30 @@ const bootReady = storesReady.then(async () => {
   // tab's original workspace assignment would be permanently
   // overwritten. With the in-memory variant, the original session
   // value is preserved across launches — the next launch's hydrate
-  // gets another chance to pick it up correctly.
+  // gets another chance to pick it up correctly. The one exception is the
+  // launch that created the default workspace because Bento never stored
+  // workspaces (both storage keys absent) and no tab came back with a
+  // marker: that default is the only one and the guess is certain
+  // (persistFirstLaunchWorkspace).
   if (wsId) {
+    const backfilled: number[] = [];
     for (const tab of tabs.snapshot()) {
       if (tabs.isClosing(tab.id)) continue;
       if (tabs.isPrivate(tab.id)) continue;
       if (tab.workspaceId) continue;
       tabs.setWorkspaceInMemory(tab.id, wsId);
+      backfilled.push(tab.id);
     }
+    await persistFirstLaunchWorkspace(
+      {
+        bootstrappedDefaultId: workspaces.bootstrappedDefaultId,
+        workspaceIds: () => workspaces.snapshot().workspaces.map((workspace) => workspace.id),
+        sessionHadMarkers,
+        tabs,
+      },
+      wsId,
+      backfilled,
+    ).catch((err) => console.warn('[bento-tools] first-launch workspace markers failed:', err));
   }
   // Zen import can live-restore tabs with bento.isPanel markers before
   // bento-tools has registered its tabs.onCreated listener. Promote

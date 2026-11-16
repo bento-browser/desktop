@@ -39,25 +39,36 @@ function parseStored(stored: unknown): PersistedState | null {
   return { workspaces: obj.workspaces, activeId: obj.activeId ?? null };
 }
 
-export async function load(): Promise<PersistedState | null> {
+export interface LoadResult {
+  state: PersistedState | null;
+  /** True only when both reads resolved and neither the primary nor the backup key exists:
+   * Bento has never stored workspaces in this profile. False when a read threw, or a stored
+   * value is corrupt, of an unknown version, or an empty list. */
+  neverStored: boolean;
+}
+
+export async function load(): Promise<LoadResult> {
   let primary: PersistedState | null = null;
+  let primaryAbsent = false;
   try {
     const raw = (await browser.storage.local.get(STORAGE_KEY)) as Record<string, unknown>;
+    primaryAbsent = raw[STORAGE_KEY] === undefined;
     primary = parseStored(raw[STORAGE_KEY]);
   } catch (err) {
     console.error('[bento-tools] workspaces: primary load failed', err);
   }
-  if (primary) return primary;
+  if (primary) return { state: primary, neverStored: false };
   // Primary missing or corrupt — try the backup slot.
   let backup: PersistedState | null = null;
   try {
     const raw = (await browser.storage.local.get(BACKUP_STORAGE_KEY)) as Record<string, unknown>;
+    if (raw[BACKUP_STORAGE_KEY] === undefined) return { state: null, neverStored: primaryAbsent };
     backup = parseStored(raw[BACKUP_STORAGE_KEY]);
   } catch (err) {
     console.error('[bento-tools] workspaces: backup load failed', err);
-    return null;
+    return { state: null, neverStored: false };
   }
-  if (!backup) return null;
+  if (!backup) return { state: null, neverStored: false };
   // Immediately rewrite the primary from the backup so the next load
   // doesn't go through the recovery path again.
   const payload: StoredShape = {
@@ -68,7 +79,7 @@ export async function load(): Promise<PersistedState | null> {
   void browser.storage.local
     .set({ [STORAGE_KEY]: payload })
     .catch((err) => console.error('[bento-tools] workspaces: primary rewrite failed', err));
-  return backup;
+  return { state: backup, neverStored: false };
 }
 
 export class Persistence {

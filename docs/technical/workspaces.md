@@ -1568,9 +1568,10 @@ workspaces.
   `sidebarTabOrder()`, not `visualTabOrder`, which only has the active member's
   peek row). Take membership from the order, not from the `bento.workspaceId`
   session value: bento-tools backfills a tab found at boot without that value in
-  memory only (`setWorkspaceInMemory`), so the sidebar shows it while the session
-  value stays empty, and a session-value filter skipped it (the first tab of a
-  fresh profile, once pinned, lost Cmd/Ctrl+1). The order is ignored when its
+  memory only (`setWorkspaceInMemory`; only a never-stored profile's first launch
+  writes it, see the first-launch pitfall under Workspace pitfalls), so the sidebar shows
+  it while the session value stays empty, and a session-value filter skipped it (a
+  fresh profile's first tab, once pinned, lost Cmd/Ctrl+1). The order is ignored when its
   `workspaceId` is not the window's current workspace, and only matches this
   window's live tabs, so a late or stale order cannot select a tab in another
   workspace.
@@ -1984,6 +1985,38 @@ workspaces.
   the tab (no fade); a failed selection opens a selected tab the old way, so the
   window does not stay on the old workspace's tab. See the curtain note in
   [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
+- Only a never-stored profile's first launch persists the boot backfill. Chrome
+  arms the switch curtain only for a tab whose marker names another workspace, and
+  the backfill gives an unmarked tab the active workspace in memory only, so a
+  switch to such a tab drew it uncurtained beside the old side panel. On a later
+  launch that placement is a guess (SessionStore may still attach the tab's own
+  value, the backfill uses the global active workspace rather than the window's, and
+  a legacy tab would be moved for good into whichever workspace was active at
+  launch), so it must never be persisted. `load()` in `workspaces/Persistence.ts`
+  reports `neverStored` only when both `storage.local.get` reads resolved and
+  neither `bento.workspaces` nor `bento.workspaces.backup` exists. A read that
+  throws, a stored value that is corrupt or of an unknown version, and a stored
+  empty list all report false: init still recreates the default workspace, but that
+  is a recovery and the backfill stays in memory. Only when `WorkspaceStore.init`
+  created the default with `neverStored` true and the session offered no workspaces
+  to import does it set `bootstrappedDefaultId`; that default is then the only
+  workspace and the tabs open then belong to it. `persistFirstLaunchWorkspace`
+  (`workspaces/FirstLaunchMarkers.ts`) writes their marker through
+  `assignWorkspaceEagerly` right after the backfill, all or nothing. It writes no
+  tab when a regular tab came back from the session with a marker
+  (`sessionHadMarkers`), when the store no longer holds just that default (an
+  imported set replaced it), when `confirmUnassigned` reading the candidates'
+  session values again just before the write finds a value on any of them or fails
+  for any of them, or when a regular tab is by then in another workspace. Private
+  and closing tabs are never written. `confirmUnassigned` hydrates a found value
+  without awaiting it, so the write must not trust the snapshot alone: a per-tab
+  filter wrote a tab whose sibling's restored marker arrived during the same batch.
+  An imported Zen set (`adoptImportedWorkspacesFromSession` at init), "Reset Bento
+  settings" (settings only) and an import's fallback workspace (created mid-session)
+  never take this path. Unmarked tabs of an existing profile keep the in-memory
+  backfill and still switch without the curtain. Manual check: fresh profile,
+  create a second workspace with a side panel, switch back to the first: its tab
+  appears only as the curtain fades in.
 - `handleWorkspaceActivation` emits the destination's panels only after its tab
   selection has settled (`selectThenEmitPanels` in `workspaces/ActivationGuard.ts`,
   also when the selection fails, not when the activation was superseded). The
@@ -2257,8 +2290,10 @@ workspaces.
 - Do not adopt or assign unassigned tabs while startup is unsettled. A restored
   tab looks unassigned until `hydrateWorkspaceIds` has read its session value, and
   a persistent write before that replaces the real workspace. The boot backfill is
-  in-memory only for the same reason; adoption additionally requires a window
-  created after the settle, a fresh session read, and no stored value on any tab
+  in-memory only for the same reason (the one exception is a never-stored
+  profile's first launch with no restored values: `persistFirstLaunchWorkspace`);
+  adoption additionally requires a window created after the settle, a fresh
+  session read, and no stored value on any tab
   of the window (`tabsToAdopt`).
 - Do not start the workspace fade's `bento-workspace-stabilizing` timer from an
   uncancelled frame. `performWorkspaceSwitchFade` removes the curtain class in a
