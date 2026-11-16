@@ -36,6 +36,7 @@ import { createRailTransition, type RailTransition } from './sidebar/railTransit
 import { createRailTransitionDom } from './sidebar/railLayout';
 import './sidebar/railTransition.css';
 import { observeFooterButtonEdges, type FooterButtonEdges } from './sidebar/footerAnchor';
+import { useWorkspaceMenuIcons } from './menu/workspaceMenuIcons';
 
 // Note: the command palette no longer lives in this entry. It runs in its
 // own chrome-mounted overlay <browser> (palette.html) so the modal can
@@ -134,6 +135,8 @@ interface SidebarMenuItem {
   items?: SidebarMenuItem[];
   kind?: 'separator';
   isDisabled?: boolean;
+  /** 32x32 PNG data URL the native menu draws at 16x16 before the label. */
+  icon?: string;
 }
 
 function openSidebarContextMenuInChrome(payload: object) {
@@ -152,6 +155,7 @@ export function App() {
   const folders = useWorkspaceFolders(activeWorkspaceId);
   const workspacesById = useWorkspacesStore((s) => s.byId);
   const workspaceIds = useWorkspacesStore((s) => s.orderedIds);
+  const workspaceMenuIcons = useWorkspaceMenuIcons();
   const activePanelIds = usePanelsStore((s) => getPanelIdsForWorkspace(s, activeWorkspaceId));
   const activePanelsHydrated = usePanelsStore((s) =>
     activeWorkspaceId ? s.hydratedWorkspaces.has(activeWorkspaceId) : false,
@@ -262,24 +266,26 @@ export function App() {
     ];
     if (folderId) {
       const folder = folders.find((candidate) => candidate.id === folderId);
-      const folderWorkspaceItems = workspaceIds.map((workspaceId) => {
-        const workspace = workspacesById[workspaceId];
-        return {
+      // The folder's own workspace is left out, not greyed out.
+      const folderWorkspaceItems = workspaceIds
+        .filter((workspaceId) => folder?.workspaceId !== workspaceId)
+        .map((workspaceId) => ({
           id: `move-folder-to-workspace:${workspaceId}`,
-          label: workspace?.name ?? 'Untitled workspace',
-          isDisabled: folder?.workspaceId === workspaceId,
-        };
-      });
+          label: workspacesById[workspaceId]?.name ?? 'Untitled workspace',
+          icon: workspaceMenuIcons.current[workspaceId],
+        }));
       items.push(
         { id: 'sep-folder-actions', kind: 'separator' },
         { id: 'rename-folder', label: 'Rename folder' },
-        {
+      );
+      if (folderWorkspaceItems.length > 0) {
+        items.push({
           id: 'move-folder-to-workspace',
           label: 'Move folder to workspace',
           items: folderWorkspaceItems,
-        },
-        { id: 'delete-folder', label: 'Delete folder' },
-      );
+        });
+      }
+      items.push({ id: 'delete-folder', label: 'Delete folder' });
       openSidebarContextMenuInChrome({
         anchor: { left: event.clientX, top: event.clientY, width: 1, height: 1 },
         tabId: null,
@@ -310,14 +316,16 @@ export function App() {
       const anyTargetInFolder = targetTabIds.some((id) => tabsById[id]?.folderId);
       const allTargetsPinned =
         targetTabIds.length > 0 && targetTabIds.every((id) => tabsById[id]?.pinned);
-      const workspaceItems = workspaceIds.map((workspaceId) => {
-        const workspace = workspacesById[workspaceId];
-        return {
+      // A workspace that already holds every target tab is left out, not greyed out.
+      const workspaceItems = workspaceIds
+        .filter(
+          (workspaceId) => !targetTabIds.every((id) => tabsById[id]?.workspaceId === workspaceId),
+        )
+        .map((workspaceId) => ({
           id: `move-to-workspace:${workspaceId}`,
-          label: workspace?.name ?? 'Untitled workspace',
-          isDisabled: targetTabIds.every((id) => tabsById[id]?.workspaceId === workspaceId),
-        };
-      });
+          label: workspacesById[workspaceId]?.name ?? 'Untitled workspace',
+          icon: workspaceMenuIcons.current[workspaceId],
+        }));
       const tabOrderIndex = visualTabOrder.indexOf(tabId);
       closeTabsAboveIds = tabOrderIndex >= 0 ? visualTabOrder.slice(0, tabOrderIndex) : [];
       closeTabsBelowIds = tabOrderIndex >= 0 ? visualTabOrder.slice(tabOrderIndex + 1) : [];

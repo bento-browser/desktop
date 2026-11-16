@@ -1305,18 +1305,25 @@ and DevTools panels are closed.
 
 ### Menus
 
+The sidebar's right-click menus (background, tab, selected tabs, folder and pinned panel
+button) are macOS native menus. They follow Bento's Light or Dark mode, not the system
+appearance. In Move to workspace and Move folder to workspace, each workspace shows its
+emoji or initial in its avatar colour, and the workspace the tabs or the folder are already
+in is left out; with no other workspace the item is not shown. The New button's menu is a
+Bento menu.
+
 - Sidebar background: New tab, Reopen closed tab, Select all tabs. These three also head
   the tab and folder menus.
 - Tab: New tab below, Rename tab, Reload tab, Unload tab (disabled for the current or an
   unloaded tab), Mute tab or Unmute tab, Pin tab or Unpin tab, Convert to panel (not
-  the current tab), Move to workspace, Move to folder (the existing folders, New
-  folder, and Remove from folder when it applies; left out when the tab is pinned),
-  Close multiple tabs (Close tabs above, Close tabs below, Close other tabs) and Close
-  tab. A private window's menu has no Move to workspace or Move to folder.
+  the current tab), Move to workspace (other workspaces only), Move to folder (the
+  existing folders, New folder, and Remove from folder when it applies; left out when the
+  tab is pinned), Close multiple tabs (Close tabs above, Close tabs below, Close other
+  tabs) and Close tab. A private window's menu has no Move to workspace or Move to folder.
 - Selected tabs: Reload N tabs, Move N tabs to new workspace, Move selected tabs to
   workspace, Move selected tabs to folder (left out when all are pinned) and Close N
   selected tabs.
-- Folder: Rename folder, Move folder to workspace, Delete folder.
+- Folder: Rename folder, Move folder to workspace (other workspaces only), Delete folder.
 - Pinned panel button: Remove pinned panel, Close pinned panel.
 - Panel header, left to right: drag handle, Back, Forward, Reload, address field,
   bookmark star, pin, mute (shown when the panel is audible or muted), Close, Panel

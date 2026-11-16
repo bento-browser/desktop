@@ -14,7 +14,9 @@ function sourceFiles(directory: string): string[] {
 }
 
 // A theme other than the document's own only paints once its sheet is attached, so a
-// component that renders a scope must keep that theme's sheet registered while it does.
+// component that renders a scope must keep that theme's sheet registered while it does
+// (useThemeSheet(s)). Code that reads a scope's computed style must wait for the sheet to
+// load, so it registers with setThemeSheets and awaits the result.
 describe('nested theme scopes', () => {
   it('register their theme sheets wherever a scope is rendered', () => {
     const missing = sourceFiles(SRC)
@@ -22,7 +24,8 @@ describe('nested theme scopes', () => {
       .map((file) => ({ file, source: readFileSync(file, 'utf8') }))
       .filter(
         ({ source }) =>
-          source.includes('getThemeScopeAttributes(') && !/\buseThemeSheets?\(/.test(source),
+          source.includes('getThemeScopeAttributes(') &&
+          !/\b(useThemeSheets?|setThemeSheets)\(/.test(source),
       )
       .map(({ file }) => file.slice(SRC.length));
     expect(missing).toEqual([]);
