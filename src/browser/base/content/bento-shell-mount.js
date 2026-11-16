@@ -18105,7 +18105,7 @@
     // sidebar's TabList.css behaviour.
     const reduceMotion = prefersReducedWorkspaceMotion();
     if (isWorkspaceTransition && !reduceMotion) {
-      // Crossfade-then-swap: fade the visible workspace contents out,
+      // Cut-then-fade-in: hide the visible workspace contents at once,
       // perform the reconcile DOM swap behind the opacity-0 curtain,
       // then fade back in. Without this, the panel strip / favicon
       // navigator / main content all swap instantly while only the
@@ -18154,9 +18154,10 @@
     });
   }
 
-  // Workspace-switch fade coordinator. Adds the fade-out class
-  // immediately, defers the reconcile until the fade-out CSS
-  // transition has visually completed, then queues a single rAF to
+  // Workspace-switch fade coordinator. Adds the curtain class, which
+  // hides the fade targets at once (the switching state has no
+  // transition), runs the reconcile behind it once afterMotion reports
+  // no fade-out left (at once today), then queues a single rAF to
   // remove the class and let the CSS transition handle fade-in.
   //
   // Key invariant: NOTHING moves during the fade. The reconcile runs
@@ -18172,8 +18173,8 @@
   // it's still present after WORKSPACE_FADE_WATCHDOG_MS. Without
   // these guards a single failed reconcile would strand opacity at
   // 0 — chrome would go blank until process restart.
-  // __workspaceSwitchTimer is the cancel function of the wait for the fade-out
-  // (afterMotion); the other two are timer ids. The fade and the stabilize window
+  // __workspaceSwitchTimer is the cancel function of the wait for a fade-out
+  // (afterMotion; none while the curtain cuts); the other two are timer ids. The fade and the stabilize window
   // take their lengths from the CSS (measureMotion); only the watchdog is a literal.
   let __workspaceSwitchTimer = null;
   let __workspaceFadeWatchdog = null;
@@ -18183,7 +18184,7 @@
   let __workspaceFadeCleanupFrame = null;
   const WORKSPACE_FADE_WATCHDOG_MS = 1500;
   // The element whose opacity transition times the workspace fade (the three fade
-  // targets share one CSS rule).
+  // targets share one CSS rule): 0 while the curtain is up, the fade-in after.
   function workspaceFadeTarget() {
     return (
       document.getElementById('bento-strip-container') ||
@@ -18426,8 +18427,12 @@
         });
       }
     };
-    // The fade-out is the CSS opacity transition on the fade targets; swap behind
-    // it once it has finished.
+    // The curtain cuts: the switching state has no opacity transition (Firefox has
+    // already swapped in the incoming page, so a fade-out would show it first), so
+    // afterMotion measures 0 and swaps synchronously; swapped is then already true and
+    // no cancel is kept. Keep the call: its computed-style read is the style flush that
+    // records opacity 0 before the cleanup frame removes the class, so the fade-in has
+    // a start value even when no frame ran with the curtain up.
     const fadeTarget = workspaceFadeTarget();
     if (fadeTarget) {
       const cancelSwap = afterMotion(
