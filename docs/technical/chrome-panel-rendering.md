@@ -558,7 +558,8 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   reads `null`) is reconciled at once with the old workspace's held payload, and
   `handlePanelsTitle` then runs `performWorkspaceSwitchFade` over content that has
   already changed, which flickers. Tools therefore opens a workspace's first tab
-  unselected and selects it after the marker write (`openWorkspaceFirstTab`, see
+  unselected and selects it after the marker write (`openWorkspaceFirstTab`), and
+  emits the panels only after the selection (`selectThenEmitPanels`, see
   [workspaces.md](workspaces.md#workspace-pitfalls)); do not work around it in
   chrome by deferring unmarked selections, which would hold back ordinary new tabs.
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window

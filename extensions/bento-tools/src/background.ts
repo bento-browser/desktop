@@ -24,6 +24,8 @@ import {
   createActivationGenerations,
   hasSelectedWorkspaceTab,
   isActivationCurrent,
+  selectTabIfCurrent,
+  selectThenEmitPanels,
 } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { dropRemovedTabFromPanels } from './panels/RemovedTab';
@@ -1636,10 +1638,7 @@ async function activateNonPanelTab(
   if (!snap) return false;
   if (typeof windowId === 'number' && snap.windowId !== windowId) return false;
   try {
-    await browser.tabs.get(tabId);
-    if (!stillCurrent()) return false;
-    await browser.tabs.update(tabId, { active: true });
-    return true;
+    return await selectTabIfCurrent(tabId, stillCurrent);
   } catch (err) {
     console.warn(`[bento-tools] ${label} failed:`, err);
     return false;
@@ -2214,6 +2213,8 @@ async function handleWorkspaceActivation(
           }),
   });
   if (!isCurrent()) return;
+  // The tab selection below, awaited before the panels are emitted (selectThenEmitPanels).
+  let selection: Promise<unknown> | null = null;
   if (adoptable.length > 0) {
     for (const adopted of adoptable) {
       tabs.assignWorkspaceEagerly(adopted.id, wsId);
@@ -2226,7 +2227,7 @@ async function handleWorkspaceActivation(
       }
     }
     if (!adoptable.some((adopted) => adopted.active)) {
-      void activateNonPanelTab(
+      selection = activateNonPanelTab(
         adoptable[0]!.id,
         'activate adopted tab',
         targetWindowId ?? undefined,
@@ -2257,22 +2258,31 @@ async function handleWorkspaceActivation(
       (preferred !== undefined && wsTabs.find((t) => t.id === preferred)) ||
       (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) ||
       wsTabs[0]!;
-    void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId, isCurrent);
+    selection = activateNonPanelTab(
+      target.id,
+      'activate workspace tab',
+      target.windowId,
+      isCurrent,
+    );
   }
   if (!isCurrent()) return;
 
-  // (2) Lazy panel restore for inactive workspaces — runs once per
-  // workspace per session. takePersistedUrls clears the entry so a
-  // second activation is a no-op. restorePanelsForWorkspace also
-  // emits panels/sync at the end, so we skip the explicit sync below
-  // when restore actually had work to do.
-  const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
-  if (hadPersisted) {
-    void restorePanelsForWorkspace(wsId, targetWindowId);
-  } else {
-    // (3) Sync panels for the now-active workspace.
-    void emitPanelsSync(wsId, targetWindowId !== null ? { windowId: targetWindowId } : undefined);
-  }
+  // Panels go out only once the selection has settled: chrome must see the destination tab's
+  // TabSelect first (selectThenEmitPanels).
+  await selectThenEmitPanels(selection, isCurrent, () => {
+    // (2) Lazy panel restore for inactive workspaces — runs once per
+    // workspace per session. takePersistedUrls clears the entry so a
+    // second activation is a no-op. restorePanelsForWorkspace also
+    // emits panels/sync at the end, so we skip the explicit sync below
+    // when restore actually had work to do.
+    const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
+    if (hadPersisted) {
+      void restorePanelsForWorkspace(wsId, targetWindowId);
+    } else {
+      // (3) Sync panels for the now-active workspace.
+      void emitPanelsSync(wsId, targetWindowId !== null ? { windowId: targetWindowId } : undefined);
+    }
+  });
 }
 
 workspaces.onDeltas((deltas) => {

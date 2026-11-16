@@ -4,6 +4,8 @@ import {
   createActivationGenerations,
   hasSelectedWorkspaceTab,
   isActivationCurrent,
+  selectTabIfCurrent,
+  selectThenEmitPanels,
 } from './ActivationGuard';
 
 describe('isActivationCurrent', () => {
@@ -185,5 +187,79 @@ describe('hasSelectedWorkspaceTab', () => {
 
     expect(hasSelectedWorkspaceTab(tabs, 'ws', 1)).toBe(false);
     expect(hasSelectedWorkspaceTab(tabs, 'ws', null)).toBe(true);
+  });
+});
+
+describe('selectTabIfCurrent', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubTabs(steps: string[]) {
+    vi.stubGlobal('browser', {
+      tabs: {
+        get: vi.fn(async (id: number) => {
+          steps.push(`read ${id}`);
+          return { id };
+        }),
+        update: vi.fn(async (id: number) => {
+          steps.push(`select ${id}`);
+          return { id };
+        }),
+      },
+    });
+  }
+
+  it('selects the tab once it has been read', async () => {
+    const steps: string[] = [];
+    stubTabs(steps);
+
+    expect(await selectTabIfCurrent(7, () => true)).toBe(true);
+    expect(steps).toEqual(['read 7', 'select 7']);
+  });
+
+  it('selects nothing when a later activation took the window while the tab was read', async () => {
+    const steps: string[] = [];
+    stubTabs(steps);
+    let current = true;
+
+    const selected = selectTabIfCurrent(7, () => current);
+    current = false;
+
+    expect(await selected).toBe(false);
+    expect(steps).toEqual(['read 7']);
+  });
+});
+
+describe('selectThenEmitPanels', () => {
+  it('emits the panels only after the selection has resolved', async () => {
+    const steps: string[] = [];
+    const selection = Promise.resolve().then(() => steps.push('selected'));
+
+    await selectThenEmitPanels(
+      selection,
+      () => true,
+      () => steps.push('panels'),
+    );
+
+    expect(steps).toEqual(['selected', 'panels']);
+  });
+
+  it('still emits the panels when the selection failed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const emit = vi.fn();
+
+    await selectThenEmitPanels(Promise.reject(new Error('no tab')), () => true, emit);
+
+    expect(emit).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('emits nothing for an activation superseded meanwhile', async () => {
+    const emit = vi.fn();
+
+    await selectThenEmitPanels(Promise.resolve(false), () => false, emit);
+
+    expect(emit).not.toHaveBeenCalled();
   });
 });

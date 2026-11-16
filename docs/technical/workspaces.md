@@ -1984,6 +1984,14 @@ workspaces.
   the tab (no fade); a failed selection opens a selected tab the old way, so the
   window does not stay on the old workspace's tab. See the curtain note in
   [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
+- `handleWorkspaceActivation` emits the destination's panels only after its tab
+  selection has settled (`selectThenEmitPanels` in `workspaces/ActivationGuard.ts`,
+  also when the selection fails, not when the activation was superseded). The
+  curtain cuts with no fade-out, so a `panels/sync` that reaches chrome before the
+  destination's `TabSelect` is reconciled around the outgoing tab and lifts the
+  curtain, and the later selection is no longer deferred. The selection itself
+  (`selectTabIfCurrent`) asks the activation's `isCurrent` after reading the tab and
+  before selecting it.
 - A tab Bento moves between windows itself must go through `moveTabsToWindow`
   (or `moveWorkspaceTabsToWindow`, the pinned-first variant below).
   Only the move's own record distinguishes it from a drag when the window
