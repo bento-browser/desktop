@@ -16023,6 +16023,94 @@
     }
   }
 
+  // Sidebar right-click menus (tab, folder, pinned panel, empty sidebar) are a XUL
+  // menupopup opened with openPopupAtScreen, which macOS shows as a native NSMenu
+  // (widget.macos.native-context-menus); with native menus off it renders as a XUL
+  // popup and works the same. The previous popup is removed at the next open, not
+  // on command or popuphidden: their order on a native menu is not guaranteed, so a
+  // popup removed on popuphidden can lose the command of the item that closed it.
+  let nativeSidebarMenuPopup = null;
+  const NATIVE_MENU_ID_ATTR = 'data-bento-menu-id';
+
+  function clearNativeSidebarMenu() {
+    const old = nativeSidebarMenuPopup;
+    nativeSidebarMenuPopup = null;
+    if (!old) return;
+    try {
+      old.hidePopup();
+    } catch {
+      // Already closed.
+    }
+    old.remove();
+  }
+
+  function appendNativeMenuItems(parent, items) {
+    for (const item of items) {
+      if (item.kind === 'separator') {
+        parent.appendChild(document.createXULElement('menuseparator'));
+        continue;
+      }
+      const hasSubmenu = Array.isArray(item.items) && item.items.length > 0;
+      const el = document.createXULElement(hasSubmenu ? 'menu' : 'menuitem');
+      el.setAttribute('label', item.label ?? '');
+      el.setAttribute(NATIVE_MENU_ID_ATTR, item.id);
+      if (item.isDisabled) el.setAttribute('disabled', 'true');
+      // menu.js copies 'image' into the item's .menu-icon img, which the native menu
+      // draws at 16x16 (the shell sends 32px data URLs for Retina); the iconic class
+      // shows that img when the popup renders as a XUL menu.
+      if (typeof item.icon === 'string' && item.icon.startsWith('data:image/')) {
+        el.classList.add(hasSubmenu ? 'menu-iconic' : 'menuitem-iconic');
+        el.setAttribute('image', item.icon);
+      }
+      if (hasSubmenu) {
+        const sub = document.createXULElement('menupopup');
+        sub.setAttribute('context', '');
+        appendNativeMenuItems(sub, item.items);
+        el.appendChild(sub);
+      }
+      parent.appendChild(el);
+    }
+  }
+
+  function showNativeSidebarMenu({ anchor, items, onSelect }) {
+    // The stack rules of a Mux menu open (openOverlay, showChromeMenu): this request
+    // wins over a Cmd+L still waiting for the sidebar row and closes the bookmark
+    // popup. A Mux menu still waiting for its document is cancelled, as the outside
+    // click does (attachOutsideClickDismissListener); a shown one covers the sidebar,
+    // so a right-click cannot reach it.
+    cancelAddrbarOpenRequest();
+    hideBookmarkPopup();
+    if (overlays.hasPendingOpen('menu')) hideChromeMenu();
+    clearNativeSidebarMenu();
+    const popup = document.createXULElement('menupopup');
+    popup.setAttribute('context', '');
+    // macOS draws the native menu light or dark from the popup's CSS color-scheme,
+    // so it follows Bento's resolved mode rather than the system appearance.
+    popup.style.colorScheme =
+      document.documentElement.getAttribute('data-color-mode') === 'dark' ? 'dark' : 'light';
+    appendNativeMenuItems(popup, items);
+    popup.addEventListener('command', (event) => {
+      const id = event.target.getAttribute?.(NATIVE_MENU_ID_ATTR);
+      if (!id) return;
+      event.stopPropagation();
+      // No focus handling here: 'ui/*' actions call content.focus() in the shell
+      // frame script (SHELL_ACTION_FRAME_SCRIPT_SRC), which lets Rename focus its
+      // inline field.
+      try {
+        onSelect(id);
+      } catch (err) {
+        console.warn('[bento-shell-mount] sidebar menu select handler threw:', err);
+      }
+    });
+    (document.getElementById('mainPopupSet') || document.documentElement).appendChild(popup);
+    nativeSidebarMenuPopup = popup;
+    popup.openPopupAtScreen(
+      window.mozInnerScreenX + anchor.left,
+      window.mozInnerScreenY + anchor.top,
+      true,
+    );
+  }
+
   function handleSidebarContextMenuTitle(rawTitle) {
     // Format: BENTO_SIDEBAR_CONTEXT_MENU:<ts>:<base64-json>
     const tail = rawTitle.slice(SIDEBAR_CONTEXT_MENU_PREFIX.length);
@@ -16089,126 +16177,129 @@
         : null;
     const folderId = typeof payload.folderId === 'string' ? payload.folderId : null;
     const newFolderId = typeof payload.newFolderId === 'string' ? payload.newFolderId : null;
-    showChromeMenu({
-      anchor,
-      items: payload.items,
-      placement: payload.placement === 'bottom start' ? 'bottom start' : undefined,
-      onSelect: (itemId) => {
-        if (itemId === 'new-tab') {
-          openAddressEntry('newTab');
-          return;
-        }
-        if (itemId === 'new-panel') {
-          addNewPanel();
-          return;
-        }
-        if (itemId === 'reopen-closed-tab') {
-          dispatchShellAction({ type: 'tab/reopenClosed' });
-          return;
-        }
-        if (itemId === 'select-all-tabs') {
-          dispatchShellAction({ type: 'ui/selectAllTabs' });
-          return;
-        }
-        if (hasTabId && itemId === 'new-tab-below') {
+    const onSelect = (itemId) => {
+      if (itemId === 'new-tab') {
+        openAddressEntry('newTab');
+        return;
+      }
+      if (itemId === 'new-panel') {
+        addNewPanel();
+        return;
+      }
+      if (itemId === 'reopen-closed-tab') {
+        dispatchShellAction({ type: 'tab/reopenClosed' });
+        return;
+      }
+      if (itemId === 'select-all-tabs') {
+        dispatchShellAction({ type: 'ui/selectAllTabs' });
+        return;
+      }
+      if (hasTabId && itemId === 'new-tab-below') {
+        dispatchShellAction({
+          type: 'tab/create',
+          ...(Number.isFinite(tabIndex) && Number.isInteger(tabIndex) && tabIndex >= 0
+            ? { index: tabIndex + 1 }
+            : {}),
+        });
+        return;
+      }
+      if (pinnedPanel && itemId === 'pinned-panel-remove') {
+        dispatchShellAction({
+          type: 'pinnedPanel/remove',
+          workspaceId: pinnedPanel.workspaceId,
+          tabId: pinnedPanel.tabId,
+        });
+        return;
+      }
+      if (pinnedPanel && itemId === 'pinned-panel-close') {
+        dispatchShellAction({
+          type: 'pinnedPanel/close',
+          workspaceId: pinnedPanel.workspaceId,
+          tabId: pinnedPanel.tabId,
+        });
+        return;
+      }
+      if (folderId && itemId === 'rename-folder') {
+        dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id: folderId } });
+        return;
+      }
+      if (folderId && itemId === 'delete-folder') {
+        dispatchShellAction({ type: 'tabFolder/delete', id: folderId });
+        return;
+      }
+      if (
+        folderId &&
+        typeof itemId === 'string' &&
+        itemId.startsWith('move-folder-to-workspace:')
+      ) {
+        dispatchShellAction({
+          type: 'tabFolder/assignWorkspace',
+          id: folderId,
+          workspaceId: itemId.slice('move-folder-to-workspace:'.length),
+        });
+        return;
+      }
+      if (!hasTabId) return;
+      if (itemId === 'reload-tab') {
+        dispatchShellAction({ type: 'tab/reload', id: tabId });
+      } else if (itemId === 'unload-tab') {
+        dispatchShellAction({ type: 'tab/unload', id: tabId });
+      } else if (itemId === 'rename-tab') {
+        dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: tabId } });
+      } else if (itemId === 'toggle-muted') {
+        dispatchShellAction({ type: 'tab/toggleMuted', id: tabId });
+      } else if (itemId === 'toggle-pin') {
+        dispatchShellAction({ type: 'tab/togglePin', id: tabId });
+      } else if (itemId === 'open-in-side-panel') {
+        dispatchShellAction({ type: 'panel/add', id: tabId });
+      } else if (itemId === 'close-tab') {
+        dispatchShellAction({ type: 'tab/close', id: tabId });
+      } else if (itemId === 'close-tabs-above') {
+        dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.above });
+      } else if (itemId === 'close-tabs-below') {
+        dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.below });
+      } else if (itemId === 'close-other-tabs') {
+        dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.other });
+      } else if (itemId === 'reload-selected-tabs') {
+        dispatchShellAction({ type: 'tabs/reload', ids: tabIds });
+      } else if (itemId === 'close-selected-tabs') {
+        dispatchShellAction({ type: 'tabs/close', ids: tabIds });
+      } else if (itemId === 'move-selected-to-new-workspace') {
+        dispatchShellAction({ type: 'tabs/moveToNewWorkspace', ids: tabIds });
+      } else if (typeof itemId === 'string' && itemId.startsWith('move-to-workspace:')) {
+        const workspaceId = itemId.slice('move-to-workspace:'.length);
+        if (tabIds.length > 1) {
+          dispatchShellAction({ type: 'tabs/assignWorkspace', ids: tabIds, workspaceId });
+        } else {
           dispatchShellAction({
-            type: 'tab/create',
-            ...(Number.isFinite(tabIndex) && Number.isInteger(tabIndex) && tabIndex >= 0
-              ? { index: tabIndex + 1 }
-              : {}),
+            type: 'tab/assignWorkspace',
+            id: tabId,
+            workspaceId,
           });
-          return;
         }
-        if (pinnedPanel && itemId === 'pinned-panel-remove') {
-          dispatchShellAction({
-            type: 'pinnedPanel/remove',
-            workspaceId: pinnedPanel.workspaceId,
-            tabId: pinnedPanel.tabId,
-          });
-          return;
-        }
-        if (pinnedPanel && itemId === 'pinned-panel-close') {
-          dispatchShellAction({
-            type: 'pinnedPanel/close',
-            workspaceId: pinnedPanel.workspaceId,
-            tabId: pinnedPanel.tabId,
-          });
-          return;
-        }
-        if (folderId && itemId === 'rename-folder') {
-          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id: folderId } });
-          return;
-        }
-        if (folderId && itemId === 'delete-folder') {
-          dispatchShellAction({ type: 'tabFolder/delete', id: folderId });
-          return;
-        }
-        if (
-          folderId &&
-          typeof itemId === 'string' &&
-          itemId.startsWith('move-folder-to-workspace:')
-        ) {
-          dispatchShellAction({
-            type: 'tabFolder/assignWorkspace',
-            id: folderId,
-            workspaceId: itemId.slice('move-folder-to-workspace:'.length),
-          });
-          return;
-        }
-        if (!hasTabId) return;
-        if (itemId === 'reload-tab') {
-          dispatchShellAction({ type: 'tab/reload', id: tabId });
-        } else if (itemId === 'unload-tab') {
-          dispatchShellAction({ type: 'tab/unload', id: tabId });
-        } else if (itemId === 'rename-tab') {
-          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'tab', id: tabId } });
-        } else if (itemId === 'toggle-muted') {
-          dispatchShellAction({ type: 'tab/toggleMuted', id: tabId });
-        } else if (itemId === 'toggle-pin') {
-          dispatchShellAction({ type: 'tab/togglePin', id: tabId });
-        } else if (itemId === 'open-in-side-panel') {
-          dispatchShellAction({ type: 'panel/add', id: tabId });
-        } else if (itemId === 'close-tab') {
-          dispatchShellAction({ type: 'tab/close', id: tabId });
-        } else if (itemId === 'close-tabs-above') {
-          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.above });
-        } else if (itemId === 'close-tabs-below') {
-          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.below });
-        } else if (itemId === 'close-other-tabs') {
-          dispatchShellAction({ type: 'tabs/close', ids: closeMultipleTabIds.other });
-        } else if (itemId === 'reload-selected-tabs') {
-          dispatchShellAction({ type: 'tabs/reload', ids: tabIds });
-        } else if (itemId === 'close-selected-tabs') {
-          dispatchShellAction({ type: 'tabs/close', ids: tabIds });
-        } else if (itemId === 'move-selected-to-new-workspace') {
-          dispatchShellAction({ type: 'tabs/moveToNewWorkspace', ids: tabIds });
-        } else if (typeof itemId === 'string' && itemId.startsWith('move-to-workspace:')) {
-          const workspaceId = itemId.slice('move-to-workspace:'.length);
-          if (tabIds.length > 1) {
-            dispatchShellAction({ type: 'tabs/assignWorkspace', ids: tabIds, workspaceId });
-          } else {
-            dispatchShellAction({
-              type: 'tab/assignWorkspace',
-              id: tabId,
-              workspaceId,
-            });
-          }
-        } else if (itemId === 'move-to-folder:new') {
-          const id =
-            newFolderId ||
-            (typeof crypto !== 'undefined' && crypto.randomUUID
-              ? crypto.randomUUID()
-              : String(Date.now()));
-          dispatchShellAction({ type: 'tabFolder/create', id, tabIds });
-          dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id } });
-        } else if (itemId === 'move-to-folder:none') {
-          dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: null });
-        } else if (typeof itemId === 'string' && itemId.startsWith('move-to-folder:')) {
-          const targetFolderId = itemId.slice('move-to-folder:'.length);
-          dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: targetFolderId });
-        }
-      },
-    });
+      } else if (itemId === 'move-to-folder:new') {
+        const id =
+          newFolderId ||
+          (typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : String(Date.now()));
+        dispatchShellAction({ type: 'tabFolder/create', id, tabIds });
+        dispatchShellAction({ type: 'ui/renameRequest', target: { kind: 'folder', id } });
+      } else if (itemId === 'move-to-folder:none') {
+        dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: null });
+      } else if (typeof itemId === 'string' && itemId.startsWith('move-to-folder:')) {
+        const targetFolderId = itemId.slice('move-to-folder:'.length);
+        dispatchShellAction({ type: 'tabs/setFolder', ids: tabIds, folderId: targetFolderId });
+      }
+    };
+
+    // The New button's dropdown ('bottom start') is the Mux menu, anchored under
+    // the button; every right-click menu is native.
+    if (payload.placement === 'bottom start') {
+      showChromeMenu({ anchor, items: payload.items, placement: 'bottom start', onSelect });
+    } else {
+      showNativeSidebarMenu({ anchor, items: payload.items, onSelect });
+    }
   }
 
   function handlePanelTrailerContextMenuTitle(rawTitle) {

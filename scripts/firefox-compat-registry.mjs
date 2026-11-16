@@ -175,6 +175,9 @@ const FF = {
   updateService: 'toolkit/mozapps/update/UpdateService.sys.mjs',
   macosSignCommands: 'tools/signing/macos/mach_commands.py',
   ioUtilsH: 'xpcom/ioutils/IOUtils.h',
+  menuJs: 'toolkit/content/widgets/menu.js',
+  nativeMenu: 'widget/NativeMenu.cpp',
+  nativeMenuMac: 'widget/cocoa/NativeMenuMac.mm',
 };
 
 export const MEMBERS = [
@@ -1468,9 +1471,36 @@ export const MEMBERS = [
     kind: 'element',
     how: 'queries',
     probe: 'R',
-    sites: ['ensurePanelHistoryPopup'],
-    use: 'Popup set that hosts the Bento chrome menus.',
+    sites: ['ensurePanelHistoryPopup', 'showNativeSidebarMenu'],
+    use: 'Popup set that hosts the Bento chrome menus: the panel history popup and the native sidebar right-click menu.',
     at: [FF.popupset, '<popupset id="mainPopupSet"', 5],
+  },
+  {
+    id: 'menu and menuitem image attribute (.menu-icon srcset)',
+    kind: 'source',
+    how: 'writes',
+    probe: 'E',
+    sites: ['appendNativeMenuItems'],
+    use: "The sidebar menu's workspace rows set image (a data: URL) on a menuitem-iconic or menu-iconic item; menu.js copies it to the srcset of the item's .menu-icon <html:img>, the first child of the item's markup.",
+    at: [FF.menuJs, '"\\.menu-icon": "srcset=image"', 196],
+  },
+  {
+    id: 'NativeMenu icon from the first <img> child',
+    kind: 'source',
+    how: 'reads',
+    probe: 'E',
+    sites: ['appendNativeMenuItems'],
+    use: "The native macOS menu draws an item's icon from the item's first element child when it is an <img> (menu.js's .menu-icon), at 16x16; the shell sends 32px images for Retina. Without it the workspace rows lose their icons.",
+    at: [FF.nativeMenu, 'HTMLImageElement::FromNodeOrNull\\(aElement\\.GetFirstElementChild\\(\\)\\)', 54],
+  },
+  {
+    id: 'NativeMenuMac appearance from the popup color-scheme',
+    kind: 'source',
+    how: 'writes',
+    probe: 'E',
+    sites: ['showNativeSidebarMenu'],
+    use: "The native menu is drawn light or dark from the popup frame's used color-scheme (NativeAppearanceForContent), not the system appearance. Bento sets the popup's color-scheme from the root data-color-mode so the sidebar menu follows Bento's Light/Dark mode.",
+    at: [FF.nativeMenuMac, 'NSAppearanceForColorScheme\\(LookAndFeel::ColorSchemeForFrame\\(f\\)\\)', 236],
   },
   {
     id: 'contentAreaContextMenu',

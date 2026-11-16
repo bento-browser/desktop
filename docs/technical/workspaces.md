@@ -700,9 +700,40 @@ Source of truth: SessionStore in the parent process; persistence path:
 or the `pending` attribute. Pinned-panel backing tabs are native pinned tabs too.
 Manual check: see [manual-regression-areas.md](manual-regression-areas.md).
 
-The sidebar context menu is still rendered by chrome through
+The sidebar context menu is rendered by chrome through
 `BENTO_SIDEBAR_CONTEXT_MENU` in
-`src/browser/base/content/bento-shell-mount.js`. When a selected row is
+`src/browser/base/content/bento-shell-mount.js`. Every right-click menu (tab,
+selected tabs, folder, pinned panel button, empty sidebar) is a native macOS
+menu: `showNativeSidebarMenu` builds a XUL `menupopup` from the payload's items
+in `#mainPopupSet`, keeps each item id in `data-bento-menu-id`, and opens it
+with `openPopupAtScreen`, which Firefox turns into an `NSMenu`
+(`widget.macos.native-context-menus`). Only the New button's dropdown
+(`placement: 'bottom start'`) still goes to the Mux menu overlay
+(`showChromeMenu`). Before opening, the native path applies the same stack rules
+as a Mux menu open: it cancels a Cmd+L still waiting for the sidebar row, closes
+the bookmark popup, and cancels a Mux menu still waiting for its document. The
+palettes and a shown Mux menu cover the sidebar, so a right-click cannot reach
+it while they are open. The popup's `color-scheme` is set from the chrome
+root's resolved `data-color-mode`, so the menu follows Bento's mode. The
+previous popup is removed at the next open, not on `popuphidden`.
+
+"Move to workspace" and "Move folder to workspace" list every workspace except
+the one that already holds every target tab, or the folder's own workspace; with
+none left, the submenu item is not sent. Each row carries `icon`, a 32x32 PNG
+data URL from `useWorkspaceMenuIcons` (`extensions/bento-shell/src/menu/workspaceMenuIcons.ts`),
+which chrome sets as the item's `image` (with `menuitem-iconic`) and macOS draws
+at 16x16. The icon is the workspace emoji, or its initial in the avatar colour,
+with no disc, scaled and centred by its drawn pixels. The colour and font come
+from a hidden copy of the switcher's Avatar markup in the workspace's theme
+scope; the hook loads every workspace's theme sheet with `setThemeSheets`,
+waits for it and `document.fonts.ready`, draws, and releases the sheets. It
+redraws only when a workspace's id, name, icon or theme, or the resolved mode,
+changes, and keeps the result in a ref the menu reads when it opens. Measured
+2026-11-16: the icons are ready 45 to 60 ms after the workspace snapshot
+reaches the sidebar (about 30 ms of that is loading the theme sheets); a
+right-click in that window shows the rows without icons.
+
+When a selected row is
 right-clicked, the shell payload includes `tabIds`; chrome dispatches
 `tabs/reload` for "Reload X tabs", `tabs/moveToNewWorkspace` for the "Move
 selected tabs to new workspace" item, or `tabs/assignWorkspace` for batch moves
@@ -1457,6 +1488,26 @@ workspaces.
   workspace" rows; a regular window next to it is unchanged.
 
 ## Workspace pitfalls
+
+- Do not remove the native sidebar menu's popup on `popuphidden`. A native menu's `command`
+  and `popuphidden` arrive in no guaranteed order, so the removal can drop the command of the
+  item that closed the menu. `showNativeSidebarMenu` removes the previous popup at the next
+  open (`clearNativeSidebarMenu`).
+
+- The native menu's light or dark appearance comes from the popup's CSS `color-scheme`
+  (`NativeMenuMac` `NativeAppearanceForContent`), not from the macOS appearance or the
+  chrome document's mode attribute. Set `popup.style.colorScheme` from the resolved
+  `data-color-mode` on every open; without it a Bento Light window on macOS Dark shows a dark
+  menu.
+
+- In `workspaceMenuIcons.ts`, read the probe's computed style before removing it: a detached
+  element's computed style is empty, so the colour and font came back blank and the icons
+  drew in the canvas default.
+
+- Centre and size a workspace icon glyph by its drawn pixels, not font metrics.
+  `measureText` boxes include emoji padding and side bearings, so emoji drew small and
+  letters sat off centre. `inkBox` draws the text at 100px, finds the opaque pixels, and the
+  icon is redrawn scaled so the larger side of that box fills the 32px canvas.
 
 - Do not file a created tab in the workspace its window shows when its placement finishes.
   Placement waits on the experiment and, for a restored or unknown tab, up to ~1 s of session

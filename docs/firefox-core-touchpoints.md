@@ -1736,6 +1736,60 @@ token)` finds a live grant for that exact tab and token, deletes it, and
   `patchBookmarkPageCommand` call (the original function is untouched; the patch lives on the
   window object only). Nothing persists outside `bento-tools`' store.
 
+### Native Sidebar Context Menu (mount script)
+
+- Status: Active
+- Last updated: 2026-11-16
+- Files or patches:
+  - `src/browser/base/content/bento-shell-mount.js` (`showNativeSidebarMenu`,
+    `appendNativeMenuItems`, `clearNativeSidebarMenu`, and the placement branch at the end of
+    `handleSidebarContextMenuTitle`)
+  - `extensions/bento-shell/src/App.tsx` (the `icon` field of the menu payload) and
+    `extensions/bento-shell/src/menu/workspaceMenuIcons.ts` (the 32px workspace icons)
+  - `scripts/firefox-compat-registry.mjs` (new entries `menu and menuitem image attribute
+    (.menu-icon srcset)`, `NativeMenu icon from the first <img> child` and `NativeMenuMac
+    appearance from the popup color-scheme`; `mainPopupSet` gains a site), the regenerated
+    table below
+  - No Firefox patch.
+- Bento functionality: the sidebar's right-click menus (tab, folder, pinned panel, empty
+  sidebar) are macOS native menus. Chrome builds a XUL `menupopup` from the
+  `BENTO_SIDEBAR_CONTEXT_MENU` items in `#mainPopupSet` and opens it with
+  `openPopupAtScreen`. The menu follows Bento's Light/Dark mode, not the system appearance,
+  and the "Move to workspace" and "Move folder to workspace" rows show each workspace's emoji
+  or initial. The New button's dropdown (`placement: 'bottom start'`) stays on the Mux menu
+  overlay (`showChromeMenu`).
+- Vanilla Firefox surface touched or depended on:
+  - `XULPopupElement.openPopupAtScreen` with `isContextMenu`, which macOS turns into an
+    `NSMenu` while `widget.macos.native-context-menus` is on (the Firefox default). With the
+    pref off the same popup renders as a XUL menu and works the same.
+  - `toolkit/content/widgets/menu.js`: the `image` attribute of a `menuitem`/`menu` is copied
+    to the `srcset` of its `.menu-icon` `<html:img>`, the first child of the item's markup;
+    `menuitem-iconic`/`menu-iconic` show it in the XUL rendering.
+  - `widget/NativeMenu.cpp` `NativeMenu::GetIcon`: the native menu takes an item's icon from
+    its first `<img>` child and draws it at 16x16.
+  - `widget/cocoa/NativeMenuMac.mm` `NativeAppearanceForContent`: the `NSMenu` appearance
+    comes from the popup frame's `color-scheme`. Bento sets `popup.style.colorScheme` from the
+    root `data-color-mode`.
+  - `command` events from a native menu item and the `popuphidden` that follows: their order
+    is not guaranteed, so the popup is removed at the next open, not on `popuphidden`.
+- Why this cannot stay extension-only: an extension page cannot open a native menu with
+  custom items at a point; only a chrome `menupopup` becomes an `NSMenu`.
+- Firefox update risk: if `menu.js` stops mapping `image` onto the first-child `<img>`, or
+  `GetIcon` reads the icon elsewhere, the workspace rows lose their icons (the menu still
+  works). If `NativeAppearanceForContent` stops reading the frame's `color-scheme`, the menu
+  follows the macOS appearance instead of Bento's mode. If native context menus are removed or
+  turned off, the menu renders as a Firefox-styled XUL popup.
+- Regression checks for future updates: with two or more workspaces, right-click a tab and
+  confirm a native menu opens with "Move to workspace" listing every other workspace with its
+  emoji or initial, and the current workspace absent; choose one and confirm the tab moves.
+  Right-click a folder and do the same with "Move folder to workspace". With one workspace,
+  confirm neither submenu item appears. Set Bento to Light with macOS in Dark mode and
+  confirm the menu is light, then Bento Dark and confirm it is dark. Choose Rename tab and
+  confirm the inline field takes the focus. Open the New button's menu and confirm it is still
+  the Mux menu.
+- Rollback or migration notes: send every placement to `showChromeMenu` again (the Mux menu
+  then ignores `icon`).
+
 ### Search Engine Icons (bento-privacy Experiment)
 
 - Status: Active
@@ -4289,7 +4343,10 @@ below is generated; edit the registry, then run
 | `PlacesCommandHook.bookmarkPage` | method (runtime) | The one function behind Cmd+D, the Bookmarks menu and app menu items, the page context menu and Firefox star. In a regular window with the Bookmarks manager on, Bento replaces it (once per window, at script start: browser-places.js loads before the mount script) with a request for the bookmark popup; private windows and the opt-out call the original. | `patchBookmarkPageCommand` | `browser/base/content/browser-places.js:410` |
 | `Browser:AddBookmarkAs` | source (engine only) | The command Cmd+D and the Bookmarks menu run. Its handler in browser-sets.js calls PlacesCommandHook.bookmarkPage(), which is where Bento intercepts it. If the handler stops calling it, Cmd+D bypasses the Bento popup. | `patchBookmarkPageCommand` | `browser/base/content/browser-sets.js:166` |
 | `manBookmarkKb` | element (runtime) | Firefox's Show All Bookmarks (Library) key in mainKeyset. Bento removes its command attribute (keeping the value on the key in data-bento-library-command) and listens for the command event the key then raises on itself, to toggle the Bookmarks view. Turning the Bookmarks manager off in Settings puts the command attribute back, so the key opens the Library again. The menu items and toolbar buttons keep Browser:ShowAllBookmarks, so the Library stays reachable. A private window keeps the stock key. | `retargetLibraryKeyToBookmarksView`, `restoreLibraryKey` | `browser/base/content/browser-sets.inc.xhtml:291` |
-| `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus. | `ensurePanelHistoryPopup` | `browser/base/content/main-popupset.inc.xhtml:5` |
+| `mainPopupSet` | element (runtime) | Popup set that hosts the Bento chrome menus: the panel history popup and the native sidebar right-click menu. | `ensurePanelHistoryPopup`, `showNativeSidebarMenu` | `browser/base/content/main-popupset.inc.xhtml:5` |
+| `menu and menuitem image attribute (.menu-icon srcset)` | source (engine only) | The sidebar menu's workspace rows set image (a data: URL) on a menuitem-iconic or menu-iconic item; menu.js copies it to the srcset of the item's .menu-icon <html:img>, the first child of the item's markup. | `appendNativeMenuItems` | `toolkit/content/widgets/menu.js:196` |
+| `NativeMenu icon from the first <img> child` | source (engine only) | The native macOS menu draws an item's icon from the item's first element child when it is an <img> (menu.js's .menu-icon), at 16x16; the shell sends 32px images for Retina. Without it the workspace rows lose their icons. | `appendNativeMenuItems` | `widget/NativeMenu.cpp:54` |
+| `NativeMenuMac appearance from the popup color-scheme` | source (engine only) | The native menu is drawn light or dark from the popup frame's used color-scheme (NativeAppearanceForContent), not the system appearance. Bento sets the popup's color-scheme from the root data-color-mode so the sidebar menu follows Bento's Light/Dark mode. | `showNativeSidebarMenu` | `widget/cocoa/NativeMenuMac.mm:236` |
 | `contentAreaContextMenu` | element (runtime) | Content context menu that receives the Open in New Panel and Inspect in Panel items. | `installOpenInNewPanelMenuItem`, `installInspectInPanelMenuItems` | `browser/base/content/main-popupset.inc.xhtml:680` |
 | `placesContext` | element (runtime) | Places context menu that receives Open in New Panel. | `installOpenInNewPanelBookmarkMenuItem` | `browser/components/places/content/placesContextMenu.inc.xhtml:5` |
 | `appMenu-popup` | source (engine only) | App menu panel, looked up by id at load. Bento listens on it for ViewShowing, so the Bento Settings item is added whichever way the menu opens. PanelUI.panel is the same element and is probed at runtime. | `installBentoSettingsAppMenuItem` | `browser/components/customizableui/content/panelUI.inc.xhtml:274` |

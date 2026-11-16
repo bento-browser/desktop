@@ -65,6 +65,12 @@ When changing core functionality, manually verify at least the affected subset:
 - workspace switch with saved strip scroll positions;
 - first panel add in a workspace;
 - panel add from main context menu and from panel context menu;
+- sidebar right-click menus (tab, selected tabs, folder, pinned panel button, empty
+  sidebar) open as native macOS menus that match Bento's Light or Dark mode with macOS in
+  the other mode; "Move to workspace" and "Move folder to workspace" show each other
+  workspace's emoji or initial, leave out the current one, and are absent with one
+  workspace; choosing an item acts once, and Rename tab or Rename folder focuses the inline
+  field; the New button's menu is still the Mux menu;
 - panel trailer blank add and saved-panel add, and its width: the host's computed
   `width` is 256 px, and 284 px with more than eight saved panels, where the
   "More saved panels" select is not clipped;
