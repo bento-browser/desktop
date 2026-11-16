@@ -135,6 +135,9 @@ export function useWorkspaceMenuIcons(): { readonly current: Readonly<Record<str
     })();
     return () => {
       cancelled = true;
+      // A run cancelled mid-load never reaches its own release. Cleanup always runs before
+      // the next run's setThemeSheets, so this cannot drop a newer run's sheets.
+      releaseThemeSheets(OWNER);
     };
   }, [key, colorScheme]);
 
