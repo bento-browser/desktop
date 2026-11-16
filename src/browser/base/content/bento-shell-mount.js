@@ -18269,7 +18269,10 @@
     // scroll without changing the final position.
     host.scrollLeft = host.scrollLeft;
   }
+  // Drops a previous switch's pending cleanup first: its frame would lift this curtain and
+  // clear this switch's watchdog, and its timer would end this switch's stabilize window.
   function armWorkspaceSwitchFade() {
+    cancelWorkspaceFadeCleanup();
     cancelStripScrollMotion();
     setWorkspaceFadeClasses(true);
   }

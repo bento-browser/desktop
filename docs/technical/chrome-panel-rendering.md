@@ -562,6 +562,15 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   emits the panels only after the selection (`selectThenEmitPanels`, see
   [workspaces.md](workspaces.md#workspace-pitfalls)); do not work around it in
   chrome by deferring unmarked selections, which would hold back ordinary new tabs.
+- `armWorkspaceSwitchFade` cancels a previous switch's pending cleanup frame and
+  stabilize timer (`cancelWorkspaceFadeCleanup`) before it adds the classes. A
+  selection into another workspace (`runReconcile`) arrives while the last switch's
+  cleanup frame is still queued; that frame removed the new curtain over a selection
+  whose reconcile was still deferred, and cleared the watchdog
+  `armDeferredWorkspaceSwitchWatchdog` had just set, so nothing lifted the deferral
+  if tools never followed.
+  `performWorkspaceSwitchFade` already cancelled them itself
+  (`scripts/mount-motion.test.mjs`).
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
 contextTab` (or the multi-selection), and the new window adopts its first tab
