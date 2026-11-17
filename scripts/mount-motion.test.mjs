@@ -340,6 +340,7 @@ const FADE_FUNCTIONS = [
   'setWorkspaceFadeClasses',
   'cancelStripScrollMotion',
   'armWorkspaceSwitchFade',
+  'armDeferredWorkspaceSwitchWatchdog',
   'performWorkspaceSwitchFade',
 ];
 
@@ -473,6 +474,20 @@ test('a frame queued by a replaced switch does not lift the curtain of the newer
   flushFrames();
   assert.equal(fade.classes.has(SWITCHING), false);
   assert.equal(fade.classes.has(STABILIZING), true);
+});
+
+test('a selection into another workspace keeps its curtain over the previous switch cleanup frame', () => {
+  const { get, fade, flushFrames, pendingFrames } = makeFade({ transitionProperty: 'opacity' });
+  get('performWorkspaceSwitchFade')([], {});
+  assert.equal(pendingFrames(), 1);
+  // The TabSelect path (runReconcile) arms the curtain and its watchdog before the frame runs.
+  get('armWorkspaceSwitchFade')();
+  get('armDeferredWorkspaceSwitchWatchdog')({});
+  assert.equal(pendingFrames(), 0, 'arming dropped the earlier cleanup frame');
+  flushFrames();
+  assert.equal(fade.classes.has(SWITCHING), true, 'the new curtain stays up');
+  assert.notEqual(get('__workspaceFadeWatchdog'), null, 'its watchdog is still armed');
+  assert.equal(get('__workspaceFadeCleanupTimer'), null);
 });
 
 // Native mode transactions are exercised end to end in mode-presentation.test.mjs.

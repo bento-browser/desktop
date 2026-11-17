@@ -19,10 +19,14 @@ import {
 import { wasHandedOver } from './tabs/Handover';
 import { createCreatedTabs, readTabSessionValueWithRetries } from './tabs/CreatedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
+import { openWorkspaceFirstTab } from './workspaces/FirstTab';
+import { persistFirstLaunchWorkspace } from './workspaces/FirstLaunchMarkers';
 import {
   createActivationGenerations,
   hasSelectedWorkspaceTab,
   isActivationCurrent,
+  selectTabIfCurrent,
+  selectThenEmitPanels,
 } from './workspaces/ActivationGuard';
 import { panelToPromoteAfterDetach } from './panels/PanelPromotion';
 import { dropRemovedTabFromPanels } from './panels/RemovedTab';
@@ -1146,6 +1150,10 @@ const bootReady = storesReady.then(async () => {
   await tabs.hydrateWorkspaceIds();
   await tabs.closeMarkedTabs();
   adoptionGate.settle();
+  // Read before the pre-assignment and backfill below give tabs a workspace in memory.
+  const sessionHadMarkers = tabs
+    .snapshot()
+    .some((tab) => !tabs.isPrivate(tab.id) && tab.workspaceId !== undefined);
   // Before the backfill below gives unassigned tabs a workspace, so only tabs Firefox restored
   // with theirs count. A real browser start only: `runtime.onStartup` fires right after the
   // background script's first run, long before the settle wait above ends. If it has not
@@ -1208,14 +1216,30 @@ const bootReady = storesReady.then(async () => {
   // tab's original workspace assignment would be permanently
   // overwritten. With the in-memory variant, the original session
   // value is preserved across launches — the next launch's hydrate
-  // gets another chance to pick it up correctly.
+  // gets another chance to pick it up correctly. The one exception is the
+  // launch that created the default workspace because Bento never stored
+  // workspaces (both storage keys absent) and no tab came back with a
+  // marker: that default is the only one and the guess is certain
+  // (persistFirstLaunchWorkspace).
   if (wsId) {
+    const backfilled: number[] = [];
     for (const tab of tabs.snapshot()) {
       if (tabs.isClosing(tab.id)) continue;
       if (tabs.isPrivate(tab.id)) continue;
       if (tab.workspaceId) continue;
       tabs.setWorkspaceInMemory(tab.id, wsId);
+      backfilled.push(tab.id);
     }
+    await persistFirstLaunchWorkspace(
+      {
+        bootstrappedDefaultId: workspaces.bootstrappedDefaultId,
+        workspaceIds: () => workspaces.snapshot().workspaces.map((workspace) => workspace.id),
+        sessionHadMarkers,
+        tabs,
+      },
+      wsId,
+      backfilled,
+    ).catch((err) => console.warn('[bento-tools] first-launch workspace markers failed:', err));
   }
   // Zen import can live-restore tabs with bento.isPanel markers before
   // bento-tools has registered its tabs.onCreated listener. Promote
@@ -1635,10 +1659,7 @@ async function activateNonPanelTab(
   if (!snap) return false;
   if (typeof windowId === 'number' && snap.windowId !== windowId) return false;
   try {
-    await browser.tabs.get(tabId);
-    if (!stillCurrent()) return false;
-    await browser.tabs.update(tabId, { active: true });
-    return true;
+    return await selectTabIfCurrent(tabId, stillCurrent);
   } catch (err) {
     console.warn(`[bento-tools] ${label} failed:`, err);
     return false;
@@ -2213,6 +2234,8 @@ async function handleWorkspaceActivation(
           }),
   });
   if (!isCurrent()) return;
+  // The tab selection below, awaited before the panels are emitted (selectThenEmitPanels).
+  let selection: Promise<unknown> | null = null;
   if (adoptable.length > 0) {
     for (const adopted of adoptable) {
       tabs.assignWorkspaceEagerly(adopted.id, wsId);
@@ -2225,7 +2248,7 @@ async function handleWorkspaceActivation(
       }
     }
     if (!adoptable.some((adopted) => adopted.active)) {
-      void activateNonPanelTab(
+      selection = activateNonPanelTab(
         adoptable[0]!.id,
         'activate adopted tab',
         targetWindowId ?? undefined,
@@ -2234,13 +2257,13 @@ async function handleWorkspaceActivation(
     }
   } else if (create) {
     try {
-      const created = await browser.tabs.create({
-        active: true,
-        ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+      // Selected only once its workspace marker is written, so chrome fades the switch.
+      await openWorkspaceFirstTab({
+        workspaceId: wsId,
+        windowId: targetWindowId,
+        tabs,
+        stillCurrent: isCurrent,
       });
-      if (typeof created.id === 'number') {
-        tabs.assignWorkspaceEagerly(created.id, wsId);
-      }
     } catch (err) {
       console.warn('[bento-tools] newtab for empty workspace failed:', err);
     }
@@ -2256,22 +2279,31 @@ async function handleWorkspaceActivation(
       (preferred !== undefined && wsTabs.find((t) => t.id === preferred)) ||
       (remembered !== undefined && wsTabs.find((t) => t.id === remembered)) ||
       wsTabs[0]!;
-    void activateNonPanelTab(target.id, 'activate workspace tab', target.windowId, isCurrent);
+    selection = activateNonPanelTab(
+      target.id,
+      'activate workspace tab',
+      target.windowId,
+      isCurrent,
+    );
   }
   if (!isCurrent()) return;
 
-  // (2) Lazy panel restore for inactive workspaces — runs once per
-  // workspace per session. takePersistedUrls clears the entry so a
-  // second activation is a no-op. restorePanelsForWorkspace also
-  // emits panels/sync at the end, so we skip the explicit sync below
-  // when restore actually had work to do.
-  const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
-  if (hadPersisted) {
-    void restorePanelsForWorkspace(wsId, targetWindowId);
-  } else {
-    // (3) Sync panels for the now-active workspace.
-    void emitPanelsSync(wsId, targetWindowId !== null ? { windowId: targetWindowId } : undefined);
-  }
+  // Panels go out only once the selection has settled: chrome must see the destination tab's
+  // TabSelect first (selectThenEmitPanels).
+  await selectThenEmitPanels(selection, isCurrent, () => {
+    // (2) Lazy panel restore for inactive workspaces — runs once per
+    // workspace per session. takePersistedUrls clears the entry so a
+    // second activation is a no-op. restorePanelsForWorkspace also
+    // emits panels/sync at the end, so we skip the explicit sync below
+    // when restore actually had work to do.
+    const hadPersisted = panels.workspacesWithPersistedUrls().includes(wsId);
+    if (hadPersisted) {
+      void restorePanelsForWorkspace(wsId, targetWindowId);
+    } else {
+      // (3) Sync panels for the now-active workspace.
+      void emitPanelsSync(wsId, targetWindowId !== null ? { windowId: targetWindowId } : undefined);
+    }
+  });
 }
 
 workspaces.onDeltas((deltas) => {

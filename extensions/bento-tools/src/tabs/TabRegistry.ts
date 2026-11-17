@@ -465,7 +465,10 @@ export class TabRegistry {
    * tab leaks into whatever workspace is active at boot.
    *
    * The delta is still emitted so the shell mirror sees the same view
-   * the in-memory snapshot does. Persistent state stays clean.
+   * the in-memory snapshot does. Persistent state stays clean, except on
+   * the launch that created a never-stored profile's default workspace,
+   * where boot writes the backfilled tabs afterwards
+   * (`persistFirstLaunchWorkspace`).
    */
   setWorkspaceInMemory(id: number, workspaceId: string): void {
     if (this.#closingTabIds.has(id)) return;

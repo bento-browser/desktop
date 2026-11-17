@@ -523,14 +523,54 @@ code and as the `panel-suite` gate of a Firefox upgrade (see the
   and the held payload is the previous workspace's, so it would draw old panels
   around a new workspace's tab. The real `panels/sync` reconciles normally when it
   lands (`scripts/mount-workspace-watchdog.test.mjs`). The watchdog is the one literal
-  time in the workspace fade: `performWorkspaceSwitchFade` waits for the fade-out
-  through `afterMotion` on the strip container's opacity (the Mux `state` role,
-  `bento-shell-mount.css`), and holds `bento-workspace-stabilizing` for the fade-in
-  or the Mux `reveal` duration, whichever is longer, read by `workspaceStabilizeMs`
-  (the layout transitions are switched off while the class is set, so the `reveal`
-  time comes from its token). Do not give them literals back. Do not "fix" this by activating the
+  time in the workspace fade: `performWorkspaceSwitchFade` waits for any fade-out
+  through `afterMotion` on the strip container's opacity (none today, see the next
+  item), and holds `bento-workspace-stabilizing` for the fade-in (the Mux `state`
+  role, `bento-shell-mount.css`) or the Mux `reveal` duration, whichever is longer,
+  read by `workspaceStabilizeMs` (the layout transitions are switched off while the
+  class is set, so the `reveal` time comes from its token). Do not give them
+  literals back. Do not "fix" this by activating the
   selected tab's workspace from the selection signal: selection fires for
   transient states (closing, adoption) and would fight tools.
+- The workspace switch cuts to blank and fades in; it has no fade-out. Firefox
+  swaps the incoming tab's page into the deck at `TabSelect` (measured within
+  about 5 ms), before the first curtained frame paints, so a fade-out over the
+  curtain always starts on the incoming page: the first curtained frame showed the new workspace's page at
+  full brightness (about 0.8 beside the old side panel), then faded it. The
+  switching state therefore declares `transition: none` beside `opacity: 0`
+  (the plain three-target rule and the bookmarks-toolbar strip container rule,
+  which keeps only its margin spring), so adding `bento-workspace-switching`
+  hides the targets at once, and removing it fades them in on the resting rule's
+  `state` opacity transition, since a transition takes its timing from the style
+  a change arrives at. `bento-workspace-stabilizing` only switches off child
+  layout transitions and the navigator's toolbar reveal rule, so it does not
+  stop the fade-in. `afterMotion` then measures 0 and runs the swap synchronously
+  (`swapped` is already true, so no cancel is kept), and the cleanup frame lifts
+  the curtain one frame later. Keep the `afterMotion` call: its computed-style
+  read is the style flush that records opacity 0 before the class goes when no
+  frame ran with the curtain up; without it the fade-in has no start value and
+  the swap shows at once. Do not bring back a fade-out on the switching state,
+  and keep any new rule that outranks `#bento-strip-container.bento-workspace-switching`
+  free of an opacity transition while the class is set: the strip container
+  times the swap.
+- The curtain is armed only when the selected tab already carries its workspace
+  marker. A tab selected before tools writes it (`shouldDeferReconcileForWorkspaceSwitch`
+  reads `null`) is reconciled at once with the old workspace's held payload, and
+  `handlePanelsTitle` then runs `performWorkspaceSwitchFade` over content that has
+  already changed, which flickers. Tools therefore opens a workspace's first tab
+  unselected and selects it after the marker write (`openWorkspaceFirstTab`), and
+  emits the panels only after the selection (`selectThenEmitPanels`, see
+  [workspaces.md](workspaces.md#workspace-pitfalls)); do not work around it in
+  chrome by deferring unmarked selections, which would hold back ordinary new tabs.
+- `armWorkspaceSwitchFade` cancels a previous switch's pending cleanup frame and
+  stabilize timer (`cancelWorkspaceFadeCleanup`) before it adds the classes. A
+  selection into another workspace (`runReconcile`) arrives while the last switch's
+  cleanup frame is still queued; that frame removed the new curtain over a selection
+  whose reconcile was still deferred, and cleared the watchdog
+  `armDeferredWorkspaceSwitchWatchdog` had just set, so nothing lifted the deferral
+  if tools never followed.
+  `performWorkspaceSwitchFade` already cancelled them itself
+  (`scripts/mount-motion.test.mjs`).
 - Tear-out with panels present. `replaceTabWithWindow` hands the new window
   `aTab.splitview ?? aTab`, `replaceTabsWithWindow` uses `contextTab.splitview ??
 contextTab` (or the multi-selection), and the new window adopts its first tab

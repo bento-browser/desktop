@@ -241,7 +241,10 @@ check the boot backfill path. `background.ts` must not call persistent
 `TabRegistry.assignWorkspace()` before SessionStore tab extData settles; that
 can overwrite a restored imported tab's saved `bento.workspaceId` with the
 currently active workspace. Boot-time fallback assignment after
-`hydrateWorkspaceIds()` must stay in-memory only, and `hydrateWorkspaceIds()`
+`hydrateWorkspaceIds()` must stay in-memory only (except on the launch that
+created the default workspace because Bento never stored workspaces, both storage
+keys absent, and no tab came back with a marker; see `persistFirstLaunchWorkspace`
+in [workspaces.md](workspaces.md#workspace-pitfalls)), and `hydrateWorkspaceIds()`
 must retry delayed session reads before that fallback runs.
 Cancellation is cooperative and operation-scoped. `protocol-handler.ts` owns the
 single in-flight `AbortController`, reports `ExternalMergeError("cancelled",

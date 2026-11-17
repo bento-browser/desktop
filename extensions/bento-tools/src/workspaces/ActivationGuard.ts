@@ -67,3 +67,36 @@ export function hasSelectedWorkspaceTab(
       (windowId === null || tab.windowId === windowId),
   );
 }
+
+/**
+ * Selects a tab for an activation, unless a later activation took the window while the tab was
+ * read (resolves false, nothing selected). A missing tab or failed selection rejects.
+ */
+export async function selectTabIfCurrent(
+  tabId: number,
+  stillCurrent: () => boolean,
+): Promise<boolean> {
+  await browser.tabs.get(tabId);
+  if (!stillCurrent()) return false;
+  await browser.tabs.update(tabId, { active: true });
+  return true;
+}
+
+/**
+ * Waits for an activation's tab selection, then emits its panels, also when the selection failed;
+ * not when the activation was superseded meanwhile. Chrome must see the destination tab's
+ * TabSelect before the panels: the switch curtain cuts with no fade-out, so panels that arrive
+ * first are reconciled around the outgoing tab and lift the curtain.
+ */
+export async function selectThenEmitPanels(
+  selection: Promise<unknown> | null,
+  stillCurrent: () => boolean,
+  emitPanels: () => void,
+): Promise<void> {
+  try {
+    await selection;
+  } catch (err) {
+    console.warn('[bento-tools] workspace tab selection failed:', err);
+  }
+  if (stillCurrent()) emitPanels();
+}

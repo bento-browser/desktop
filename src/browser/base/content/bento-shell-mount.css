@@ -402,6 +402,13 @@
     margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
       var(--muxui-semantic-motion-reveal-transition-spring-easing);
 }
+/* The workspace-switch curtain cuts (no fade-out, see 'Workspace-switch fade' below), so its
+   opacity entry goes while the class is set; the margin keeps its spring. */
+:root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+  #bento-strip-container.bento-workspace-switching {
+  transition: margin-block-start var(--muxui-semantic-motion-reveal-transition-spring-duration)
+    var(--muxui-semantic-motion-reveal-transition-spring-easing);
+}
 /* The contents. Coming in they slide down out of the top edge (the strip clips them) and fade in
    on the reveal role; going out they slide up and fade on the dismiss role, so they are gone well
    before the strip has closed. The return is on the resting rule, so removing 'collapsed' is what
@@ -426,7 +433,9 @@
     transition: none !important;
   }
   :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
-    #bento-strip-container {
+    #bento-strip-container,
+  :root[sessionrestored][bento-sidebar-addressbar='true'][bento-bookmarks-toolbar]:not([bento-bookmarks-view])
+    #bento-strip-container.bento-workspace-switching {
     transition: none;
   }
   :root[bento-bookmarks-toolbar] #PersonalToolbar > #bento-bookmarks-toolbar-host,
@@ -1294,20 +1303,25 @@
   background-color: var(--bento-panel-strip-bg) !important;
   background-image: none !important;
 }
-/* Workspace-switch fade. Applied as a class toggle to BOTH the
-   split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
-   holds the main browser AND the side-panel browsers) AND the
-   strip container (favicon navigator + custom scrollbar). They
-   live in separate parts of the chrome tree so the only way to
-   crossfade everything visible in one motion is to drive both
-   with the same class. The visible transition is opacity-only;
-   layout transitions on strip descendants are suppressed during
-   the swap so reconcile writes land without visible motion.
-   performWorkspaceSwitchFade also sets a swapping flag that
-   suppresses in-reconcile animations (main-width transition,
-   scroll-to-main smooth scroll, favicon nav enter/leave width
-   transitions) so the user sees a STATIC fade — no panel
-   sliding into place during fade-in. */
+/* Workspace-switch fade: cut, then fade in. Applied as a class toggle
+   to the split-view panel deck (#tabbrowser-tabpanels — Firefox-native,
+   holds the main browser AND the side-panel browsers), the strip
+   container and the favicon navigator. They live in separate parts of
+   the chrome tree, so one class drives all of them. The curtain hides
+   them at once: Firefox swaps in the incoming tab's page at TabSelect,
+   before any fade-out could start, so a fade-out from 1 would show the
+   new workspace's page first and then fade it. A transition takes its
+   timing from the style a change arrives at, so 'transition: none' on
+   the switching state cuts when the class is added, and removing it
+   fades the targets in on the resting rule's opacity transition.
+   afterMotion (performWorkspaceSwitchFade) therefore measures 0 and
+   swaps at once. The visible transition is opacity-only; layout
+   transitions on strip descendants are suppressed during the swap so
+   reconcile writes land without visible motion. performWorkspaceSwitchFade
+   also sets a swapping flag that suppresses in-reconcile animations
+   (main-width transition, scroll-to-main smooth scroll, favicon nav
+   enter/leave width transitions) so the user sees a STATIC fade-in, no
+   panel sliding into place. */
 #tabbrowser-tabpanels,
 #bento-strip-container,
 #bento-panel-nav {
@@ -1317,6 +1331,7 @@
 #bento-strip-container.bento-workspace-switching,
 #bento-panel-nav.bento-workspace-switching {
   opacity: 0;
+  transition: none;
 }
 /* Suppress layout transitions while the workspace strip is being
    swapped and while it fades back in. The opacity transition is

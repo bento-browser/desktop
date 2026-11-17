@@ -69,6 +69,7 @@ function fakeBrowser() {
           }) as TabSnapshot,
       ),
     rename: vi.fn(async () => undefined),
+    isClosing: () => false,
     assignWorkspaceEagerly: vi.fn(async (id: number, workspaceId: string) => {
       workspaceByTab.set(id, workspaceId);
       return true;
@@ -134,9 +135,11 @@ describe('restoreParkedEntries', () => {
 
     expect(result).toEqual({ restored: true, unrestored: [] });
     expect(env.tabsOf('ws', 1)).toEqual(['https://one/', 'https://two/']);
+    // The first tab opens unselected and is selected once its workspace marker is written, so
+    // chrome sees a switch to another workspace and fades it.
     expect(browser.tabs.create).toHaveBeenNthCalledWith(1, {
       url: 'https://one/',
-      active: true,
+      active: false,
       windowId: 1,
     });
     expect(browser.tabs.create).toHaveBeenNthCalledWith(2, {
@@ -144,6 +147,10 @@ describe('restoreParkedEntries', () => {
       active: false,
       windowId: 1,
     });
+    expect(browser.tabs.update).toHaveBeenCalledWith(100, { active: true });
+    expect(env.registry.assignWorkspaceEagerly.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(browser.tabs.update).mock.invocationCallOrder[0]!,
+    );
     expect(browser.tabs.update).toHaveBeenCalledWith(101, { pinned: true });
   });
 

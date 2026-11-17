@@ -186,8 +186,14 @@ describe('workspace delete against the tab-removal handler, with a real store', 
           if (createFails) throw new Error('no window');
           const opened = tab(nextTabId++, { windowId: props.windowId });
           tabs = [...tabs, opened];
-          return { id: opened.id };
+          return { id: opened.id, windowId: opened.windowId };
         }),
+        get: vi.fn(async (id: number) => {
+          const found = tabs.find((t) => t.id === id);
+          if (!found) throw new Error(`Invalid tab ID: ${id}`);
+          return { id, windowId: found.windowId };
+        }),
+        update: vi.fn(async (id: number) => ({ id })),
         // What Firefox does on close: the tab is gone, then tabs.onRemoved reaches Bento.
         remove: vi.fn(async (ids: number | number[]) => {
           for (const id of Array.isArray(ids) ? ids : [ids]) {
@@ -330,7 +336,8 @@ describe('workspace delete against the tab-removal handler, with a real store', 
       expect(browser.tabs.remove).toHaveBeenCalled();
       expect(handoff.isActive(1)).toBe(false);
     });
-    expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: true });
+    expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: false });
+    expect(browser.tabs.update).toHaveBeenCalledWith(100, { active: true });
     expect(windowsClosed).toEqual([]);
     expect(tabs.filter((t) => t.windowId === 1).map((t) => t.workspaceId)).toEqual([ids.c]);
     expect(actions.every((action) => action.kind === 'none')).toBe(true);

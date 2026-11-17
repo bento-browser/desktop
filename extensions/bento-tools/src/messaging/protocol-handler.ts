@@ -23,6 +23,7 @@ import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import { activateWorkspaceInWindow } from '../workspaces/activateInWindow';
+import { openWorkspaceFirstTab } from '../workspaces/FirstTab';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
@@ -1004,10 +1005,13 @@ async function ensureReplacementTab(
       );
   if (hasTab()) return true;
   try {
-    const created = await browser.tabs.create({ windowId, active: true });
-    if (typeof created.id !== 'number') return false;
-    await ctx.tabs.assignWorkspaceEagerly(created.id, workspaceId);
-    return true;
+    const created = await openWorkspaceFirstTab({
+      workspaceId,
+      windowId,
+      tabs: ctx.tabs,
+      stillCurrent: () => ctx.workspaces.getActiveIdByWindow()[windowId] === workspaceId,
+    });
+    return created !== null;
   } catch (err) {
     console.warn('[bento-tools] workspace/delete: opening a tab for the replacement failed:', err);
     return false;

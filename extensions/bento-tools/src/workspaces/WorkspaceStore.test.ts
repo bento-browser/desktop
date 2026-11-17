@@ -183,6 +183,57 @@ describe('WorkspaceStore active workspace persistence', () => {
       },
     ]);
     expect(store.snapshot().activeId).toBe('{zen-space-1}');
+    // An imported set is a migration, not the bootstrapped default (persistFirstLaunchWorkspace).
+    expect(store.bootstrappedDefaultId).toBeNull();
+  });
+
+  it('names the default workspace only on the launch that bootstrapped it', async () => {
+    const fresh = new WorkspaceStore();
+    await fresh.init();
+    expect(fresh.bootstrappedDefaultId).toBe(fresh.snapshot().workspaces[0]?.id);
+
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      'bento.workspaces': {
+        version: 1,
+        workspaces: [{ id: 'ws-stored', name: 'Personal', createdAt: 1 }],
+        activeId: 'ws-stored',
+      },
+    });
+    const later = new WorkspaceStore();
+    await later.init();
+    expect(later.snapshot().workspaces.map((workspace) => workspace.id)).toEqual(['ws-stored']);
+    expect(later.bootstrappedDefaultId).toBeNull();
+  });
+
+  // Each still creates the default workspace, but storage was written before, so it is a
+  // recovery, not a never-stored profile.
+  it.each<[string, Record<string, unknown> | 'throws', Record<string, unknown> | 'throws']>([
+    ['an unreadable primary', 'throws', {}],
+    ['a corrupt primary', { 'bento.workspaces': 'corrupt' }, {}],
+    ['an unknown-version primary', { 'bento.workspaces': { version: 99, workspaces: [] } }, {}],
+    ['an empty stored list', { 'bento.workspaces': { version: 1, workspaces: [] } }, {}],
+    ['an absent primary and unreadable backup', {}, 'throws'],
+    ['an absent primary and corrupt backup', {}, { 'bento.workspaces.backup': null }],
+    [
+      'a corrupt primary and corrupt backup',
+      { 'bento.workspaces': 'corrupt' },
+      { 'bento.workspaces.backup': 'corrupt' },
+    ],
+    ['an unreadable primary and unreadable backup', 'throws', 'throws'],
+  ])('does not name the default workspace after %s', async (_case, primary, backup) => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(browser.storage.local.get).mockImplementation(async (key) => {
+      const result = key === 'bento.workspaces' ? primary : backup;
+      if (result === 'throws') throw new Error('storage unavailable');
+      return result;
+    });
+
+    const store = new WorkspaceStore();
+    await store.init();
+
+    expect(store.snapshot().workspaces).toHaveLength(1);
+    expect(store.bootstrappedDefaultId).toBeNull();
   });
 
   it('adopts imported Zen workspaces after the first-run default already exists', async () => {
