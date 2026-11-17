@@ -2004,8 +2004,9 @@ workspaces.
   reports `neverStored` only when both `storage.local.get` reads resolved and
   neither `bento.workspaces` nor `bento.workspaces.backup` exists. A read that
   throws, a stored value that is corrupt or of an unknown version, and a stored
-  empty list all report false: init still recreates the default workspace, but that
-  is a recovery and the backfill stays in memory. Only when `WorkspaceStore.init`
+  empty list all report false. Init then restores a valid backup, or recreates the
+  default workspace when neither recovery nor a session import provides workspaces;
+  either way it is a recovery and the backfill stays in memory. Only when `WorkspaceStore.init`
   created the default with `neverStored` true and the session offered no workspaces
   to import does it set `bootstrappedDefaultId`; that default is then the only
   workspace and the tabs open then belong to it. `persistFirstLaunchWorkspace`
