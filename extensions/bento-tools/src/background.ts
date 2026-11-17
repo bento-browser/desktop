@@ -19,7 +19,7 @@ import {
 import { wasHandedOver } from './tabs/Handover';
 import { createCreatedTabs, readTabSessionValueWithRetries } from './tabs/CreatedTab';
 import { afterTabRemoved, createWindowHandoffGuard } from './workspaces/EmptiedWorkspace';
-import { openWorkspaceFirstTab } from './workspaces/FirstTab';
+import { openWorkspaceFirstTabOnce } from './workspaces/FirstTab';
 import { persistFirstLaunchWorkspace } from './workspaces/FirstLaunchMarkers';
 import {
   createActivationGenerations,
@@ -2257,8 +2257,9 @@ async function handleWorkspaceActivation(
     }
   } else if (create) {
     try {
-      // Selected only once its workspace marker is written, so chrome fades the switch.
-      await openWorkspaceFirstTab({
+      // Selected only once its workspace marker is written, so chrome fades the switch. A tab
+      // dragged away or closed meanwhile is replaced once while the window still shows wsId.
+      await openWorkspaceFirstTabOnce({
         workspaceId: wsId,
         windowId: targetWindowId,
         tabs,

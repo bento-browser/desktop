@@ -1989,10 +1989,28 @@ workspaces.
   await was otherwise selected in its destination window. It then asks `isCurrent`
   once more, since the re-read is another await. A moved, reassigned or closing tab,
   or one superseded during the re-read, is left unselected and no other tab is
-  opened. A failed marker write
+  opened by `openWorkspaceFirstTab` itself. A failed marker write
   still selects the tab (no fade); a failed selection opens a selected tab the old
   way, so the window does not stay on the old workspace's tab. See the curtain note in
   [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
+- Returning the tab `openWorkspaceFirstTab` opened did not say whether it was
+  selected: one dragged to another window, closed or superseded during its marker
+  write came back like a selected one. `ensureReplacementTab` counted any returned
+  tab as success, so a workspace delete removed the window's old tabs with no
+  replacement tab selected in it (the window on a closing tab, empty, or showing
+  another workspace's tab), and an empty-workspace activation or parked restore left
+  the outgoing workspace's tab selected. It now returns a `FirstTabOutcome`, and only
+  `selected` means a tab of the workspace is selected in the window it opened in
+  (the fallback tab counts). The three callers go through
+  `openWorkspaceFirstTabOnce`, which opens one more tab, once, when the first was
+  `displaced` (moved, reassigned, closing or gone) and the window still shows the
+  workspace; superseded opens nothing more. `ensureReplacementTab` resolves true only
+  for a still-current window with a replacement tab in it, or a `selected` outcome;
+  superseded at any point (including a replacement tab that already exists) or any
+  other outcome takes the keep path above: the window's old tabs stay and join the
+  replacement, or the window's current workspace when a later delete removed the
+  replacement meanwhile (none: the window closed, and they are removed as asked).
+  `restoreParkedEntries` pins, renames and hands over the tab the retry ended with.
 - Only a never-stored profile's first launch persists the boot backfill. Chrome
   arms the switch curtain only for a tab whose marker names another workspace, and
   the backfill gives an unmarked tab the active workspace in memory only, so a

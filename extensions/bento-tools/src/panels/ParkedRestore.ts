@@ -1,6 +1,6 @@
 import { moveWorkspaceTabsToWindow } from '../tabs/AdoptedTab';
 import type { TabRegistry } from '../tabs/TabRegistry';
-import { openWorkspaceFirstTab } from '../workspaces/FirstTab';
+import { openWorkspaceFirstTabOnce } from '../workspaces/FirstTab';
 import { planParkedRestore, type ParkedWorkspaceTab } from './ParkedWorkspace';
 
 export interface ParkedRestoreDeps {
@@ -105,21 +105,25 @@ export async function restoreParkedEntries(deps: ParkedRestoreDeps): Promise<Par
     }
 
     try {
-      // The workspace's first tab is selected only once its marker is written (FirstTab.ts).
+      // The workspace's first tab is selected only once its marker is written (FirstTab.ts),
+      // and opened once more if it was dragged away or closed while the window still shows the
+      // workspace. The tab it ends with is the one pinned, renamed and handed over.
       const created = active
-        ? await openWorkspaceFirstTab({
-            workspaceId,
-            windowId: targetWindowId,
-            url: entry.url,
-            tabs,
-            stillCurrent,
-          })
+        ? (
+            await openWorkspaceFirstTabOnce({
+              workspaceId,
+              windowId: targetWindowId,
+              url: entry.url,
+              tabs,
+              stillCurrent,
+            })
+          ).tab
         : await browser.tabs.create({
             url: entry.url,
             active: false,
             ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
           });
-      if (typeof created?.id !== 'number') continue;
+      if (typeof created.id !== 'number') continue;
       if (!active) tabs.assignWorkspaceEagerly(created.id, workspaceId);
       if (entry.pinned) {
         void browser.tabs.update(created.id, { pinned: true }).catch((err) => {

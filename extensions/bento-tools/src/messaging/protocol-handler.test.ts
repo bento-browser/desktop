@@ -811,6 +811,98 @@ describe('protocol handler workspace delete', () => {
     expect(browser.windows.remove).not.toHaveBeenCalled();
   });
 
+  const liveTab = (id: number, windowId: number) => ({ id, windowId }) as browser.tabs.Tab;
+
+  /** Holds the marker write of each new replacement tab until `release` (tab ids from 50). */
+  function holdReplacementMarkers(ctx: HandlerContext) {
+    let nextId = 50;
+    vi.mocked(browser.tabs.create).mockImplementation(async () => liveTab(nextId++, 1));
+    const held = new Map<number, () => void>();
+    vi.mocked(ctx.tabs.assignWorkspaceEagerly).mockImplementation(
+      (id: number) => new Promise((resolve) => held.set(id, () => resolve(true))),
+    );
+    return {
+      async release(id: number, during: () => void) {
+        await vi.waitFor(() => expect(held.has(id)).toBe(true));
+        during();
+        held.get(id)!();
+      },
+    };
+  }
+
+  it('opens one more replacement tab when the first moved to another window during its marker write', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1, replacementHasTab: false });
+    const markers = holdReplacementMarkers(ctx);
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+    await markers.release(50, () => {
+      vi.mocked(browser.tabs.get).mockImplementation(async (id) => liveTab(id, id === 50 ? 2 : 1));
+    });
+    await markers.release(51, () => undefined);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([5, 6]);
+    });
+    // The moved tab is never selected in the window it was dragged to.
+    expect(browser.tabs.update).toHaveBeenCalledTimes(1);
+    expect(browser.tabs.update).toHaveBeenCalledWith(51, { active: true });
+  });
+
+  it('keeps the window tabs when every replacement tab closed during its marker write', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1, replacementHasTab: false });
+    const markers = holdReplacementMarkers(ctx);
+    const closeNewTabs = () =>
+      vi.mocked(browser.tabs.get).mockImplementation(async (id) => {
+        if (id >= 50) throw new Error('no tab');
+        return liveTab(id, 1);
+      });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+    await markers.release(50, closeNewTabs);
+    await markers.release(51, closeNewTabs);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(browser.tabs.create).toHaveBeenCalledTimes(2);
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-other');
+    expect(browser.tabs.remove).not.toHaveBeenCalledWith(expect.arrayContaining([5]));
+  });
+
+  it('keeps the window tabs when the window moved on during the replacement tab marker write', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1, replacementHasTab: false });
+    const markers = holdReplacementMarkers(ctx);
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+    await markers.release(50, () => {
+      vi.mocked(ctx.workspaces.getActiveIdByWindow).mockReturnValue({ 1: 'ws-third' });
+    });
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-other');
+    expect(browser.tabs.remove).not.toHaveBeenCalledWith(expect.arrayContaining([5]));
+  });
+
+  it('keeps the window tabs when the window moved on during the activation, even with a replacement tab', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1 });
+    vi.mocked(ctx.workspaces.flush).mockImplementation(async () => {
+      vi.mocked(ctx.workspaces.getActiveIdByWindow).mockReturnValue({ 1: 'ws-third' });
+    });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-other');
+    expect(browser.tabs.remove).not.toHaveBeenCalledWith(expect.arrayContaining([5]));
+  });
+
   it('keeps the window marked as handing off until the removals have settled', async () => {
     const { ctx } = deleteContext({ owner: 1, ownerAfter: 1 });
     let settle: () => void = () => undefined;

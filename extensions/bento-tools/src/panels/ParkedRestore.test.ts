@@ -154,6 +154,53 @@ describe('restoreParkedEntries', () => {
     expect(browser.tabs.update).toHaveBeenCalledWith(101, { pinned: true });
   });
 
+  it('opens the first entry once more, selected, when its tab was dragged away during the marker write', async () => {
+    const env = fakeBrowser();
+    const write = env.registry.assignWorkspaceEagerly.getMockImplementation()!;
+    env.registry.assignWorkspaceEagerly.mockImplementation(async (id, workspaceId) => {
+      if (id === 100) env.live.get(100)!.windowId = 2;
+      return write(id, workspaceId);
+    });
+
+    await restoreParkedEntries({
+      workspaceId: 'ws',
+      targetWindowId: 1,
+      parked: [entry('https://one/', 0, { pinned: true })],
+      tabs: env.registry,
+      stillCurrent: () => true,
+      findOwningWindow: () => 1,
+    });
+
+    // The dragged tab is never selected in window 2; the second one is, and takes the pin.
+    expect(env.tabsOf('ws', 1)).toEqual(['https://one/']);
+    expect(browser.tabs.update).not.toHaveBeenCalledWith(100, expect.anything());
+    expect(browser.tabs.update).toHaveBeenCalledWith(101, { active: true });
+    expect(browser.tabs.update).toHaveBeenCalledWith(101, { pinned: true });
+  });
+
+  it('selects and opens nothing more when the window moved on during the first marker write', async () => {
+    const env = fakeBrowser();
+    let current = true;
+    const write = env.registry.assignWorkspaceEagerly.getMockImplementation()!;
+    env.registry.assignWorkspaceEagerly.mockImplementation(async (id, workspaceId) => {
+      current = false;
+      return write(id, workspaceId);
+    });
+
+    const result = await restoreParkedEntries({
+      workspaceId: 'ws',
+      targetWindowId: 1,
+      parked: [entry('https://one/', 0), entry('https://two/', 1)],
+      tabs: env.registry,
+      stillCurrent: () => current,
+      findOwningWindow: () => null,
+    });
+
+    expect(env.created).toEqual([100]);
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(result.unrestored.map((rest) => rest.url)).toEqual(['https://two/']);
+  });
+
   it('matches a live tab at the entry address instead of opening another', async () => {
     const env = fakeBrowser();
     env.live.set(7, { id: 7, windowId: 1, url: 'https://one/', active: false });
