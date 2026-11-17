@@ -2004,15 +2004,28 @@ workspaces.
   (the fallback tab counts). The three callers go through
   `openWorkspaceFirstTabOnce`, which opens one more tab, once, when the first was
   `displaced` (moved, reassigned, closing or gone) and the window still shows the
-  workspace; superseded opens nothing more. `ensureReplacementTab` resolves true only
-  for a still-current window with a replacement tab in it, or a `selected` outcome;
-  superseded at any point (including a replacement tab that already exists) or any
-  other outcome takes the keep path above: the window's old tabs stay and join the
-  replacement, or the window's current workspace when a later delete removed the
-  replacement meanwhile. With neither (that delete left the window without a
-  workspace) they stay unassigned, for the window's next workspace to adopt; they
-  are never removed on this path.
+  workspace; superseded opens nothing more. A `selected` outcome, or a replacement
+  tab that already exists, still does not authorize the delete's removal: the tab
+  can move or close as its selection resolves, the window can switch workspaces, and
+  an existing tab may be one the activation could not select, so removing the old
+  tabs let Firefox select an adjacent tab of a third workspace while Bento showed
+  the replacement. `ensureReplacementTab` therefore ends with
+  `replacementIsSelected`, read after every other await: the window still shows the
+  replacement and its selected tab (`tabs.query({ active: true, windowId })`) is
+  live in that window, not closing, and the replacement's in the registry (a
+  selected panel of it counts; a tab the registry does not hold yet counts only when
+  it is the one just opened). Anything else, including superseded at any point or a
+  non-`selected` outcome, takes the keep path above: the window's old tabs stay and
+  join the replacement, or the workspace the window shows now when a later delete
+  removed the replacement, re-read after each `unmarkClosing` and each assignment
+  (an assignment is repeated when a delete changed the destination during it). With
+  neither (that delete left the window without a workspace) they stay unassigned,
+  for the window's next workspace to adopt; they are never removed on this path.
   `restoreParkedEntries` pins, renames and hands over the tab the retry ended with.
+  When that tab was `displaced` too, the entry is skipped (not pinned, renamed or
+  counted in `restored`), so with no other entry restored the activation's usual
+  empty-workspace path opens the workspace's tab (with its own single retry), and
+  the restore itself retries no further.
 - Only a never-stored profile's first launch persists the boot backfill. Chrome
   arms the switch curtain only for a tab whose marker names another workspace, and
   the backfill gives an unmarked tab the active workspace in memory only, so a

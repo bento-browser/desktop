@@ -31,7 +31,9 @@ async function stillInPlace(
 
 /**
  * How a first tab ended up. Only `selected` leaves a tab of the workspace selected in the window.
- * - `selected`: selected in the window it opened in (the new tab, or the fallback opened selected).
+ * - `selected`: selected in the window it opened in (the new tab, or the fallback opened selected)
+ *   when that call resolved. It can move, close or lose the window to another workspace after
+ *   that, so a caller that acts on it later (a workspace delete) reads the window again.
  * - `superseded`: the window moved on; kept, unselected, as the workspace's tab.
  * - `displaced`: moved to another window, out of the workspace, closing or gone before it could
  *   be selected; left unselected.

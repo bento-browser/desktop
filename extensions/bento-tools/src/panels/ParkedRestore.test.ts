@@ -178,6 +178,30 @@ describe('restoreParkedEntries', () => {
     expect(browser.tabs.update).toHaveBeenCalledWith(101, { pinned: true });
   });
 
+  it('does not count the entry restored when its retried tab was dragged away too', async () => {
+    const env = fakeBrowser();
+    const write = env.registry.assignWorkspaceEagerly.getMockImplementation()!;
+    env.registry.assignWorkspaceEagerly.mockImplementation(async (id, workspaceId) => {
+      env.live.get(id)!.windowId = 2;
+      return write(id, workspaceId);
+    });
+
+    const result = await restoreParkedEntries({
+      workspaceId: 'ws',
+      targetWindowId: 1,
+      parked: [entry('https://one/', 0, { pinned: true, customTitle: 'One' })],
+      tabs: env.registry,
+      stillCurrent: () => true,
+      findOwningWindow: () => 1,
+    });
+
+    // Neither dragged tab is the workspace's: the activation opens its tab the usual way.
+    expect(env.created).toEqual([100, 101]);
+    expect(result).toEqual({ restored: false, unrestored: [] });
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+    expect(env.registry.rename).not.toHaveBeenCalled();
+  });
+
   it('selects and opens nothing more when the window moved on during the first marker write', async () => {
     const env = fakeBrowser();
     let current = true;

@@ -105,24 +105,29 @@ export async function restoreParkedEntries(deps: ParkedRestoreDeps): Promise<Par
     }
 
     try {
-      // The workspace's first tab is selected only once its marker is written (FirstTab.ts),
-      // and opened once more if it was dragged away or closed while the window still shows the
-      // workspace. The tab it ends with is the one pinned, renamed and handed over.
-      const created = active
-        ? (
-            await openWorkspaceFirstTabOnce({
-              workspaceId,
-              windowId: targetWindowId,
-              url: entry.url,
-              tabs,
-              stillCurrent,
-            })
-          ).tab
-        : await browser.tabs.create({
-            url: entry.url,
-            active: false,
-            ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
-          });
+      let created: browser.tabs.Tab;
+      if (active) {
+        // The workspace's first tab is selected only once its marker is written (FirstTab.ts),
+        // and opened once more if it was dragged away or closed while the window still shows the
+        // workspace. The tab it ends with is the one pinned, renamed and handed over. One that
+        // was displaced too is no tab of the workspace: it is not counted as restored, so the
+        // activation opens the workspace's tab the usual way.
+        const outcome = await openWorkspaceFirstTabOnce({
+          workspaceId,
+          windowId: targetWindowId,
+          url: entry.url,
+          tabs,
+          stillCurrent,
+        });
+        if (outcome.status === 'displaced') continue;
+        created = outcome.tab;
+      } else {
+        created = await browser.tabs.create({
+          url: entry.url,
+          active: false,
+          ...(targetWindowId !== null ? { windowId: targetWindowId } : {}),
+        });
+      }
       if (typeof created.id !== 'number') continue;
       if (!active) tabs.assignWorkspaceEagerly(created.id, workspaceId);
       if (entry.pinned) {

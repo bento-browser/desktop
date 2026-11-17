@@ -156,6 +156,12 @@ describe('workspace delete against the tab-removal handler, with a real store', 
   let nextTabId: number;
   let createFails: boolean;
 
+  /** Selects a tab in its window, as Firefox does. */
+  function select(id: number) {
+    const windowId = tabs.find((t) => t.id === id)?.windowId;
+    tabs = tabs.map((t) => (t.windowId === windowId ? { ...t, active: t.id === id } : t));
+  }
+
   async function setup(options: { guard: boolean }) {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       setTimeout(() => callback(0), 0);
@@ -193,7 +199,13 @@ describe('workspace delete against the tab-removal handler, with a real store', 
           if (!found) throw new Error(`Invalid tab ID: ${id}`);
           return { id, windowId: found.windowId };
         }),
-        update: vi.fn(async (id: number) => ({ id })),
+        update: vi.fn(async (id: number, props: { active?: boolean }) => {
+          if (props.active) select(id);
+          return { id };
+        }),
+        query: vi.fn(async (props: { windowId: number }) =>
+          tabs.filter((t) => t.active && t.windowId === props.windowId),
+        ),
         // What Firefox does on close: the tab is gone, then tabs.onRemoved reaches Bento.
         remove: vi.fn(async (ids: number | number[]) => {
           for (const id of Array.isArray(ids) ? ids : [ids]) {
@@ -258,10 +270,9 @@ describe('workspace delete against the tab-removal handler, with a real store', 
                 (t) => t.workspaceId === delta.id && (windowId === null || t.windowId === windowId),
               );
               if (!present) {
-                tabs = [
-                  ...tabs,
-                  tab(nextTabId++, { windowId: windowId ?? 1, workspaceId: delta.id }),
-                ];
+                const opened = tab(nextTabId++, { windowId: windowId ?? 1, workspaceId: delta.id });
+                tabs = [...tabs, opened];
+                select(opened.id);
               }
             })(),
           ];
