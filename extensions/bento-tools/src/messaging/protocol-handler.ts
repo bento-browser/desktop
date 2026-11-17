@@ -1056,8 +1056,11 @@ async function replacementIsSelected(
     return false;
   }
   if (ctx.tabs.isClosing(selected.id)) return false;
+  // Read after the query: the registry may already hold the tab in another window (an attach
+  // the query result predates), and then the window no longer shows it.
   const tracked = ctx.tabs.snapshot().find((tab) => tab.id === selected.id);
-  return tracked === undefined ? selected.id === openedTabId : tracked.workspaceId === workspaceId;
+  if (tracked === undefined) return selected.id === openedTabId;
+  return tracked.windowId === windowId && tracked.workspaceId === workspaceId;
 }
 
 /**
@@ -1103,7 +1106,8 @@ async function deleteWorkspace(
       await ctx.workspaces.flush();
       if (!(await ensureReplacementTab(ctx, replacementId, ownerWindowId))) {
         // Kept tabs join the replacement, or, when a later delete removed it meanwhile, the
-        // workspace the window shows now. With neither they stay unassigned, for the window's
+        // workspace the window shows now. With neither they are released (`clearWorkspace`),
+        // since a tab naming a deleted workspace is hidden and blocks adoption, for the window's
         // next workspace to adopt (or to close with the window). Read again after each await,
         // since another delete can remove the destination during it.
         const keepIn = () =>
@@ -1121,8 +1125,9 @@ async function deleteWorkspace(
           await ctx.tabs.unmarkClosing(tab.id);
           // Another pass only when a delete changed the destination during the assignment.
           let into = keepIn();
-          while (into !== undefined) {
-            await ctx.tabs.assignWorkspace(tab.id, into);
+          for (;;) {
+            if (into === undefined) await ctx.tabs.clearWorkspace(tab.id);
+            else await ctx.tabs.assignWorkspace(tab.id, into);
             const now = keepIn();
             if (now === into) break;
             into = now;

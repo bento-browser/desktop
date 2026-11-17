@@ -3,7 +3,7 @@ import { handle, type HandlerContext } from './protocol-handler';
 import { createWindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import { TabRegistry } from '../tabs/TabRegistry';
 import { PanelStore } from '../panels/PanelStore';
-import { bentoTabMoves } from '../tabs/AdoptedTab';
+import { adoptableTabs, bentoTabMoves } from '../tabs/AdoptedTab';
 
 function createCloseContext(overrides: Partial<HandlerContext> = {}): HandlerContext {
   const context = {
@@ -749,6 +749,7 @@ describe('protocol handler workspace delete', () => {
         }),
         unmarkClosing: vi.fn().mockResolvedValue(undefined),
         assignWorkspace: vi.fn().mockResolvedValue(undefined),
+        clearWorkspace: vi.fn().mockResolvedValue(undefined),
         assignWorkspaceEagerly: vi.fn().mockResolvedValue(true),
         snapshot: vi
           .fn()
@@ -972,6 +973,65 @@ describe('protocol handler workspace delete', () => {
     });
     expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-third');
     expect(ctx.tabs.assignWorkspace).not.toHaveBeenCalledWith(5, 'ws-other');
+  });
+
+  it('keeps the window tabs when the registry moved the selected tab to another window as the query resolved', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1 });
+    let resolveQuery: (selected: browser.tabs.Tab[]) => void = () => undefined;
+    vi.mocked(browser.tabs.query).mockImplementation(
+      () => new Promise((resolve) => (resolveQuery = resolve)),
+    );
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+    await vi.waitFor(() => expect(browser.tabs.query).toHaveBeenCalled());
+    // Tab 7 attached to window 2 while the query ran; adoption has not changed its workspace yet,
+    // and the result still reports it selected in window 1.
+    vi.mocked(ctx.tabs.snapshot).mockReturnValue([
+      { id: 5, windowId: 1, workspaceId: 'ws-gone' },
+      { id: 6, windowId: 2, workspaceId: 'ws-gone' },
+      { id: 7, windowId: 2, workspaceId: 'ws-other' },
+    ] as never);
+    resolveQuery([{ id: 7, windowId: 1, active: true } as browser.tabs.Tab]);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-other');
+    expect(browser.tabs.remove).not.toHaveBeenCalledWith(expect.arrayContaining([5]));
+  });
+
+  it('leaves a kept tab unassigned for adoption when a delete removed its destination during the assignment', async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1, replacementHasTab: false });
+    vi.mocked(browser.tabs.create).mockRejectedValue(new Error('no window'));
+    const tabsNow: { id: number; windowId: number; workspaceId?: string }[] = [
+      { id: 5, windowId: 1, workspaceId: 'ws-gone' },
+      { id: 6, windowId: 2, workspaceId: 'ws-gone' },
+    ];
+    vi.mocked(ctx.tabs.snapshot).mockImplementation(() => tabsNow as never);
+    vi.mocked(ctx.tabs.assignWorkspace).mockImplementation(async (id, workspaceId) => {
+      tabsNow.find((tab) => tab.id === id)!.workspaceId = workspaceId;
+      // Deleted with nothing to take its place in window 1.
+      vi.mocked(ctx.workspaces.has).mockImplementation((ws) => ws !== 'ws-other');
+      vi.mocked(ctx.workspaces.getActiveIdByWindow).mockReturnValue({});
+    });
+    vi.mocked(ctx.tabs.clearWorkspace).mockImplementation(async (id) => {
+      delete tabsNow.find((tab) => tab.id === id)!.workspaceId;
+    });
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-other');
+    const windowTabs = ctx.tabs.snapshot().filter((tab) => tab.windowId === 1);
+    expect(
+      adoptableTabs(
+        windowTabs,
+        () => false,
+        () => false,
+      ).map((tab) => tab.id),
+    ).toEqual([5]);
   });
 
   it('keeps the window marked as handing off until the removals have settled', async () => {

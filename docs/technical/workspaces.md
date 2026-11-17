@@ -2013,15 +2013,23 @@ workspaces.
   the replacement. `ensureReplacementTab` therefore ends with
   `replacementIsSelected`, read after every other await: the window still shows the
   replacement and its selected tab (`tabs.query({ active: true, windowId })`) is
-  live in that window, not closing, and the replacement's in the registry (a
-  selected panel of it counts; a tab the registry does not hold yet counts only when
-  it is the one just opened). Anything else, including superseded at any point or a
+  live in that window, not closing, and the replacement's in the registry, which
+  must also still hold it in that window (a selected panel of it counts; a tab the
+  registry does not hold yet counts only when it is the one just opened). The query
+  result can predate an attach: the registry already records the tab in another
+  window while adoption has not changed its workspace yet, and the old check
+  accepted it. Anything else, including superseded at any point or a
   non-`selected` outcome, takes the keep path above: the window's old tabs stay and
   join the replacement, or the workspace the window shows now when a later delete
   removed the replacement, re-read after each `unmarkClosing` and each assignment
   (an assignment is repeated when a delete changed the destination during it). With
-  neither (that delete left the window without a workspace) they stay unassigned,
-  for the window's next workspace to adopt; they are never removed on this path.
+  neither (that delete left the window without a workspace, before or during an
+  assignment) each is released with `TabRegistry.clearWorkspace`, for the window's
+  next workspace to adopt; they are never removed on this path. A tab left naming
+  the deleted destination was hidden in the sidebar and kept `adoptableTabs` from
+  adopting any tab of the window. The release flag is right here: it makes
+  `confirmUnassigned` skip the session read, and a value that read could find (a
+  failed removal) names a deleted workspace, which `#hydrateOne` would apply again.
   `restoreParkedEntries` pins, renames and hands over the tab the retry ended with.
   When that tab was `displaced` too, the entry is skipped (not pinned, renamed or
   counted in `restored`), so with no other entry restored the activation's usual

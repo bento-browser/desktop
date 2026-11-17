@@ -162,8 +162,9 @@ export class TabRegistry {
   #privateTabIds = new Set<number>();
   #privateWindowByDelta = new WeakMap<TabDelta, number>();
   // Tabs `clearWorkspace` detached on purpose. SessionStore can copy the old
-  // window's workspace value back onto them afterwards, so that value is stale,
-  // not a restored assignment.
+  // window's workspace value back onto them afterwards, or a failed removal can
+  // leave a deleted workspace's value, so that value is stale, not a restored
+  // assignment.
   #releasedTabIds = new Set<number>();
   // Per tab, the newest attach or activation that set its `active` flag; see #syncActive.
   #activeReads = new Map<number, number>();
@@ -331,9 +332,11 @@ export class TabRegistry {
     this.#enqueue({ kind: 'updated', id, changes });
   }
 
-  /** Forget a live tab's workspace and folder, in memory and in SessionStore.
-   * For a tab that arrived from another window and still names that window's
-   * workspace. Unlike `markClosing` it leaves the tab open and unmarked. */
+  /** Forget a live tab's workspace and folder, in memory and in SessionStore,
+   * so the window's next workspace can adopt it. For a tab that arrived from
+   * another window and still names that window's workspace, or one a workspace
+   * delete kept whose destination was deleted too. Unlike `markClosing` it
+   * leaves the tab open and unmarked. */
   async clearWorkspace(id: number): Promise<void> {
     this.#releasedTabIds.add(id);
     this.#pendingWorkspaceAssignments.delete(id);
