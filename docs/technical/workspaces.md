@@ -2009,7 +2009,9 @@ workspaces.
   superseded at any point (including a replacement tab that already exists) or any
   other outcome takes the keep path above: the window's old tabs stay and join the
   replacement, or the window's current workspace when a later delete removed the
-  replacement meanwhile (none: the window closed, and they are removed as asked).
+  replacement meanwhile. With neither (that delete left the window without a
+  workspace) they stay unassigned, for the window's next workspace to adopt; they
+  are never removed on this path.
   `restoreParkedEntries` pins, renames and hands over the tab the retry ended with.
 - Only a never-stored profile's first launch persists the boot backfill. Chrome
   arms the switch curtain only for a tab whose marker names another workspace, and

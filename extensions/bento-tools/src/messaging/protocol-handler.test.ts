@@ -888,6 +888,22 @@ describe('protocol handler workspace delete', () => {
     expect(browser.tabs.remove).not.toHaveBeenCalledWith(expect.arrayContaining([5]));
   });
 
+  it("keeps the window tabs in the window's workspace when a later delete removed the replacement", async () => {
+    const { ctx } = deleteContext({ owner: 1, ownerAfter: 1, replacementHasTab: false });
+    const markers = holdReplacementMarkers(ctx);
+
+    handle({ type: 'workspace/delete', id: 'ws-gone', closeTabs: true }, ctx);
+    await markers.release(50, () => {
+      vi.mocked(ctx.workspaces.has).mockImplementation((id) => id !== 'ws-other');
+      vi.mocked(ctx.workspaces.getActiveIdByWindow).mockReturnValue({ 1: 'ws-third' });
+    });
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.remove).toHaveBeenCalledWith([6]);
+    });
+    expect(ctx.tabs.assignWorkspace).toHaveBeenCalledWith(5, 'ws-third');
+  });
+
   it('keeps the window tabs when the window moved on during the activation, even with a replacement tab', async () => {
     const { ctx } = deleteContext({ owner: 1, ownerAfter: 1 });
     vi.mocked(ctx.workspaces.flush).mockImplementation(async () => {

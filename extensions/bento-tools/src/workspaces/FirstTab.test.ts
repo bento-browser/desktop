@@ -262,4 +262,24 @@ describe('openWorkspaceFirstTabOnce', () => {
     expect(browser.tabs.create).toHaveBeenCalledTimes(2);
     expect(browser.tabs.update).not.toHaveBeenCalled();
   });
+
+  it('does not try again when the tab and its selected fallback both failed', async () => {
+    const { tabs } = setup({ updateFails: true });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const create = vi.mocked(browser.tabs.create).getMockImplementation()!;
+    vi.mocked(browser.tabs.create).mockImplementation(async (props) => {
+      if (props.active) throw new Error('no window');
+      return create(props);
+    });
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => true,
+    });
+
+    expect(outcome.status).toBe('unselected');
+    expect(browser.tabs.create).toHaveBeenCalledTimes(2);
+  });
 });

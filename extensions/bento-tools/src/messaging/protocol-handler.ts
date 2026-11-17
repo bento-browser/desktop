@@ -1065,15 +1065,13 @@ async function deleteWorkspace(
     if (ownerWindowId !== null && replacementId !== undefined) {
       // Deliver the replacement's activation now and wait for it.
       await ctx.workspaces.flush();
-      // Kept tabs join the replacement, or, when a later delete removed it meanwhile, the
-      // workspace the window shows now. A window that shows none has closed: they go as asked.
-      let keepIn: string | undefined;
       if (!(await ensureReplacementTab(ctx, replacementId, ownerWindowId))) {
-        keepIn = ctx.workspaces.has(replacementId)
+        // Kept tabs join the replacement, or, when a later delete removed it meanwhile, the
+        // workspace the window shows now. With neither they stay unassigned, for the window's
+        // next workspace to adopt (or to close with the window).
+        const keepIn = ctx.workspaces.has(replacementId)
           ? replacementId
           : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
-      }
-      if (keepIn !== undefined) {
         const kept = toRemove.filter((tab) => tab.windowId === ownerWindowId);
         console.warn(
           '[bento-tools] workspace/delete: keeping the tabs of the deleted workspace in window',
@@ -1083,7 +1081,7 @@ async function deleteWorkspace(
         toRemove = toRemove.filter((tab) => tab.windowId !== ownerWindowId);
         for (const tab of kept) {
           await ctx.tabs.unmarkClosing(tab.id);
-          await ctx.tabs.assignWorkspace(tab.id, keepIn);
+          if (keepIn !== undefined) await ctx.tabs.assignWorkspace(tab.id, keepIn);
           // A panel of the deleted workspace is a normal tab now.
           void clearPanelMarker(tab.id);
         }
