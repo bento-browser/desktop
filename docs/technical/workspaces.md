@@ -1946,9 +1946,10 @@ workspaces.
   delete, which delivers the pending events now and resolves when the activation
   listener's runs have finished (the listener returns them), before it removes
   anything. That does not prove the replacement has a tab: the activation's own
-  tab creation swallows its failure. `ensureReplacementTab` therefore checks for a
-  live tab in the window and opens one itself, with its error propagated. If that
-  fails too, the old tabs of the window are not removed; they leave the closing
+  tab creation swallows its failure. `ensureReplacementTab` therefore opens a tab
+  itself when the window has none of the replacement, with its error propagated,
+  and in either case requires a tab of the replacement to be selected in the
+  window (`replacementIsSelected`, below). If that fails too, the old tabs of the window are not removed; they leave the closing
   state and become normal tabs of the replacement (a panel of the deleted
   workspace loses its marker), so the window keeps working, and the failure is
   logged. The window stays marked in `WindowHandoffGuard` until the removals have
