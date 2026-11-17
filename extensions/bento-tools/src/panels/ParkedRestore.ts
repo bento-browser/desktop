@@ -9,7 +9,7 @@ export interface ParkedRestoreDeps {
   targetWindowId: number | null;
   /** The workspace's parked entries in index order, already taken from the parked list. */
   parked: readonly ParkedWorkspaceTab[];
-  tabs: Pick<TabRegistry, 'snapshot' | 'rename' | 'assignWorkspaceEagerly'>;
+  tabs: Pick<TabRegistry, 'snapshot' | 'rename' | 'assignWorkspaceEagerly' | 'isClosing'>;
   /** False once a later activation owns the window this restore was started for. */
   stillCurrent: () => boolean;
   /** The window that shows the workspace now, or null when none does. */

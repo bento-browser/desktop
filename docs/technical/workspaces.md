@@ -1981,9 +1981,17 @@ workspaces.
   first parked entry in `restoreParkedEntries`. Superseded after the create, the tab
   is kept unselected as the workspace's tab (the next activation selects it); do not
   close it, because the window's new workspace may have no tab yet and the removal
-  would read as it emptying (`afterTabRemoved`). A failed marker write still selects
-  the tab (no fade); a failed selection opens a selected tab the old way, so the
-  window does not stay on the old workspace's tab. See the curtain note in
+  would read as it emptying (`afterTabRemoved`). After the write it also reads the
+  tab again (`stillInPlace`: window from `browser.tabs.get`, workspace and closing
+  state from the registry, a tab the registry does not hold yet counting as still
+  assigned) and selects it only while it is still in the window it opened in, still
+  in the workspace and not closing: a tab dragged to another window during the
+  await was otherwise selected in its destination window. It then asks `isCurrent`
+  once more, since the re-read is another await. A moved, reassigned or closing tab,
+  or one superseded during the re-read, is left unselected and no other tab is
+  opened. A failed marker write
+  still selects the tab (no fade); a failed selection opens a selected tab the old
+  way, so the window does not stay on the old workspace's tab. See the curtain note in
   [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
 - Only a never-stored profile's first launch persists the boot backfill. Chrome
   arms the switch curtain only for a tab whose marker names another workspace, and

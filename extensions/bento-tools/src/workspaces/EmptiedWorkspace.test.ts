@@ -186,7 +186,12 @@ describe('workspace delete against the tab-removal handler, with a real store', 
           if (createFails) throw new Error('no window');
           const opened = tab(nextTabId++, { windowId: props.windowId });
           tabs = [...tabs, opened];
-          return { id: opened.id };
+          return { id: opened.id, windowId: opened.windowId };
+        }),
+        get: vi.fn(async (id: number) => {
+          const found = tabs.find((t) => t.id === id);
+          if (!found) throw new Error(`Invalid tab ID: ${id}`);
+          return { id, windowId: found.windowId };
         }),
         update: vi.fn(async (id: number) => ({ id })),
         // What Firefox does on close: the tab is gone, then tabs.onRemoved reaches Bento.

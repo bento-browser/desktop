@@ -69,6 +69,7 @@ function fakeBrowser() {
           }) as TabSnapshot,
       ),
     rename: vi.fn(async () => undefined),
+    isClosing: () => false,
     assignWorkspaceEagerly: vi.fn(async (id: number, workspaceId: string) => {
       workspaceByTab.set(id, workspaceId);
       return true;

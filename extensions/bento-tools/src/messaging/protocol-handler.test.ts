@@ -707,7 +707,7 @@ describe('protocol handler workspace delete', () => {
     vi.restoreAllMocks();
     stubClosingBrowser();
     vi.mocked(browser).windows = { remove: vi.fn().mockResolvedValue(undefined) } as never;
-    vi.mocked(browser.tabs).create = vi.fn(async () => ({ id: 50 })) as never;
+    vi.mocked(browser.tabs).create = vi.fn(async () => ({ id: 50, windowId: 1 })) as never;
   });
 
   function deleteContext(options: {
