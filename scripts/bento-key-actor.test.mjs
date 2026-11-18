@@ -1,7 +1,8 @@
-// The BentoKey content-key bridge: the registration in bento-shell-mount.js and the
-// BentoKeyParent message checks, run against a stub JSWindowActorParent. The child runs in
-// untrusted web content processes, so the parent must drop malformed messages. Key routing
-// itself is proven in a built browser (docs/technical/panel-traversal-focus.md).
+// The BentoKey content-key bridge: the registration and the key press tokens in
+// bento-shell-mount.js, and both actors, run against stubs of the Firefox globals they use.
+// The child runs in untrusted web content processes, so a message must never cycle panels
+// on its own: chrome cycles only by consuming a trusted keydown it saw for that <browser>.
+// Key routing itself is proven in a built browser (docs/technical/panel-traversal-focus.md).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -10,14 +11,12 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MOUNT = readFileSync(resolve(ROOT, 'src/browser/base/content/bento-shell-mount.js'), 'utf8');
 
 const source = (file) =>
   readFileSync(resolve(ROOT, 'src/browser/actors', file), 'utf8').replaceAll(/^export /gm, '');
 
-/**
- * A window with a main tab browser, a panel browser, a Bento chrome frame and a frame
- * that is neither, plus a BentoKeyParent factory for a sender in one of them.
- */
+/** A window with a main tab browser, a panel browser, a Bento chrome frame and a frame that is neither. */
 function world() {
   const events = [];
   const warnings = [];
@@ -27,39 +26,25 @@ function world() {
       this.detail = init?.detail;
     }
   }
-  const win = { CustomEvent, dispatchEvent: (e) => events.push([e.type, JSON.parse(JSON.stringify(e.detail))]) };
+  const win = { CustomEvent, dispatchEvent: (e) => events.push([e.type, e.detail]) };
   const doc = { defaultView: win };
   const otherWin = { CustomEvent, dispatchEvent: () => events.push(['other window']) };
   const browser = (owner = doc) => ({ ownerDocument: owner });
   const browsers = { main: browser(), panel: browser(), shellFrame: browser(), otherFrame: browser(), otherWindow: browser({ defaultView: otherWin }) };
   const tabs = new Set([browsers.main, browsers.panel]);
   win.gBrowser = { getTabForBrowser: (b) => (tabs.has(b) ? {} : null) };
-  let nextId = 1;
-  // A top-level browsing context in `embedder` and optional child frames.
   const top = (embedder, addonId = '', topWin = win) => {
-    const bc = { id: nextId++, topChromeWindow: topWin, embedderElement: embedder };
+    const bc = { topChromeWindow: topWin, embedderElement: embedder };
     bc.top = bc;
     bc.currentWindowGlobal = { documentPrincipal: { addonId } };
-    bc.child = () => ({ id: nextId++, topChromeWindow: topWin, top: bc });
+    bc.child = () => ({ topChromeWindow: topWin, top: bc });
     return bc;
   };
-  // Chrome-owned state (activeWindow, each window's focused element) and the
-  // content-reported focused frame, set separately so tests can make them disagree.
-  const focus = {
-    focusedContentBrowsingContext: null,
-    activeWindow: win,
-    chromeFocused: new Map(),
-    getFocusedElementForWindow: (w) => focus.chromeFocused.get(w) ?? null,
-  };
-  const context = vm.createContext({
-    JSWindowActorParent: class {},
-    Services: { focus },
-    console: { warn: (...args) => warnings.push(args) },
-  });
+  const context = vm.createContext({ JSWindowActorParent: class {}, console: { warn: (...args) => warnings.push(args) } });
   vm.runInContext(source('BentoKeyParent.sys.mjs') + '\nthis.BentoKeyParent = BentoKeyParent;', context);
   const actorFor = (bc, { current = true } = {}) =>
     Object.assign(new context.BentoKeyParent(), { browsingContext: bc, manager: { isCurrentGlobal: current } });
-  return { events, warnings, focus, browsers, top, actorFor, win, otherWin };
+  return { events, warnings, browsers, top, actorFor };
 }
 
 function loadChild() {
@@ -75,8 +60,8 @@ function loadChild() {
   return { child: new context.BentoKeyChild(), sent };
 }
 
-/** A trusted-looking Cmd+Shift+ArrowRight keydown on `target`. */
-function cycleKey(target) {
+/** A Cmd+Shift+Arrow keydown (or another chord through `over`) on `target`. */
+function key(target, over = {}) {
   return {
     type: 'keydown',
     key: 'ArrowRight',
@@ -85,99 +70,153 @@ function cycleKey(target) {
     ctrlKey: false,
     shiftKey: true,
     altKey: false,
+    isTrusted: true,
     defaultPrevented: false,
     target,
-    getModifierState: (name) => name === 'Accel',
+    getModifierState(name) {
+      return name === 'Accel' && (this.metaKey || this.ctrlKey);
+    },
     preventDefault() {
       this.defaultPrevented = true;
     },
     stopPropagation() {},
+    ...over,
+  };
+}
+
+/** The mount script's press-token block in a chrome window stub with a controllable clock. */
+function mountBridge() {
+  const block = MOUNT.slice(
+    MOUNT.indexOf('  // Real key presses that BentoKeyParent may turn into a panel cycle.'),
+    MOUNT.indexOf('  // Click-into-panel needs to update currentActiveIdx'),
+  );
+  const listeners = new Map();
+  const cycles = [];
+  const clock = { now: 1000 };
+  const window = {
+    addEventListener(type, listener) {
+      listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+    },
+  };
+  const api = vm.runInNewContext(`${block}\n;({ attachContentKeyBridgeListener, CONTENT_KEY_PRESS_MAX_AGE_MS })`, {
+    window,
+    performance: { now: () => clock.now },
+    navigatePanels: (dir) => cycles.push(dir),
+  });
+  api.attachContentKeyBridgeListener();
+  const fire = (type, event) => {
+    for (const listener of listeners.get(type) ?? []) listener({ type, ...event });
+  };
+  const browser = (localName = 'browser') => ({ localName });
+  return {
+    cycles,
+    clock,
+    maxAge: api.CONTENT_KEY_PRESS_MAX_AGE_MS,
+    browser,
+    press: (target, over) => fire('keydown', key(target, over)),
+    message: (target, direction) => fire('BentoKey:Cycle', { detail: { direction, browser: target } }),
   };
 }
 
 test('BentoKey is registered for untrusted web and file processes', () => {
-  const mount = readFileSync(resolve(ROOT, 'src/browser/base/content/bento-shell-mount.js'), 'utf8');
-  const block = /registerWindowActor\('BentoKey', \{[\s\S]*?\n {6}\}\);/.exec(mount)?.[0];
+  const block = /registerWindowActor\('BentoKey', \{[\s\S]*?\n {6}\}\);/.exec(MOUNT)?.[0];
   assert.ok(block, 'registerContentKeyActor registers BentoKey');
   assert.match(block, /^\s*safeForUntrustedWebProcess: true,$/m);
   assert.match(block, /'\*:\/\/\*\/\*', 'file:\/\/\/\*'/);
 });
 
-test('BentoKeyParent forwards only a direction of 1 or -1 and a normalised address mode', () => {
+test('a Cycle message cycles only by consuming a real press for its <browser>', () => {
+  const m = mountBridge();
+  const main = m.browser();
+  const panel = m.browser();
+  m.message(main, 1);
+  assert.deepEqual(m.cycles, [], 'no press');
+  m.press(main);
+  m.message(panel, 1);
+  assert.deepEqual(m.cycles, [], 'press went to another browser');
+  m.message(main, -1);
+  assert.deepEqual(m.cycles, [], 'press of the other direction');
+  m.message(main, 1);
+  assert.deepEqual(m.cycles, [1], 'matching press');
+  m.message(main, 1);
+  assert.deepEqual(m.cycles, [1], 'a press is consumed once');
+  m.press(main, { key: 'ArrowLeft' });
+  m.clock.now += m.maxAge + 1;
+  m.message(main, -1);
+  assert.deepEqual(m.cycles, [1], 'stale press');
+  m.press(main, { isTrusted: false });
+  m.press(main, { shiftKey: false });
+  m.press(main, { altKey: true });
+  m.press(main, { metaKey: true, ctrlKey: true });
+  m.press(main, { metaKey: false });
+  m.press(main, { key: 'ArrowUp' });
+  m.press(m.browser('vbox'));
+  m.message(main, 1);
+  assert.deepEqual(m.cycles, [1], 'untrusted, other chords and non-browser targets leave no press');
+  m.press(main);
+  m.press(main);
+  m.message(main, 1);
+  m.message(main, 1);
+  m.message(main, 1);
+  assert.deepEqual(m.cycles, [1, 1, 1], 'two presses (or key repeats), two cycles');
+  m.message(null, 1);
+  m.message(main, 2);
+  assert.deepEqual(m.cycles, [1, 1, 1]);
+});
+
+test('BentoKeyParent passes on only a Cycle of 1 or -1, with the sender browser', () => {
   const w = world();
-  const bc = w.top(w.browsers.main);
-  w.focus.focusedContentBrowsingContext = bc;
-  w.focus.chromeFocused.set(w.win, w.browsers.main);
-  const actor = w.actorFor(bc);
+  const actor = w.actorFor(w.top(w.browsers.main));
   actor.receiveMessage({ name: 'BentoKey:Cycle', data: { direction: 1 } });
-  actor.receiveMessage({ name: 'BentoKey:PanelHistory', data: { direction: -1 } });
-  actor.receiveMessage({ name: 'BentoKey:AddrbarOpen', data: { mode: 'newTab' } });
-  actor.receiveMessage({ name: 'BentoKey:AddrbarOpen', data: { mode: 'other' } });
-  actor.receiveMessage({ name: 'BentoKey:AddrbarOpen' });
+  actor.receiveMessage({ name: 'BentoKey:Cycle', data: { direction: -1 } });
   for (const data of [undefined, null, {}, { direction: 2 }, { direction: '1' }, { direction: 0 }, { direction: NaN }]) {
     actor.receiveMessage({ name: 'BentoKey:Cycle', data });
-    actor.receiveMessage({ name: 'BentoKey:PanelHistory', data });
   }
-  actor.receiveMessage({ name: 'BentoKey:Other', data: { direction: 1 } });
-  assert.deepEqual(w.events, [
-    ['BentoKey:Cycle', { direction: 1 }],
-    ['BentoKey:PanelHistory', { direction: -1 }],
-    ['BentoKey:AddrbarOpen', { mode: 'newTab' }],
-    ['BentoKey:AddrbarOpen', { mode: 'current' }],
-    ['BentoKey:AddrbarOpen', { mode: 'current' }],
-  ]);
+  for (const name of ['BentoKey:PanelHistory', 'BentoKey:AddrbarOpen', 'BentoKey:Other']) {
+    actor.receiveMessage({ name, data: { direction: 1, mode: 'newTab' } });
+  }
+  // The detail is made in the actor's realm: compare its fields.
+  assert.deepEqual(
+    w.events.map(([type, detail]) => [type, detail.direction, detail.browser === w.browsers.main]),
+    [
+      ['BentoKey:Cycle', 1, true],
+      ['BentoKey:Cycle', -1, true],
+    ],
+  );
   assert.deepEqual(w.warnings, []);
 });
 
-test('BentoKeyParent acts only for the focused, current document of a tab or Bento frame', () => {
+test('BentoKeyParent passes on only a current document of a tab or Bento frame of its window', () => {
   const w = world();
-  // `focused` is what content reports; chrome focus follows it unless `chrome` says otherwise.
-  const send = (bc, focused, { chrome = focused?.top.embedderElement, active = w.win, ...options } = {}) => {
-    w.focus.focusedContentBrowsingContext = focused;
-    w.focus.activeWindow = active;
-    w.focus.chromeFocused.clear();
-    if (chrome) w.focus.chromeFocused.set(chrome.ownerDocument.defaultView, chrome);
+  const send = (bc, options) => {
     const before = w.events.length;
-    w.actorFor(bc, options).receiveMessage({ name: 'BentoKey:PanelHistory', data: { direction: -1 } });
-    return w.events.length > before;
+    w.actorFor(bc, options).receiveMessage({ name: 'BentoKey:Cycle', data: { direction: 1 } });
+    return w.events.length > before ? w.events.at(-1)[1].browser : null;
   };
   const main = w.top(w.browsers.main);
-  const panel = w.top(w.browsers.panel);
-  const frame = main.child();
-  const shell = w.top(w.browsers.shellFrame, 'bento-shell@bento.app');
-  assert.equal(send(main, main), true, 'focused main slot');
-  assert.equal(send(panel, panel), true, 'focused panel');
-  assert.equal(send(frame, frame), true, 'focused iframe');
-  assert.equal(send(shell, shell), true, 'focused Bento sidebar frame');
-  assert.equal(send(panel, main), false, 'unfocused panel or background tab');
-  assert.equal(send(frame, main), false, 'unfocused iframe of the focused tab');
-  assert.equal(send(main, frame), false, 'top document while its iframe has focus');
-  assert.equal(send(main, null), false, 'nothing focused');
-  assert.equal(send(main, main, { current: false }), false, 'not the current global');
-  const other = w.top(w.browsers.otherFrame, 'someone@example.com');
-  assert.equal(send(other, other), false, 'a frame that is neither a tab nor bento-shell');
-  const foreign = w.top(w.browsers.otherWindow, '', w.otherWin);
-  assert.equal(send(foreign, foreign, { active: w.otherWin }), false, 'embedder outside the target window');
-  assert.equal(send(panel, panel, { chrome: w.browsers.main }), false, 'content claims focus, chrome focus is on another browser');
-  assert.equal(send(frame, frame, { chrome: w.browsers.panel }), false, 'iframe claims focus inside a browser chrome has not focused');
-  assert.equal(send(main, main, { chrome: null }), false, 'chrome focus outside any browser');
-  assert.equal(send(main, main, { active: null }), false, 'no active window');
-  assert.equal(send(main, main, { active: w.otherWin }), false, 'another window is active');
-  assert.equal(w.events.filter(([type]) => type === 'other window').length, 0);
+  assert.equal(send(main), w.browsers.main, 'main slot');
+  assert.equal(send(w.top(w.browsers.panel)), w.browsers.panel, 'panel');
+  assert.equal(send(main.child()), w.browsers.main, 'an iframe names its top-level browser');
+  assert.equal(send(w.top(w.browsers.shellFrame, 'bento-shell@bento.app')), w.browsers.shellFrame, 'Bento sidebar frame');
+  assert.equal(send(main, { current: false }), null, 'not the current global');
+  assert.equal(send(w.top(w.browsers.otherFrame, 'someone@example.com')), null, 'neither a tab nor bento-shell');
+  assert.equal(send(w.top(w.browsers.otherWindow, '', w.otherWin)), null, 'embedder outside the target window');
 });
 
-test('BentoKeyChild keeps panel keys in editable targets, whatever the tagName case', () => {
+test('BentoKeyChild forwards Cmd+Shift+Arrow from non-editable targets only', () => {
   const { child, sent } = loadChild();
   const el = (localName, extra = {}) => ({ localName, tagName: localName, isContentEditable: false, getAttribute: () => null, ...extra });
-  for (const target of [el('input'), el('textarea'), el('select'), el('div', { isContentEditable: true }), el('div', { getAttribute: () => 'textbox' })]) {
-    const event = cycleKey(target);
+  for (const target of [el('input'), el('textarea'), el('select'), el('INPUT', { localName: 'input' }), el('div', { isContentEditable: true }), el('div', { getAttribute: () => 'textbox' })]) {
+    const event = key(target);
     child.handleEvent(event);
-    assert.equal(event.defaultPrevented, false, target.localName);
+    assert.equal(event.defaultPrevented, false, target.tagName);
   }
-  child.handleEvent(cycleKey(el('INPUT', { localName: 'input' })));
+  for (const over of [{ shiftKey: false }, { key: 'l', code: 'KeyL', shiftKey: false }, { altKey: true }, { ctrlKey: true }, { defaultPrevented: true }]) {
+    child.handleEvent(key(el('button'), over));
+  }
   assert.deepEqual(sent, []);
-  const event = cycleKey(el('button'));
+  const event = key(el('button'), { key: 'ArrowLeft' });
   child.handleEvent(event);
   assert.equal(event.defaultPrevented, true);
-  assert.deepEqual(sent, [['BentoKey:Cycle', { direction: 1 }]]);
+  assert.deepEqual(sent, [['BentoKey:Cycle', { direction: -1 }]]);
 });

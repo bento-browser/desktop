@@ -20397,10 +20397,13 @@
   // content from receiving any keys — breaking page-bound keyboard
   // extensions (Vimium j/k, Surfingkeys, etc.) inside panels.
   //
-  // The child listens for keydowns inside content, forwards Bento-
-  // bound keys to the parent (which dispatches a CustomEvent on this
-  // chrome window — see attachContentKeyBridgeListener below). All
-  // other keys pass through naturally so extensions still work.
+  // The child listens for keydowns inside content and forwards
+  // Cmd/Ctrl+Shift+Left/Right from non-editable targets to the parent,
+  // which dispatches a CustomEvent on this chrome window (see
+  // attachContentKeyBridgeListener below); the cycle runs only against a
+  // real key press chrome saw for that <browser>. Cmd/Ctrl+Left/Right and
+  // Cmd/Ctrl+L/E/T never reach content: chrome's own keydown handlers take
+  // them first. All other keys pass through so extensions still work.
   //
   // registerWindowActor is process-wide — the second window's
   // bento-shell-mount.js boot would throw because the actor is already
@@ -20431,11 +20434,11 @@
         // Firefox refuses an actor in those processes unless this is set,
         // and Cmd/Ctrl+Shift+Arrow panel cycling then works only on
         // privileged pages. A compromised content process can send any
-        // BentoKey message, so the safety lives in BentoKeyParent: it acts
-        // only for a tab or Bento frame of this window that is chrome's
-        // focused <browser> in the active window, takes only a direction of
-        // 1 or -1 and a normalised address mode, and only dispatches a chrome
-        // event (residual risk: docs/technical/panel-traversal-focus.md).
+        // BentoKey message at any time, so a message alone never acts:
+        // BentoKeyParent passes on only a Cycle of 1 or -1 from a tab or
+        // Bento frame of this window, and attachContentKeyBridgeListener
+        // cycles only by consuming a trusted keydown chrome saw for that
+        // <browser> (residual risk: docs/technical/panel-traversal-focus.md).
         safeForUntrustedWebProcess: true,
       });
     } catch (err) {
@@ -20476,22 +20479,50 @@
     }
   }
 
+  // Real key presses that BentoKeyParent may turn into a panel cycle. Chrome
+  // sees every keydown aimed at a focused remote <browser> before content does
+  // (EventStateManager forwards it in PostHandleKeyboardEvent), with that
+  // <browser> as the target, so a trusted Cmd/Ctrl+Shift+Left/Right seen here is
+  // proof the user pressed it in that <browser>. Each press is one entry; the
+  // Cycle event consumes one matching entry no older than
+  // CONTENT_KEY_PRESS_MAX_AGE_MS, so a content process cannot cycle panels
+  // without a press, from a <browser> the press did not go to, or twice per press.
+  const CONTENT_KEY_PRESS_MAX_AGE_MS = 1500;
+  const contentKeyPresses = new WeakMap();
+
+  function noteContentKeyPress(e) {
+    if (!e.isTrusted || e.type !== 'keydown') return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!e.shiftKey || e.altKey || (e.metaKey && e.ctrlKey)) return;
+    if (!(typeof e.getModifierState === 'function' ? e.getModifierState('Accel') : e.metaKey || e.ctrlKey)) return;
+    const browser = e.target;
+    if (browser?.localName !== 'browser') return;
+    const presses = contentKeyPresses.get(browser) ?? [];
+    presses.push({ direction: e.key === 'ArrowRight' ? 1 : -1, time: performance.now() });
+    contentKeyPresses.set(browser, presses);
+  }
+
+  function takeContentKeyPress(browser, direction) {
+    const presses = browser ? contentKeyPresses.get(browser) : null;
+    if (!presses) return false;
+    const now = performance.now();
+    while (presses.length && now - presses[0].time > CONTENT_KEY_PRESS_MAX_AGE_MS) presses.shift();
+    const index = presses.findIndex((press) => press.direction === direction);
+    if (index < 0) return false;
+    presses.splice(index, 1);
+    return true;
+  }
+
   // Listen for the CustomEvent dispatched by BentoKeyParent.
   // navigatePanels is closure-private, so the actor can't call it
   // directly — the event is the bridge.
   function attachContentKeyBridgeListener() {
+    window.addEventListener('keydown', noteContentKeyPress, true);
     window.addEventListener('BentoKey:Cycle', (e) => {
       const dir = e?.detail?.direction;
       if (dir !== 1 && dir !== -1) return;
+      if (!takeContentKeyPress(e.detail.browser, dir)) return;
       navigatePanels(dir);
-    });
-    window.addEventListener('BentoKey:PanelHistory', (e) => {
-      const dir = e?.detail?.direction;
-      if (dir !== 1 && dir !== -1) return;
-      navigateFocusedPanelHistory(dir);
-    });
-    window.addEventListener('BentoKey:AddrbarOpen', (e) => {
-      requestAddrbarOpen(e?.detail?.mode === 'newTab' ? 'newTab' : 'current');
     });
   }
 

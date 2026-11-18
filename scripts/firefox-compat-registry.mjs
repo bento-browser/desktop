@@ -2573,6 +2573,15 @@ export const MEMBERS = [
     at: [FF.browserEl, 'new CustomEvent\\("SwapDocShells"', 1650],
   },
   {
+    id: 'EventStateManager.PostHandleKeyboardEvent',
+    kind: 'source',
+    how: 'listens',
+    probe: 'E',
+    sites: ['noteContentKeyPress', 'takeContentKeyPress'],
+    use: "A keydown aimed at a focused remote <browser> is dispatched in the chrome window first, with that <browser> as its target, and forwarded to content only afterwards (PostHandleKeyboardEvent, IsWaitingReplyFromRemoteProcess). The mount script records each trusted Cmd/Ctrl+Shift+Left/Right seen there as a press, and a BentoKey:Cycle from content cycles panels only by consuming one for its <browser>.",
+    at: ['dom/events/EventStateManager.cpp', 'aKeyboardEvent->IsWaitingReplyFromRemoteProcess\\(\\)', 3992],
+  },
+  {
     id: 'DOMDocElementInserted',
     kind: 'source',
     how: 'listens',

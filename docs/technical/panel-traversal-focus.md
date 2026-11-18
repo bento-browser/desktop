@@ -6,20 +6,21 @@ Panel traversal is split between chrome focus tracking and a JSWindowActor pair:
 
 - `src/browser/actors/BentoKeyChild.sys.mjs` listens in content documents.
 - `src/browser/actors/BentoKeyParent.sys.mjs` dispatches a chrome
-  `BentoKey:Cycle` or `BentoKey:PanelHistory` event.
+  `BentoKey:Cycle` event with the sender's top-level `<browser>`.
 - `bento-shell-mount.js` registers the actor with `ChromeUtils.registerWindowActor`
-  and handles the custom events by calling the private `navigatePanels` closure
-  or the focused panel browser's `goBack()` / `goForward()` methods. The
-  registration is process-wide, so every window after the first gets Firefox
-  154's `NotSupportedError` ("'BentoKey' actor is already registered");
-  `registerContentKeyActor()` ignores it.
+  and handles the event by calling the private `navigatePanels` closure, but
+  only by consuming a real key press it recorded for that `<browser>` (see the
+  key press token pitfall below). The registration is process-wide, so every
+  window after the first gets Firefox 154's `NotSupportedError` ("'BentoKey'
+  actor is already registered"); `registerContentKeyActor()` ignores it.
 
-The actor forwards `Cmd/Ctrl+Shift+ArrowLeft` and
-`Cmd/Ctrl+Shift+ArrowRight` for panel cycling and `Cmd/Ctrl+ArrowLeft` /
-`Cmd/Ctrl+ArrowRight` for panel-local history navigation. It skips editable
-targets and already-handled events. Plain Left/Right arrows stay in content for
-video scrubbing and page-local keyboard behavior. Other page keys pass
-through so keyboard extensions like Vimium still receive normal content key
+The actor forwards only `Cmd/Ctrl+Shift+ArrowLeft` and
+`Cmd/Ctrl+Shift+ArrowRight`, for panel cycling. It skips editable targets and
+already-handled events. `Cmd/Ctrl+ArrowLeft/Right` (panel-local history) and
+`Cmd/Ctrl+L/E/T` (address entry) are chrome keybindings that act before content
+sees the key, so the actor does not forward them. Plain Left/Right arrows stay
+in content for video scrubbing and page-local keyboard behavior. Other page keys
+pass through so keyboard extensions like Vimium still receive normal content key
 events.
 
 Panel header Back and Forward buttons left-click the target panel browser's
@@ -177,47 +178,54 @@ or blank add-panel insertion is still settling.
   `Cmd/Ctrl+Shift+ArrowLeft/Right` does nothing from `http(s)`, `about:blank`
   or `file://` pages (found on 158.0, present in the 157.0.1 source; Bento set
   the flag on 2026-11-18, on 160.0). A compromised content process can then
-  send any `BentoKey` message at any time, so safety comes from the parent, not
-  from the child's key allowlist. `BentoKeyParent.senderWindow()` dispatches
-  only when the sender is a current global (`isCurrentGlobal`) whose top-level
-  `<browser>` belongs to the same window, as a `gBrowser` tab (main slot or
-  panel) or a Bento chrome frame whose top document is a `bento-shell@bento.app`
-  page (the sidebar and palettes, whose Cmd/Ctrl+Shift+Arrow already reached
-  chrome through the actor), and only on chrome-owned focus: that window is
-  `Services.focus.activeWindow` and its focused element
-  (`Services.focus.getFocusedElementForWindow(win, false, {})`) is that
-  `<browser>`. Do not rely on `Services.focus.focusedContentBrowsingContext`
-  alone: content reports it (`ContentParent::RecvSetFocusedBrowsingContext`
-  with an action id the content process registers itself), so a compromised
-  background tab can point it at its own document. Which frame inside the
-  chrome-focused `<browser>` has focus is still taken from
-  `focusedContentBrowsingContext`, as Firefox's own key routing does
-  (`BrowserParent::UpdateFocus` uses it only inside the chrome-focused top);
-  nothing chrome-owned records the focused subframe. Residual risk, accepted:
-  a compromised content process that hosts the top document or a cross-origin
-  iframe of the `<browser>` the user is focused on can claim focus and, without
-  a key press, cycle panels, step that panel's history or open the address
-  entry. The parent also drops a `Cycle` or `PanelHistory` direction other than
-  `1` or `-1` and normalises the `AddrbarOpen` mode. A background tab, an
-  unfocused panel, a page in the back-forward cache, an inactive window, or a
-  process that forges `focusedContentBrowsingContext` for a browser chrome has
-  not focused cannot cycle panels, step history or open the address entry. Do
-  not add `messageManagerGroups: ['browsers']`: the sidebar frame is not in that
-  group. After a Firefox update, load an `http://`
-  page with a cross-site iframe in the selected tab, then a `file://` page, and
+  send `BentoKey:Cycle` at any time, and it can also make the chrome focus state
+  match it without user input (`PBrowser::RequestFocus` moves chrome focus to
+  its `<browser>`, a background tab can ask to be selected through
+  `framefocusrequested`, and a window can be raised), so neither the message nor
+  focus is proof of a key press. A cycle is therefore tied to a real key press:
+  see the key press token pitfall below. Do not add
+  `messageManagerGroups: ['browsers']`: the sidebar frame is not in that group.
+  After a Firefox update, load an `http://` page with a cross-site iframe in the selected tab, then a `file://` page, and
   run this in the Browser Toolbox Console for each; every entry must start with
   `ok`, not "doesn't match remote type":
   `gBrowser.selectedBrowser.browsingContext.getAllBrowsingContextsInSubtree().map((bc) => { try { bc.currentWindowGlobal.getActor('BentoKey'); return 'ok ' + bc.currentURI.spec; } catch (e) { return e.message; } })`.
-  `scripts/bento-key-actor.test.mjs` pins the flag, the sender checks
-  (including a forged content-reported focus and an inactive window) and the
-  child's editable-target test.
-- Only `Cmd/Ctrl+Shift+ArrowLeft/Right` depends on the actor on web pages.
-  Measured on 160.0 with chrome-context Marionette key actions: chrome's own
-  keydown listeners take `Cmd/Ctrl+ArrowLeft/Right` (panel history) and
-  `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T` (address entry) before content sees
-  them, with or without the actor, and on `about:newtab` too; the chrome panel
-  arrow handler returns early for `Cmd/Ctrl+Shift+Arrow` when a `<browser>` is
-  focused, so that chord reaches content and the actor forwards it.
+  `scripts/bento-key-actor.test.mjs` pins the flag, the press tokens, the
+  parent's checks and the child's filters.
+- Key press tokens: a `BentoKey:Cycle` from content cycles panels only by
+  consuming a real press. Chrome sees a keydown aimed at a focused remote
+  `<browser>` before content does, with that `<browser>` as the target
+  (`EventStateManager::PostHandleKeyboardEvent` forwards it afterwards; registry
+  entry `EventStateManager.PostHandleKeyboardEvent`). `noteContentKeyPress`, a
+  capture keydown listener on the chrome window, records each trusted
+  (`isTrusted`) Cmd/Ctrl+Shift+ArrowLeft/Right whose target is a `<browser>` as
+  `{ direction, time }` in a `WeakMap` keyed by that `<browser>`. The
+  `BentoKey:Cycle` listener calls `takeContentKeyPress(detail.browser,
+  direction)`, which drops entries older than `CONTENT_KEY_PRESS_MAX_AGE_MS`
+  (1500 ms) and consumes one entry with the same direction; with none it does
+  nothing. Measured keydown-to-`BentoKey:Cycle` time on 160.0 was 1.7 to 5 ms;
+  the bound leaves room for a busy content process, and a press that waits
+  longer than that is dropped rather than replayed. `BentoKeyParent` passes on
+  only a Cycle of `1` or `-1` from a current global (`isCurrentGlobal`) whose
+  top-level `<browser>` is a `gBrowser` tab of its window (main slot or panel)
+  or a Bento chrome frame whose top document is a `bento-shell@bento.app` page
+  (the sidebar and palettes), and it names that `<browser>` in the event. It no
+  longer checks focus: content can satisfy those checks, and the token already
+  proves the press went to that `<browser>`. Each press, including each key
+  repeat, allows at most one cycle, in the press's direction, from the
+  `<browser>` it was aimed at, within 1500 ms. Residual, accepted: a compromised
+  process hosting a document in the `<browser>` the user pressed the chord in
+  (its top document or any of its iframes) can spend that press within the
+  window, for example by cycling from an editable field the child would have
+  skipped, or by cycling when the page itself would have kept the key.
+- Only `Cmd/Ctrl+Shift+ArrowLeft/Right` goes through the actor. Measured on
+  160.0 with chrome-context Marionette key actions: chrome's own keydown
+  listeners take `Cmd/Ctrl+ArrowLeft/Right` (panel history) and `Cmd/Ctrl+L`,
+  `Cmd/Ctrl+E`, `Cmd/Ctrl+T` (address entry) before content sees them, on web
+  pages and on `about:newtab`, and no `BentoKey:PanelHistory` or
+  `BentoKey:AddrbarOpen` was ever sent, so those messages were removed; the
+  chrome panel arrow handler returns early for `Cmd/Ctrl+Shift+Arrow` when a
+  `<browser>` is focused, so that chord reaches content and the actor forwards
+  it.
 - Open: because chrome takes `Cmd/Ctrl+ArrowLeft/Right` before content, those
   chords inside a web page's input, textarea or contenteditable step the panel's
   history (or, with no history, are swallowed) instead of moving the caret.

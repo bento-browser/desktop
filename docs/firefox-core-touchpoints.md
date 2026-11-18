@@ -333,54 +333,55 @@ The source review covered every active touchpoint:
   true and no flag, `RemoteTypeMatches` in `dom/ipc/jsactor/JSActorService.cpp`
   refuses the actor in `web`, `webIsolated=` and `file` processes, and
   `Cmd/Ctrl+Shift+ArrowLeft/Right` did nothing from `http(s)`, `about:blank` and
-  `file://` pages. Because a compromised content process can now send any `BentoKey`
-  message, `BentoKeyParent.sys.mjs` validates the sender before dispatching: it must be a
-  current global whose top-level `<browser>` is a `gBrowser` tab of the same window or a
-  Bento chrome frame showing a `bento-shell@bento.app` page, that window must be
-  `Services.focus.activeWindow`, and that `<browser>` must be the window's chrome-owned
-  focused element (`Services.focus.getFocusedElementForWindow`). The focused frame
-  inside it is read from `Services.focus.focusedContentBrowsingContext`, which content
-  reports (`ContentParent::RecvSetFocusedBrowsingContext`, action ids from
-  `RecvInsertNewFocusActionId`), so it is trusted only inside the chrome-focused
-  `<browser>`, as in `BrowserParent::UpdateFocus`. Residual: a compromised process
-  hosting the top document or a cross-origin iframe of the focused `<browser>` can still
-  send the three actions without a key press. It depends on `JSWindowActorParent.manager`,
-  `WindowGlobalParent.isCurrentGlobal`, `documentPrincipal.addonId`,
-  `BrowsingContext.embedderElement`, `nsIFocusManager.activeWindow`,
-  `getFocusedElementForWindow`, `focusedContentBrowsingContext` and
-  `gBrowser.getTabForBrowser`. It also drops a
-  `Cycle` or `PanelHistory` direction other than `1` or `-1` (it normalised only the
-  `AddrbarOpen` mode). `BentoKeyChild.sys.mjs` tests editable targets by `localName`, so
-  an XHTML page's lowercase `tagName` no longer lets Cmd+Shift+Arrow cycle from a field.
-  Runtime on a 160.0 dev build clone with the
-  change (chrome-context Marionette key actions, fresh profile, `http://127.0.0.1`
-  pages with a same-site `127.0.0.1:8872` and a cross-site `localhost:8872` iframe,
-  and a `file://` page, in the main slot and a side panel): `getActor('BentoKey')`
-  threw "doesn't match remote type" in every one of those documents before and
-  returns an actor after; Cmd+Shift+Arrow moved focus to the other slot with one
-  `BentoKey:Cycle` event from each document after and did nothing before.
-  Cmd+ArrowLeft/Right history, Cmd+L/E/T (one address entry open each; Cmd+T submits
-  into one new tab) and Cmd+Shift+Arrow text selection in inputs, textareas and
-  contenteditables gave the same results before and after; chrome handles
-  Cmd+Arrow and Cmd+L/E/T before content in both. With the sender check, messages sent
-  through the real child actor of a background tab, an unfocused panel and an unfocused
-  iframe of the focused tab dispatched nothing (before it, a background tab's
-  `PanelHistory` sent the focused main slot back), the focused main slot's own message
-  still went back, Cmd+Shift+Arrow still cycled from every document above, and from
-  the sidebar it still reached chrome as one `BentoKey:Cycle` event, as it did before the
-  check. With the chrome-focus check, a simulated forged focus (the actors' shared
-  `Services.focus` swapped for a proxy whose `focusedContentBrowsingContext` is a
-  background tab, then that tab's real child actor sending `PanelHistory` and `Cycle`)
-  dispatched nothing; without it, both dispatched and the focused main slot navigated.
-  Regression check for Firefox updates: run the `getActor` check in the
-  traversal pitfalls of [panel-traversal-focus.md](technical/panel-traversal-focus.md)
-  on an `http://` page with a cross-site iframe and on a `file://` page, check that
+  `file://` pages. A compromised content process can now send `BentoKey:Cycle` at any
+  time and can make chrome focus match it without user input (`PBrowser::RequestFocus`,
+  `framefocusrequested`, window raise), so a cycle is tied to a real key press: the
+  mount script's capture keydown listener on the chrome window (`noteContentKeyPress`)
+  records each trusted Cmd/Ctrl+Shift+ArrowLeft/Right whose target is a `<browser>`,
+  and the `BentoKey:Cycle` listener cycles only by consuming one such press for the
+  sender's `<browser>` in the same direction, no older than 1500 ms
+  (`takeContentKeyPress`). This depends on chrome seeing a keydown aimed at a focused
+  remote `<browser>` first, with that `<browser>` as the target
+  (`EventStateManager::PostHandleKeyboardEvent`, registry entry
+  `EventStateManager.PostHandleKeyboardEvent`). `BentoKeyParent.sys.mjs` passes on only
+  a Cycle of `1` or `-1` from a current global whose top-level `<browser>` is a
+  `gBrowser` tab of the same window or a Bento chrome frame showing a
+  `bento-shell@bento.app` page, and names that `<browser>` in the event; it depends on
+  `JSWindowActorParent.manager`, `WindowGlobalParent.isCurrentGlobal`,
+  `documentPrincipal.addonId`, `BrowsingContext.embedderElement` and
+  `gBrowser.getTabForBrowser`. The actor no longer carries `PanelHistory` or
+  `AddrbarOpen`: chrome's keybindings take Cmd/Ctrl+Left/Right and Cmd/Ctrl+L/E/T
+  before content, and no such message was ever sent in the runs below.
+  `BentoKeyChild.sys.mjs` tests editable targets by `localName`, so an XHTML page's
+  lowercase `tagName` no longer lets Cmd+Shift+Arrow cycle from a field. Residual: a
+  compromised process hosting a document (top or iframe) in the `<browser>` the user
+  pressed the chord in can spend that one press within 1500 ms, for example cycling
+  from an editable field the child would skip.
+  Runtime on a 160.0 dev build clone (chrome-context Marionette key actions, fresh
+  profile, `http://127.0.0.1` pages with a same-site `127.0.0.1:8872` and a cross-site
+  `localhost:8872` iframe, and a `file://` page, in the main slot and a side panel):
+  `getActor('BentoKey')` threw "doesn't match remote type" in every one of those
+  documents before the flag and returns an actor after; Cmd+Shift+Arrow moved focus to
+  the other slot from each document after and did nothing before, with
+  keydown-to-`BentoKey:Cycle` times of 1.7 to 5 ms. Cmd+ArrowLeft/Right history,
+  Cmd+L/E/T (one address entry open each; Cmd+T submits into one new tab) and
+  Cmd+Shift+Arrow text selection in inputs, textareas, contenteditables and XHTML
+  fields work. With the press tokens, a `BentoKey:Cycle` sent through the real child
+  actor of a background tab, an unfocused panel, an unfocused iframe, the focused main
+  slot with no press, a background tab under a simulated forged focus (the actors'
+  shared `Services.focus` swapped for a proxy), and a side panel given chrome focus by
+  script (as `RequestFocus` would) moved nothing; a real Cmd+Shift+Left from that panel
+  then cycled once, and replaying the message after it moved nothing. Before the
+  tokens, the focused main slot's and the script-focused panel's own messages cycled
+  without a press.
+  Regression check for Firefox updates: run the `getActor` check in the traversal
+  pitfalls of [panel-traversal-focus.md](technical/panel-traversal-focus.md) on an
+  `http://` page with a cross-site iframe and on a `file://` page; check that
   Cmd+Shift+ArrowRight from the main slot and from an iframe in it focuses the next
-  panel, and confirm that the pref still exists with the same meaning,
-  that `safeForUntrustedWebProcess` is still a `WindowActorOptions` member, that
-  `getFocusedElementForWindow(win, false, {})` still returns the `<browser>` (main slot,
-  panel and `#bento-shell-frame`) while its content has focus, and that
-  `focusedContentBrowsingContext` still returns the focused frame in the parent.
+  panel, which also proves the chrome window still sees the keydown with the
+  `<browser>` as target before content; and confirm that the pref still exists with
+  the same meaning and that `safeForUntrustedWebProcess` is still a
+  `WindowActorOptions` member.
 - Preference dialogs in the browser window (2026-11-14): Clear recent history
   (`Sanitizer.showUI` through `gDialogBox`) links `preferences.css` itself, so
   patch core-ui/12's token block maps its Firefox tokens onto Bento aliases that
@@ -4558,6 +4559,7 @@ below is generated; edit the registry, then run
 | `TabBrowserDiscarded` | source (engine only) | Removes a discarded tab's about: page theme entry: discarding destroys the browser's frame loader, so its browserId reads 0 until a restore inserts it with a new id. | `attachAboutThemePublisher` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3615` |
 | `TabClose detail.adoptedBy` | source (engine only) | Removes a closed browser's about: page theme entry, but keeps the entry of a tab another window adopted (detail.adoptedBy, as in Bento's close handover); that window republishes it. | `attachAboutThemePublisher` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:6872` |
 | `SwapDocShells` | source (engine only) | Republishes the about: page theme after a tab moves into this window: the adopting browser carries the moved browser id once the docshell swap is done. | `attachAboutThemePublisher` | `toolkit/content/widgets/browser-custom-element.mjs:1650` |
+| `EventStateManager.PostHandleKeyboardEvent` | source (engine only) | A keydown aimed at a focused remote <browser> is dispatched in the chrome window first, with that <browser> as its target, and forwarded to content only afterwards (PostHandleKeyboardEvent, IsWaitingReplyFromRemoteProcess). The mount script records each trusted Cmd/Ctrl+Shift+Left/Right seen there as a press, and a BentoKey:Cycle from content cycles panels only by consuming one for its <browser>. | `noteContentKeyPress`, `takeContentKeyPress` | `dom/events/EventStateManager.cpp:3992` |
 | `DOMDocElementInserted` | source (engine only) | Chrome-only event the content sink fires when a document's root element is inserted, before the first style flush. The BentoAboutTheme actor sets data-bento-theme and data-color-mode on in-scope about: pages then, and the mount script does the same for the Passwords sidebar (it reaches the chrome window in capture), so their first paint is themed. | `attachAboutThemePublisher`, `registerAboutThemes`, `src/browser/actors/BentoAboutThemeChild.sys.mjs#DOMDocElementInserted` | `dom/base/nsContentSink.cpp:805` |
 | `chrome://global/content/megalist/megalist.html` | source (engine only) | The Passwords sidebar document. The about: page sheet scopes to this URL and syncAboutThemeSidebar puts the window's theme and mode on its root. | `BENTO_ABOUT_THEME_CHROME_DOCUMENTS`, `scripts/about-page-themes.mjs#megalist` | `toolkit/components/satchel/jar.mn:8` |
 | `TabAttrModified` | source (engine only) | Refreshes the panel navigator and the sidebar address snapshot when a tab attribute (title, busy, image) changes. | `setupPanelNavigator`, `attachSidebarAddressSnapshotListeners` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:2456` |

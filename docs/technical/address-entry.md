@@ -5,8 +5,8 @@ Part of the [technical notes index](../core-functionality-technical.md).
 `src/browser/base/content/bento-shell-mount.js` owns address-entry routing.
 `Cmd/Ctrl+T`, the sidebar `New tab` action, and native top-urlbar fallback
 focus open the centered floating overlay hosted at `address-bar.html`.
-`Cmd/Ctrl+L` and `Cmd/Ctrl+E` (the chrome keybinding and the BentoKey
-`BentoKey:AddrbarOpen` event from web content) and direct activation of the
+`Cmd/Ctrl+L` and `Cmd/Ctrl+E` (the chrome keybinding, which takes them before
+web content sees them) and direct activation of the
 expanded-sidebar URL row open the same overlay with a sidebar anchor, so its
 header is the row grown and it extends over the panel strip and main content.
 Those two shortcuts fall back to the centered overlay whenever the expanded
