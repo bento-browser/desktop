@@ -97,7 +97,7 @@ page with no handshake (`embedded-import`).
   The Escape handler consumes Esc for a pending open and cancels it through the
   overlay's `hide*` function; `togglePalette` closes a pending open instead of
   queueing a second one; a pointer-down outside cancels a
-  pending menu (and an address bar, as before). Esc goes to the top-most open
+  pending menu, a pending bookmark popup (and an address bar, as before). Esc goes to the top-most open
   overlay by stacking ([palettes-and-address-bar.md](palettes-and-address-bar.md#esc-follows-the-stacking-order));
   a menu that was delivered handles its own Esc. The welcome and embedded import
   overlays consume Esc without dismissing. Every `hide*` function calls `overlays.cancel(id)` first, so
@@ -661,8 +661,12 @@ M5 Max, macOS 27.0, 5 launches per entry point), the first open's `firstOpenWait
 of 79 to 82 ms (slowest 95 ms) for the sidebar star, `Cmd+D` and the panel header star, against
 26 to 32 ms when the document was prewarmed (the presentation acknowledgement every open waits
 for): about 50 ms more. Later opens are unchanged. While the document loads the host stays
-hidden; Esc and the chrome-side dismissals cancel the waiting open (a pending open counts as
-open), and a second press of the star replaces it, so one popup appears.
+hidden, so it cannot catch a click: Esc, a pointer-down anywhere in the window
+(`attachOutsideClickDismissListener`) and the chrome-side dismissals cancel the waiting open (a
+pending open counts as open), and nothing reveals or takes the focus when the document announces.
+The press that asked for the popup is not cancelled by its own pointer-down, which chrome
+handles before the shell document or the panel header star acts on the press; a second star
+press cancels the waiting open and its click asks again, so one popup appears.
 
 - **Open.** Shell documents write `BENTO_BOOKMARK_POPUP_OPEN:<ts>:<json>`: the sidebar frame
   (star) and `bento-bookmarks-toolbar-frame` (group, space and overflow buttons). The payload
@@ -789,6 +793,10 @@ Pitfalls:
   screen: a cold palette requested before the popup reveals before it, and the popup revealing
   over it would take the focus from the palette. Every reveal rechecks, since the document can
   load long after the request.
+- A popup still loading has no host up to catch a click, so the window's pointer-down listener
+  must cancel it (`attachOutsideClickDismissListener`), as it does a pending menu. Without it a
+  click elsewhere during the first open's load (the popup is created on demand) was followed by
+  the popup revealing and taking the focus.
 - Never end a popup by hiding its host alone: `hideBookmarkPopup` is the one dismissal because it
   also cancels a `Cmd+D` waiting for the sidebar star. A path that only hid the host let the
   older request open the popup after a tab change or Esc, on the wrong tab.

@@ -2695,6 +2695,28 @@ test('Esc is the document\'s while its frame has focus; chrome takes it for a wa
   assert.deepEqual(cold.popupOpens(), []);
 });
 
+test('an outside click cancels a popup open that still waits for its document, and takes no focus', () => {
+  const world = makeWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), true);
+
+  world.pointerDownOutside();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), false);
+  assert.equal(world.isBookmarkPopupOpen(), false);
+  world.ready('bookmarks-popup');
+  world.advance(10);
+  assert.equal(world.isShown('bookmarks-popup'), false);
+  assert.deepEqual(world.popupOpens(), []);
+  assert.equal(world.frame('bookmarks-popup').focusCount, 0, 'the popup document does not take the focus');
+  assert.equal(sidebar.focusCount, 0, 'nor is the focus moved back');
+
+  // A press after the click asks again and opens one popup.
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.isShown('bookmarks-popup'), true);
+  assert.equal(world.popupOpens().length, 1);
+});
+
 test('the document closes its own popup by id, and a late close of an older one is dropped', () => {
   const world = popupWorld();
   const sidebar = world.registry.get('bento-shell-frame');
