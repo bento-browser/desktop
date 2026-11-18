@@ -687,15 +687,20 @@
     --input-bgcolor: var(--field-bg) !important;
     --input-color: var(--field-color) !important;
     --input-border-color: var(--field-border-color) !important;
-    --input-text-min-height: var(--field-min-height) !important;
-    --input-text-background-color: var(--field-bg) !important;
+    --input-min-height: var(--field-min-height) !important;
+    --input-background-color: var(--field-bg) !important;
     --input-text-color: var(--field-color) !important;
-    --input-text-border-color: var(--field-border-color) !important;
-    --input-text-border: 1px solid var(--input-text-border-color) !important;
-    --input-text-border-radius: var(--field-radius) !important;
+    --input-border: 1px solid var(--input-border-color) !important;
+    --input-border-radius: var(--field-radius) !important;
     --icon-color: var(--neutral-70) !important;
   }
 
+  /* The legacy History sidebar keeps Firefox's moz-input-search, whose shadow
+   * sheets (moz-input-text.css, moz-input-search.css) read only these
+   * --input-* names; this sheet does not reach that shadow root. The 160 sheets
+   * do not read the old --input-text-* names (the field was also dark on 159),
+   * and the unmapped background fell to Firefox's light-dark() token, dark when
+   * the sidebar prefers dark. */
   :is(.sidebar-panel, sidebar-history, sidebar-syncedtabs, sidebar-panel-header)
     moz-input-search {
     box-sizing: border-box !important;
@@ -704,13 +709,14 @@
     color: var(--field-color) !important;
     font: var(--text-font-weight) var(--text-l-font-size) / 1 var(--text-font-family) !important;
     letter-spacing: var(--text-letter-spacing) !important;
-    --input-text-min-height: var(--field-min-height) !important;
-    --input-text-background-color: var(--field-bg) !important;
+    --input-min-height: var(--field-min-height) !important;
+    --input-background-color: var(--field-bg) !important;
     --input-text-color: var(--field-color) !important;
-    --input-text-border-color: var(--field-border-color) !important;
-    --input-text-border: 1px solid var(--input-text-border-color) !important;
-    --input-text-border-radius: var(--field-radius) !important;
-    --input-text-icon-size: var(--bento-icon-size-sm, 1rem) !important;
+    --input-border: 1px solid var(--field-border-color) !important;
+    --input-border-radius: var(--field-radius) !important;
+    --input-search-border-radius: var(--field-radius) !important;
+    --input-icon-size: var(--bento-icon-size-sm, 1rem) !important;
+    --input-search-icon-size: var(--bento-icon-size-sm, 1rem) !important;
     --space-medium: var(--space-2xs) !important;
     --space-xxsmall: var(--space-2xs) !important;
     --icon-color: var(--neutral-70) !important;

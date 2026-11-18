@@ -2388,7 +2388,21 @@ token)` finds a live grant for that exact tab and token, deletes it, and
 ### Chrome Theme Sheets
 
 - Status: Active
-- Last updated: 2026-10-14
+- Last updated: 2026-11-18
+- History sidebar search field (2026-11-18, found on 159.0.1 and 160.0): the
+  legacy History sidebar (`historySidebar.xhtml`) keeps Firefox's
+  `<moz-input-search>`, whose shadow sheets `moz-input-text.css` and
+  `moz-input-search.css` read `--input-background-color`, `--input-border`,
+  `--input-border-radius`, `--input-search-border-radius`, `--input-min-height`,
+  `--input-icon-size` and `--input-search-icon-size`. `bento-chrome-theme.css`
+  still set the `--input-text-*` names those sheets no longer read, and it does not
+  reach that shadow root, so the field took Firefox's
+  `light-dark(#ffffff, #42414d)` under the document's `color-scheme: normal` and
+  showed `#42414d` in light mode while the sidebar document preferred dark. The
+  host rule now sets the current names from the `--field-*` aliases. The
+  Bookmarks sidebar was not affected because the mount script replaces its
+  `moz-input-search` with a plain input styled directly. The variable contract has a
+  firefox-compat entry (`moz-input-text --input-background-color`).
 - Firefox 158.0 review (2026-10-14): no change. The `jar.mn` hunk in
   chrome-layout/01 applies with an offset; `document.styleSheets` of the chrome
   window ends with `bento-chrome-tokens.css`, `bento-chrome-theme.css` and
@@ -2438,6 +2452,13 @@ rel="stylesheet">` load and error events on chrome documents, and the
   document, a clean switch between two themes (no unthemed frame, no duplicate
   links), and light and dark. After a Firefox bump also run
   `git apply --check` of the jar.mn hunk against the new `browser/base/jar.mn`.
+  Open the native History and Bookmarks sidebars in light and dark (with the OS in
+  the other appearance) and on a non-Default theme: the History search field's
+  shadow `#input` must compute the same background, text colour, border colour
+  and radius as the Bookmarks search field. Grep the new
+  `toolkit/content/widgets/moz-input-text/moz-input-text.css` and
+  `moz-input-search.css` for the `var(--input-*)` names they read and compare
+  them with the `moz-input-search` host rule in `bento-chrome-theme.css`.
 - Rollback or migration notes: removing the wildcard line and the mount
   function, and folding the theme sheets back into the base sheet in
   `generate-chrome-tokens.mjs`, restores the single-sheet layout.
@@ -2839,7 +2860,20 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
 ### Native Preferences Layout
 
 - Status: Active
-- Last updated: 2026-11-14
+- Last updated: 2026-11-18
+- Settings search fields (2026-11-18, 160.0): the token block and the
+  `#searchInput` rule set `--input-text-background-color`,
+  `--input-text-border-color` and `--input-text-border-radius`, which Firefox
+  160's `moz-input-text.css` and `moz-input-search.css` do not read. The Settings
+  search field and the Site Data dialog's search field therefore showed Firefox's
+  `light-dark(#ffffff, #42414d)` fill and 8px radius: white in light mode and
+  `#42414d` in dark (runtime). The patch now sets `--input-background-color`,
+  `--input-background-color-disabled`, `--input-border-color-disabled`,
+  `--input-border-radius` and `--input-search-border-radius` instead. After the
+  change, both fields compute `--neutral-10`, `--neutral-24` and `--radius-s` (6px).
+  Plain `html:input` fields were unchanged, because they take
+  `--background-color-box` and an 8px radius from `common-shared.css`. Same
+  contract as the History sidebar field under Chrome Theme Sheets.
 - Settings subdialogs (2026-11-14, found on 160.0 and 159.0.1): in Connection
   Settings, Delete browsing data and every other `gSubDialog` dialog, radios,
   checkboxes, text fields, the select and the Cancel/OK buttons had no border or
@@ -2959,7 +2993,13 @@ var(--ext-theme-background-transition)` on `#nav-bar` only matters if a theme ch
   settings redesign layout changes, in-content variable names, or preferences
   widget token dependencies can reintroduce left alignment, alter the content
   pane width, or disconnect preferences controls from Bento's Mux UI palette.
-- Regression checks for future updates: open Clear recent history from the
+- Regression checks for future updates: in light and dark, read the computed
+  `background-color` and `border-radius` of the shadow `#input` of
+  `#searchInput` on `about:preferences`, and of `#searchBox` in the Site Data
+  dialog (`gSubDialog.open('chrome://browser/content/preferences/dialogs/siteDataSettings.xhtml')`).
+  They must equal `--neutral-10` and `--radius-s`, not `#ffffff`/`#42414d`, and
+  the `var(--input-*)` names in the new `moz-input-text.css` and
+  `moz-input-search.css` must still be the ones this patch sets. Open Clear recent history from the
   browser window (`Sanitizer.showUI(window)`) in light and dark mode and flip the
   mode with it open: its root carries `data-bento-theme="default"` and the
   window's `data-color-mode`, `bento-chrome-tokens.css` precedes
@@ -4318,6 +4358,7 @@ below is generated; edit the registry, then run
 | `bookmarks-view` | source (engine only) | Tree of the native bookmarks sidebar document that Bento re-queries. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:58` |
 | `sidebar-search-container` | source (engine only) | Container in the bookmarks sidebar document that receives Bento’s search box. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:51` |
 | `search-box` | source (engine only) | Native bookmarks sidebar search input that Bento replaces. | `runNativeBookmarksSearch` | `browser/components/places/content/bookmarksSidebar.xhtml:52` |
+| `moz-input-text --input-background-color` | source (engine only) | The History sidebar's moz-input-search fills its shadow input from --input-background-color (with --input-border, --input-border-radius, --input-search-border-radius, --input-min-height and the icon sizes); Bento's sheet cannot reach that shadow root, so it sets these names on the host. The 160 sheets do not read the --input-text-* names Bento set before (the release that dropped them is unknown; the field was already dark on 159.0.1), which left the field dark grey in light mode. Patch core-ui/12 sets the same names in preferences.css for the Settings and Site Data search fields. | `src/browser/base/content/bento-chrome-theme.css#--input-background-color`, `patches/core-ui/12-center-native-preferences.patch#--input-search-border-radius` | `toolkit/content/widgets/moz-input-text/moz-input-text.css:13` |
 | `browser` | element (runtime) | Root hbox that holds the Bento host elements added by patch chrome-layout/01. | `attachSidebarChromeDivider` | `browser/base/content/browser-box.inc.xhtml:5` |
 | `tabbrowser-tabbox` | element (runtime) | Tabbox that holds tabpanels; Bento tags it as the main panel when no side panels exist. | `unifyMainWithStrip`, `configureSidePanelOnce` | `browser/base/content/browser-box.inc.xhtml:29` |
 | `sidebar` | element (runtime) | Native sidebar <browser>; Bento themes the documents loaded in it. | `syncNativeSidebarChromeTheme`, `attachNativeSidebarChromeThemeSync`, `syncAboutThemeSidebar` | `browser/base/content/browser-box.inc.xhtml:25` |
