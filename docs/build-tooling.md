@@ -1180,6 +1180,15 @@ The CI `pnpm audit --audit-level high` step audits `pnpm-lock.yaml`, the same
 lock that release builds install. Fix vulnerable transitive packages with
 `pnpm.overrides` in `package.json`, then refresh the lock.
 
+Only when no patched release exists, list the advisory in
+`pnpm.auditConfig.ignoreGhsas` in `package.json` and record it here with the
+condition for removing it. Current exceptions:
+
+- `GHSA-fc5q-39xc-vjpf` (picomatch ReDoS, all versions through 4.0.7, no patched
+  release as of 2026-11-18). It reaches the lock only through dev tooling
+  (`typescript-eslint` and `@ladle/react`), not the shipped extensions. Remove the
+  entry and override picomatch once a fixed version is published.
+
 ## Pull request checks
 
 Automatic `pull_request` and `push` CI runs perform static checks, the
