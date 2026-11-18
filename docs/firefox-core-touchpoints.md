@@ -334,12 +334,21 @@ The source review covered every active touchpoint:
   refuses the actor in `web`, `webIsolated=` and `file` processes, and
   `Cmd/Ctrl+Shift+ArrowLeft/Right` did nothing from `http(s)`, `about:blank` and
   `file://` pages. Because a compromised content process can now send any `BentoKey`
-  message, `BentoKeyParent.sys.mjs` validates the sender before dispatching: it must be
-  the current global of `Services.focus.focusedContentBrowsingContext`, whose top-level
-  `<browser>` is a `gBrowser` tab of the same window or a Bento chrome frame showing a
-  `bento-shell@bento.app` page (it depends on `JSWindowActorParent.manager`,
+  message, `BentoKeyParent.sys.mjs` validates the sender before dispatching: it must be a
+  current global whose top-level `<browser>` is a `gBrowser` tab of the same window or a
+  Bento chrome frame showing a `bento-shell@bento.app` page, that window must be
+  `Services.focus.activeWindow`, and that `<browser>` must be the window's chrome-owned
+  focused element (`Services.focus.getFocusedElementForWindow`). The focused frame
+  inside it is read from `Services.focus.focusedContentBrowsingContext`, which content
+  reports (`ContentParent::RecvSetFocusedBrowsingContext`, action ids from
+  `RecvInsertNewFocusActionId`), so it is trusted only inside the chrome-focused
+  `<browser>`, as in `BrowserParent::UpdateFocus`. Residual: a compromised process
+  hosting the top document or a cross-origin iframe of the focused `<browser>` can still
+  send the three actions without a key press. It depends on `JSWindowActorParent.manager`,
   `WindowGlobalParent.isCurrentGlobal`, `documentPrincipal.addonId`,
-  `BrowsingContext.embedderElement` and `gBrowser.getTabForBrowser`). It also drops a
+  `BrowsingContext.embedderElement`, `nsIFocusManager.activeWindow`,
+  `getFocusedElementForWindow`, `focusedContentBrowsingContext` and
+  `gBrowser.getTabForBrowser`. It also drops a
   `Cycle` or `PanelHistory` direction other than `1` or `-1` (it normalised only the
   `AddrbarOpen` mode). `BentoKeyChild.sys.mjs` tests editable targets by `localName`, so
   an XHTML page's lowercase `tagName` no longer lets Cmd+Shift+Arrow cycle from a field.
@@ -359,12 +368,18 @@ The source review covered every active touchpoint:
   `PanelHistory` sent the focused main slot back), the focused main slot's own message
   still went back, Cmd+Shift+Arrow still cycled from every document above, and from
   the sidebar it still reached chrome as one `BentoKey:Cycle` event, as it did before the
-  check. Regression check for Firefox updates: run the `getActor` check in the
+  check. With the chrome-focus check, a simulated forged focus (the actors' shared
+  `Services.focus` swapped for a proxy whose `focusedContentBrowsingContext` is a
+  background tab, then that tab's real child actor sending `PanelHistory` and `Cycle`)
+  dispatched nothing; without it, both dispatched and the focused main slot navigated.
+  Regression check for Firefox updates: run the `getActor` check in the
   traversal pitfalls of [panel-traversal-focus.md](technical/panel-traversal-focus.md)
   on an `http://` page with a cross-site iframe and on a `file://` page, check that
   Cmd+Shift+ArrowRight from the main slot and from an iframe in it focuses the next
   panel, and confirm that the pref still exists with the same meaning,
-  that `safeForUntrustedWebProcess` is still a `WindowActorOptions` member, and that
+  that `safeForUntrustedWebProcess` is still a `WindowActorOptions` member, that
+  `getFocusedElementForWindow(win, false, {})` still returns the `<browser>` (main slot,
+  panel and `#bento-shell-frame`) while its content has focus, and that
   `focusedContentBrowsingContext` still returns the focused frame in the parent.
 - Preference dialogs in the browser window (2026-11-14): Clear recent history
   (`Sanitizer.showUI` through `gDialogBox`) links `preferences.css` itself, so

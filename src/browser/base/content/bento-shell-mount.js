@@ -20432,9 +20432,10 @@
         // and Cmd/Ctrl+Shift+Arrow panel cycling then works only on
         // privileged pages. A compromised content process can send any
         // BentoKey message, so the safety lives in BentoKeyParent: it acts
-        // only for the current document of the focused frame in one of this
-        // window's tabs or Bento frames, takes only a direction of 1 or -1
-        // and a normalised address mode, and only dispatches a chrome event.
+        // only for a tab or Bento frame of this window that is chrome's
+        // focused <browser> in the active window, takes only a direction of
+        // 1 or -1 and a normalised address mode, and only dispatches a chrome
+        // event (residual risk: docs/technical/panel-traversal-focus.md).
         safeForUntrustedWebProcess: true,
       });
     } catch (err) {

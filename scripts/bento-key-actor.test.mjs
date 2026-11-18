@@ -43,7 +43,14 @@ function world() {
     bc.child = () => ({ id: nextId++, topChromeWindow: topWin, top: bc });
     return bc;
   };
-  const focus = { focusedContentBrowsingContext: null };
+  // Chrome-owned state (activeWindow, each window's focused element) and the
+  // content-reported focused frame, set separately so tests can make them disagree.
+  const focus = {
+    focusedContentBrowsingContext: null,
+    activeWindow: win,
+    chromeFocused: new Map(),
+    getFocusedElementForWindow: (w) => focus.chromeFocused.get(w) ?? null,
+  };
   const context = vm.createContext({
     JSWindowActorParent: class {},
     Services: { focus },
@@ -52,7 +59,7 @@ function world() {
   vm.runInContext(source('BentoKeyParent.sys.mjs') + '\nthis.BentoKeyParent = BentoKeyParent;', context);
   const actorFor = (bc, { current = true } = {}) =>
     Object.assign(new context.BentoKeyParent(), { browsingContext: bc, manager: { isCurrentGlobal: current } });
-  return { events, warnings, focus, browsers, top, actorFor, otherWin };
+  return { events, warnings, focus, browsers, top, actorFor, win, otherWin };
 }
 
 function loadChild() {
@@ -100,6 +107,7 @@ test('BentoKeyParent forwards only a direction of 1 or -1 and a normalised addre
   const w = world();
   const bc = w.top(w.browsers.main);
   w.focus.focusedContentBrowsingContext = bc;
+  w.focus.chromeFocused.set(w.win, w.browsers.main);
   const actor = w.actorFor(bc);
   actor.receiveMessage({ name: 'BentoKey:Cycle', data: { direction: 1 } });
   actor.receiveMessage({ name: 'BentoKey:PanelHistory', data: { direction: -1 } });
@@ -123,8 +131,12 @@ test('BentoKeyParent forwards only a direction of 1 or -1 and a normalised addre
 
 test('BentoKeyParent acts only for the focused, current document of a tab or Bento frame', () => {
   const w = world();
-  const send = (bc, focused, options) => {
+  // `focused` is what content reports; chrome focus follows it unless `chrome` says otherwise.
+  const send = (bc, focused, { chrome = focused?.top.embedderElement, active = w.win, ...options } = {}) => {
     w.focus.focusedContentBrowsingContext = focused;
+    w.focus.activeWindow = active;
+    w.focus.chromeFocused.clear();
+    if (chrome) w.focus.chromeFocused.set(chrome.ownerDocument.defaultView, chrome);
     const before = w.events.length;
     w.actorFor(bc, options).receiveMessage({ name: 'BentoKey:PanelHistory', data: { direction: -1 } });
     return w.events.length > before;
@@ -145,7 +157,12 @@ test('BentoKeyParent acts only for the focused, current document of a tab or Ben
   const other = w.top(w.browsers.otherFrame, 'someone@example.com');
   assert.equal(send(other, other), false, 'a frame that is neither a tab nor bento-shell');
   const foreign = w.top(w.browsers.otherWindow, '', w.otherWin);
-  assert.equal(send(foreign, foreign), false, 'embedder outside the target window');
+  assert.equal(send(foreign, foreign, { active: w.otherWin }), false, 'embedder outside the target window');
+  assert.equal(send(panel, panel, { chrome: w.browsers.main }), false, 'content claims focus, chrome focus is on another browser');
+  assert.equal(send(frame, frame, { chrome: w.browsers.panel }), false, 'iframe claims focus inside a browser chrome has not focused');
+  assert.equal(send(main, main, { chrome: null }), false, 'chrome focus outside any browser');
+  assert.equal(send(main, main, { active: null }), false, 'no active window');
+  assert.equal(send(main, main, { active: w.otherWin }), false, 'another window is active');
   assert.equal(w.events.filter(([type]) => type === 'other window').length, 0);
 });
 

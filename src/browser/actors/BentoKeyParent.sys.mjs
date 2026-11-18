@@ -44,21 +44,26 @@ export class BentoKeyParent extends JSWindowActorParent {
     }
   }
 
-  // The chrome window to dispatch on, or null to drop the message. A key reaches
-  // only the focused document, so the sender must be the current global of the
-  // focused content browsing context (the focused frame, not just its tab), and
-  // its top-level <browser> must belong to that window: one of its tabs (the main
-  // slot or a panel) or a Bento chrome frame showing a bento-shell page (the
-  // sidebar and palettes). Anything else, such as a background tab, an unfocused
-  // panel or frame, or a page left in the back-forward cache, is ignored.
+  // The chrome window to dispatch on, or null to drop the message. Keys reach
+  // only the focused <browser>, so the sender's top-level <browser> must belong
+  // to this window, as one of its tabs (the main slot or a panel) or a Bento
+  // chrome frame showing a bento-shell page (the sidebar and palettes), and must
+  // be the window's focused element while the window is the active one. Both
+  // are chrome-owned focus state. Which frame inside that <browser> has focus is
+  // reported by content (focusedContentBrowsingContext); Firefox's own key
+  // routing trusts it the same way, only inside the chrome-focused <browser>
+  // (BrowserParent::UpdateFocus). A background tab, an unfocused panel, a page
+  // in the back-forward cache, or another window is ignored.
   senderWindow() {
     if (!this.manager?.isCurrentGlobal) return null;
     const bc = this.browsingContext;
-    const focused = Services.focus.focusedContentBrowsingContext;
-    if (!focused || focused.id !== bc.id) return null;
     const win = bc.topChromeWindow;
     const browser = bc.top?.embedderElement;
     if (!win || !browser || browser.ownerDocument?.defaultView !== win) return null;
+    const fm = Services.focus;
+    if (fm.activeWindow !== win) return null;
+    if (fm.getFocusedElementForWindow(win, false, {}) !== browser) return null;
+    if (fm.focusedContentBrowsingContext?.id !== bc.id) return null;
     if (win.gBrowser?.getTabForBrowser(browser)) return win;
     const principal = bc.top.currentWindowGlobal?.documentPrincipal;
     return principal?.addonId === BENTO_SHELL_ID ? win : null;

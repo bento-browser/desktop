@@ -178,24 +178,38 @@ or blank add-panel insertion is still settling.
   or `file://` pages (found on 158.0, present in the 157.0.1 source; Bento set
   the flag on 2026-11-18, on 160.0). A compromised content process can then
   send any `BentoKey` message at any time, so safety comes from the parent, not
-  from the child's key allowlist: `BentoKeyParent.senderWindow()` acts only when
-  the sender is the current global of
-  `Services.focus.focusedContentBrowsingContext` (the focused frame itself, not
-  just its tab) and that frame's top-level `<browser>` belongs to the same
-  window, either as a `gBrowser` tab (main slot or panel) or as a Bento chrome
-  frame whose top document is a `bento-shell@bento.app` page (the sidebar and
-  palettes, whose Cmd/Ctrl+Shift+Arrow already reached chrome through the
-  actor). It also drops a `Cycle` or `PanelHistory`
-  direction other than `1` or `-1` and normalises the `AddrbarOpen` mode. A
-  background tab, an unfocused panel or iframe, or a document in the
-  back-forward cache cannot cycle panels, step the focused panel's history or
-  open the address entry. Do not add `messageManagerGroups: ['browsers']`: the
-  sidebar frame is not in that group. After a Firefox update, load an `http://`
+  from the child's key allowlist. `BentoKeyParent.senderWindow()` dispatches
+  only when the sender is a current global (`isCurrentGlobal`) whose top-level
+  `<browser>` belongs to the same window, as a `gBrowser` tab (main slot or
+  panel) or a Bento chrome frame whose top document is a `bento-shell@bento.app`
+  page (the sidebar and palettes, whose Cmd/Ctrl+Shift+Arrow already reached
+  chrome through the actor), and only on chrome-owned focus: that window is
+  `Services.focus.activeWindow` and its focused element
+  (`Services.focus.getFocusedElementForWindow(win, false, {})`) is that
+  `<browser>`. Do not rely on `Services.focus.focusedContentBrowsingContext`
+  alone: content reports it (`ContentParent::RecvSetFocusedBrowsingContext`
+  with an action id the content process registers itself), so a compromised
+  background tab can point it at its own document. Which frame inside the
+  chrome-focused `<browser>` has focus is still taken from
+  `focusedContentBrowsingContext`, as Firefox's own key routing does
+  (`BrowserParent::UpdateFocus` uses it only inside the chrome-focused top);
+  nothing chrome-owned records the focused subframe. Residual risk, accepted:
+  a compromised content process that hosts the top document or a cross-origin
+  iframe of the `<browser>` the user is focused on can claim focus and, without
+  a key press, cycle panels, step that panel's history or open the address
+  entry. The parent also drops a `Cycle` or `PanelHistory` direction other than
+  `1` or `-1` and normalises the `AddrbarOpen` mode. A background tab, an
+  unfocused panel, a page in the back-forward cache, an inactive window, or a
+  process that forges `focusedContentBrowsingContext` for a browser chrome has
+  not focused cannot cycle panels, step history or open the address entry. Do
+  not add `messageManagerGroups: ['browsers']`: the sidebar frame is not in that
+  group. After a Firefox update, load an `http://`
   page with a cross-site iframe in the selected tab, then a `file://` page, and
   run this in the Browser Toolbox Console for each; every entry must start with
   `ok`, not "doesn't match remote type":
   `gBrowser.selectedBrowser.browsingContext.getAllBrowsingContextsInSubtree().map((bc) => { try { bc.currentWindowGlobal.getActor('BentoKey'); return 'ok ' + bc.currentURI.spec; } catch (e) { return e.message; } })`.
-  `scripts/bento-key-actor.test.mjs` pins the flag, the sender checks and the
+  `scripts/bento-key-actor.test.mjs` pins the flag, the sender checks
+  (including a forged content-reported focus and an inactive window) and the
   child's editable-target test.
 - Only `Cmd/Ctrl+Shift+ArrowLeft/Right` depends on the actor on web pages.
   Measured on 160.0 with chrome-context Marionette key actions: chrome's own
