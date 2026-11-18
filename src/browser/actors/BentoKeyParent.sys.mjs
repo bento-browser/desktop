@@ -12,37 +12,27 @@
 // they were before the actor existed.
 
 export class BentoKeyParent extends JSWindowActorParent {
+  // The child runs in untrusted web content processes (the registration sets
+  // safeForUntrustedWebProcess), so treat message data as hostile: a direction
+  // other than 1 or -1 is dropped, and the address mode is normalised.
   receiveMessage(message) {
-    if (
-      message.name !== 'BentoKey:Cycle' &&
-      message.name !== 'BentoKey:AddrbarOpen' &&
-      message.name !== 'BentoKey:PanelHistory'
-    )
+    let eventName;
+    let detail;
+    if (message.name === 'BentoKey:AddrbarOpen') {
+      eventName = message.name;
+      detail = { mode: message.data?.mode === 'newTab' ? 'newTab' : 'current' };
+    } else if (message.name === 'BentoKey:Cycle' || message.name === 'BentoKey:PanelHistory') {
+      const direction = message.data?.direction;
+      if (direction !== 1 && direction !== -1) return;
+      eventName = message.name;
+      detail = { direction };
+    } else {
       return;
+    }
     const win = this.browsingContext.topChromeWindow;
     if (!win) return;
     try {
-      if (message.name === 'BentoKey:AddrbarOpen') {
-        win.dispatchEvent(
-          new win.CustomEvent('BentoKey:AddrbarOpen', {
-            detail: { mode: message.data?.mode === 'newTab' ? 'newTab' : 'current' },
-          }),
-        );
-        return;
-      }
-      if (message.name === 'BentoKey:PanelHistory') {
-        win.dispatchEvent(
-          new win.CustomEvent('BentoKey:PanelHistory', {
-            detail: { direction: message.data.direction },
-          }),
-        );
-        return;
-      }
-      win.dispatchEvent(
-        new win.CustomEvent('BentoKey:Cycle', {
-          detail: { direction: message.data.direction },
-        }),
-      );
+      win.dispatchEvent(new win.CustomEvent(eventName, { detail }));
     } catch (err) {
       // Top chrome window may be tearing down (closing tab during
       // a bookmarklet, etc.) — drop the event silently.

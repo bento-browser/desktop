@@ -324,7 +324,33 @@ The source review covered every active touchpoint:
 ### Chrome Panel Shell Mount
 
 - Status: Active
-- Last updated: 2026-11-14
+- Last updated: 2026-11-18
+- BentoKey in untrusted content processes (2026-11-18): `registerContentKeyActor()`
+  passes `safeForUntrustedWebProcess: true` to `ChromeUtils.registerWindowActor`
+  (`dom/chrome-webidl/JSActor.webidl`; Firefox's own uses are in
+  `browser/components/DesktopActorRegistry.sys.mjs`). It depends on the
+  `dom.jsipc.check_safeForUntrustedWebProcess` pref (true by default): with the pref
+  true and no flag, `RemoteTypeMatches` in `dom/ipc/jsactor/JSActorService.cpp`
+  refuses the actor in `web`, `webIsolated=` and `file` processes, and
+  `Cmd/Ctrl+Shift+ArrowLeft/Right` did nothing from `http(s)`, `about:blank` and
+  `file://` pages. `BentoKeyParent.sys.mjs` now drops a `Cycle` or `PanelHistory`
+  direction other than `1` or `-1` (it normalised only the `AddrbarOpen` mode), since
+  the child runs in untrusted processes. Runtime on a 160.0 dev build clone with the
+  change (chrome-context Marionette key actions, fresh profile, `http://127.0.0.1`
+  pages with a same-site `127.0.0.1:8872` and a cross-site `localhost:8872` iframe,
+  and a `file://` page, in the main slot and a side panel): `getActor('BentoKey')`
+  threw "doesn't match remote type" in every one of those documents before and
+  returns an actor after; Cmd+Shift+Arrow moved focus to the other slot with one
+  `BentoKey:Cycle` event from each document after and did nothing before.
+  Cmd+ArrowLeft/Right history, Cmd+L/E/T (one address entry open each; Cmd+T submits
+  into one new tab) and Cmd+Shift+Arrow text selection in inputs, textareas and
+  contenteditables gave the same results before and after; chrome handles
+  Cmd+Arrow and Cmd+L/E/T before content in both. Regression check for Firefox
+  updates: with an `http://` page, a cross-site iframe in it, and a `file://` page
+  focused, `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
+  returns an actor, and Cmd+Shift+ArrowRight from the main slot focuses the next
+  panel; also confirm the pref still exists with the same meaning and that
+  `safeForUntrustedWebProcess` is still a `WindowActorOptions` member.
 - Preference dialogs in the browser window (2026-11-14): Clear recent history
   (`Sanitizer.showUI` through `gDialogBox`) links `preferences.css` itself, so
   patch core-ui/12's token block maps its Firefox tokens onto Bento aliases that
@@ -428,9 +454,8 @@ The source review covered every active touchpoint:
   pref true Firefox refuses it in `web` and `webIsolated=` processes.
   `getActor('BentoKey')` throws "doesn't match remote type 'web'" for `about:blank`
   in a web process and succeeds for `about:newtab` (`privilegedabout`). Panel
-  shortcuts therefore reach chrome only from privileged pages until the
-  registration changes; see the traversal pitfalls in
-  [panel-traversal-focus.md](technical/panel-traversal-focus.md).
+  cycling therefore reached chrome only from privileged pages; fixed on
+  2026-11-18 (see "BentoKey in untrusted content processes" below).
 - Main-only split-view teardown (2026-11-02): both teardown paths in the mount script
   (the reconcile tear-down for a workspace with no panels and
   `forceMainOnlyChromeState`) passed `tabpanels.removeTabsFromSplitview` only the tabs
@@ -955,8 +980,10 @@ The source review covered every active touchpoint:
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
   navigate that panel's own history without moving panel focus and without
   stealing cursor movement from editable fields, verify
-  `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels while
-  plain Left/Right arrows still reach side-panel content such as videos, verify
+  `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels with
+  focus in an `http(s)` page, an iframe inside it, a `file://` page and
+  `about:newtab` while plain Left/Right arrows still reach side-panel content
+  such as videos, verify
   `Cmd/Ctrl+S` follows Bento Settings by either collapsing the sidebar to the
   rail or hiding it from layout, verify left-edge hover reveals the collapsed
   rail over content without pushing content, and verify pressing the shortcut

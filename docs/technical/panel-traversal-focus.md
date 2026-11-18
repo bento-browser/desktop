@@ -167,11 +167,31 @@ or blank add-panel insertion is still settling.
 - The actor files must live under `src/browser/actors/` and be registered into
   Firefox with `patches/chrome-layout/04-bento-key-actors.patch`. The build sync
   script also copies them into built app actor targets.
-- Open, found while upgrading to Firefox 158.0 and present in the 157.0.1 source:
-  `registerContentKeyActor()` does not set `safeForUntrustedWebProcess`, and
-  `dom.jsipc.check_safeForUntrustedWebProcess` is true. Firefox then refuses the
-  actor in `web` and `webIsolated=` content processes, so `getActor('BentoKey')`
-  throws "doesn't match remote type" on `http(s)` pages and `about:blank`, and the
-  actor attaches only to `privilegedabout` pages such as `about:newtab`. Check
-  with `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
-  on a web page after any Firefox update. The 154 behavior was not re-measured.
+- Keep `safeForUntrustedWebProcess: true` in `registerContentKeyActor()`.
+  `dom.jsipc.check_safeForUntrustedWebProcess` is true by default, and without
+  the flag Firefox refuses the actor in `web`, `webIsolated=` and `file` content
+  processes (`RemoteTypeMatches` in `dom/ipc/jsactor/JSActorService.cpp`), so it
+  attaches only to `privilegedabout` pages such as `about:newtab` and
+  `Cmd/Ctrl+Shift+ArrowLeft/Right` does nothing from `http(s)`, `about:blank`
+  or `file://` pages (found on 158.0, present in the 157.0.1 source; Bento set
+  the flag on 2026-11-18, on 160.0). The flag is safe because the child forwards only its key allowlist
+  and `BentoKeyParent` drops a `Cycle` or `PanelHistory` direction other than
+  `1` or `-1`, normalises the `AddrbarOpen` mode, and only dispatches a chrome
+  event; a compromised content process can at most cycle panels, step the
+  focused panel's history or open the address entry. After a Firefox update,
+  run `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
+  in the Browser Toolbox Console with an `http://` page, a cross-site iframe
+  inside it and a `file://` page focused: it must return an actor, not throw
+  "doesn't match remote type". `scripts/bento-key-actor.test.mjs` pins the
+  flag and the parent's checks.
+- Only `Cmd/Ctrl+Shift+ArrowLeft/Right` depends on the actor on web pages.
+  Measured on 160.0 with chrome-context Marionette key actions: chrome's own
+  keydown listeners take `Cmd/Ctrl+ArrowLeft/Right` (panel history) and
+  `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, `Cmd/Ctrl+T` (address entry) before content sees
+  them, with or without the actor, and on `about:newtab` too; the chrome panel
+  arrow handler returns early for `Cmd/Ctrl+Shift+Arrow` when a `<browser>` is
+  focused, so that chord reaches content and the actor forwards it.
+- Open: because chrome takes `Cmd/Ctrl+ArrowLeft/Right` before content, those
+  chords inside a web page's input, textarea or contenteditable step the panel's
+  history (or, with no history, are swallowed) instead of moving the caret.
+  Same result with and without the actor flag.

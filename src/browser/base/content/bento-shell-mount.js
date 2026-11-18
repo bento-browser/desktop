@@ -20426,6 +20426,18 @@
         // (delegating to the actor), shortcut cycling appears to "stop"
         // whenever the focused panel is on one of these URLs.
         matches: ['*://*/*', 'file:///*', 'moz-extension://*/*', 'about:newtab', 'about:blank'],
+        // Web pages, about:blank and file:// pages load in 'web',
+        // 'webIsolated=' and 'file' processes. With
+        // dom.jsipc.check_safeForUntrustedWebProcess (true by default)
+        // Firefox refuses an actor in those processes unless this is set,
+        // and Cmd/Ctrl+Shift+Arrow panel cycling then works only on
+        // privileged pages. Safe here:
+        // the child only forwards its key allowlist, and BentoKeyParent
+        // accepts only a direction of 1 or -1 or a normalised address mode
+        // and dispatches a chrome event, so a compromised content process
+        // can at most cycle panels, step the focused panel's history or
+        // open the address entry.
+        safeForUntrustedWebProcess: true,
       });
     } catch (err) {
       // Already registered (second window): NotSupportedError, or
