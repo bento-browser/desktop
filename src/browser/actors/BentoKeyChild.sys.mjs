@@ -32,8 +32,9 @@ const ADDRESS_KEY_MODES = new Map([
 
 function isEditableTarget(target) {
   if (!target) return false;
-  const tag = target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  // localName, not tagName: XHTML pages keep tagName lowercase.
+  const tag = target.localName;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
   if (target.isContentEditable) return true;
   const role = target.getAttribute && target.getAttribute('role');
   if (role === 'textbox' || role === 'searchbox' || role === 'combobox') return true;

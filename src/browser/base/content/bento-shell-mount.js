@@ -10220,16 +10220,15 @@
     // because the panel container (a notificationbox) isn't a scroll
     // surface and keyboard focus is on chrome, not content.
     //
-    // We can't simply move keyboard focus to the panel's <browser>
-    // element to let the content's natural arrow-key handling take
-    // over: with focus in content (a remote process), the chrome
-    // keydown listener on `window` no longer sees shortcut key
-    // events, breaking cycling. Instead, use the chrome command
-    // dispatcher's cmd_scrollLine{Up,Down} which routes scroll
-    // commands across the multi-process boundary to whichever
-    // browser is currently focused. Brief focus shuffle: focus the
-    // browser to direct the command at it, dispatch, then restore
-    // focus to the container so shortcut cycling keeps working.
+    // Focus stays on the container: use the chrome command dispatcher's
+    // cmd_scrollLine{Up,Down}, which routes scroll commands across the
+    // multi-process boundary to whichever browser is currently focused.
+    // Brief focus shuffle: focus the browser to direct the command at it,
+    // dispatch, then restore focus to the container so it stays the
+    // cycle-focused panel. (Chrome keydown listeners on window do see keys
+    // aimed at a focused remote <browser>; the Cmd/Ctrl+Shift+Arrow branch
+    // above returns early there and leaves those keys to the BentoKey
+    // actor.)
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const target = e.target;
       const isPanelContainer = !!(
@@ -20431,12 +20430,11 @@
         // dom.jsipc.check_safeForUntrustedWebProcess (true by default)
         // Firefox refuses an actor in those processes unless this is set,
         // and Cmd/Ctrl+Shift+Arrow panel cycling then works only on
-        // privileged pages. Safe here:
-        // the child only forwards its key allowlist, and BentoKeyParent
-        // accepts only a direction of 1 or -1 or a normalised address mode
-        // and dispatches a chrome event, so a compromised content process
-        // can at most cycle panels, step the focused panel's history or
-        // open the address entry.
+        // privileged pages. A compromised content process can send any
+        // BentoKey message, so the safety lives in BentoKeyParent: it acts
+        // only for the current document of the focused frame in one of this
+        // window's tabs or Bento frames, takes only a direction of 1 or -1
+        // and a normalised address mode, and only dispatches a chrome event.
         safeForUntrustedWebProcess: true,
       });
     } catch (err) {

@@ -533,8 +533,9 @@ export const MEMBERS = [
       'notePageClose',
       'patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser',
       'extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser',
+      'src/browser/actors/BentoKeyParent.sys.mjs#getTabForBrowser',
     ],
-    use: "Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to.",
+    use: "Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, bento-tab-state names the tab a location change belongs to, and BentoKeyParent accepts a key message only from a tab of its window.",
     at: [FF.tabbrowser, '^\\s+getTabForBrowser\\(', 1462],
   },
   {

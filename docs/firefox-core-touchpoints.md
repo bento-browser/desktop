@@ -333,9 +333,17 @@ The source review covered every active touchpoint:
   true and no flag, `RemoteTypeMatches` in `dom/ipc/jsactor/JSActorService.cpp`
   refuses the actor in `web`, `webIsolated=` and `file` processes, and
   `Cmd/Ctrl+Shift+ArrowLeft/Right` did nothing from `http(s)`, `about:blank` and
-  `file://` pages. `BentoKeyParent.sys.mjs` now drops a `Cycle` or `PanelHistory`
-  direction other than `1` or `-1` (it normalised only the `AddrbarOpen` mode), since
-  the child runs in untrusted processes. Runtime on a 160.0 dev build clone with the
+  `file://` pages. Because a compromised content process can now send any `BentoKey`
+  message, `BentoKeyParent.sys.mjs` validates the sender before dispatching: it must be
+  the current global of `Services.focus.focusedContentBrowsingContext`, whose top-level
+  `<browser>` is a `gBrowser` tab of the same window or a Bento chrome frame showing a
+  `bento-shell@bento.app` page (it depends on `JSWindowActorParent.manager`,
+  `WindowGlobalParent.isCurrentGlobal`, `documentPrincipal.addonId`,
+  `BrowsingContext.embedderElement` and `gBrowser.getTabForBrowser`). It also drops a
+  `Cycle` or `PanelHistory` direction other than `1` or `-1` (it normalised only the
+  `AddrbarOpen` mode). `BentoKeyChild.sys.mjs` tests editable targets by `localName`, so
+  an XHTML page's lowercase `tagName` no longer lets Cmd+Shift+Arrow cycle from a field.
+  Runtime on a 160.0 dev build clone with the
   change (chrome-context Marionette key actions, fresh profile, `http://127.0.0.1`
   pages with a same-site `127.0.0.1:8872` and a cross-site `localhost:8872` iframe,
   and a `file://` page, in the main slot and a side panel): `getActor('BentoKey')`
@@ -345,12 +353,19 @@ The source review covered every active touchpoint:
   Cmd+ArrowLeft/Right history, Cmd+L/E/T (one address entry open each; Cmd+T submits
   into one new tab) and Cmd+Shift+Arrow text selection in inputs, textareas and
   contenteditables gave the same results before and after; chrome handles
-  Cmd+Arrow and Cmd+L/E/T before content in both. Regression check for Firefox
-  updates: with an `http://` page, a cross-site iframe in it, and a `file://` page
-  focused, `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
-  returns an actor, and Cmd+Shift+ArrowRight from the main slot focuses the next
-  panel; also confirm the pref still exists with the same meaning and that
-  `safeForUntrustedWebProcess` is still a `WindowActorOptions` member.
+  Cmd+Arrow and Cmd+L/E/T before content in both. With the sender check, messages sent
+  through the real child actor of a background tab, an unfocused panel and an unfocused
+  iframe of the focused tab dispatched nothing (before it, a background tab's
+  `PanelHistory` sent the focused main slot back), the focused main slot's own message
+  still went back, Cmd+Shift+Arrow still cycled from every document above, and from
+  the sidebar it still reached chrome as one `BentoKey:Cycle` event, as it did before the
+  check. Regression check for Firefox updates: run the `getActor` check in the
+  traversal pitfalls of [panel-traversal-focus.md](technical/panel-traversal-focus.md)
+  on an `http://` page with a cross-site iframe and on a `file://` page, check that
+  Cmd+Shift+ArrowRight from the main slot and from an iframe in it focuses the next
+  panel, and confirm that the pref still exists with the same meaning,
+  that `safeForUntrustedWebProcess` is still a `WindowActorOptions` member, and that
+  `focusedContentBrowsingContext` still returns the focused frame in the parent.
 - Preference dialogs in the browser window (2026-11-14): Clear recent history
   (`Sanitizer.showUI` through `gDialogBox`) links `preferences.css` itself, so
   patch core-ui/12's token block maps its Firefox tokens onto Bento aliases that
@@ -978,8 +993,10 @@ The source review covered every active touchpoint:
   the sidebar Copy URL button writes the current selected main-tab URL to the
   global clipboard and shows a `Copied` tooltip after the write succeeds, verify
   `Cmd/Ctrl+ArrowLeft` and `Cmd/Ctrl+ArrowRight` inside side-panel content
-  navigate that panel's own history without moving panel focus and without
-  stealing cursor movement from editable fields, verify
+  navigate that panel's own history without moving panel focus (inside an
+  editable field of a web page they also step history, or are swallowed with no
+  history, instead of moving the caret: chrome takes them before content, an open
+  issue in [panel-traversal-focus.md](technical/panel-traversal-focus.md)), verify
   `Cmd/Ctrl+Shift+ArrowLeft` and `Cmd/Ctrl+Shift+ArrowRight` cycle panels with
   focus in an `http(s)` page, an iframe inside it, a `file://` page and
   `about:newtab` while plain Left/Right arrows still reach side-panel content
@@ -4313,7 +4330,7 @@ below is generated; edit the registry, then run
 | `XULFrameElement UnbindFromTree IsMove` | source (engine only) | UnbindFromTree keeps the frameloader when the unbind is a move; insertBefore and appendChild destroy it. | `moveNodeBefore` | `dom/xul/XULFrameElement.cpp:165` |
 | `gBrowser.addTrustedTab` | method (runtime) | Opens privileged URLs (about:preferences, devtools toolbox) that tabs.create rejects; the window handover opens the blank tab that holds a closing window open (null when the tab cannot be made). | `openTrustedAddrbarNewTab`, `openDevtoolsPanelFor`, `handOverTabsBeforeClose`, `openFirefoxSearchSettings` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3702` |
 | `gBrowser.addTab` | method (runtime) | Creates the tab behind a new panel with the add-as-panel marker URL. | `addNewPanel` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:3825` |
-| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1462` |
+| `gBrowser.getTabForBrowser` | method (runtime) | Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, bento-tab-state names the tab a location change belongs to, and BentoKeyParent accepts a key message only from a tab of its window. | `getTabForPanelHistoryBrowser`, `installInspectInPanelMenuItems`, `notePageClose`, `patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser`, `extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser`, `src/browser/actors/BentoKeyParent.sys.mjs#getTabForBrowser` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:1462` |
 | `gBrowser.selectedBrowsers` | member (runtime) | Patch 11 lets DOM fullscreen requests come from any browser active in the split. shownBrowsers hands the Bookmarks view the browsers the window shows (the selected browser alone outside a split view): isTabDialogShowing checks each for a showing tab dialog, and isPageContainerShown tells a dialog of a shown tab from one of a background tab. | `patches/core-ui/11-dom-fullscreen-splitview-browser.patch#selectedBrowsers`, `shownBrowsers` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:682` |
 | `gBrowser.moveTabBefore` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8182` |
 | `gBrowser.moveTabAfter` | method (runtime) | Sidebar drag-reorder; skips the moveTabTo path that reads element.splitview. | `handleTabMoveTitle` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:8205` |

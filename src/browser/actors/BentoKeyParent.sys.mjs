@@ -11,10 +11,14 @@
 // window) keeps the chrome script's handlers as closure-private as
 // they were before the actor existed.
 
+const BENTO_SHELL_ID = 'bento-shell@bento.app';
+
 export class BentoKeyParent extends JSWindowActorParent {
   // The child runs in untrusted web content processes (the registration sets
-  // safeForUntrustedWebProcess), so treat message data as hostile: a direction
-  // other than 1 or -1 is dropped, and the address mode is normalised.
+  // safeForUntrustedWebProcess), so a compromised process can send any message
+  // at any time. The parent therefore acts only for a sender that is a real
+  // key target (see senderWindow), drops a direction other than 1 or -1, and
+  // normalises the address mode.
   receiveMessage(message) {
     let eventName;
     let detail;
@@ -29,7 +33,7 @@ export class BentoKeyParent extends JSWindowActorParent {
     } else {
       return;
     }
-    const win = this.browsingContext.topChromeWindow;
+    const win = this.senderWindow();
     if (!win) return;
     try {
       win.dispatchEvent(new win.CustomEvent(eventName, { detail }));
@@ -38,5 +42,25 @@ export class BentoKeyParent extends JSWindowActorParent {
       // a bookmarklet, etc.) — drop the event silently.
       console.warn('[BentoKeyParent] dispatch failed:', err);
     }
+  }
+
+  // The chrome window to dispatch on, or null to drop the message. A key reaches
+  // only the focused document, so the sender must be the current global of the
+  // focused content browsing context (the focused frame, not just its tab), and
+  // its top-level <browser> must belong to that window: one of its tabs (the main
+  // slot or a panel) or a Bento chrome frame showing a bento-shell page (the
+  // sidebar and palettes). Anything else, such as a background tab, an unfocused
+  // panel or frame, or a page left in the back-forward cache, is ignored.
+  senderWindow() {
+    if (!this.manager?.isCurrentGlobal) return null;
+    const bc = this.browsingContext;
+    const focused = Services.focus.focusedContentBrowsingContext;
+    if (!focused || focused.id !== bc.id) return null;
+    const win = bc.topChromeWindow;
+    const browser = bc.top?.embedderElement;
+    if (!win || !browser || browser.ownerDocument?.defaultView !== win) return null;
+    if (win.gBrowser?.getTabForBrowser(browser)) return win;
+    const principal = bc.top.currentWindowGlobal?.documentPrincipal;
+    return principal?.addonId === BENTO_SHELL_ID ? win : null;
   }
 }

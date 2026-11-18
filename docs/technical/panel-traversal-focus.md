@@ -161,7 +161,9 @@ or blank add-panel insertion is still settling.
   content embedder and the persisted focused panel indicator first so focused
   `about:*` panel content closes its panel.
 - Do not forward plain arrow keys, or panel shortcuts from editable targets, in
-  the actor.
+  the actor. Test the target's `localName`, not `tagName`: XHTML documents keep
+  `tagName` lowercase, and an uppercase compare cycled panels from an XHTML
+  input instead of selecting text.
 - Do not activate a pinned panel by setting `gBrowser.selectedTab` to the panel
   tab. That relocates the panel into the main slot.
 - The actor files must live under `src/browser/actors/` and be registered into
@@ -174,16 +176,27 @@ or blank add-panel insertion is still settling.
   attaches only to `privilegedabout` pages such as `about:newtab` and
   `Cmd/Ctrl+Shift+ArrowLeft/Right` does nothing from `http(s)`, `about:blank`
   or `file://` pages (found on 158.0, present in the 157.0.1 source; Bento set
-  the flag on 2026-11-18, on 160.0). The flag is safe because the child forwards only its key allowlist
-  and `BentoKeyParent` drops a `Cycle` or `PanelHistory` direction other than
-  `1` or `-1`, normalises the `AddrbarOpen` mode, and only dispatches a chrome
-  event; a compromised content process can at most cycle panels, step the
-  focused panel's history or open the address entry. After a Firefox update,
-  run `gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor('BentoKey')`
-  in the Browser Toolbox Console with an `http://` page, a cross-site iframe
-  inside it and a `file://` page focused: it must return an actor, not throw
-  "doesn't match remote type". `scripts/bento-key-actor.test.mjs` pins the
-  flag and the parent's checks.
+  the flag on 2026-11-18, on 160.0). A compromised content process can then
+  send any `BentoKey` message at any time, so safety comes from the parent, not
+  from the child's key allowlist: `BentoKeyParent.senderWindow()` acts only when
+  the sender is the current global of
+  `Services.focus.focusedContentBrowsingContext` (the focused frame itself, not
+  just its tab) and that frame's top-level `<browser>` belongs to the same
+  window, either as a `gBrowser` tab (main slot or panel) or as a Bento chrome
+  frame whose top document is a `bento-shell@bento.app` page (the sidebar and
+  palettes, whose Cmd/Ctrl+Shift+Arrow already reached chrome through the
+  actor). It also drops a `Cycle` or `PanelHistory`
+  direction other than `1` or `-1` and normalises the `AddrbarOpen` mode. A
+  background tab, an unfocused panel or iframe, or a document in the
+  back-forward cache cannot cycle panels, step the focused panel's history or
+  open the address entry. Do not add `messageManagerGroups: ['browsers']`: the
+  sidebar frame is not in that group. After a Firefox update, load an `http://`
+  page with a cross-site iframe in the selected tab, then a `file://` page, and
+  run this in the Browser Toolbox Console for each; every entry must start with
+  `ok`, not "doesn't match remote type":
+  `gBrowser.selectedBrowser.browsingContext.getAllBrowsingContextsInSubtree().map((bc) => { try { bc.currentWindowGlobal.getActor('BentoKey'); return 'ok ' + bc.currentURI.spec; } catch (e) { return e.message; } })`.
+  `scripts/bento-key-actor.test.mjs` pins the flag, the sender checks and the
+  child's editable-target test.
 - Only `Cmd/Ctrl+Shift+ArrowLeft/Right` depends on the actor on web pages.
   Measured on 160.0 with chrome-context Marionette key actions: chrome's own
   keydown listeners take `Cmd/Ctrl+ArrowLeft/Right` (panel history) and
