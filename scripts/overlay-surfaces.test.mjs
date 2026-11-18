@@ -3006,6 +3006,42 @@ test('Esc ends a Cmd+D still waiting for the sidebar star, and no popup follows'
   assert.deepEqual(world.popupOpens(), [], 'neither a late answer nor the timeout opens it');
 });
 
+test('an outside click ends a Cmd+D still waiting for the sidebar star: neither its answer nor the timeout opens the popup', () => {
+  for (const settle of ['answer', 'timeout']) {
+    // A cold window: the popup document has not been created yet.
+    const world = warmWorld();
+    world.registry.get('bento-shell-frame').rect = { left: 10, top: 40, width: 300, height: 800 };
+    const sidebar = world.registry.get('bento-shell-frame');
+    world.patchBookmarkPageCommand();
+    world.placesCommandHook.bookmarkPage();
+    const [request] = askedForStar(world);
+    assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), false, settle + ': only the request waits');
+
+    world.pointerDownOutside();
+    if (settle === 'answer') {
+      world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+    }
+    world.advance(10_000);
+    world.ready('bookmarks-popup');
+    world.advance(10);
+    assert.equal(world.isShown('bookmarks-popup'), false, settle);
+    assert.deepEqual(world.popupOpens(), [], settle);
+    assert.equal(world.frame('bookmarks-popup')?.focusCount ?? 0, 0, settle + ': no focus grab');
+    assert.equal(sidebar.focusCount, 0, settle);
+  }
+
+  // Without the click the same Cmd+D opens one popup.
+  const plainWorld = warmWorld();
+  plainWorld.registry.get('bento-shell-frame').rect = { left: 10, top: 40, width: 300, height: 800 };
+  plainWorld.patchBookmarkPageCommand();
+  plainWorld.placesCommandHook.bookmarkPage();
+  const [request] = askedForStar(plainWorld);
+  plainWorld.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+  plainWorld.ready('bookmarks-popup');
+  assert.equal(plainWorld.isShown('bookmarks-popup'), true);
+  assert.equal(plainWorld.popupOpens().length, 1);
+});
+
 test('a tab change ends a pending Cmd+D: the timeout does not open the new tab and a late answer not the old one', () => {
   const world = popupWorld();
   world.attachBookmarkPopupListeners();

@@ -19474,11 +19474,14 @@
         // click is outside it, so it cancels the open. A shown menu closes itself.
         if (overlays.hasPendingOpen('menu')) hideChromeMenu();
         // The same for a bookmark popup still waiting for its document (every window's first
-        // open): its full-window host is not up to catch the click. The press that asked for the
-        // popup is not cancelled by its own pointerdown, which chrome sees before the shell
-        // document or the panel header star acts on it; a second star press cancels the waiting
-        // open and its click asks again, so one popup appears.
-        if (overlays.hasPendingOpen('bookmarks-popup')) hideBookmarkPopup();
+        // open) or a Cmd+D still waiting for the sidebar star's answer: no popup host is up to
+        // catch the click. The press that asked for the popup is not cancelled by its own
+        // pointerdown, which chrome sees before the shell document or the panel header star acts
+        // on it, and neither Cmd+D nor the sidebar's answer is a pointerdown; a second star press
+        // cancels the waiting open and its click asks again, so one popup appears.
+        if (overlays.hasPendingOpen('bookmarks-popup') || pendingBookmarkPopupRequest !== null) {
+          hideBookmarkPopup();
+        }
         const host = document.getElementById('bento-addrbar-host');
         if (!host || !isOverlayOpen('bento-addrbar-host', isAddrbarVisible, 'addrbar')) return;
         const path = typeof e.composedPath === 'function' ? e.composedPath() : [];

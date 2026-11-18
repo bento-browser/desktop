@@ -97,7 +97,8 @@ page with no handshake (`embedded-import`).
   The Escape handler consumes Esc for a pending open and cancels it through the
   overlay's `hide*` function; `togglePalette` closes a pending open instead of
   queueing a second one; a pointer-down outside cancels a
-  pending menu, a pending bookmark popup (and an address bar, as before). Esc goes to the top-most open
+  pending menu, a pending bookmark popup or a `Cmd+D` still waiting for the sidebar star (and an
+  address bar, as before). Esc goes to the top-most open
   overlay by stacking ([palettes-and-address-bar.md](palettes-and-address-bar.md#esc-follows-the-stacking-order));
   a menu that was delivered handles its own Esc. The welcome and embedded import
   overlays consume Esc without dismissing. Every `hide*` function calls `overlays.cancel(id)` first, so
@@ -664,6 +665,8 @@ for): about 50 ms more. Later opens are unchanged. While the document loads the 
 hidden, so it cannot catch a click: Esc, a pointer-down anywhere in the window
 (`attachOutsideClickDismissListener`) and the chrome-side dismissals cancel the waiting open (a
 pending open counts as open), and nothing reveals or takes the focus when the document announces.
+The pointer-down also ends a `Cmd+D` still waiting for the sidebar star's answer
+(`pendingBookmarkPopupRequest`), so neither the answer nor the timeout opens the popup after it.
 The press that asked for the popup is not cancelled by its own pointer-down, which chrome
 handles before the shell document or the panel header star acts on the press; a second star
 press cancels the waiting open and its click asks again, so one popup appears.
@@ -796,7 +799,9 @@ Pitfalls:
 - A popup still loading has no host up to catch a click, so the window's pointer-down listener
   must cancel it (`attachOutsideClickDismissListener`), as it does a pending menu. Without it a
   click elsewhere during the first open's load (the popup is created on demand) was followed by
-  the popup revealing and taking the focus.
+  the popup revealing and taking the focus. The same listener must also end a `Cmd+D` waiting for
+  the sidebar star (`pendingBookmarkPopupRequest`, before any overlay open exists): checking only
+  `overlays.hasPendingOpen` let the answer or the timeout open the popup after the click.
 - Never end a popup by hiding its host alone: `hideBookmarkPopup` is the one dismissal because it
   also cancels a `Cmd+D` waiting for the sidebar star. A path that only hid the host let the
   older request open the popup after a tab change or Esc, on the wrong tab.
