@@ -2541,24 +2541,24 @@ function popupWorld(options) {
 
 const lastAction = (world) => world.popupOpens().at(-1);
 
-test('the popup is prewarmed, covers the window and is created only where it can show', () => {
+test('the popup is created on first open, covers the window and is created only where it can show', () => {
   const row = /overlayEntry\(\{\s*id: 'bookmarks-popup',([\s\S]*?)\}\)/.exec(MOUNT);
   assert.ok(row, 'no bookmarks-popup row in the overlay table');
-  assert.match(row[1], /prewarm: true/);
+  assert.doesNotMatch(row[1], /eager: true|prewarm: true/, 'a popup nobody opened is not loaded');
   assert.match(row[1], /created: true/);
   assert.match(MOUNT, /ensureOverlayHost\(\{\s*hostId: 'bento-bookmarks-popup-host',\s*zIndex: 99993,\s*parentId: null,\s*inlineFade: false,/);
 
   const regular = makeWorld();
-  assert.ok(regular.overlays.ensure('bookmarks-popup', 'idle'), 'a regular window creates it');
+  assert.ok(regular.overlays.ensure('bookmarks-popup', 'show'), 'a regular window creates it');
   assert.deepEqual(regular.events.navigations, ['bookmarks-popup']);
 
   const priv = makeWorld({ privateWindow: true });
-  assert.equal(priv.overlays.ensure('bookmarks-popup', 'idle'), null, 'a private window never does');
+  assert.equal(priv.overlays.ensure('bookmarks-popup', 'show'), null, 'a private window never does');
   assert.deepEqual(priv.events.navigations, []);
 
   const off = makeWorld();
   off.applyChromeBookmarksEnabled(false);
-  assert.equal(off.overlays.ensure('bookmarks-popup', 'idle'), null, 'nor one with the manager off');
+  assert.equal(off.overlays.ensure('bookmarks-popup', 'show'), null, 'nor one with the manager off');
 });
 
 test('a star press opens the popup: the anchor moves from the sidebar frame to the host, and the document is sent one open', () => {
@@ -2659,6 +2659,9 @@ test('a cold popup open waits for its document, then shows and sends once', () =
   assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), true);
   assert.equal(world.isShown('bookmarks-popup'), false);
   assert.deepEqual(world.popupOpens(), [], 'nothing is sent to a document that is not listening');
+  // A second star press while the document loads replaces the waiting open.
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.deepEqual(world.events.navigations, ['bookmarks-popup'], 'the document is loaded once');
 
   world.ready('bookmarks-popup');
   assert.equal(world.isShown('bookmarks-popup'), true);
@@ -2690,6 +2693,28 @@ test('Esc is the document\'s while its frame has focus; chrome takes it for a wa
   cold.ready('bookmarks-popup');
   assert.equal(cold.isShown('bookmarks-popup'), false);
   assert.deepEqual(cold.popupOpens(), []);
+});
+
+test('an outside click cancels a popup open that still waits for its document, and takes no focus', () => {
+  const world = makeWorld();
+  const sidebar = world.registry.get('bento-shell-frame');
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), true);
+
+  world.pointerDownOutside();
+  assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), false);
+  assert.equal(world.isBookmarkPopupOpen(), false);
+  world.ready('bookmarks-popup');
+  world.advance(10);
+  assert.equal(world.isShown('bookmarks-popup'), false);
+  assert.deepEqual(world.popupOpens(), []);
+  assert.equal(world.frame('bookmarks-popup').focusCount, 0, 'the popup document does not take the focus');
+  assert.equal(sidebar.focusCount, 0, 'nor is the focus moved back');
+
+  // A press after the click asks again and opens one popup.
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.equal(world.isShown('bookmarks-popup'), true);
+  assert.equal(world.popupOpens().length, 1);
 });
 
 test('the document closes its own popup by id, and a late close of an older one is dropped', () => {
@@ -2979,6 +3004,42 @@ test('Esc ends a Cmd+D still waiting for the sidebar star, and no popup follows'
   world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
   world.advance(10_000);
   assert.deepEqual(world.popupOpens(), [], 'neither a late answer nor the timeout opens it');
+});
+
+test('an outside click ends a Cmd+D still waiting for the sidebar star: neither its answer nor the timeout opens the popup', () => {
+  for (const settle of ['answer', 'timeout']) {
+    // A cold window: the popup document has not been created yet.
+    const world = warmWorld();
+    world.registry.get('bento-shell-frame').rect = { left: 10, top: 40, width: 300, height: 800 };
+    const sidebar = world.registry.get('bento-shell-frame');
+    world.patchBookmarkPageCommand();
+    world.placesCommandHook.bookmarkPage();
+    const [request] = askedForStar(world);
+    assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), false, settle + ': only the request waits');
+
+    world.pointerDownOutside();
+    if (settle === 'answer') {
+      world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+    }
+    world.advance(10_000);
+    world.ready('bookmarks-popup');
+    world.advance(10);
+    assert.equal(world.isShown('bookmarks-popup'), false, settle);
+    assert.deepEqual(world.popupOpens(), [], settle);
+    assert.equal(world.frame('bookmarks-popup')?.focusCount ?? 0, 0, settle + ': no focus grab');
+    assert.equal(sidebar.focusCount, 0, settle);
+  }
+
+  // Without the click the same Cmd+D opens one popup.
+  const plainWorld = warmWorld();
+  plainWorld.registry.get('bento-shell-frame').rect = { left: 10, top: 40, width: 300, height: 800 };
+  plainWorld.patchBookmarkPageCommand();
+  plainWorld.placesCommandHook.bookmarkPage();
+  const [request] = askedForStar(plainWorld);
+  plainWorld.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, { ...EDIT, requestId: request.requestId }));
+  plainWorld.ready('bookmarks-popup');
+  assert.equal(plainWorld.isShown('bookmarks-popup'), true);
+  assert.equal(plainWorld.popupOpens().length, 1);
 });
 
 test('a tab change ends a pending Cmd+D: the timeout does not open the new tab and a late answer not the old one', () => {
