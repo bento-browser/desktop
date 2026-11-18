@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TabSnapshot } from '@shared/protocol';
-import { openWorkspaceFirstTab } from './FirstTab';
+import { openWorkspaceFirstTab, openWorkspaceFirstTabOnce } from './FirstTab';
 
 /** Records each browser and registry step in order; `update` and `marker` can be made to fail.
  * `windowOf` is each tab's current window as Firefox reports it (moves edit it). */
@@ -58,7 +58,7 @@ describe('openWorkspaceFirstTab', () => {
       stillCurrent: () => true,
     });
 
-    expect(tab?.id).toBe(10);
+    expect(tab).toEqual({ status: 'selected', tab: { id: 10, windowId: 1 } });
     expect(browser.tabs.create).toHaveBeenCalledWith({ windowId: 1, active: false });
     expect(steps).toEqual(['create 10 active=false', 'marker 10 ws-b', 'select 10']);
   });
@@ -79,7 +79,7 @@ describe('openWorkspaceFirstTab', () => {
       stillCurrent: () => current,
     });
 
-    expect(tab?.id).toBe(10);
+    expect(tab).toEqual({ status: 'superseded', tab: { id: 10, windowId: 1 } });
     expect(steps).toEqual(['create 10 active=false', 'marker 10 ws-b']);
     expect(browser.tabs.update).not.toHaveBeenCalled();
     expect(browser.tabs.remove).not.toHaveBeenCalled();
@@ -100,7 +100,7 @@ describe('openWorkspaceFirstTab', () => {
       stillCurrent: () => true,
     });
 
-    expect(tab?.id).toBe(10);
+    expect(tab).toEqual({ status: 'displaced', tab: { id: 10, windowId: 1 } });
     expect(steps).toEqual(['create 10 active=false', 'marker 10 ws-b']);
     expect(browser.tabs.update).not.toHaveBeenCalled();
     expect(browser.tabs.create).toHaveBeenCalledTimes(1);
@@ -122,7 +122,7 @@ describe('openWorkspaceFirstTab', () => {
       stillCurrent: () => current,
     });
 
-    expect(tab?.id).toBe(10);
+    expect(tab.status).toBe('superseded');
     expect(browser.tabs.update).not.toHaveBeenCalled();
     expect(browser.tabs.create).toHaveBeenCalledTimes(1);
   });
@@ -152,7 +152,7 @@ describe('openWorkspaceFirstTab', () => {
       stillCurrent: () => true,
     });
 
-    expect(tab?.id).toBe(11);
+    expect(tab).toEqual({ status: 'selected', tab: { id: 11, windowId: 1 } });
     expect(browser.tabs.create).toHaveBeenLastCalledWith({
       url: 'https://one/',
       windowId: 1,
@@ -165,5 +165,121 @@ describe('openWorkspaceFirstTab', () => {
       'create 11 active=true',
     ]);
     expect(tabs.assignWorkspaceEagerly).toHaveBeenLastCalledWith(11, 'ws-b');
+  });
+});
+
+describe('openWorkspaceFirstTabOnce', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Runs `during` for the given tabs inside their marker write. */
+  function duringMarker(
+    tabs: ReturnType<typeof setup>['tabs'],
+    ids: number[],
+    during: (id: number) => void,
+  ) {
+    const write = tabs.assignWorkspaceEagerly.getMockImplementation()!;
+    tabs.assignWorkspaceEagerly.mockImplementation(async (id, workspaceId) => {
+      if (ids.includes(id)) during(id);
+      return write(id, workspaceId);
+    });
+  }
+
+  it('opens and selects one more tab when the first moved to another window during its marker write', async () => {
+    const { steps, tabs, windowOf } = setup();
+    duringMarker(tabs, [10], (id) => windowOf.set(id, 2));
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => true,
+    });
+
+    expect(outcome).toEqual({ status: 'selected', tab: { id: 11, windowId: 1 } });
+    expect(steps).toEqual([
+      'create 10 active=false',
+      'marker 10 ws-b',
+      'create 11 active=false',
+      'marker 11 ws-b',
+      'select 11',
+    ]);
+  });
+
+  it('opens one more tab when the first closed during its marker write', async () => {
+    const { tabs } = setup();
+    const read = vi.mocked(browser.tabs.get).getMockImplementation()!;
+    vi.mocked(browser.tabs.get).mockImplementation(async (id) => {
+      if (id === 10) throw new Error('no tab');
+      return read(id);
+    });
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => true,
+    });
+
+    expect(outcome.status).toBe('selected');
+    expect(browser.tabs.update).toHaveBeenCalledTimes(1);
+    expect(browser.tabs.update).toHaveBeenCalledWith(11, { active: true });
+  });
+
+  it('opens no other tab when the window moved on as the first one left', async () => {
+    const { tabs, windowOf } = setup();
+    let current = true;
+    duringMarker(tabs, [10], (id) => {
+      windowOf.set(id, 2);
+      current = false;
+    });
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => current,
+    });
+
+    expect(outcome.status).toBe('superseded');
+    expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+  });
+
+  it('tries only once more and selects nothing when the second tab moves away too', async () => {
+    const { tabs, windowOf } = setup();
+    duringMarker(tabs, [10, 11], (id) => windowOf.set(id, 2));
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => true,
+    });
+
+    expect(outcome.status).toBe('displaced');
+    expect(browser.tabs.create).toHaveBeenCalledTimes(2);
+    expect(browser.tabs.update).not.toHaveBeenCalled();
+  });
+
+  it('does not try again when the tab and its selected fallback both failed', async () => {
+    const { tabs } = setup({ updateFails: true });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const create = vi.mocked(browser.tabs.create).getMockImplementation()!;
+    vi.mocked(browser.tabs.create).mockImplementation(async (props) => {
+      if (props.active) throw new Error('no window');
+      return create(props);
+    });
+
+    const outcome = await openWorkspaceFirstTabOnce({
+      workspaceId: 'ws-b',
+      windowId: 1,
+      tabs,
+      stillCurrent: () => true,
+    });
+
+    expect(outcome.status).toBe('unselected');
+    expect(browser.tabs.create).toHaveBeenCalledTimes(2);
   });
 });

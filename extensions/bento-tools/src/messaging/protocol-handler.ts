@@ -23,7 +23,7 @@ import type { TabRegistry } from '../tabs/TabRegistry';
 import type { WorkspaceStore } from '../workspaces/WorkspaceStore';
 import type { WindowHandoffGuard } from '../workspaces/EmptiedWorkspace';
 import { activateWorkspaceInWindow } from '../workspaces/activateInWindow';
-import { openWorkspaceFirstTab } from '../workspaces/FirstTab';
+import { openWorkspaceFirstTabOnce } from '../workspaces/FirstTab';
 import type { SettingsStore } from '../settings/SettingsStore';
 import type { PanelStore } from '../panels/PanelStore';
 import type { PinnedPanelsStore } from '../pinnedPanels/PinnedPanelsStore';
@@ -983,39 +983,84 @@ async function splitPanel(
 }
 
 /**
- * The replacement workspace has a tab to show in the window. Its activation opens one when
- * the workspace is empty, but that step swallows its own failure, so awaiting the activation
- * does not prove it. Opens one here if it is missing, and resolves false if that fails too.
+ * The replacement workspace has a tab to show in the window and the window still shows it. Its
+ * activation opens one when the workspace is empty, but that step swallows its own failure, so
+ * awaiting the activation does not prove it. Opens one here if it is missing (one more when the
+ * first was dragged to another window or closed during its marker write). Either way it resolves
+ * true only when, after every await, the window still shows the workspace and its selected tab
+ * is one of the workspace's (`replacementIsSelected`): a tab that exists but could not be
+ * selected, or one that moved or closed once selected, leaves the window on a tab the removal
+ * may take, and Firefox would then select an adjacent tab of any workspace. Otherwise the caller
+ * keeps the old tabs.
  */
 async function ensureReplacementTab(
   ctx: HandlerContext,
   workspaceId: string,
   windowId: number,
 ): Promise<boolean> {
+  const stillCurrent = () => ctx.workspaces.getActiveIdByWindow()[windowId] === workspaceId;
+  if (!stillCurrent()) return false;
   const panelTabIds = new Set(ctx.panels.getPanels(workspaceId));
-  const hasTab = () =>
-    ctx.tabs
-      .snapshot()
-      .some(
-        (tab) =>
-          tab.windowId === windowId &&
-          tab.workspaceId === workspaceId &&
-          !panelTabIds.has(tab.id) &&
-          !ctx.tabs.isClosing(tab.id),
+  const hasTab = ctx.tabs
+    .snapshot()
+    .some(
+      (tab) =>
+        tab.windowId === windowId &&
+        tab.workspaceId === workspaceId &&
+        !panelTabIds.has(tab.id) &&
+        !ctx.tabs.isClosing(tab.id),
+    );
+  let openedTabId: number | undefined;
+  if (!hasTab) {
+    try {
+      const outcome = await openWorkspaceFirstTabOnce({
+        workspaceId,
+        windowId,
+        tabs: ctx.tabs,
+        stillCurrent,
+      });
+      if (outcome.status !== 'selected') return false;
+      openedTabId = outcome.tab.id;
+    } catch (err) {
+      console.warn(
+        '[bento-tools] workspace/delete: opening a tab for the replacement failed:',
+        err,
       );
-  if (hasTab()) return true;
+      return false;
+    }
+  }
+  return replacementIsSelected(ctx, workspaceId, windowId, stillCurrent, openedTabId);
+}
+
+/**
+ * The last check before a delete removes the window's old tabs: the window's selected tab, read
+ * from Firefox, is live in the window, not closing and the workspace's (a panel of it counts),
+ * and the window still shows the workspace once that read resolved. A tab the registry does not
+ * hold yet counts only when it is the one just opened, which carries its eager assignment.
+ */
+async function replacementIsSelected(
+  ctx: HandlerContext,
+  workspaceId: string,
+  windowId: number,
+  stillCurrent: () => boolean,
+  openedTabId: number | undefined,
+): Promise<boolean> {
+  let selected: browser.tabs.Tab | undefined;
   try {
-    const created = await openWorkspaceFirstTab({
-      workspaceId,
-      windowId,
-      tabs: ctx.tabs,
-      stillCurrent: () => ctx.workspaces.getActiveIdByWindow()[windowId] === workspaceId,
-    });
-    return created !== null;
+    [selected] = await browser.tabs.query({ active: true, windowId });
   } catch (err) {
-    console.warn('[bento-tools] workspace/delete: opening a tab for the replacement failed:', err);
+    console.warn('[bento-tools] workspace/delete: reading the selected tab failed:', err);
     return false;
   }
+  if (!stillCurrent() || selected?.id === undefined || selected.windowId !== windowId) {
+    return false;
+  }
+  if (ctx.tabs.isClosing(selected.id)) return false;
+  // Read after the query: the registry may already hold the tab in another window (an attach
+  // the query result predates), and then the window no longer shows it.
+  const tracked = ctx.tabs.snapshot().find((tab) => tab.id === selected.id);
+  if (tracked === undefined) return selected.id === openedTabId;
+  return tracked.windowId === windowId && tracked.workspaceId === workspaceId;
 }
 
 /**
@@ -1028,9 +1073,10 @@ async function ensureReplacementTab(
  *
  * The window owns its replacement as soon as the store moves it, but the
  * replacement's activation (a tab to show, panels) runs later. The doomed tabs
- * are only removed once it has finished and the replacement is confirmed to have a
- * tab in the window; if one cannot be had, the window's old tabs stay and join the
- * replacement, so the window keeps working. The window is marked as handing off
+ * are only removed once it has finished and a tab of the replacement is confirmed
+ * selected in the window; if one cannot be had, or the window moved on to another
+ * workspace meanwhile, the window's old tabs stay and join the replacement, so the
+ * window keeps working. The window is marked as handing off
  * until the removals have settled, so the last-tab handler never sees an empty
  * replacement and deletes it or closes the window.
  */
@@ -1059,6 +1105,15 @@ async function deleteWorkspace(
       // Deliver the replacement's activation now and wait for it.
       await ctx.workspaces.flush();
       if (!(await ensureReplacementTab(ctx, replacementId, ownerWindowId))) {
+        // Kept tabs join the replacement, or, when a later delete removed it meanwhile, the
+        // workspace the window shows now. With neither they are released (`clearWorkspace`),
+        // since a tab naming a deleted workspace is hidden and blocks adoption, for the window's
+        // next workspace to adopt (or to close with the window). Read again after each await,
+        // since another delete can remove the destination during it.
+        const keepIn = () =>
+          ctx.workspaces.has(replacementId)
+            ? replacementId
+            : ctx.workspaces.getActiveIdByWindow()[ownerWindowId];
         const kept = toRemove.filter((tab) => tab.windowId === ownerWindowId);
         console.warn(
           '[bento-tools] workspace/delete: keeping the tabs of the deleted workspace in window',
@@ -1068,7 +1123,15 @@ async function deleteWorkspace(
         toRemove = toRemove.filter((tab) => tab.windowId !== ownerWindowId);
         for (const tab of kept) {
           await ctx.tabs.unmarkClosing(tab.id);
-          await ctx.tabs.assignWorkspace(tab.id, replacementId);
+          // Another pass only when a delete changed the destination during the assignment.
+          let into = keepIn();
+          for (;;) {
+            if (into === undefined) await ctx.tabs.clearWorkspace(tab.id);
+            else await ctx.tabs.assignWorkspace(tab.id, into);
+            const now = keepIn();
+            if (now === into) break;
+            into = now;
+          }
           // A panel of the deleted workspace is a normal tab now.
           void clearPanelMarker(tab.id);
         }

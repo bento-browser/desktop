@@ -1946,9 +1946,10 @@ workspaces.
   delete, which delivers the pending events now and resolves when the activation
   listener's runs have finished (the listener returns them), before it removes
   anything. That does not prove the replacement has a tab: the activation's own
-  tab creation swallows its failure. `ensureReplacementTab` therefore checks for a
-  live tab in the window and opens one itself, with its error propagated. If that
-  fails too, the old tabs of the window are not removed; they leave the closing
+  tab creation swallows its failure. `ensureReplacementTab` therefore opens a tab
+  itself when the window has none of the replacement, with its error propagated,
+  and in either case requires a tab of the replacement to be selected in the
+  window (`replacementIsSelected`, below). If that fails too, the old tabs of the window are not removed; they leave the closing
   state and become normal tabs of the replacement (a panel of the deleted
   workspace loses its marker), so the window keeps working, and the failure is
   logged. The window stays marked in `WindowHandoffGuard` until the removals have
@@ -1989,10 +1990,51 @@ workspaces.
   await was otherwise selected in its destination window. It then asks `isCurrent`
   once more, since the re-read is another await. A moved, reassigned or closing tab,
   or one superseded during the re-read, is left unselected and no other tab is
-  opened. A failed marker write
+  opened by `openWorkspaceFirstTab` itself. A failed marker write
   still selects the tab (no fade); a failed selection opens a selected tab the old
   way, so the window does not stay on the old workspace's tab. See the curtain note in
   [chrome-panel-rendering.md](chrome-panel-rendering.md#chrome-rendering-pitfalls).
+- Returning the tab `openWorkspaceFirstTab` opened did not say whether it was
+  selected: one dragged to another window, closed or superseded during its marker
+  write came back like a selected one. `ensureReplacementTab` counted any returned
+  tab as success, so a workspace delete removed the window's old tabs with no
+  replacement tab selected in it (the window on a closing tab, empty, or showing
+  another workspace's tab), and an empty-workspace activation or parked restore left
+  the outgoing workspace's tab selected. It now returns a `FirstTabOutcome`, and only
+  `selected` means a tab of the workspace is selected in the window it opened in
+  (the fallback tab counts). The three callers go through
+  `openWorkspaceFirstTabOnce`, which opens one more tab, once, when the first was
+  `displaced` (moved, reassigned, closing or gone) and the window still shows the
+  workspace; superseded opens nothing more. A `selected` outcome, or a replacement
+  tab that already exists, still does not authorize the delete's removal: the tab
+  can move or close as its selection resolves, the window can switch workspaces, and
+  an existing tab may be one the activation could not select, so removing the old
+  tabs let Firefox select an adjacent tab of a third workspace while Bento showed
+  the replacement. `ensureReplacementTab` therefore ends with
+  `replacementIsSelected`, read after every other await: the window still shows the
+  replacement and its selected tab (`tabs.query({ active: true, windowId })`) is
+  live in that window, not closing, and the replacement's in the registry, which
+  must also still hold it in that window (a selected panel of it counts; a tab the
+  registry does not hold yet counts only when it is the one just opened). The query
+  result can predate an attach: the registry already records the tab in another
+  window while adoption has not changed its workspace yet, and the old check
+  accepted it. Anything else, including superseded at any point or a
+  non-`selected` outcome, takes the keep path above: the window's old tabs stay and
+  join the replacement, or the workspace the window shows now when a later delete
+  removed the replacement, re-read after each `unmarkClosing` and each assignment
+  (an assignment is repeated when a delete changed the destination during it). With
+  neither (that delete left the window without a workspace, before or during an
+  assignment) each is released with `TabRegistry.clearWorkspace`, for the window's
+  next workspace to adopt; they are never removed on this path. A tab left naming
+  the deleted destination was hidden in the sidebar and kept `adoptableTabs` from
+  adopting any tab of the window. The release flag is right here: it makes
+  `confirmUnassigned` skip the session read, and a value that read could find (a
+  failed removal) names a deleted workspace, which `#hydrateOne` would apply again.
+  `restoreParkedEntries` pins, renames and hands over the tab the retry ended with.
+  When that tab was `displaced` too, the entry is skipped (not pinned, renamed or
+  counted in `restored`), so with no other entry restored the activation's usual
+  empty-workspace path opens the workspace's tab (with its own single retry), and
+  the restore itself retries no further.
 - Only a never-stored profile's first launch persists the boot backfill. Chrome
   arms the switch curtain only for a tab whose marker names another workspace, and
   the backfill gives an unmarked tab the active workspace in memory only, so a
