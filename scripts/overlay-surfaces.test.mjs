@@ -2541,24 +2541,24 @@ function popupWorld(options) {
 
 const lastAction = (world) => world.popupOpens().at(-1);
 
-test('the popup is prewarmed, covers the window and is created only where it can show', () => {
+test('the popup is created on first open, covers the window and is created only where it can show', () => {
   const row = /overlayEntry\(\{\s*id: 'bookmarks-popup',([\s\S]*?)\}\)/.exec(MOUNT);
   assert.ok(row, 'no bookmarks-popup row in the overlay table');
-  assert.match(row[1], /prewarm: true/);
+  assert.doesNotMatch(row[1], /eager: true|prewarm: true/, 'a popup nobody opened is not loaded');
   assert.match(row[1], /created: true/);
   assert.match(MOUNT, /ensureOverlayHost\(\{\s*hostId: 'bento-bookmarks-popup-host',\s*zIndex: 99993,\s*parentId: null,\s*inlineFade: false,/);
 
   const regular = makeWorld();
-  assert.ok(regular.overlays.ensure('bookmarks-popup', 'idle'), 'a regular window creates it');
+  assert.ok(regular.overlays.ensure('bookmarks-popup', 'show'), 'a regular window creates it');
   assert.deepEqual(regular.events.navigations, ['bookmarks-popup']);
 
   const priv = makeWorld({ privateWindow: true });
-  assert.equal(priv.overlays.ensure('bookmarks-popup', 'idle'), null, 'a private window never does');
+  assert.equal(priv.overlays.ensure('bookmarks-popup', 'show'), null, 'a private window never does');
   assert.deepEqual(priv.events.navigations, []);
 
   const off = makeWorld();
   off.applyChromeBookmarksEnabled(false);
-  assert.equal(off.overlays.ensure('bookmarks-popup', 'idle'), null, 'nor one with the manager off');
+  assert.equal(off.overlays.ensure('bookmarks-popup', 'show'), null, 'nor one with the manager off');
 });
 
 test('a star press opens the popup: the anchor moves from the sidebar frame to the host, and the document is sent one open', () => {
@@ -2659,6 +2659,9 @@ test('a cold popup open waits for its document, then shows and sends once', () =
   assert.equal(world.overlays.hasPendingOpen('bookmarks-popup'), true);
   assert.equal(world.isShown('bookmarks-popup'), false);
   assert.deepEqual(world.popupOpens(), [], 'nothing is sent to a document that is not listening');
+  // A second star press while the document loads replaces the waiting open.
+  world.titleChanged('bento-shell-frame', titleOf(POPUP_OPEN, EDIT));
+  assert.deepEqual(world.events.navigations, ['bookmarks-popup'], 'the document is loaded once');
 
   world.ready('bookmarks-popup');
   assert.equal(world.isShown('bookmarks-popup'), true);

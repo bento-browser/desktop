@@ -427,9 +427,9 @@ work on the Bento store. Private windows and the opt-out keep Firefox's Places p
   mirrors tabs or panels: the edit popover's tab id, URL and title come in the chrome open request,
   and the sidebar-only `BENTO_BOOKMARKED_TABS` hook, which reads the tabs mirror, lives in its own
   module (`src/bookmarks/useBookmarkedTabsSignal.ts`) so these entries do not import it:
-  - `bookmarks-popup` (prewarmed overlay, full-window transparent host): the edit popover (Mux
-    `Popover`, Name `TextField`, Space and Group `SelectNative`, Remove, Done) and the group, Spaces
-    and overflow menus (Mux `Menu`). Components in `components/BookmarkPopup/`.
+  - `bookmarks-popup` (overlay created on first open, full-window transparent host): the edit
+    popover (Mux `Popover`, Name `TextField`, Space and Group `SelectNative`, Remove, Done) and the
+    group, Spaces and overflow menus (Mux `Menu`). Components in `components/BookmarkPopup/`.
   - `bookmarks-toolbar` (persistent frame in `#PersonalToolbar`, the panel trailer pattern): group
     buttons for `lastSpaceId`, the space button, the overflow button and the empty hint. Components
     in `components/BookmarksToolbar/`.

@@ -1728,7 +1728,6 @@
       overlayEntry({ id: 'menu', prewarm: true, navigate: setBentoMenuSrc }),
       overlayEntry({
         id: 'bookmarks-popup',
-        prewarm: true,
         created: true,
         canCreate: isBentoBookmarksActive,
         navigate: setBentoBookmarksPopupSrc,

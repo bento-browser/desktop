@@ -588,7 +588,7 @@ test('the table lists the strategies the docs promise', () => {
   // Prewarm order is table order.
   assert.deepEqual(
     rows.filter((row) => row.prewarm).map((row) => row.id),
-    ['addrbar', 'palette', 'menu', 'bookmarks-popup'],
+    ['addrbar', 'palette', 'menu'],
   );
   assert.ok(rows.every((row) => !(row.eager && row.prewarm)));
 });

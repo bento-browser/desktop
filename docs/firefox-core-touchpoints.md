@@ -1072,7 +1072,7 @@ document`), then in a built app open the command palette, address bar, a sidebar
 ### Lazy Overlay Documents
 
 - Status: Active
-- Last updated: 2026-11-14
+- Last updated: 2026-11-18
 - Workspace layers document (2026-11-14): the workspace switcher, edit-workspace and
   confirm overlays are one document (`workspace-layers.html`) in one host,
   `#bento-workspace-layers-host` with `#bento-workspace-layers-frame`, both created by
@@ -1181,10 +1181,10 @@ document`), then in a built app open the command palette, address bar, a sidebar
   - No new Firefox patch.
 - Bento functionality: the sidebar shell, the panel trailer, and the workspace
   layers overlay (switcher, edit workspace, confirm) load at window startup.
-  The address bar, command palette, menu, and (regular windows with the Bookmarks manager on)
-  the bookmark popup are created at idle after the launch
-  veil lifts. The workspace palette, merge palette, welcome, embedded import, and
-  panel navigator tooltip are created on first use. Chrome reveals an overlay, and
+  The address bar, command palette, and menu are created at idle after the launch
+  veil lifts. The workspace palette, merge palette, welcome, embedded import,
+  panel navigator tooltip, and (regular windows with the Bookmarks manager on) the
+  bookmark popup are created on first use. Chrome reveals an overlay, and
   sends it anything, only after the document's `BENTO_OVERLAY_READY` title; a
   document that does not announce within 5 s is logged once and its open stays
   pending (no reveal). A pending open counts as open for Esc, the toggles, and
