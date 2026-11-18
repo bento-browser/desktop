@@ -10220,16 +10220,15 @@
     // because the panel container (a notificationbox) isn't a scroll
     // surface and keyboard focus is on chrome, not content.
     //
-    // We can't simply move keyboard focus to the panel's <browser>
-    // element to let the content's natural arrow-key handling take
-    // over: with focus in content (a remote process), the chrome
-    // keydown listener on `window` no longer sees shortcut key
-    // events, breaking cycling. Instead, use the chrome command
-    // dispatcher's cmd_scrollLine{Up,Down} which routes scroll
-    // commands across the multi-process boundary to whichever
-    // browser is currently focused. Brief focus shuffle: focus the
-    // browser to direct the command at it, dispatch, then restore
-    // focus to the container so shortcut cycling keeps working.
+    // Focus stays on the container: use the chrome command dispatcher's
+    // cmd_scrollLine{Up,Down}, which routes scroll commands across the
+    // multi-process boundary to whichever browser is currently focused.
+    // Brief focus shuffle: focus the browser to direct the command at it,
+    // dispatch, then restore focus to the container so it stays the
+    // cycle-focused panel. (Chrome keydown listeners on window do see keys
+    // aimed at a focused remote <browser>; the Cmd/Ctrl+Shift+Arrow branch
+    // above returns early there and leaves those keys to the BentoKey
+    // actor.)
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const target = e.target;
       const isPanelContainer = !!(
@@ -20398,10 +20397,13 @@
   // content from receiving any keys — breaking page-bound keyboard
   // extensions (Vimium j/k, Surfingkeys, etc.) inside panels.
   //
-  // The child listens for keydowns inside content, forwards Bento-
-  // bound keys to the parent (which dispatches a CustomEvent on this
-  // chrome window — see attachContentKeyBridgeListener below). All
-  // other keys pass through naturally so extensions still work.
+  // The child listens for keydowns inside content and forwards
+  // Cmd/Ctrl+Shift+Left/Right from non-editable targets to the parent,
+  // which dispatches a CustomEvent on this chrome window (see
+  // attachContentKeyBridgeListener below); the cycle runs only against a
+  // real key press chrome saw for that <browser>. Cmd/Ctrl+Left/Right and
+  // Cmd/Ctrl+L/E/T never reach content: chrome's own keydown handlers take
+  // them first. All other keys pass through so extensions still work.
   //
   // registerWindowActor is process-wide — the second window's
   // bento-shell-mount.js boot would throw because the actor is already
@@ -20426,6 +20428,18 @@
         // (delegating to the actor), shortcut cycling appears to "stop"
         // whenever the focused panel is on one of these URLs.
         matches: ['*://*/*', 'file:///*', 'moz-extension://*/*', 'about:newtab', 'about:blank'],
+        // Web pages, about:blank and file:// pages load in 'web',
+        // 'webIsolated=' and 'file' processes. With
+        // dom.jsipc.check_safeForUntrustedWebProcess (true by default)
+        // Firefox refuses an actor in those processes unless this is set,
+        // and Cmd/Ctrl+Shift+Arrow panel cycling then works only on
+        // privileged pages. A compromised content process can send any
+        // BentoKey message at any time, so a message alone never acts:
+        // BentoKeyParent passes on only a Cycle of 1 or -1 from a tab or
+        // Bento frame of this window, and attachContentKeyBridgeListener
+        // cycles only by consuming a trusted keydown chrome saw for that
+        // <browser> (residual risk: docs/technical/panel-traversal-focus.md).
+        safeForUntrustedWebProcess: true,
       });
     } catch (err) {
       // Already registered (second window): NotSupportedError, or
@@ -20465,22 +20479,53 @@
     }
   }
 
+  // Real key presses that BentoKeyParent may turn into a panel cycle. Chrome
+  // sees every keydown aimed at a focused remote <browser> before content does
+  // (EventStateManager forwards it in PostHandleKeyboardEvent), with that
+  // <browser> as the target, so a trusted Cmd/Ctrl+Shift+Left/Right seen here is
+  // proof the user pressed it in that <browser>. Each press is one entry; the
+  // Cycle event consumes one matching entry no older than
+  // CONTENT_KEY_PRESS_MAX_AGE_MS, so a content process cannot cycle panels
+  // without a press, from a <browser> the press did not go to, or twice per press.
+  // Reply events are skipped: after content declines a key, BrowserParent
+  // re-dispatches it in chrome as a trusted event with the same target, and a
+  // compromised process can return a held reply as a keydown at any later time.
+  const CONTENT_KEY_PRESS_MAX_AGE_MS = 1500;
+  const contentKeyPresses = new WeakMap();
+
+  function noteContentKeyPress(e) {
+    if (!e.isTrusted || e.isReplyEventFromRemoteContent || e.type !== 'keydown') return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!e.shiftKey || e.altKey || (e.metaKey && e.ctrlKey)) return;
+    if (!(typeof e.getModifierState === 'function' ? e.getModifierState('Accel') : e.metaKey || e.ctrlKey)) return;
+    const browser = e.target;
+    if (browser?.localName !== 'browser') return;
+    const presses = contentKeyPresses.get(browser) ?? [];
+    presses.push({ direction: e.key === 'ArrowRight' ? 1 : -1, time: performance.now() });
+    contentKeyPresses.set(browser, presses);
+  }
+
+  function takeContentKeyPress(browser, direction) {
+    const presses = browser ? contentKeyPresses.get(browser) : null;
+    if (!presses) return false;
+    const now = performance.now();
+    while (presses.length && now - presses[0].time > CONTENT_KEY_PRESS_MAX_AGE_MS) presses.shift();
+    const index = presses.findIndex((press) => press.direction === direction);
+    if (index < 0) return false;
+    presses.splice(index, 1);
+    return true;
+  }
+
   // Listen for the CustomEvent dispatched by BentoKeyParent.
   // navigatePanels is closure-private, so the actor can't call it
   // directly — the event is the bridge.
   function attachContentKeyBridgeListener() {
+    window.addEventListener('keydown', noteContentKeyPress, true);
     window.addEventListener('BentoKey:Cycle', (e) => {
       const dir = e?.detail?.direction;
       if (dir !== 1 && dir !== -1) return;
+      if (!takeContentKeyPress(e.detail.browser, dir)) return;
       navigatePanels(dir);
-    });
-    window.addEventListener('BentoKey:PanelHistory', (e) => {
-      const dir = e?.detail?.direction;
-      if (dir !== 1 && dir !== -1) return;
-      navigateFocusedPanelHistory(dir);
-    });
-    window.addEventListener('BentoKey:AddrbarOpen', (e) => {
-      requestAddrbarOpen(e?.detail?.mode === 'newTab' ? 'newTab' : 'current');
     });
   }
 

@@ -533,8 +533,9 @@ export const MEMBERS = [
       'notePageClose',
       'patches/core-ui/04-inspect-panel-browser.patch#getTabForBrowser',
       'extensions/bento-tools/experiments/bento-tab-state/api.js#getTabForBrowser',
+      'src/browser/actors/BentoKeyParent.sys.mjs#getTabForBrowser',
     ],
-    use: "Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, and bento-tab-state names the tab a location change belongs to.",
+    use: "Maps a panel browser to its tab; patch 04 uses it to inspect the right-clicked panel, a page's window.close() uses it to name the tab that asked, bento-tab-state names the tab a location change belongs to, and BentoKeyParent accepts a key message only from a tab of its window.",
     at: [FF.tabbrowser, '^\\s+getTabForBrowser\\(', 1462],
   },
   {
@@ -2570,6 +2571,15 @@ export const MEMBERS = [
     sites: ['attachAboutThemePublisher'],
     use: 'Republishes the about: page theme after a tab moves into this window: the adopting browser carries the moved browser id once the docshell swap is done.',
     at: [FF.browserEl, 'new CustomEvent\\("SwapDocShells"', 1650],
+  },
+  {
+    id: 'EventStateManager.PostHandleKeyboardEvent',
+    kind: 'source',
+    how: 'listens',
+    probe: 'E',
+    sites: ['noteContentKeyPress', 'takeContentKeyPress'],
+    use: "A keydown aimed at a focused remote <browser> is dispatched in the chrome window first, with that <browser> as its target, and forwarded to content only afterwards (PostHandleKeyboardEvent, IsWaitingReplyFromRemoteProcess). The mount script records each trusted Cmd/Ctrl+Shift+Left/Right seen there as a press, and a BentoKey:Cycle from content cycles panels only by consuming one for its <browser>.",
+    at: ['dom/events/EventStateManager.cpp', 'aKeyboardEvent->IsWaitingReplyFromRemoteProcess\\(\\)', 3992],
   },
   {
     id: 'DOMDocElementInserted',

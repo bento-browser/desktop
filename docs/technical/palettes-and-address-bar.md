@@ -602,9 +602,8 @@ chrome overlay entry hosted at `address-bar.html`, mounted dynamically by
 chrome keybinding intercepts `Cmd/Ctrl+L`, `Cmd/Ctrl+E`, and `Cmd/Ctrl+T` in
 capture phase, opens the overlay, and sends the mode to the addrbar frame
 through a frame script that posts on `BroadcastChannel('bento-addrbar-bus')`
-from the content global. `Cmd/Ctrl+E` is also forwarded by the `BentoKey`
-content actor so the current-tab address dialog opens while web content owns
-focus. `Cmd/Ctrl+L` and `Cmd/Ctrl+E` open the palette over the expanded sidebar's
+from the content global. The keybinding also works while web content owns
+focus: chrome sees the keydown before content does. `Cmd/Ctrl+L` and `Cmd/Ctrl+E` open the palette over the expanded sidebar's
 address row when it is on screen (an open request to the row, with a centered
 fallback), and `Cmd/Ctrl+T` always opens it centered; the request, the anchored
 header and the grow are in
