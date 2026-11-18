@@ -20487,11 +20487,14 @@
   // Cycle event consumes one matching entry no older than
   // CONTENT_KEY_PRESS_MAX_AGE_MS, so a content process cannot cycle panels
   // without a press, from a <browser> the press did not go to, or twice per press.
+  // Reply events are skipped: after content declines a key, BrowserParent
+  // re-dispatches it in chrome as a trusted event with the same target, and a
+  // compromised process can return a held reply as a keydown at any later time.
   const CONTENT_KEY_PRESS_MAX_AGE_MS = 1500;
   const contentKeyPresses = new WeakMap();
 
   function noteContentKeyPress(e) {
-    if (!e.isTrusted || e.type !== 'keydown') return;
+    if (!e.isTrusted || e.isReplyEventFromRemoteContent || e.type !== 'keydown') return;
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     if (!e.shiftKey || e.altKey || (e.metaKey && e.ctrlKey)) return;
     if (!(typeof e.getModifierState === 'function' ? e.getModifierState('Accel') : e.metaKey || e.ctrlKey)) return;

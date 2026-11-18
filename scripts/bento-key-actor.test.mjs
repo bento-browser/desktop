@@ -145,6 +145,7 @@ test('a Cycle message cycles only by consuming a real press for its <browser>', 
   m.message(main, -1);
   assert.deepEqual(m.cycles, [1], 'stale press');
   m.press(main, { isTrusted: false });
+  m.press(main, { isReplyEventFromRemoteContent: true });
   m.press(main, { shiftKey: false });
   m.press(main, { altKey: true });
   m.press(main, { metaKey: true, ctrlKey: true });
@@ -152,7 +153,7 @@ test('a Cycle message cycles only by consuming a real press for its <browser>', 
   m.press(main, { key: 'ArrowUp' });
   m.press(m.browser('vbox'));
   m.message(main, 1);
-  assert.deepEqual(m.cycles, [1], 'untrusted, other chords and non-browser targets leave no press');
+  assert.deepEqual(m.cycles, [1], 'untrusted, content replies, other chords and non-browser targets leave no press');
   m.press(main);
   m.press(main);
   m.message(main, 1);

@@ -337,8 +337,10 @@ The source review covered every active touchpoint:
   time and can make chrome focus match it without user input (`PBrowser::RequestFocus`,
   `framefocusrequested`, window raise), so a cycle is tied to a real key press: the
   mount script's capture keydown listener on the chrome window (`noteContentKeyPress`)
-  records each trusted Cmd/Ctrl+Shift+ArrowLeft/Right whose target is a `<browser>`,
-  and the `BentoKey:Cycle` listener cycles only by consuming one such press for the
+  records each trusted Cmd/Ctrl+Shift+ArrowLeft/Right whose target is a `<browser>`
+  and that is not a content reply (`isReplyEventFromRemoteContent`; a compromised
+  process can return a held `BrowserParent::RecvReplyKeyEvent` reply as a trusted
+  keydown later), and the `BentoKey:Cycle` listener cycles only by consuming one such press for the
   sender's `<browser>` in the same direction, no older than 1500 ms
   (`takeContentKeyPress`). This depends on chrome seeing a keydown aimed at a focused
   remote `<browser>` first, with that `<browser>` as the target

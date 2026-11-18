@@ -212,7 +212,11 @@ or blank add-panel insertion is still settling.
   longer checks focus: content can satisfy those checks, and the token already
   proves the press went to that `<browser>`. Each press, including each key
   repeat, allows at most one cycle, in the press's direction, from the
-  `<browser>` it was aimed at, within 1500 ms. Residual, accepted: a compromised
+  `<browser>` it was aimed at, within 1500 ms. Keydowns with
+  `isReplyEventFromRemoteContent` never record a press: when content leaves a
+  key unhandled, `BrowserParent::RecvReplyKeyEvent` re-dispatches it in chrome
+  as a trusted event aimed at the same `<browser>`, and a compromised process
+  can return a held reply as a keydown at any later time. Residual, accepted: a compromised
   process hosting a document in the `<browser>` the user pressed the chord in
   (its top document or any of its iframes) can spend that press within the
   window, for example by cycling from an editable field the child would have
