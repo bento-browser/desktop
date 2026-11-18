@@ -1223,7 +1223,12 @@ window.
   `background-color` of the History field's shadow `#input` with the Bookmarks
   field (`.bento-bookmarks-search-input`). Mapping the names is the fix. A
   document-level `color-scheme` would give `#ffffff` rather than the theme's
-  `--neutral-5`, and this sheet also loads in `browser.xhtml`.
+  `--neutral-5`, and this sheet also loads in `browser.xhtml`. Patch core-ui/12
+  had the same gap in `preferences.css`. The Settings search field and the Site Data
+  dialog's search field took Firefox's fallback there too, with an 8px radius.
+  Because Settings sets `color-scheme` from `data-color-mode`, the fallback
+  followed Bento's mode: `#ffffff` in light and `#42414d` in dark. The patch now
+  sets the current names (`--neutral-10`, `--radius-s`).
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.

@@ -1,13 +1,13 @@
-From 819c1ca72ea4bed8ecef259c74168e18d8b0c8f8 Mon Sep 17 00:00:00 2001
+From 2bbbb2a6e9e389b94c10dfe72fe6097a96037c53 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 1 Jul 2026 19:05:00 +1000
 Subject: [PATCH] Center and theme native preferences layout
 
 ---
- browser/components/preferences/preferences.js |  88 +++++++
+ browser/components/preferences/preferences.js |  88 ++++++
  .../components/preferences/preferences.xhtml  |   9 +-
- .../themes/shared/preferences/preferences.css | 249 +++++++++++++++++-
- 3 files changed, 336 insertions(+), 10 deletions(-)
+ .../themes/shared/preferences/preferences.css | 252 +++++++++++++++++-
+ 3 files changed, 339 insertions(+), 10 deletions(-)
 
 diff --git a/browser/components/preferences/preferences.js b/browser/components/preferences/preferences.js
 index df1663c5a74c8486b3342a53a58bf62dc9e3963c..1c3cd09f2d0f4cbcef765d251b695bc3f13fcd2b 100644
@@ -157,10 +157,10 @@ index 8e0c6483d6edd587cc425abe16f4a756f88e492b..31b486b6e07e5ddc87d5738fb5a3cfc8
          <html:div id="search-container">
            <html:nav-notice
 diff --git a/browser/themes/shared/preferences/preferences.css b/browser/themes/shared/preferences/preferences.css
-index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca18fd8e174 100644
+index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..cd5c2ed985a953f38758ddf494fa404457f13025 100644
 --- a/browser/themes/shared/preferences/preferences.css
 +++ b/browser/themes/shared/preferences/preferences.css
-@@ -22,7 +22,173 @@
+@@ -22,7 +22,175 @@
    --card-padding-block: var(--card-padding-inline);
  
    @media -moz-pref("browser.settings-redesign.enabled") {
@@ -291,11 +291,13 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
 +    --input-bgcolor: var(--neutral-10);
 +    --input-border-color: var(--neutral-24);
 +    --input-color: var(--neutral-90);
-+    --input-text-background-color: var(--neutral-10);
-+    --input-text-background-color-disabled: var(--neutral-12);
-+    --input-text-border-color: var(--neutral-24);
-+    --input-text-border-color-disabled: var(--neutral-20);
-+    --input-text-border-radius: var(--radius-s);
++    /* moz-input-text and moz-input-search read these names; Firefox 160
++       does not read the older --input-text-* ones. */
++    --input-background-color: var(--neutral-10);
++    --input-background-color-disabled: var(--neutral-12);
++    --input-border-color-disabled: var(--neutral-20);
++    --input-border-radius: var(--radius-s);
++    --input-search-border-radius: var(--radius-s);
 +    --input-text-color: var(--neutral-90);
 +    --input-box-shadow-color-warning: color-mix(in srgb, var(--warning-60) 30%, transparent);
 +    --input-border-color-warning: var(--warning-60);
@@ -335,7 +337,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
    }
  
    user-select: text;
-@@ -107,7 +273,12 @@
+@@ -107,7 +275,12 @@
    padding-top: 0;
    scroll-padding-top: calc(calc(2 * var(--page-space-block-start)) + var(--search-container-padding) + var(--search-container-margin));
  
@@ -348,7 +350,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
      padding-inline: var(--space-medium);
    }
  }
-@@ -125,6 +296,61 @@
+@@ -125,6 +298,62 @@
    width: 100%;
  }
  
@@ -383,9 +385,10 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
 +  }
 +
 +  #searchInput {
-+    --input-text-background-color: var(--neutral-10);
-+    --input-text-border-color: var(--neutral-24);
-+    --input-text-border-radius: var(--radius-s);
++    --input-background-color: var(--neutral-10);
++    --input-border-color: var(--neutral-24);
++    --input-border-radius: var(--radius-s);
++    --input-search-border-radius: var(--radius-s);
 +    --input-text-color: var(--neutral-90);
 +  }
 +
@@ -410,7 +413,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
  html|div[data-category],
  groupbox[data-category],
  setting-group[data-category] {
-@@ -577,6 +803,15 @@ html|dialog,
+@@ -577,6 +806,15 @@ html|dialog,
    -moz-scrollbar-inset-block: 0 var(--dialog-resizer-inset);
  }
  
@@ -426,7 +429,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
  .dialogBox[resizable="true"] {
    resize: both;
    overflow: hidden;
-@@ -659,11 +894,11 @@ html|dialog,
+@@ -659,11 +897,11 @@ html|dialog,
  }
  
  .fxaProfileImage.actionable:hover {
@@ -440,7 +443,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
  }
  
  #useFirefoxSync {
-@@ -1270,12 +1505,12 @@ richlistitem .text-link:hover {
+@@ -1270,12 +1508,12 @@ richlistitem .text-link:hover {
  }
  
  @media (prefers-color-scheme: dark) {
@@ -456,7 +459,7 @@ index 7ad53ae00dc8e42e13c58fb00770ac487d0a4139..9f458ba951f0e3b4f675cb57c092cca1
    }
  }
  
-@@ -1408,7 +1643,7 @@ setting-group[groupid="aiFeatures"] {
+@@ -1408,7 +1646,7 @@ setting-group[groupid="aiFeatures"] {
  
  .ai-controls-description {
    --ai-controls-description-image-margin: calc(64px + var(--space-large));

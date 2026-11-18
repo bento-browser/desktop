@@ -1215,8 +1215,11 @@ export const MEMBERS = [
     kind: 'source',
     how: 'writes',
     probe: 'E',
-    sites: ['src/browser/base/content/bento-chrome-theme.css#--input-background-color'],
-    use: "The History sidebar's moz-input-search fills its shadow input from --input-background-color (with --input-border, --input-border-radius, --input-search-border-radius, --input-min-height and the icon sizes); Bento's sheet cannot reach that shadow root, so it sets these names on the host. The 160 sheets do not read the --input-text-* names Bento set before (the release that dropped them is unknown; the field was already dark on 159.0.1), which left the field dark grey in light mode.",
+    sites: [
+      'src/browser/base/content/bento-chrome-theme.css#--input-background-color',
+      'patches/core-ui/12-center-native-preferences.patch#--input-search-border-radius',
+    ],
+    use: "The History sidebar's moz-input-search fills its shadow input from --input-background-color (with --input-border, --input-border-radius, --input-search-border-radius, --input-min-height and the icon sizes); Bento's sheet cannot reach that shadow root, so it sets these names on the host. The 160 sheets do not read the --input-text-* names Bento set before (the release that dropped them is unknown; the field was already dark on 159.0.1), which left the field dark grey in light mode. Patch core-ui/12 sets the same names in preferences.css for the Settings and Site Data search fields.",
     at: [FF.mozInputText, 'background-color: var\\(--input-background-color\\)', 13],
   },
 
