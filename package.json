@@ -105,6 +105,11 @@
       "@tiptap/pm": "3.31.4",
       "@tiptap/react": "3.31.4",
       "@tiptap/starter-kit": "3.31.4"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
     }
   },
   "license": "MPL-2.0"
