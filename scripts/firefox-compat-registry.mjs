@@ -93,6 +93,7 @@ const FF = {
   placesUIUtils: 'browser/components/places/PlacesUIUtils.sys.mjs',
   bookmarksSidebarJs: 'browser/components/places/content/bookmarksSidebar.js',
   bookmarksSidebarXhtml: 'browser/components/places/content/bookmarksSidebar.xhtml',
+  mozInputText: 'toolkit/content/widgets/moz-input-text/moz-input-text.css',
   windowGlobalParent: 'dom/ipc/WindowGlobalParent.cpp',
   eventStateManager: 'dom/events/EventStateManager.cpp',
   nsGlobalWindowOuter: 'dom/base/nsGlobalWindowOuter.cpp',
@@ -1208,6 +1209,15 @@ export const MEMBERS = [
     sites: ['runNativeBookmarksSearch'],
     use: 'Native bookmarks sidebar search input that Bento replaces.',
     at: [FF.bookmarksSidebarXhtml, 'id="search-box"', 52],
+  },
+  {
+    id: 'moz-input-text --input-background-color',
+    kind: 'source',
+    how: 'writes',
+    probe: 'E',
+    sites: ['src/browser/base/content/bento-chrome-theme.css#--input-background-color'],
+    use: "The History sidebar's moz-input-search fills its shadow input from --input-background-color (with --input-border, --input-border-radius, --input-search-border-radius, --input-min-height and the icon sizes); Bento's sheet cannot reach that shadow root, so it sets these names on the host. The 160 sheets do not read the --input-text-* names Bento set before (the release that dropped them is unknown; the field was already dark on 159.0.1), which left the field dark grey in light mode.",
+    at: [FF.mozInputText, 'background-color: var\\(--input-background-color\\)', 13],
   },
 
   // ── Chrome DOM ids Bento looks up ──

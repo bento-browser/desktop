@@ -1205,6 +1205,25 @@ window.
   `--button-background-color-destructive`, now mapped to
   `--muxui-semantic-action-danger-background` with Firefox's red as the `var()`
   fallback, so an unbridged document keeps a filled Delete button.
+- A Firefox widget in a native sidebar or Places document whose shadow root
+  Bento's sheets do not reach takes its colours only from the variables Bento sets
+  on its host, and only under the names the widget's own sheet reads. The History
+  sidebar's `moz-input-search` (`historySidebar.xhtml`; the mount script replaces
+  only the Bookmarks one) reads `--input-background-color`, `--input-border`,
+  `--input-border-radius`, `--input-search-border-radius` and `--input-min-height`
+  from `moz-input-text.css` and `moz-input-search.css`. On 159.0.1 and 160.0
+  `bento-chrome-theme.css` set only the old `--input-text-*` names, so the field
+  fell back to Firefox's `light-dark(#ffffff, #42414d)`. These chrome documents
+  keep `color-scheme: normal`, and with the sidebar document's
+  `prefers-color-scheme` dark (measured with macOS in Dark appearance and
+  `browser.theme.toolbar-theme` 0), that resolved to `#42414d` in Bento's light mode
+  (found 2026-11-14, fixed 2026-11-18). The theme and token sheets were
+  present and the aliases resolved (`--neutral-5` was `#fbfaf8` on the root), so
+  this was a name gap, not a missing bridge. To check, compare the computed
+  `background-color` of the History field's shadow `#input` with the Bookmarks
+  field (`.bento-bookmarks-search-input`). Mapping the names is the fix. A
+  document-level `color-scheme` would give `#ffffff` rather than the theme's
+  `--neutral-5`, and this sheet also loads in `browser.xhtml`.
 - Do not add standalone theme title writes on shell mount. Theme and
   `uiColorMode` must ride together inside `BENTO_PANELS`; otherwise a
   theme-only title can overwrite the first panel sync before chrome reads it.
