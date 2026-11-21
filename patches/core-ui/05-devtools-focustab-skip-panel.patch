@@ -1,4 +1,4 @@
-From 1db58098ca115795cc5ca4cabc8e7c5438d626aa Mon Sep 17 00:00:00 2001
+From 5be398e7035650bc01aff1f45895453ac055db1f Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:34 +1000
 Subject: [PATCH] Skip Bento panel browsers in DevTools focusTab

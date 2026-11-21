@@ -1,4 +1,4 @@
-From 2e40fa0a1fc2420c4bdb0db1d9621c6e1ff676ea Mon Sep 17 00:00:00 2001
+From 20af58a4fead94f6cdffb96cd69b1b1fb19c330b Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:45 +1000
 Subject: [PATCH] Synchronize tabbrowser state with Bento

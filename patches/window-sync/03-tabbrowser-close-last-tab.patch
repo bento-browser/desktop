@@ -1,4 +1,4 @@
-From 21dce53a784bda9ceafd4790f22a0d27bc4ad5d2 Mon Sep 17 00:00:00 2001
+From 46d19047af6433d2478682fa0b2752948e05a16a Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:46 +1000
 Subject: [PATCH] Preserve Bento behavior when closing the last tab

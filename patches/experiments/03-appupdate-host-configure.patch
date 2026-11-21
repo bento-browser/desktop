@@ -1,4 +1,4 @@
-From c0035bebd4fbdfe93adb8ea9366b6ce4dd8f0038 Mon Sep 17 00:00:00 2001
+From 56649f4992a40b32db2525e99e5362704b483c97 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 2 Nov 2026 03:07:44 +1100
 Subject: [PATCH] Wire MOZ_APPUPDATE_HOST through configure

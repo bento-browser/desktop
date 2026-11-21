@@ -1,4 +1,4 @@
-From 762f845f0915e92cb7c0ad4cc43d93b43b2727a2 Mon Sep 17 00:00:00 2001
+From 80846a9ffaa37ac6be4cdfe6bd393e6f1407b8ba Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:30 +1000
 Subject: [PATCH] Hide native Firefox tabs

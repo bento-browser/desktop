@@ -1,4 +1,4 @@
-From 620b26e0966a2d62affbb05ce434008aefb05647 Mon Sep 17 00:00:00 2001
+From 61a8ac1862caca372c94f3de207ac15ba15b3895 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 24 Jun 2026 19:23:39 +1000
 Subject: [PATCH] Import Firefox profile data on first Bento run

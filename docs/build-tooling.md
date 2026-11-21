@@ -81,6 +81,13 @@ environment file needed only the `STRIP` line. That run used
 `.bento/firefox-160.env` in place of the 159 names, and the artifact was
 LLVM 22.1.8.
 
+Firefox 160.0.1 still needs it (2026-11-22, same names and artifact). That
+upgrade's first `pnpm run build` ran without `STRIP`; a later `pnpm run build`
+with `STRIP` exported did not reconfigure, so `autoconf.mk` kept the cached
+LLVM 21 tool and `package` failed the same way. Running `pnpm run mach configure` with the env file sourced, then
+`pnpm run build` and `pnpm run package`, fixed it. Source the env file before
+the first build of an upgrade to avoid the extra configure.
+
 This recipe starts at the root of an already imported 159.0.1 worktree with
 Bento's normal native-build prerequisites installed. On this host it also requires
 Homebrew Python 3.14 at `/opt/homebrew/opt/python@3.14/libexec/bin/python3`
