@@ -11,7 +11,7 @@ import { handleRequest, selectResponse } from './worker.mjs';
 const release = {
   version: '0.0.3',
   buildId: '20261102120000',
-  marUrl: `https://downloads.bentobrowser.app/${marFileName('0.0.3', '20261102120000')}`,
+  marUrl: `https://dl.bentobrowser.app/${marFileName('0.0.3', '20261102120000')}`,
   size: 123456789,
   sha512: 'ab'.repeat(64),
   platformVersion: '158.0',
@@ -73,7 +73,7 @@ test('offers one complete update to an older client', async () => {
 test('type is major only when the major version rises', async () => {
   const major = withRelease({
     version: '1.0.0',
-    marUrl: `https://downloads.bentobrowser.app/${marFileName('1.0.0', release.buildId)}`,
+    marUrl: `https://dl.bentobrowser.app/${marFileName('1.0.0', release.buildId)}`,
   });
   assert.match((await check(updateUrl({ version: '0.9.9' }), major)).body, /type="major"/);
   assert.match(
@@ -305,7 +305,7 @@ test("each environment's wrangler entry serves its own descriptor on its own dom
   });
   const versions = { test: '0.0.3', production: '0.0.5' };
   for (const [env, version] of Object.entries(versions)) {
-    const marUrl = `https://downloads.bentobrowser.app/${marFileName(version, release.buildId)}`;
+    const marUrl = `https://dl.bentobrowser.app/${marFileName(version, release.buildId)}`;
     fs.writeFileSync(
       path.join(dir, 'releases', `${env}.json`),
       JSON.stringify({ ...serving, release: { ...release, version, marUrl } }),

@@ -239,7 +239,7 @@ test('test environment: uploads, verifies, rewrites the descriptor and deploys, 
     release: {
       version: '0.0.3',
       buildId: '20261102120000',
-      marUrl: `https://downloads-test.bentobrowser.app/${s.marName}`,
+      marUrl: `https://dl-test.bentobrowser.app/${s.marName}`,
       size: s.marBytes.length,
       sha512: digest('sha512', s.marBytes),
       platformVersion: '158.0',
@@ -250,7 +250,7 @@ test('test environment: uploads, verifies, rewrites the descriptor and deploys, 
   assert.equal(s.descriptor('production').serving, false, 'the other environment is untouched');
 
   // Each uploaded file: existence check, HEAD, Range, full GET; promote reuses that verification.
-  const marUrl = `https://downloads-test.bentobrowser.app/${s.marName}`;
+  const marUrl = `https://dl-test.bentobrowser.app/${s.marName}`;
   const marRequests = s.requests.filter(({ key }) => key === marUrl);
   assert.deepEqual(
     marRequests.map(({ method, range }) => [method, range]),
@@ -291,7 +291,7 @@ test('production: runs the gate first, then uploads and deploys the production W
   );
   assert.equal(
     s.descriptor('production').release.marUrl,
-    `https://downloads.bentobrowser.app/${s.marName}`,
+    `https://dl.bentobrowser.app/${s.marName}`,
   );
   assert.equal(s.descriptor('production').serving, true);
   assert.equal(s.descriptor('test').serving, false);
@@ -389,7 +389,7 @@ test('withdraw needs no gate, no release and keeps the release on record', async
 test('an existing object is never overwritten, but an identical one is accepted', async (t) => {
   const different = setup(t);
   different.store.set(
-    `https://downloads-test.bentobrowser.app/${different.marName}`,
+    `https://dl-test.bentobrowser.app/${different.marName}`,
     Buffer.from('other bytes'),
   );
   await assert.rejects(
@@ -400,7 +400,7 @@ test('an existing object is never overwritten, but an identical one is accepted'
 
   const identical = setup(t);
   identical.store.set(
-    `https://downloads-test.bentobrowser.app/${identical.marName}`,
+    `https://dl-test.bentobrowser.app/${identical.marName}`,
     identical.marBytes,
   );
   await publish(identical.args(['--assets']), identical.ctx);
@@ -447,7 +447,7 @@ test('promote alone verifies the hosted MAR first and leaves the descriptor alon
   assert.equal(JSON.stringify(s.descriptor('test')), before);
   assert.deepEqual(s.commands(), []);
 
-  s.store.set(`https://downloads-test.bentobrowser.app/${s.marName}`, s.marBytes);
+  s.store.set(`https://dl-test.bentobrowser.app/${s.marName}`, s.marBytes);
   await publish(s.args(['--promote']), s.ctx);
   assert.deepEqual(s.commands(), [['pnpm', wrangler('deploy', '--env', 'test'), s.serviceDir]]);
   assert.equal(s.descriptor('test').release.version, '0.0.3');
@@ -475,7 +475,7 @@ test('an older or republished version is refused before anything is uploaded or 
     release: {
       version,
       buildId,
-      marUrl: `https://downloads-test.bentobrowser.app/${marFileName(version, buildId)}`,
+      marUrl: `https://dl-test.bentobrowser.app/${marFileName(version, buildId)}`,
       size: 1,
       sha512: 'cd'.repeat(64),
       platformVersion: '158.0',

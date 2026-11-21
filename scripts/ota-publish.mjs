@@ -44,8 +44,8 @@ import {
 export const WRANGLER_VERSION = '4.156.0';
 
 export const ENVIRONMENTS = {
-  test: { bucket: 'bento-updates-test', downloadHost: 'downloads-test.bentobrowser.app' },
-  production: { bucket: 'bento-updates', downloadHost: 'downloads.bentobrowser.app' },
+  test: { bucket: 'bento-updates-test', downloadHost: 'dl-test.bentobrowser.app' },
+  production: { bucket: 'bento-updates', downloadHost: 'dl.bentobrowser.app' },
 };
 
 const FIRST_PUBLIC_VERSION = [0, 1, 0];
