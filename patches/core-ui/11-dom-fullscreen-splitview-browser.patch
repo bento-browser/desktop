@@ -1,4 +1,4 @@
-From cc48e3e31fe72ec4bc2f390ba0fce2bfdcc4771c Mon Sep 17 00:00:00 2001
+From ccf0f776cffa7210efc43d4f484040ee6d519fe3 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Sat, 27 Jun 2026 16:35:00 +1000
 Subject: [PATCH] Allow DOM fullscreen from split view browsers

@@ -52,7 +52,7 @@
 //           engine tree.
 //   reg     optional [file, regex] proving a resource:// module is registered.
 
-export const BASELINE = '160.0';
+export const BASELINE = '160.0.1';
 
 const FF = {
   tabbrowser: 'browser/components/tabbrowser/Tabbrowser.sys.mjs',

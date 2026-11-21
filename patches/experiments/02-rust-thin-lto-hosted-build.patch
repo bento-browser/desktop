@@ -1,4 +1,4 @@
-From 52389beee859ebd6b9831069884e731a4740e629 Mon Sep 17 00:00:00 2001
+From a17c84e703988111865cd7aa4189e75fdb5c5009 Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Mon, 24 Aug 2026 14:13:08 +1000
 Subject: [PATCH] Use ThinLTO for hosted release Rust linking

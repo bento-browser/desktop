@@ -59,6 +59,43 @@ Use this shape for new or changed touchpoints:
 
 ## Current Touchpoints
 
+### Firefox 160.0.1 Upgrade Review (2026-11-22)
+
+- Impact: low-risk fast path. Firefox 160.0.1 (2026-11-17) fixes two high CVEs
+  ([MFSA 2026-130](https://www.mozilla.org/en-US/security/advisories/mfsa2026-130/)):
+  an Android-only WebGL boundary bug and a use-after-free in media playback
+  (both bugs restricted). Its seven listed fixes are in printing, Canvas2D/WebGL,
+  CSS invalidation, layout selection ranges, HTTP/3 datagrams and APZ panning.
+- Source comparison (verified 160.0 and 160.0.1 bases, 561 files, mostly Android
+  strings and Remote Settings dumps): no file touched by the 30 patches, no
+  overlay destination, and nothing under `browser/branding/`, `browser/installer`,
+  `browser/components/tabbrowser/`, `toolkit/content/widgets/tabbox.js`,
+  `browser/app/profile/firefox.js`, `build/` or `python/` changes. Under
+  `toolkit/mozapps/update` only tests change. Desktop chrome changes:
+  `tabs.css` repositions the vertical-tab collapsed close button (Bento hides
+  native tabs), `IPProtectionPanel.sys.mjs` narrows one error mapping, and
+  `StaticPrefList.yaml` adds `webgl.workarounds.finish-before-blitframebuffer-with-multiple-attachments`.
+- Patch stack: rebased with no conflicts; all 30 payloads are unchanged apart
+  from index hashes, mail hashes and the version footer.
+- Firefox-compat registry: 357 of 357 members found; `BASELINE` is 160.0.1 and
+  no `at` line moved (the one registry file upstream changed,
+  `StaticPrefList.yaml`, gains lines after the `layout.css.devPixelsPerPx` entry).
+- The 160.0 touchpoint findings and validation table below still apply unchanged.
+
+Built-app evidence (macOS arm64 dev, 2026-11-22, BuildID 20261122010931 after the
+post-package rebuild): bundled headless smoke and the panel suite pass, with
+browsing context ids unchanged across the main-tab switch;
+`BentoFirefoxCompat.check()` reports 99 probed, 0 missing, 1 deferred. The dev
+`.mac.tar` package (Clang 22 `llvm-strip`, see
+[build tooling](build-tooling.md#firefox-159-macos-strip-tool-apple-silicon))
+passes `artifacts:check`: bundle id `app.bentobrowser.bento`, both built-in add-on
+manifests in `browser/omni.ja`, a byte-identical uBlock XPI, `precomplete`, no
+updater and no symlink into a checkout. Configure has `--disable-release`,
+`--disable-updater` and `--enable-macos-target=11.0`; `MOZ_UPDATER` is absent,
+`MOZ_UPDATE_CHANNEL` is `bento`, the binary is `minos 11.0`. Not run: the release
+build, signing, notarization, and the manual displayed-browser checks the 160.0
+review lists as not established.
+
 ### Firefox 160.0 Upgrade Review (2026-11-14)
 
 - Impact: targeted review. Firefox 160.0 fixes 99 CVEs, 58 rated high, including
@@ -399,6 +436,10 @@ The source review covered every active touchpoint:
   mode write, inside the presenter's settle, so the dialog flips with the window.
   A dialog that does not load `preferences.css` is not touched. Depends on the
   `window-modal-dialog-template` markup and `DOMFrameContentLoaded` (registry).
+- Firefox 160.0.1 split-view review (2026-11-22): `browser/components/tabbrowser/`,
+  `toolkit/content/widgets/tabbox.js` and `browser/app/profile/firefox.js` are
+  unchanged from 160.0, so split view behaves as in the 160.0 review below; no
+  effect on Bento.
 - Firefox 160.0 split-view review (2026-11-14): read the full diff of
   `browser/components/tabbrowser/`, `toolkit/content/widgets/tabbox.js` and both
   split-view pref spellings (neither pref changes). Tab selection, activation,
@@ -4311,7 +4352,7 @@ below is generated; edit the registry, then run
 <!-- prettier-ignore-start -->
 <!-- firefox-compat:begin -->
 
-| Member | Kind | Bento use | Used in | Firefox 160.0 source |
+| Member | Kind | Bento use | Used in | Firefox 160.0.1 source |
 | --- | --- | --- | --- | --- |
 | `delayedStartupPromise` | member (runtime) | Schedules the compat probes after Firefox finishes delayed startup. | `scheduleBentoFirefoxCompatChecks` | `browser/base/content/browser-init.js:6` |
 | `gBrowser.on_visibilitychange` | method (runtime) | No-ops while split view is active so Firefox does not deactivate panel docShells. | `attachTabSelectListener` | `browser/components/tabbrowser/Tabbrowser.sys.mjs:9485` |

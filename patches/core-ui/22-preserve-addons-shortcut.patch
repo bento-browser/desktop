@@ -1,4 +1,4 @@
-From 14c05c82dc29800073c6390ac8aabd79ccc7357b Mon Sep 17 00:00:00 2001
+From 95a88374f6244374dadb7f856ddfdb251c7f9d0a Mon Sep 17 00:00:00 2001
 From: Bento Patch Stack <patch-stack@bentobrowser.invalid>
 Date: Wed, 11 Nov 2026 01:29:51 +1100
 Subject: [PATCH] Preserve Bento Add-ons shortcut and omit native tab search
